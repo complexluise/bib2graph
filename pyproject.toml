@@ -9,13 +9,13 @@ package-mode = false
 [tool.poetry.dependencies]
 python = "^3.12"
 pandas = "^2.0.0"
-py2neo = "^2021.2.3"
 bibtexparser = "^1.4.0"
 requests = "^2.31.0"
 crossrefapi = "^1.5.0"
 elsapy = "^0.5.0"
 networkx = "^3.1"
 pys2 = "^1.1.0"
+neomodel = "^5.4.5"
 
 
 [build-system]
