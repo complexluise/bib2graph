@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Optional, Union
 import requests
 from neomodel import db, config
 import s2
-
+from crossref.restful import Works
 from elsapy.elsclient import ElsClient
 from elsapy.elsdoc import FullDoc
 from src.models import Paper, Author, Keyword, Institution, Funder
@@ -135,7 +135,7 @@ class BibliometricDataEnricher:
         Returns:
             Dictionary with enriched data
         """
-        from crossrefapi import Works
+
         doi = paper_node.doi
         enriched_data = {
             'funders': [],
