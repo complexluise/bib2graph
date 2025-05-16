@@ -25,10 +25,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Neo4j connection parameters
-NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
-NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "password")  # Change this in production
+class Neo4jConfig:
+    def __init__(self):
+        self.uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+        self.user = os.getenv("NEO4J_USER", "neo4j")
+        self.password = os.getenv("NEO4J_PASSWORD")  # Usa un valor por defecto solo si es seguro
+
+    def as_dict(self):
+        return {
+            "uri": self.uri,
+            "user": self.user,
+            "password": self.password
+        }
+
 
 def parse_arguments():
     """Parse command line arguments."""
@@ -54,13 +63,13 @@ def parse_arguments():
     parser.add_argument('--community-algorithm', type=str, 
                         choices=['louvain', 'label_propagation', 'greedy_modularity'], 
                         default='louvain', help='Community detection algorithm')
-    
+    neo4j_config = Neo4jConfig()
     # Neo4j connection options
-    parser.add_argument('--neo4j-uri', type=str, default=NEO4J_URI, 
+    parser.add_argument('--neo4j-uri', type=str, default=neo4j_config.uri,
                         help='Neo4j connection URI')
-    parser.add_argument('--neo4j-user', type=str, default=NEO4J_USER, 
+    parser.add_argument('--neo4j-user', type=str, default=neo4j_config.user,
                         help='Neo4j username')
-    parser.add_argument('--neo4j-password', type=str, default=NEO4J_PASSWORD, 
+    parser.add_argument('--neo4j-password', type=str, default=neo4j_config.password,
                         help='Neo4j password')
     
     return parser.parse_args()
