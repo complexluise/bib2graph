@@ -101,7 +101,7 @@ class BibliometricDataLoader:
 
         elif source_type == 'bibtex':
             # Assuming data is a bibtexparser result
-            for entry in data.get('entries', []):
+            for entry in data.entries:
                 paper = {
                     'doi': entry.get('doi', ''),
                     'title': entry.get('title', ''),
@@ -109,6 +109,7 @@ class BibliometricDataLoader:
                     'year': entry.get('year', ''),
                     'source': entry.get('journal', ''),
                     'keywords': [kw.strip() for kw in entry.get('keywords', '').split(',')],
+                    'abstract': entry.get('abstract', ''),
                     'references': [],  # BibTeX might not have references
                     'institutions': [],  # Extract from affiliations if available
                     'funders': []  # Extract from acknowledgments if available
