@@ -99,7 +99,7 @@ class BibliometricDataEnricher:
                         enriched_data['citations'].append({
                             'paperId': citation.paperId,
                             'title': citation.title,
-                            'doi': citation.externalIds.get('DOI', '')
+                            'doi': citation.doi
                         })
 
                 # Extract references
@@ -108,7 +108,7 @@ class BibliometricDataEnricher:
                         enriched_data['references'].append({
                             'paperId': reference.paperId,
                             'title': reference.title,
-                            'doi': reference.externalIds.get('DOI', '')
+                            'doi': reference.doi
                         })
 
                 # Extract authors with ORCID if available
@@ -118,7 +118,7 @@ class BibliometricDataEnricher:
                         'authorId': author.authorId
                     }
                     if hasattr(author, 'externalIds') and author.externalIds:
-                        author_data['orcid'] = author.externalIds.get('ORCID', '')
+                        author_data['url'] = author.externalIds.url
                     enriched_data['authors'].append(author_data)
 
         except Exception as e:
@@ -342,7 +342,7 @@ class BibliometricDataEnricher:
         self.update_neo4j_with_enriched_data(paper_node, enriched_data)
 
         # Sleep to respect API rate limits
-        time.sleep(1)
+        time.sleep(2)
 
     def enrich_all_papers(self) -> None:
         """Enrich all papers in the database that have DOIs."""
