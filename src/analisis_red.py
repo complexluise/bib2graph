@@ -41,7 +41,7 @@ class BibliometricNetworkAnalyzer:
         """
         # Cypher query to create CO_CITED_WITH relationships
         cypher_query = """
-        MATCH (p1:Paper)-[:CITED]->(ref:Paper)<-[:CITED]-(p2:Paper)
+        MATCH (p1:Paper)-[:REFERENCES]->(ref:Paper)<-[:REFERENCES]-(p2:Paper)
         WHERE p1 <> p2
         WITH p1, p2, COUNT(ref) AS shared_refs
         WHERE shared_refs > 0
