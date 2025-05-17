@@ -200,6 +200,8 @@ def run_full_pipeline(args):
     enrich_data(args)
     analyze_network(args)
 
+    logger.info("Bibliometric analysis pipeline completed")
+
 def main():
     """Main entry point for the application."""
     args = parse_arguments()
@@ -214,11 +216,10 @@ def main():
         elif args.mode == 'analyze':
             analyze_network(args)
         elif args.mode == 'full':
-            run_full_pipeline(args)
+             run_full_pipeline(args)
     except Exception as e:
         logger.exception(f"Error in pipeline execution: {e}")
-    
-    logger.info("Bibliometric analysis pipeline completed")
+
 
 if __name__ == "__main__":
     main()
