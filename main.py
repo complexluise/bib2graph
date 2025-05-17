@@ -47,8 +47,9 @@ def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description='Bibliometric analysis pipeline for semiconductor supply chain')
 
-    # Main operation mode
-    parser.add_argument('--mode', type=str, choices=['ingest', 'enrich', 'analyze', 'full'],
+    # Main operation mode (agrega 'create-relations')
+    parser.add_argument('--mode', type=str,
+                        choices=['ingest', 'enrich', 'create-relations', 'analyze', 'full'],
                         default='full', help='Operation mode')
 
     # Data ingestion options
@@ -143,6 +144,77 @@ def enrich_data(args):
     logger.info("Data enrichment phase completed")
 
 
+def create_network_relations(args):
+    """Create relations necessary for extracting networks."""
+    logger.info("Creating network relations in Neo4j (preprocessing)")
+
+    analyzer = BibliometricNetworkAnalyzer(
+        uri=args.neo4j_uri,
+        user=args.neo4j_user,
+        password=args.neo4j_password
+    )
+
+    if args.network_type == 'cocitation':
+        rel_count = analyzer.create_co_citation_relationships()
+        logger.info(f"Created {rel_count} CO_CITED_WITH relationships")
+    # Puedes agregar más casos según el tipo de red
+    # elif args.network_type == 'author':
+    #     ...
+    logger.info("Network relations created in Neo4j")
+
+
+def extract_and_analyze_network(args):
+    """Extract and analyze networks from Neo4j."""
+    logger.info("Starting network extraction and analysis phase")
+
+    analyzer = BibliometricNetworkAnalyzer(
+        uri=args.neo4j_uri,
+        user=args.neo4j_user,
+        password=args.neo4j_password
+    )
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    # Extraer la red solicitada
+    if args.network_type == 'cocitation':
+        network = analyzer.extract_co_citation_network(min_weight=args.min_weight)
+        network_name = "cocitation"
+    elif args.network_type == 'author':
+        network = analyzer.extract_author_collaboration_network()
+        network_name = "author_collaboration"
+    elif args.network_type == 'institution':
+        network = analyzer.extract_institution_collaboration_network()
+        network_name = "institution_collaboration"
+    elif args.network_type == 'keyword':
+        network = analyzer.extract_keyword_co_occurrence_network()
+        network_name = "keyword_cooccurrence"
+
+    logger.info(
+        f"{args.network_type} network has {network.number_of_nodes()} nodes and {network.number_of_edges()} edges")
+
+    # Exportar resultados
+    graphml_path = os.path.join(args.output_dir, f"{network_name}_network.graphml")
+    nodes_path = os.path.join(args.output_dir, f"{network_name}_nodes.csv")
+    edges_path = os.path.join(args.output_dir, f"{network_name}_edges.csv")
+
+    analyzer.export_graph_to_graphml(network, graphml_path)
+    analyzer.export_graph_to_csv(network, nodes_path, edges_path)
+
+    logger.info(f"Exported network to {graphml_path}, {nodes_path}, and {edges_path}")
+
+    # Calcular métricas de la red
+    metrics = analyzer.calculate_network_metrics(network)
+    logger.info("Network metrics:")
+    for key, value in metrics.items():
+        logger.info(f"  {key}: {value}")
+
+    # Detectar comunidades
+    communities, modularity = analyzer.detect_communities(network, algorithm=args.community_algorithm)
+    logger.info(f"Detected {len(set(communities.values()))} communities with modularity {modularity:.4f}")
+
+    logger.info("Network extraction and analysis phase completed")
+
+
 def analyze_network(args):
     """Extract and analyze networks from Neo4j."""
     logger.info("Starting network analysis phase")
@@ -187,8 +259,8 @@ def analyze_network(args):
     nodes_path = os.path.join(args.output_dir, f"{network_name}_nodes.csv")
     edges_path = os.path.join(args.output_dir, f"{network_name}_edges.csv")
 
-    #analyzer.export_graph_to_graphml(network, graphml_path)
-    #analyzer.export_graph_to_csv(network, nodes_path, edges_path)
+    analyzer.export_graph_to_graphml(network, graphml_path)
+    analyzer.export_graph_to_csv(network, nodes_path, edges_path)
 
     logger.info(f"Exported network to {graphml_path}, {nodes_path}, and {edges_path}")
 
@@ -225,8 +297,10 @@ def main():
             ingest_data(args)
         elif args.mode == 'enrich':
             enrich_data(args)
+        elif args.mode == 'create-relations':
+            create_network_relations(args)
         elif args.mode == 'analyze':
-            analyze_network(args)
+            extract_and_analyze_network(args)
         elif args.mode == 'full':
             run_full_pipeline(args)
     except Exception as e:
