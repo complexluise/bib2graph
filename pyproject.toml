@@ -16,6 +16,7 @@ elsapy = "^0.5.0"
 networkx = "^3.1"
 pys2 = "^1.1.0"
 neomodel = "^5.4.5"
+lxml = "^5.4.0"
 
 
 [build-system]
