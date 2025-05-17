@@ -339,7 +339,7 @@ class BibliometricDataEnricher:
             **scopus_data}
 
         # Update Neo4j with enriched data
-        self.update_neo4j_with_enriched_data(paper, enriched_data)
+        self.update_neo4j_with_enriched_data(paper_node, enriched_data)
 
         # Sleep to respect API rate limits
         time.sleep(1)
