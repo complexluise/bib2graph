@@ -10,6 +10,9 @@ This script ties together all components of the data pipeline:
 import os
 import argparse
 import logging
+
+from bibtexparser.customization import author
+
 from src.consigue_los_articulos import BibliometricDataLoader
 from src.enriquecimiento import BibliometricDataEnricher
 from src.analisis_red import BibliometricNetworkAnalyzer
@@ -158,6 +161,9 @@ def analyze_network(args):
     if args.network_type == 'cocitation':
         rel_count = analyzer.create_co_citation_relationships()
         logger.info(f"Created {rel_count} CO_CITED_WITH relationships")
+    #if args.network_type == 'author':
+    #    # complete
+    #    author_count = analyzer.create_author_collaboration_network
 
     # Extract the requested network
     if args.network_type == 'cocitation':
@@ -167,7 +173,7 @@ def analyze_network(args):
         network = analyzer.extract_author_collaboration_network()
         network_name = "author_collaboration"
     elif args.network_type == 'institution':
-        network = analyzer.extract_institution_collaboration_network()
+        network = analyzer.extract_institution_collaboration_network()  # TODO: No se ha creado institution_collaboration
         network_name = "institution_collaboration"
     elif args.network_type == 'keyword':
         network = analyzer.extract_keyword_co_occurrence_network()
@@ -181,8 +187,8 @@ def analyze_network(args):
     nodes_path = os.path.join(args.output_dir, f"{network_name}_nodes.csv")
     edges_path = os.path.join(args.output_dir, f"{network_name}_edges.csv")
 
-    analyzer.export_graph_to_graphml(network, graphml_path)
-    analyzer.export_graph_to_csv(network, nodes_path, edges_path)
+    #analyzer.export_graph_to_graphml(network, graphml_path)
+    #analyzer.export_graph_to_csv(network, nodes_path, edges_path)
 
     logger.info(f"Exported network to {graphml_path}, {nodes_path}, and {edges_path}")
 
