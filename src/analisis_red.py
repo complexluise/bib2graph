@@ -54,55 +54,46 @@ class BibliometricNetworkAnalyzer:
         return results[0][0] if results else 0
 
     def extract_co_citation_network(self, min_weight: int = 1) -> nx.Graph:
-        """Extract co-citation network from Neo4j.
-
-        Args:
-            min_weight: Minimum weight of CO_CITED_WITH relationships to include
-
-        Returns:
-            NetworkX graph representing the co-citation network
-        """
-        # Create an empty undirected graph
+        """Extrae la red de cocitación a partir de Neo4j, sólo con papers con relaciones."""
         G = nx.Graph()
 
-        # Cypher query to get papers
-        paper_query = """
-        MATCH (p:Paper)
-        RETURN p.doi AS doi, p.title AS title, p.year AS year
-        """
-
-        # Cypher query to get co-citation relationships
+        # 1. Primero recuperamos solo las relaciones relevantes (edges)
         cocitation_query = """
         MATCH (p1:Paper)-[r:CO_CITED_WITH]-(p2:Paper)
         WHERE r.weight >= $min_weight
         RETURN p1.doi AS source, p2.doi AS target, r.weight AS weight
         """
-
-        # Add nodes (papers)
-        results, meta = db.cypher_query(paper_query)
-        # Convert results to dictionary format
-        columns = [col for col in meta]
-        for row in results:
+        cocit_results, cocit_meta = db.cypher_query(cocitation_query, {"min_weight": min_weight})
+        columns = [col for col in cocit_meta]
+        # Guardar el set de DOIs involucrados en cocitación
+        dois_set = set()
+        edges = []
+        for row in cocit_results:
             record = dict(zip(columns, row))
-            if record['doi']:  # Only add papers with DOIs
-                G.add_node(
-                    record['doi'],
-                    title=record['title'],
-                    year=record['year']
-                )
+            if record['source'] and record['target'] and record['weight'] is not None:
+                # Aseguramos que no haya None en weight
+                edges.append((record['source'], record['target'], record['weight']))
+                dois_set.add(record['source'])
+                dois_set.add(record['target'])
 
-        # Add edges (co-citation relationships)
-        results, meta = db.cypher_query(cocitation_query, {"min_weight": min_weight})
-        # Convert results to dictionary format
-        columns = [col for col in meta]
-        for row in results:
-            record = dict(zip(columns, row))
-            if record['source'] and record['target']:  # Only add relationships with valid DOIs
-                G.add_edge(
-                    record['source'],
-                    record['target'],
-                    weight=record['weight']
-                )
+        if dois_set:
+            paper_query = """
+            MATCH (p:Paper)
+            WHERE p.doi IN $dois
+            RETURN p.doi AS doi, p.title AS title, p.year AS year
+            """
+            paper_results, paper_meta = db.cypher_query(paper_query, {"dois": list(dois_set)})
+            col_paper = [col for col in paper_meta]
+            for row in paper_results:
+                record = dict(zip(col_paper, row))
+                # Limpiar/asegurar que fields no sean None (GraphML NO soporta None)
+                doi = record['doi']
+                title = record['title'] if record['title'] is not None else ""
+                year = record['year'] if record['year'] is not None else -1
+                G.add_node(doi, title=title, year=year)
+
+        for source, target, weight in edges:
+            G.add_edge(source, target, weight=weight)
 
         return G
 
