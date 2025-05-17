@@ -87,41 +87,40 @@ def ingest_data(args):
         password=args.neo4j_password
     )
 
-    # Process input file or directory
-    if args.input:
-        if os.path.isdir(args.input):
-            logger.info(f"Processing directory: {args.input}")
-            loader.process_directory(args.input)
-        elif os.path.isfile(args.input):
-            if not args.file_type:
-                # Try to infer file type from extension
-                ext = os.path.splitext(args.input)[1].lower()
-                if ext == '.csv':
-                    file_type = 'csv'
-                elif ext in ['.bib', '.bibtex']:
-                    file_type = 'bibtex'
-                elif ext == '.json':
-                    file_type = 'json'
-                else:
-                    logger.error(f"Could not infer file type from extension: {ext}")
-                    return
-            else:
-                file_type = args.file_type
+    if not args.input:
+        logger.error("No input file or directory specified")
+        raise ValueError("Input required for ingestion")
 
-            logger.info(f"Processing file: {args.input} (type: {file_type})")
-            loader.process_file(args.input, file_type)
-        else:
-            logger.error(f"Input path does not exist: {args.input}")
-    else:
-        # Default behavior: process the sample data file if it exists
-        default_file = "data/Citación semiconductores comercio internacional.csv"
-        if os.path.exists(default_file):
-            logger.info(f"Processing default file: {default_file}")
-            loader.process_file(default_file, 'csv')
-        else:
-            logger.error("No input specified and default file not found")
+    if not os.path.exists(args.input):
+        logger.error(f"Input path does not exist: {args.input}")
+        raise FileNotFoundError(args.input)
 
-    logger.info("Data ingestion phase completed")
+    if os.path.isdir(args.input):
+        logger.info(f"Processing directory: {args.input}")
+        loader.process_directory(args.input)
+        logger.info("Data ingestion phase completed")
+        return
+
+    if os.path.isfile(args.input):
+        # Determinar tipo de archivo
+        file_type = args.file_type
+        if not file_type:
+            ext = os.path.splitext(args.input)[1].lower()
+            file_type = {
+                '.csv': 'csv',
+                '.bib': 'bibtex',
+                '.bibtex': 'bibtex',
+                '.json': 'json'
+            }.get(ext)
+            if not file_type:
+                logger.error(f"Could not infer file type from extension: {ext}")
+                return
+
+        logger.info(f"Processing file: {args.input} (type: {file_type})")
+        loader.process_file(args.input, file_type)
+        logger.info("Data ingestion phase completed")
+        return
+
 
 
 def enrich_data(args):
