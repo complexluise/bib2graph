@@ -15,7 +15,7 @@ import s2
 from crossref.restful import Works
 from elsapy.elsclient import ElsClient
 from elsapy.elsdoc import FullDoc
-from src.models import Paper, Author, Keyword, Institution, Funder
+from src.models import Paper, Author, Keyword, Institution
 
 # Neo4j connection parameters
 NEO4J_URI = "bolt://localhost:7687"
@@ -126,50 +126,6 @@ class BibliometricDataEnricher:
 
         return enriched_data
 
-    def enrich_from_crossref(self, paper_node: Paper) -> Dict[str, Any]:
-        """Enrich paper data using CrossRef API.
-
-        Args:
-            paper_node: Neo4j Paper node to enrich
-
-        Returns:
-            Dictionary with enriched data
-        """
-
-        doi = paper_node.doi
-        enriched_data = {
-            'funders': [],
-            'institutions': []
-        }
-
-        try:
-            # Query CrossRef API
-            work = self.works.doi(doi)
-
-            if work:
-                # Extract funders
-                if 'funder' in work:
-                    for funder in work['funder']:
-                        if 'name' in funder:
-                            enriched_data['funders'].append({
-                                'name': funder['name'],
-                                'doi': funder.get('DOI', '')
-                            })
-
-                # Extract institutions from affiliations
-                if 'author' in work:
-                    for author in work['author']:
-                        if 'affiliation' in author:
-                            for affiliation in author['affiliation']:
-                                if 'name' in affiliation:
-                                    enriched_data['institutions'].append({
-                                        'name': affiliation['name']
-                                    })
-
-        except Exception as e:
-            print(f"Error enriching from CrossRef: {e}")
-
-        return enriched_data
 
     def enrich_from_scopus(self, paper_node: Paper) -> Dict[str, Any]:
         """Enrich paper data using Scopus API.
@@ -232,7 +188,8 @@ class BibliometricDataEnricher:
                     # Create cited paper if it doesn't exist
                     cited_paper = Paper(
                         doi=citation['doi'],
-                        title=citation.get('title', '')
+                        title=citation.get('title', ''),
+                        is_seed=False
                     ).save()
 
                 # Create CITED relationship
@@ -267,22 +224,6 @@ class BibliometricDataEnricher:
                         author_node.save()
                 except Author.DoesNotExist:
                     pass
-
-        # Update funders
-        for funder in enriched_data.get('funders', []):
-            if 'name' in funder:
-                # Check if funder exists
-                try:
-                    funder_node = Funder.nodes.get(name=funder['name'])
-                except Funder.DoesNotExist:
-                    # Create funder if it doesn't exist
-                    funder_node = Funder(name=funder['name'])
-                    if 'doi' in funder and funder['doi']:
-                        funder_node.doi = funder['doi']
-                    funder_node.save()
-
-                # Create FUNDED_BY relationship
-                paper_node.funders.connect(funder_node)
 
         # Update institutions
         for institution in enriched_data.get('institutions', []):
