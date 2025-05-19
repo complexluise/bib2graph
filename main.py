@@ -313,7 +313,35 @@ def extract_and_analyze_network(
 
     # Extract the requested network
     if network_type == 'cocitation':
-        network = analyzer.extract_co_citation_network(min_weight=min_weight)
+        network_result = analyzer.extract_co_citation_network(min_weight=min_weight)
+        # Handle the new return format (network, quality_report)
+        if isinstance(network_result, tuple) and len(network_result) == 2:
+            network, quality_report = network_result
+            # Log quality report
+            logger.info("Quality Report for Co-citation Network:")
+            logger.info(f"  Document count: {quality_report['document_count']} (Threshold: ≥200, Met: {quality_report['meets_volume_threshold']})")
+            logger.info(f"  DOI and references: {quality_report['doi_ref_percentage']:.2f}% (Threshold: ≥90%, Met: {quality_report['meets_doi_ref_threshold']})")
+            logger.info(f"  Temporal coverage: {quality_report['temporal_coverage']} (Threshold: 2000-2024, Met: {quality_report['meets_temporal_threshold']})")
+            logger.info(f"  Geographic diversity: {quality_report['country_count']} countries (Threshold: ≥5, Met: {quality_report['meets_geographic_threshold']})")
+            logger.info(f"  Key authors: {quality_report['recurring_authors']} recurring authors (Threshold: ≥10, Met: {quality_report['meets_author_threshold']})")
+            logger.info(f"  Source duplication: {quality_report['source_duplication_percentage']:.2f}%")
+
+            # Log missing data percentages
+            logger.info("  Missing data percentages:")
+            for field, percentage in quality_report['missing_data_percentages'].items():
+                logger.info(f"    {field}: {percentage:.2f}%")
+
+            # Log overall quality score
+            logger.info(f"  Overall quality score: {quality_report['quality_score']:.2f}% ({quality_report['criteria_met_count']}/{quality_report['criteria_total_count']} criteria met)")
+
+            # Log top authors if available
+            if quality_report.get('top_authors'):
+                logger.info("  Top authors:")
+                for author in quality_report['top_authors']:
+                    logger.info(f"    {author['name']}: {author['paper_count']} papers")
+        else:
+            # Fallback for backward compatibility
+            network = network_result
         network_name = "cocitation"
     elif network_type == 'author':
         network = analyzer.extract_author_collaboration_network()
@@ -388,7 +416,35 @@ def analyze_network(
 
     # Extract the requested network
     if network_type == 'cocitation':
-        network = analyzer.extract_co_citation_network(min_weight=min_weight)
+        network_result = analyzer.extract_co_citation_network(min_weight=min_weight)
+        # Handle the new return format (network, quality_report)
+        if isinstance(network_result, tuple) and len(network_result) == 2:
+            network, quality_report = network_result
+            # Log quality report
+            logger.info("Quality Report for Co-citation Network:")
+            logger.info(f"  Document count: {quality_report['document_count']} (Threshold: ≥200, Met: {quality_report['meets_volume_threshold']})")
+            logger.info(f"  DOI and references: {quality_report['doi_ref_percentage']:.2f}% (Threshold: ≥90%, Met: {quality_report['meets_doi_ref_threshold']})")
+            logger.info(f"  Temporal coverage: {quality_report['temporal_coverage']} (Threshold: 2000-2024, Met: {quality_report['meets_temporal_threshold']})")
+            logger.info(f"  Geographic diversity: {quality_report['country_count']} countries (Threshold: ≥5, Met: {quality_report['meets_geographic_threshold']})")
+            logger.info(f"  Key authors: {quality_report['recurring_authors']} recurring authors (Threshold: ≥10, Met: {quality_report['meets_author_threshold']})")
+            logger.info(f"  Source duplication: {quality_report['source_duplication_percentage']:.2f}%")
+
+            # Log missing data percentages
+            logger.info("  Missing data percentages:")
+            for field, percentage in quality_report['missing_data_percentages'].items():
+                logger.info(f"    {field}: {percentage:.2f}%")
+
+            # Log overall quality score
+            logger.info(f"  Overall quality score: {quality_report['quality_score']:.2f}% ({quality_report['criteria_met_count']}/{quality_report['criteria_total_count']} criteria met)")
+
+            # Log top authors if available
+            if quality_report.get('top_authors'):
+                logger.info("  Top authors:")
+                for author in quality_report['top_authors']:
+                    logger.info(f"    {author['name']}: {author['paper_count']} papers")
+        else:
+            # Fallback for backward compatibility
+            network = network_result
         network_name = "cocitation"
     elif network_type == 'author':
         network = analyzer.extract_author_collaboration_network()
