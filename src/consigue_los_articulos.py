@@ -11,7 +11,7 @@ import pandas as pd
 import bibtexparser
 from neomodel import db, config
 from typing import Dict, List, Any, Optional, Union
-from src.models import Paper, Author, Keyword, Institution, Funder
+from src.models import Paper, Author, Keyword, Institution, Funder, Publisher, Editor
 
 # Neo4j connection parameters
 NEO4J_URI = "bolt://localhost:7687"
@@ -84,68 +84,44 @@ class BibliometricDataLoader:
         normalized_data = []
 
         if source_type == 'csv':
-            # Assuming data is a pandas DataFrame
-            for _, row in data.iterrows():
-                paper = {
-                    'doi': row.get('DOI', ''),
-                    'title': row.get('Title', ''),
-                    'authors': [author.strip() for author in row.get('Authors', '').split(';')],
-                    'year': row.get('Publication Year', ''),
-                    'source': row.get('Source Title', ''),
-                    'keywords': [],  # CSV might not have keywords
-                    'references': [],  # CSV might not have references
-                    'institutions': [],  # Extract from affiliations if available
-                    'funders': []  # Extract from acknowledgments if available
-                }
-                normalized_data.append(paper)
+            raise NotImplementedError('CSV normalization not yet implemented. Use BibTeX')
 
         elif source_type == 'bibtex':
-            # Assuming data is a bibtexparser result
+            # Parsear todos los campos relevantes de cada entry
             for entry in data.entries:
                 paper = {
                     'doi': entry.get('doi', ''),
                     'title': entry.get('title', ''),
                     'authors': [author.strip() for author in entry.get('author', '').split(' and ')],
                     'year': entry.get('year', ''),
-                    'source': entry.get('journal', ''),
-                    'keywords': [kw.strip() for kw in entry.get('keywords', '').split(',')],
+                    'source': entry.get('journal', entry.get('booktitle', '')),
+                    'volume': entry.get('volume', ''),
+                    'issue': entry.get('number', ''),
+                    'pages': entry.get('pages', ''),
+                    'publisher': entry.get('publisher', ''),
+                    'editors': [editor.strip() for editor in entry.get('editor', '').split(' and ')] if 'editor' in entry else [],
+                    'address': entry.get('address', ''),
+                    'month': entry.get('month', ''),
+                    'note': entry.get('note', ''),
+                    'keywords': [kw.strip() for kw in entry.get('keywords', '').split(',') if kw.strip()],  # TODO Validar
                     'abstract': entry.get('abstract', ''),
-                    'references': [],  # BibTeX might not have references
-                    'institutions': [],  # Extract from affiliations if available
-                    'funders': []  # Extract from acknowledgments if available
+                    'issn': entry.get('issn', ''),
+                    'isbn': entry.get('isbn', ''),
+                    'url': entry.get('url', ''),
+                    'language': entry.get('language', ''),
+                    'type': entry.get('ENTRYTYPE', ''),
+                    'institutions': [entry.get('affiliation', '')] if 'affiliation' in entry else [],
+                    'funders': [entry.get('funding', '')] if 'funding' in entry else [],
+                    'references': [ref.strip() for ref in entry.get('references', '').split(',')] if 'references' in entry else [],
+                    'copyright': entry.get('copyright', ''),
                 }
+                # Elimina entradas vacías de listas y cadenas
+                for k in ['institutions', 'funders', 'references', 'editors']:
+                    paper[k] = [v for v in paper[k] if v]
                 normalized_data.append(paper)
 
         elif source_type == 'json':
-            # Assuming a specific JSON format, adjust as needed
-            if isinstance(data, list):
-                for item in data:
-                    paper = {
-                        'doi': item.get('doi', ''),
-                        'title': item.get('title', ''),
-                        'authors': item.get('authors', []),
-                        'year': item.get('year', ''),
-                        'source': item.get('source', ''),
-                        'keywords': item.get('keywords', []),
-                        'references': item.get('references', []),
-                        'institutions': item.get('institutions', []),
-                        'funders': item.get('funders', [])
-                    }
-                    normalized_data.append(paper)
-            else:
-                # Single paper in JSON
-                paper = {
-                    'doi': data.get('doi', ''),
-                    'title': data.get('title', ''),
-                    'authors': data.get('authors', []),
-                    'year': data.get('year', ''),
-                    'source': data.get('source', ''),
-                    'keywords': data.get('keywords', []),
-                    'references': data.get('references', []),
-                    'institutions': data.get('institutions', []),
-                    'funders': data.get('funders', [])
-                }
-                normalized_data.append(paper)
+            raise NotImplementedError('JSON normalization not yet implemented. Use BibTeX')
 
         return normalized_data
 
@@ -155,67 +131,94 @@ class BibliometricDataLoader:
         Args:
             papers: List of normalized paper dictionaries
         """
-        for paper_data in papers:
-            # Create Paper node
+        # Importar Publisher y Editor si existen en models.py
+
+        for paper_data in papers:  #TODO validar
+            # Crear (o encontrar) nodo Paper con todos los nuevos campos
             paper_node = Paper(
                 doi=paper_data['doi'],
                 title=paper_data['title'],
                 year=paper_data['year'],
-                source=paper_data['source']
+                source=paper_data['source'],
+                volume=paper_data.get('volume', ''),
+                issue=paper_data.get('issue', ''),
+                pages=paper_data.get('pages', ''),
+                address=paper_data.get('address', ''),
+                month=paper_data.get('month', ''),
+                note=paper_data.get('note', ''),
+                issn=paper_data.get('issn', ''),
+                isbn=paper_data.get('isbn', ''),
+                url=paper_data.get('url', ''),
+                language=paper_data.get('language', ''),
+                type=paper_data.get('type', ''),
+                abstract=paper_data.get('abstract', ''),
+                copyright=paper_data.get('copyright', ''),
             ).save()
 
-            # Create Author nodes and relationships
+            # Relacionar Publisher si existe
+            publisher_name = paper_data.get('publisher', '')
+            if publisher_name:
+                try:
+                    publisher_node = Publisher.nodes.get(name=publisher_name)
+                except Publisher.DoesNotExist:
+                    publisher_node = Publisher(name=publisher_name).save()
+                paper_node.publisher.connect(publisher_node)
+                # Guardar address del publisher
+                if paper_node.address and not publisher_node.address:
+                    publisher_node.address = paper_node.address
+                    publisher_node.save()
+
+            # Relacionar Editors si existen
+            for editor_name in paper_data.get('editors', []):
+                try:
+                    editor_node = Editor.nodes.get(name=editor_name)
+                except Editor.DoesNotExist:
+                    editor_node = Editor(name=editor_name).save()
+                paper_node.editors.connect(editor_node)
+
+            # Crear Author nodes y relación AUTHORED
             for author_name in paper_data['authors']:
-                # Get or create author
                 try:
                     author_node = Author.nodes.get(name=author_name)
                 except Author.DoesNotExist:
                     author_node = Author(name=author_name).save()
-
-                # Create AUTHORED relationship
                 author_node.papers.connect(paper_node)
 
-            # Create Keyword nodes and relationships
+            # Keywords
             for keyword in paper_data['keywords']:
-                if keyword:  # Skip empty keywords
-                    # Get or create keyword
+                if keyword:
                     try:
                         keyword_node = Keyword.nodes.get(name=keyword)
                     except Keyword.DoesNotExist:
                         keyword_node = Keyword(name=keyword).save()
+                paper_node.keywords.connect(keyword_node)
 
-                    # Create HAS_KEYWORD relationship
-                    paper_node.keywords.connect(keyword_node)
-
-            # Create Institution nodes and relationships
+            # Institutions
             for institution in paper_data['institutions']:
-                if institution:  # Skip empty institutions
-                    # Get or create institution
+                if institution:
                     try:
                         institution_node = Institution.nodes.get(name=institution)
                     except Institution.DoesNotExist:
                         institution_node = Institution(name=institution).save()
+                # Relacionar el paper con la institución
+                paper_node.institutions.connect(institution_node)
+                # Relacionar autores con la institución
+                for author_name in paper_data['authors']:
+                    try:
+                        author_node = Author.nodes.get(name=author_name)
+                        author_node.institutions.connect(institution_node)
+                    except Author.DoesNotExist:
+                        pass
 
-                    # Find authors affiliated with this institution
-                    for author_name in paper_data['authors']:
-                        try:
-                            author_node = Author.nodes.get(name=author_name)
-                            # Create AFFILIATED_WITH relationship
-                            author_node.institutions.connect(institution_node)
-                        except Author.DoesNotExist:
-                            pass
-
-            # Create Funder nodes and relationships
+            # Funders
             for funder in paper_data['funders']:
-                if funder:  # Skip empty funders
-                    # Get or create funder
+                if funder:
                     try:
                         funder_node = Funder.nodes.get(name=funder)
                     except Funder.DoesNotExist:
                         funder_node = Funder(name=funder).save()
+                paper_node.funders.connect(funder_node)
 
-                    # Create FUNDED_BY relationship
-                    paper_node.funders.connect(funder_node)
 
     def process_file(self, filepath: str, file_type: str) -> None:
         """Process a file and load its data into Neo4j.

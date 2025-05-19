@@ -206,14 +206,11 @@ def ingest_data(
         if not current_file_type:
             ext = os.path.splitext(input_path)[1].lower()
             current_file_type = {
-                '.csv': 'csv',
-                '.bib': 'bibtex',
                 '.bibtex': 'bibtex',
-                '.json': 'json'
             }.get(ext)
             if not current_file_type:
                 logger.error(f"Could not infer file type from extension: {ext}")
-                return
+                raise NotImplementedError(f"Unsupported file type: {ext}")
 
         logger.info(f"Processing file: {input_path} (type: {current_file_type})")
         loader.process_file(input_path, current_file_type)
