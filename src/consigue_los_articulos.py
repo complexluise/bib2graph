@@ -11,7 +11,7 @@ import pandas as pd
 import bibtexparser
 from neomodel import db, config
 from typing import Dict, List, Any, Optional, Union
-from src.models import Paper, Author, Keyword, Institution, Funder, Publisher, Editor
+from src.models import Paper, Author, Keyword, Institution, Publisher, ResearchArea
 
 # Neo4j connection parameters
 NEO4J_URI = "bolt://localhost:7687"
@@ -94,29 +94,25 @@ class BibliometricDataLoader:
                     'title': entry.get('title', ''),
                     'authors': [author.strip() for author in entry.get('author', '').split(' and ')],
                     'year': entry.get('year', ''),
+                    'month': entry.get('month', ''),
                     'source': entry.get('journal', entry.get('booktitle', '')),
                     'volume': entry.get('volume', ''),
                     'issue': entry.get('number', ''),
                     'pages': entry.get('pages', ''),
                     'publisher': entry.get('publisher', ''),
-                    'editors': [editor.strip() for editor in entry.get('editor', '').split(' and ')] if 'editor' in entry else [],
                     'address': entry.get('address', ''),
-                    'month': entry.get('month', ''),
-                    'note': entry.get('note', ''),
-                    'keywords': [kw.strip() for kw in entry.get('keywords', '').split(',') if kw.strip()],  # TODO Validar
+                    'keywords': [kw.strip() for kw in entry.get('keywords', '').split(';') if kw.strip()],  # TODO Validar
+                    'research_areas' : [research_areas.strip() for research_areas in entry['research-areas'].split(";")],
                     'abstract': entry.get('abstract', ''),
                     'issn': entry.get('issn', ''),
                     'isbn': entry.get('isbn', ''),
                     'url': entry.get('url', ''),
                     'language': entry.get('language', ''),
                     'type': entry.get('ENTRYTYPE', ''),
-                    'institutions': [entry.get('affiliation', '')] if 'affiliation' in entry else [],
-                    'funders': [entry.get('funding', '')] if 'funding' in entry else [],
-                    'references': [ref.strip() for ref in entry.get('references', '').split(',')] if 'references' in entry else [],
-                    'copyright': entry.get('copyright', ''),
+                    'institutions': [affi for affi in entry.get('affiliation', '').split(";")],
                 }
                 # Elimina entradas vacías de listas y cadenas
-                for k in ['institutions', 'funders', 'references', 'editors']:
+                for k in ['institutions']:
                     paper[k] = [v for v in paper[k] if v]
                 normalized_data.append(paper)
 
@@ -131,10 +127,8 @@ class BibliometricDataLoader:
         Args:
             papers: List of normalized paper dictionaries
         """
-        # Importar Publisher y Editor si existen en models.py
 
-        for paper_data in papers:  #TODO validar
-            # Crear (o encontrar) nodo Paper con todos los nuevos campos
+        for paper_data in papers:
             paper_node = Paper(
                 doi=paper_data['doi'],
                 title=paper_data['title'],
@@ -152,10 +146,9 @@ class BibliometricDataLoader:
                 language=paper_data.get('language', ''),
                 type=paper_data.get('type', ''),
                 abstract=paper_data.get('abstract', ''),
-                copyright=paper_data.get('copyright', ''),
+                is_seed=True
             ).save()
 
-            # Relacionar Publisher si existe
             publisher_name = paper_data.get('publisher', '')
             if publisher_name:
                 try:
@@ -163,18 +156,9 @@ class BibliometricDataLoader:
                 except Publisher.DoesNotExist:
                     publisher_node = Publisher(name=publisher_name).save()
                 paper_node.publisher.connect(publisher_node)
-                # Guardar address del publisher
                 if paper_node.address and not publisher_node.address:
                     publisher_node.address = paper_node.address
                     publisher_node.save()
-
-            # Relacionar Editors si existen
-            for editor_name in paper_data.get('editors', []):
-                try:
-                    editor_node = Editor.nodes.get(name=editor_name)
-                except Editor.DoesNotExist:
-                    editor_node = Editor(name=editor_name).save()
-                paper_node.editors.connect(editor_node)
 
             # Crear Author nodes y relación AUTHORED
             for author_name in paper_data['authors']:
@@ -193,6 +177,15 @@ class BibliometricDataLoader:
                         keyword_node = Keyword(name=keyword).save()
                 paper_node.keywords.connect(keyword_node)
 
+            # Research Areas
+            for research_area in paper_data['research_areas']:
+                if research_area:
+                    try:
+                        research_area_node = ResearchArea.nodes.get(name=research_area)
+                    except ResearchArea.DoesNotExist:
+                        research_area_node = ResearchArea(name=research_area).save()
+                paper_node.research_areas.connect(research_area_node)
+
             # Institutions
             for institution in paper_data['institutions']:
                 if institution:
@@ -200,24 +193,7 @@ class BibliometricDataLoader:
                         institution_node = Institution.nodes.get(name=institution)
                     except Institution.DoesNotExist:
                         institution_node = Institution(name=institution).save()
-                # Relacionar el paper con la institución
                 paper_node.institutions.connect(institution_node)
-                # Relacionar autores con la institución
-                for author_name in paper_data['authors']:
-                    try:
-                        author_node = Author.nodes.get(name=author_name)
-                        author_node.institutions.connect(institution_node)
-                    except Author.DoesNotExist:
-                        pass
-
-            # Funders
-            for funder in paper_data['funders']:
-                if funder:
-                    try:
-                        funder_node = Funder.nodes.get(name=funder)
-                    except Funder.DoesNotExist:
-                        funder_node = Funder(name=funder).save()
-                paper_node.funders.connect(funder_node)
 
 
     def process_file(self, filepath: str, file_type: str) -> None:
