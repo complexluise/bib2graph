@@ -8,8 +8,8 @@ and exporting them for analysis in external tools.
 import os
 import networkx as nx
 from neomodel import db, config
-from typing import Dict, List, Any, Optional, Tuple
-from src.models import Paper, Author, Keyword, Institution, Funder
+from typing import Dict, List, Any, Optional, Tuple, Set
+from src.models import Paper, Author, Keyword, Institution
 
 # Neo4j connection parameters
 NEO4J_URI = "bolt://localhost:7687"
@@ -39,9 +39,8 @@ class BibliometricNetworkAnalyzer:
         Returns:
             Number of CO_CITED_WITH relationships created
         """
-        # Cypher query to create CO_CITED_WITH relationships
         cypher_query = """
-        MATCH (p1:Paper)-[:REFERENCES]->(ref:Paper)<-[:REFERENCES]-(p2:Paper)
+        MATCH (p1:Paper {is_seed: True})-[:REFERENCES]->(ref:Paper)<-[:REFERENCES]-(p2:Paper {is_seed: True})
         WHERE p1 <> p2
         WITH p1, p2, COUNT(ref) AS shared_refs
         WHERE shared_refs > 0
@@ -53,8 +52,209 @@ class BibliometricNetworkAnalyzer:
         results, meta = db.cypher_query(cypher_query)
         return results[0][0] if results else 0
 
-    def extract_co_citation_network(self, min_weight: int = 1) -> nx.Graph:
-        """Extrae la red de cocitación a partir de Neo4j, sólo con papers con relaciones."""
+    def generate_quality_report(self, dois_set: Set[str]) -> Dict[str, Any]:
+        """Generate a quality report for the co-citation network.
+
+        Args:
+            dois_set: Set of DOIs involved in the co-citation network
+
+        Returns:
+            Dictionary containing quality metrics
+        """
+        report = {}
+
+        # 1. Document volume check
+        report["document_count"] = len(dois_set)
+        report["meets_volume_threshold"] = report["document_count"] >= 200
+
+        # 2. DOI and references percentage
+        if dois_set:
+            doi_ref_query = """
+            MATCH (p:Paper)
+            WHERE p.doi IN $dois
+            RETURN COUNT(p) AS total,
+                   SUM(CASE WHEN p.doi IS NOT NULL AND SIZE((p)-[:REFERENCES]->()) > 0 THEN 1 ELSE 0 END) AS with_doi_and_refs
+            """
+            results, _ = db.cypher_query(doi_ref_query, {"dois": list(dois_set)})
+            total = results[0][0] if results and results[0][0] is not None else 0
+            with_doi_and_refs = results[0][1] if results and results[0][1] is not None else 0
+
+            if total > 0:
+                report["doi_ref_percentage"] = (with_doi_and_refs / total) * 100
+            else:
+                report["doi_ref_percentage"] = 0
+
+            report["meets_doi_ref_threshold"] = report["doi_ref_percentage"] >= 90
+        else:
+            report["doi_ref_percentage"] = 0
+            report["meets_doi_ref_threshold"] = False
+
+        # 3. Temporal coverage
+        if dois_set:
+            year_query = """
+            MATCH (p:Paper)
+            WHERE p.doi IN $dois AND p.year IS NOT NULL
+            RETURN MIN(toInteger(p.year)) AS min_year, 
+                   MAX(toInteger(p.year)) AS max_year,
+                   COUNT(DISTINCT p.year) AS unique_years
+            """
+            results, _ = db.cypher_query(year_query, {"dois": list(dois_set)})
+
+            if results and results[0][0] is not None:
+                report["min_year"] = results[0][0]
+                report["max_year"] = results[0][1]
+                report["unique_years"] = results[0][2]
+                report["temporal_coverage"] = f"{report['min_year']}–{report['max_year']}"
+                # Check if coverage includes 2000-2024
+                report["meets_temporal_threshold"] = (
+                    report["min_year"] <= 2000 and report["max_year"] >= 2024
+                )
+            else:
+                report["temporal_coverage"] = "No data"
+                report["meets_temporal_threshold"] = False
+        else:
+            report["temporal_coverage"] = "No data"
+            report["meets_temporal_threshold"] = False
+
+        # 4. Geographic diversity
+        if dois_set:
+            country_query = """
+            MATCH (p:Paper)-[:AUTHORED]->(a:Author)-[:AFFILIATED_WITH]->(i:Institution)
+            WHERE p.doi IN $dois
+            RETURN COUNT(DISTINCT i.address) AS country_count
+            """
+            results, _ = db.cypher_query(country_query, {"dois": list(dois_set)})
+
+            report["country_count"] = results[0][0] if results and results[0][0] is not None else 0
+            report["meets_geographic_threshold"] = report["country_count"] >= 5
+        else:
+            report["country_count"] = 0
+            report["meets_geographic_threshold"] = False
+
+        # 5. Key author participation
+        if dois_set:
+            author_query = """
+            MATCH (p:Paper)-[:AUTHORED]->(a:Author)
+            WHERE p.doi IN $dois
+            WITH a, COUNT(p) AS paper_count
+            WHERE paper_count > 1
+            RETURN COUNT(a) AS recurring_authors
+            """
+            results, _ = db.cypher_query(author_query, {"dois": list(dois_set)})
+
+            report["recurring_authors"] = results[0][0] if results and results[0][0] is not None else 0
+            report["meets_author_threshold"] = report["recurring_authors"] >= 10
+
+            # Get top authors for the report
+            top_authors_query = """
+            MATCH (p:Paper)-[:AUTHORED]->(a:Author)
+            WHERE p.doi IN $dois
+            WITH a, COUNT(p) AS paper_count
+            ORDER BY paper_count DESC
+            LIMIT 10
+            RETURN a.name AS author_name, paper_count
+            """
+            results, meta = db.cypher_query(top_authors_query, {"dois": list(dois_set)})
+            columns = [col for col in meta]
+
+            top_authors = []
+            for row in results:
+                record = dict(zip(columns, row))
+                top_authors.append({
+                    "name": record["author_name"],
+                    "paper_count": record["paper_count"]
+                })
+
+            report["top_authors"] = top_authors
+        else:
+            report["recurring_authors"] = 0
+            report["meets_author_threshold"] = False
+            report["top_authors"] = []
+
+        # 6. Source duplication level
+        if dois_set:
+            source_query = """
+            MATCH (p:Paper)
+            WHERE p.doi IN $dois
+            RETURN COUNT(p) AS total,
+                   COUNT(DISTINCT p.source) AS unique_sources
+            """
+            results, _ = db.cypher_query(source_query, {"dois": list(dois_set)})
+
+            total = results[0][0] if results and results[0][0] is not None else 0
+            unique_sources = results[0][1] if results and results[0][1] is not None else 0
+
+            if total > 0:
+                report["source_duplication_percentage"] = ((total - unique_sources) / total) * 100
+            else:
+                report["source_duplication_percentage"] = 0
+        else:
+            report["source_duplication_percentage"] = 0
+
+        # 7. Missing data quality
+        if dois_set:
+            missing_data_query = """
+            MATCH (p:Paper)
+            WHERE p.doi IN $dois
+            RETURN 
+                COUNT(p) AS total,
+                SUM(CASE WHEN p.title IS NULL THEN 1 ELSE 0 END) AS missing_title,
+                SUM(CASE WHEN p.year IS NULL THEN 1 ELSE 0 END) AS missing_year,
+                SUM(CASE WHEN p.abstract IS NULL THEN 1 ELSE 0 END) AS missing_abstract,
+                SUM(CASE WHEN NOT EXISTS((p)-[:AUTHORED]->()) THEN 1 ELSE 0 END) AS missing_authors,
+                SUM(CASE WHEN NOT EXISTS((p)-[:HAS_KEYWORD]->()) THEN 1 ELSE 0 END) AS missing_keywords
+            """
+            results, meta = db.cypher_query(missing_data_query, {"dois": list(dois_set)})
+            columns = [col for col in meta]
+
+            if results:
+                record = dict(zip(columns, results[0]))
+                total = record["total"] if record["total"] is not None else 0
+
+                missing_data = {}
+                for field in ["title", "year", "abstract", "authors", "keywords"]:
+                    field_key = f"missing_{field}"
+                    if total > 0 and record[field_key] is not None:
+                        missing_data[field] = (record[field_key] / total) * 100
+                    else:
+                        missing_data[field] = 0
+
+                report["missing_data_percentages"] = missing_data
+            else:
+                report["missing_data_percentages"] = {
+                    "title": 0, "year": 0, "abstract": 0, "authors": 0, "keywords": 0
+                }
+        else:
+            report["missing_data_percentages"] = {
+                "title": 0, "year": 0, "abstract": 0, "authors": 0, "keywords": 0
+            }
+
+        # Overall quality assessment
+        criteria_met = [
+            report["meets_volume_threshold"],
+            report["meets_doi_ref_threshold"],
+            report["meets_temporal_threshold"],
+            report["meets_geographic_threshold"],
+            report["meets_author_threshold"]
+        ]
+
+        report["criteria_met_count"] = sum(1 for c in criteria_met if c)
+        report["criteria_total_count"] = len(criteria_met)
+        report["quality_score"] = (report["criteria_met_count"] / report["criteria_total_count"]) * 100 if report["criteria_total_count"] > 0 else 0
+
+        return report
+
+    def extract_co_citation_network(self, min_weight: int = 1) -> Tuple[nx.Graph, Dict[str, Any]]:
+        """Extrae la red de cocitación a partir de Neo4j, sólo con papers con relaciones.
+
+        Args:
+            min_weight: Minimum weight for co-citation relationships
+
+        Returns:
+            Tuple containing:
+                - NetworkX graph representing the co-citation network
+                - Dictionary containing quality report metrics
+        """
         G = nx.Graph()
 
         # 1. Primero recuperamos solo las relaciones relevantes (edges)
@@ -95,7 +295,10 @@ class BibliometricNetworkAnalyzer:
         for source, target, weight in edges:
             G.add_edge(source, target, weight=weight)
 
-        return G
+        # Generate quality report
+        quality_report = self.generate_quality_report(dois_set)
+
+        return G, quality_report
 
     def extract_author_collaboration_network(self) -> nx.Graph:
         """Extract author collaboration network from Neo4j.
@@ -394,9 +597,32 @@ if __name__ == "__main__":
     rel_count = analyzer.create_co_citation_relationships()
     print(f"Created {rel_count} CO_CITED_WITH relationships")
 
-    # Extract co-citation network
-    cocitation_network = analyzer.extract_co_citation_network(min_weight=1)
+    # Extract co-citation network with quality report
+    cocitation_network, quality_report = analyzer.extract_co_citation_network(min_weight=1)
     print(f"Co-citation network has {cocitation_network.number_of_nodes()} nodes and {cocitation_network.number_of_edges()} edges")
+
+    # Display quality report
+    print("\nQuality Report for Co-citation Network:")
+    print(f"  Document count: {quality_report['document_count']} (Threshold: ≥200, Met: {quality_report['meets_volume_threshold']})")
+    print(f"  DOI and references: {quality_report['doi_ref_percentage']:.2f}% (Threshold: ≥90%, Met: {quality_report['meets_doi_ref_threshold']})")
+    print(f"  Temporal coverage: {quality_report['temporal_coverage']} (Threshold: 2000-2024, Met: {quality_report['meets_temporal_threshold']})")
+    print(f"  Geographic diversity: {quality_report['country_count']} countries (Threshold: ≥5, Met: {quality_report['meets_geographic_threshold']})")
+    print(f"  Key authors: {quality_report['recurring_authors']} recurring authors (Threshold: ≥10, Met: {quality_report['meets_author_threshold']})")
+    print(f"  Source duplication: {quality_report['source_duplication_percentage']:.2f}%")
+
+    # Display missing data percentages
+    print("  Missing data percentages:")
+    for field, percentage in quality_report['missing_data_percentages'].items():
+        print(f"    {field}: {percentage:.2f}%")
+
+    # Display overall quality score
+    print(f"  Overall quality score: {quality_report['quality_score']:.2f}% ({quality_report['criteria_met_count']}/{quality_report['criteria_total_count']} criteria met)")
+
+    # Display top authors if available
+    if quality_report.get('top_authors'):
+        print("  Top authors:")
+        for author in quality_report['top_authors']:
+            print(f"    {author['name']}: {author['paper_count']} papers")
 
     # Export the network
     os.makedirs("output", exist_ok=True)
@@ -405,7 +631,7 @@ if __name__ == "__main__":
 
     # Calculate network metrics
     metrics = analyzer.calculate_network_metrics(cocitation_network)
-    print("Network metrics:")
+    print("\nNetwork metrics:")
     for key, value in metrics.items():
         print(f"  {key}: {value}")
 
