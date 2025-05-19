@@ -207,6 +207,7 @@ def ingest_data(
             ext = os.path.splitext(input_path)[1].lower()
             current_file_type = {
                 '.bibtex': 'bibtex',
+                '.bib': 'bibtex',
             }.get(ext)
             if not current_file_type:
                 logger.error(f"Could not infer file type from extension: {ext}")
