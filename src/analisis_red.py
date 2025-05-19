@@ -9,7 +9,7 @@ import os
 import networkx as nx
 from neomodel import db, config
 from typing import Dict, List, Any, Optional, Tuple, Set
-from src.models import Paper, Author, Keyword, Institution, Funder
+from src.models import Paper, Author, Keyword, Institution
 
 # Neo4j connection parameters
 NEO4J_URI = "bolt://localhost:7687"
@@ -39,9 +39,8 @@ class BibliometricNetworkAnalyzer:
         Returns:
             Number of CO_CITED_WITH relationships created
         """
-        # Cypher query to create CO_CITED_WITH relationships
         cypher_query = """
-        MATCH (p1:Paper)-[:REFERENCES]->(ref:Paper)<-[:REFERENCES]-(p2:Paper)
+        MATCH (p1:Paper {is_seed: True})-[:REFERENCES]->(ref:Paper)<-[:REFERENCES]-(p2:Paper {is_seed: True})
         WHERE p1 <> p2
         WITH p1, p2, COUNT(ref) AS shared_refs
         WHERE shared_refs > 0
