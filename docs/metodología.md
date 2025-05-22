@@ -1,4 +1,3 @@
-
 # Documento Metodológico: Análisis de Redes de Cocitación en Investigación Bibliométrica
 
 ## Introducción
