@@ -73,7 +73,13 @@ class BibliometricNetworkAnalyzer:
             MATCH (p:Paper)
             WHERE p.doi IN $dois
             RETURN COUNT(p) AS total,
-                   SUM(CASE WHEN p.doi IS NOT NULL AND SIZE((p)-[:REFERENCES]->()) > 0 THEN 1 ELSE 0 END) AS with_doi_and_refs
+                   SUM(
+                       CASE 
+                           WHEN p.doi IS NOT NULL AND EXISTS { (p)-[:REFERENCES]->() }
+                           THEN 1 
+                           ELSE 0 
+                       END
+                   ) AS with_doi_and_refs
             """
             results, _ = db.cypher_query(doi_ref_query, {"dois": list(dois_set)})
             total = results[0][0] if results and results[0][0] is not None else 0
