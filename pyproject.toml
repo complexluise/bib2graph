@@ -1,10 +1,24 @@
 [tool.poetry]
-name = "bibliometria-sobre-cadena-semiconductores"
+name = "bib2graph"
 version = "0.1.0"
-description = ""
-authors = ["complexluise <lhiguerac@unal.edu.co>"]
+description = "A Python package for bibliometric data processing and network analysis"
+authors = ["Luis Eduardo Higuera Calderon <lhiguerac@unal.edu.co>"]
+maintainers = ["Luis Eduardo Higuera Calderon <lhiguerac@unal.edu.co>"]
+license = "Apache-2.0"
 readme = "README.md"
-package-mode = false
+homepage = "https://github.com/complexluise/bib2graph"
+repository = "https://github.com/complexluise/bib2graph"
+documentation = "https://github.com/complexluise/bib2graph"
+keywords = ["bibliometrics", "network-analysis", "citation-analysis", "data-science", "neo4j"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+packages = [{include = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -17,6 +31,9 @@ networkx = "^3.1"
 pys2 = "^1.1.0"
 neomodel = "^5.4.5"
 lxml = "^5.4.0"
+
+[tool.poetry.scripts]
+bib2graph = "main:main"
 
 
 [build-system]
