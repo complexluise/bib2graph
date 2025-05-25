@@ -23,13 +23,11 @@ Examples:
 import os
 import argparse
 import logging
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, Optional
 
-from bibtexparser.customization import author
-
-from bib2graph.consigue_los_articulos import BibliometricDataLoader
-from bib2graph.enriquecimiento import BibliometricDataEnricher
-from bib2graph.analisis_red import BibliometricNetworkAnalyzer
+from bib2graph import BibliometricDataLoader
+from bib2graph.src.enriquecimiento import BibliometricDataEnricher
+from bib2graph.src.analisis_red import BibliometricNetworkAnalyzer
 
 # Configure logging
 logging.basicConfig(

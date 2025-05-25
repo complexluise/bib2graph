@@ -7,15 +7,14 @@ by querying external APIs (Semantic Scholar, CrossRef, Scopus) for additional me
 
 import os
 import time
-import json
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any
 import requests
-from neomodel import db, config
+from neomodel import config
 import s2
 from crossref.restful import Works
 from elsapy.elsclient import ElsClient
 from elsapy.elsdoc import FullDoc
-from bib2graph.models import Paper, Author, Keyword, Institution
+from bib2graph.src.models import Paper, Author, Keyword, Institution
 
 # Neo4j connection parameters
 NEO4J_URI = "bolt://localhost:7687"
