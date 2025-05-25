@@ -1,0 +1,370 @@
+{
+    "descripcion_general": {
+        "total_documentos": 500,
+        "total_autores": 1349,
+        "total_instituciones": 1082,
+        "total_palabras_clave": 1945,
+        "año_inicio": 2003,
+        "año_fin": 2025,
+        "cobertura_temporal": "2003-2025"
+    },
+    "distribucion_por_año": [
+        {
+            "year": 2003,
+            "count": 10
+        },
+        {
+            "year": 2004,
+            "count": 5
+        },
+        {
+            "year": 2005,
+            "count": 9
+        },
+        {
+            "year": 2006,
+            "count": 10
+        },
+        {
+            "year": 2007,
+            "count": 14
+        },
+        {
+            "year": 2008,
+            "count": 14
+        },
+        {
+            "year": 2009,
+            "count": 17
+        },
+        {
+            "year": 2010,
+            "count": 18
+        },
+        {
+            "year": 2011,
+            "count": 15
+        },
+        {
+            "year": 2012,
+            "count": 10
+        },
+        {
+            "year": 2013,
+            "count": 11
+        },
+        {
+            "year": 2014,
+            "count": 14
+        },
+        {
+            "year": 2015,
+            "count": 17
+        },
+        {
+            "year": 2016,
+            "count": 18
+        },
+        {
+            "year": 2017,
+            "count": 10
+        },
+        {
+            "year": 2018,
+            "count": 19
+        },
+        {
+            "year": 2019,
+            "count": 19
+        },
+        {
+            "year": 2020,
+            "count": 22
+        },
+        {
+            "year": 2021,
+            "count": 21
+        },
+        {
+            "year": 2022,
+            "count": 36
+        },
+        {
+            "year": 2023,
+            "count": 54
+        },
+        {
+            "year": 2024,
+            "count": 99
+        },
+        {
+            "year": 2025,
+            "count": 38
+        }
+    ],
+    "top_autores": [
+        {
+            "author": "Chien, Chen-Fu",
+            "publication_count": 15
+        },
+        {
+            "author": "Fowler, John W.",
+            "publication_count": 9
+        },
+        {
+            "author": "Moench, Lars",
+            "publication_count": 8
+        },
+        {
+            "author": "Ehm, Hans",
+            "publication_count": 8
+        },
+        {
+            "author": "Guo, W. H.",
+            "publication_count": 8
+        },
+        {
+            "author": "Han, Jeehoon",
+            "publication_count": 7
+        },
+        {
+            "author": "Rivera, Daniel E.",
+            "publication_count": 6
+        },
+        {
+            "author": "Wang, Wenlin",
+            "publication_count": 5
+        },
+        {
+            "author": "Bahinipati, Bikram K.",
+            "publication_count": 5
+        },
+        {
+            "author": "Rahman, Fahim",
+            "publication_count": 5
+        },
+        {
+            "author": "Lynch, M.",
+            "publication_count": 5
+        },
+        {
+            "author": "Hwang, Bang-Ning",
+            "publication_count": 5
+        },
+        {
+            "author": "Uzsoy, Reha",
+            "publication_count": 4
+        },
+        {
+            "author": "Milne, R. John",
+            "publication_count": 4
+        },
+        {
+            "author": "O'Dowd, J.",
+            "publication_count": 4
+        },
+        {
+            "author": "Tehranipoor, Mark",
+            "publication_count": 4
+        },
+        {
+            "author": "Yu, Hsiao-Cheng",
+            "publication_count": 4
+        },
+        {
+            "author": "Deshmukh, S. G.",
+            "publication_count": 4
+        },
+        {
+            "author": "Rasiah, Rajah",
+            "publication_count": 4
+        },
+        {
+            "author": "Wang, Chi-Tai",
+            "publication_count": 4
+        }
+    ],
+    "top_instituciones": [
+        {
+            "institution": " Rahman, Fahim",
+            "publication_count": 6
+        },
+        {
+            "institution": " Farahmandi, Farimah",
+            "publication_count": 6
+        },
+        {
+            "institution": " Bradley, A. L.",
+            "publication_count": 4
+        },
+        {
+            "institution": " Lynch, M.",
+            "publication_count": 4
+        },
+        {
+            "institution": " Kamali, Hadi Mardani",
+            "publication_count": 4
+        },
+        {
+            "institution": " Tehranipoor, Mark, Univ Florida, Dept Elect \\& Comp Engn, Gainesville, FL 32611 USA.",
+            "publication_count": 4
+        },
+        {
+            "institution": " Guo, W. H.",
+            "publication_count": 4
+        },
+        {
+            "institution": " Forte, Domenic",
+            "publication_count": 3
+        },
+        {
+            "institution": " Flood, E.",
+            "publication_count": 3
+        },
+        {
+            "institution": "Han, J (Corresponding Author), Jeonbuk Natl Univ, Sch Chem Engn, Jeonju 54896, South Korea.\nKwon, Oseok",
+            "publication_count": 3
+        },
+        {
+            "institution": " Liu, Fangzhou",
+            "publication_count": 2
+        },
+        {
+            "institution": " Ehm, Hans",
+            "publication_count": 2
+        },
+        {
+            "institution": "Mönch, L (Corresponding Author), Univ Hagen, Dept Math \\& Comp Sci, Hagen, Germany.\nMoench, Lars, Univ Hagen, Dept Math \\& Comp Sci, Hagen, Germany.\nUzsoy, Reha, North Carolina State Univ, Edward P Fitts Dept Ind \\& Syst Engn, Raleigh, NC USA.\nFowler, John W., Arizona State Univ, Dept Supply Chain Management, Tempe, AZ USA.",
+            "publication_count": 2
+        },
+        {
+            "institution": " Liu, Xin",
+            "publication_count": 2
+        },
+        {
+            "institution": " Kanda, Arun",
+            "publication_count": 2
+        },
+        {
+            "institution": " Azar, Kimia Zamiri",
+            "publication_count": 2
+        },
+        {
+            "institution": "Liu, FZ",
+            "publication_count": 2
+        },
+        {
+            "institution": " Hauch, Jens A.",
+            "publication_count": 2
+        },
+        {
+            "institution": " Raievska, Oleksandra",
+            "publication_count": 2
+        },
+        {
+            "institution": " Lueer, Larry",
+            "publication_count": 2
+        }
+    ],
+    "top_paises": [],
+    "frecuencia_palabras_clave": [
+        {
+            "keyword_norm": "supply chain management",
+            "frequency": 53
+        },
+        {
+            "keyword_norm": "semiconductor industry",
+            "frequency": 37
+        },
+        {
+            "keyword_norm": "supply chain",
+            "frequency": 33
+        },
+        {
+            "keyword_norm": "semiconductor manufacturing",
+            "frequency": 27
+        },
+        {
+            "keyword_norm": "semiconductors",
+            "frequency": 25
+        },
+        {
+            "keyword_norm": "semiconductor",
+            "frequency": 22
+        },
+        {
+            "keyword_norm": "semiconductor supply chain",
+            "frequency": 15
+        },
+        {
+            "keyword_norm": "security",
+            "frequency": 12
+        },
+        {
+            "keyword_norm": "hardware security",
+            "frequency": 11
+        },
+        {
+            "keyword_norm": "china",
+            "frequency": 11
+        },
+        {
+            "keyword_norm": "sustainability",
+            "frequency": 8
+        },
+        {
+            "keyword_norm": "logic gates",
+            "frequency": 7
+        },
+        {
+            "keyword_norm": "supply chains",
+            "frequency": 7
+        },
+        {
+            "keyword_norm": "covid-19",
+            "frequency": 6
+        },
+        {
+            "keyword_norm": "supply chain\nmanagement",
+            "frequency": 6
+        },
+        {
+            "keyword_norm": "simulation",
+            "frequency": 6
+        },
+        {
+            "keyword_norm": "supply chain security",
+            "frequency": 6
+        },
+        {
+            "keyword_norm": "machine learning",
+            "frequency": 6
+        },
+        {
+            "keyword_norm": "integrated circuit modeling",
+            "frequency": 5
+        },
+        {
+            "keyword_norm": "industrial policy",
+            "frequency": 5
+        },
+        {
+            "keyword_norm": "blockchain",
+            "frequency": 5
+        },
+        {
+            "keyword_norm": "supply chain resilience",
+            "frequency": 5
+        }
+    ],
+    "tipos_documento": [
+        {
+            "document_type": "article",
+            "count": 499
+        },
+        {
+            "document_type": "incollection",
+            "count": 1
+        }
+    ]
+}
