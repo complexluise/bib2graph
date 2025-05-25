@@ -1,0 +1,18 @@
+include LICENSE
+include README.md
+include pyproject.toml
+include poetry.lock
+
+recursive-include tests *.py
+recursive-include docs *.md *.rst *.txt
+recursive-include src *.py
+
+prune .github
+prune .idea
+prune .vscode
+prune data
+prune logs
+prune results
+prune output
+prune tests/__pycache__
+prune src/__pycache__

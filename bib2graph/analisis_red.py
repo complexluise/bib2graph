@@ -9,7 +9,7 @@ import os
 import networkx as nx
 from neomodel import db, config
 from typing import Dict, List, Any, Optional, Tuple, Set
-from src.models import Paper, Author, Keyword, Institution
+from bib2graph.models import Paper, Author, Keyword, Institution
 
 # Neo4j connection parameters
 NEO4J_URI = "bolt://localhost:7687"

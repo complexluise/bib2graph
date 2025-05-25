@@ -15,7 +15,7 @@ import s2
 from crossref.restful import Works
 from elsapy.elsclient import ElsClient
 from elsapy.elsdoc import FullDoc
-from src.models import Paper, Author, Keyword, Institution
+from bib2graph.models import Paper, Author, Keyword, Institution
 
 # Neo4j connection parameters
 NEO4J_URI = "bolt://localhost:7687"
