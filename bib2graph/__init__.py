@@ -12,9 +12,9 @@ Main components:
 - BibliometricNetworkAnalyzer: For extracting and analyzing networks
 """
 
-from .consigue_los_articulos import BibliometricDataLoader
-from .enriquecimiento import BibliometricDataEnricher
-from .analisis_red import BibliometricNetworkAnalyzer
-from .models import *
+from bib2graph.src.consigue_los_articulos import BibliometricDataLoader
+from bib2graph.src.enriquecimiento import BibliometricDataEnricher
+from bib2graph.src.analisis_red import BibliometricNetworkAnalyzer
+from bib2graph.src.models import *
 
 __version__ = "0.1.0"

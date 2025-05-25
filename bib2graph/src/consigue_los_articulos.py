@@ -9,9 +9,9 @@ import os
 import json
 import pandas as pd
 import bibtexparser
-from neomodel import db, config
-from typing import Dict, List, Any, Optional, Union
-from bib2graph.models import Paper, Author, Keyword, Institution, Publisher, ResearchArea
+from neomodel import config
+from typing import Dict, List, Any, Union
+from bib2graph.src.models import Paper, Author, Keyword, Institution, Publisher, ResearchArea
 
 # Neo4j connection parameters
 NEO4J_URI = "bolt://localhost:7687"

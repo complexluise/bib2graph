@@ -8,8 +8,7 @@ and exporting them for analysis in external tools.
 import os
 import networkx as nx
 from neomodel import db, config
-from typing import Dict, List, Any, Optional, Tuple, Set
-from bib2graph.models import Paper, Author, Keyword, Institution
+from typing import Dict, Any, Tuple, Set
 
 # Neo4j connection parameters
 NEO4J_URI = "bolt://localhost:7687"
