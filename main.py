@@ -26,8 +26,8 @@ import logging
 from typing import Dict, Optional
 
 from bib2graph import BibliometricDataLoader
-from bib2graph.src.enriquecimiento import BibliometricDataEnricher
-from bib2graph.src.analisis_red import BibliometricNetworkAnalyzer
+from bib2graph.enriquecimiento import BibliometricDataEnricher
+from bib2graph.analisis_red import BibliometricNetworkAnalyzer
 
 # Configure logging
 logging.basicConfig(
