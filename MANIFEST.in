@@ -5,7 +5,7 @@ include poetry.lock
 
 recursive-include tests *.py
 recursive-include docs *.md *.rst *.txt
-recursive-include src *.py
+recursive-include bib2graph *.py
 
 prune .github
 prune .idea
@@ -15,4 +15,4 @@ prune logs
 prune results
 prune output
 prune tests/__pycache__
-prune src/__pycache__
+prune bib2graph/__pycache__

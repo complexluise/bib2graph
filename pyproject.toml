@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Information Analysis",
 ]
-packages = [{include = "src"}]
+packages = [{include = "bib2graph"}]
 
 [tool.poetry.dependencies]
 python = "^3.12"
