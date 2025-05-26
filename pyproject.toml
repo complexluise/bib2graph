@@ -34,6 +34,7 @@ lxml = "^5.4.0"
 matplotlib = "^3.10.3"
 seaborn = "^0.13.2"
 notebook = "^7.4.2"
+scipy = "^1.15.3"
 
 [tool.poetry.scripts]
 bib2graph = "main:main"
