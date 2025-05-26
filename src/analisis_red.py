@@ -7,6 +7,7 @@ and exporting them for analysis in external tools.
 
 import os
 import networkx as nx
+import pandas as pd
 from neomodel import db, config
 from typing import Dict, List, Any, Optional, Tuple, Set
 from src.models import Paper, Author, Keyword, Institution
@@ -539,6 +540,73 @@ class BibliometricNetworkAnalyzer:
         metrics['avg_clustering_coefficient'] = nx.average_clustering(largest_subgraph)
 
         return metrics
+
+    def calculate_node_centrality_metrics(self, G: nx.Graph) -> pd.DataFrame:
+        """Calculate centrality metrics for each node in the graph.
+
+        Args:
+            G: NetworkX graph to analyze
+
+        Returns:
+            DataFrame with node centrality metrics
+        """
+        # If graph is not connected, use the largest connected component
+        if not nx.is_connected(G):
+            largest_cc = max(nx.connected_components(G), key=len)
+            subgraph = G.subgraph(largest_cc).copy()
+        else:
+            subgraph = G.copy()
+
+        # Calculate centrality metrics
+        print("Calculating degree centrality...")
+        degree_centrality = nx.degree_centrality(subgraph)
+
+        print("Calculating betweenness centrality...")
+        betweenness_centrality = nx.betweenness_centrality(subgraph)
+
+        print("Calculating closeness centrality...")
+        closeness_centrality = nx.closeness_centrality(subgraph)
+
+        # Create DataFrame
+        centrality_df = pd.DataFrame({
+            'node': list(degree_centrality.keys()),
+            'degree_centrality': list(degree_centrality.values()),
+            'betweenness_centrality': [betweenness_centrality.get(node, 0) for node in degree_centrality.keys()],
+            'closeness_centrality': [closeness_centrality.get(node, 0) for node in degree_centrality.keys()]
+        })
+
+        return centrality_df
+
+    def export_centrality_metrics(self, centrality_df: pd.DataFrame, filepath: str, format: str = 'csv') -> None:
+        """Export centrality metrics to a file.
+
+        Args:
+            centrality_df: DataFrame with centrality metrics
+            filepath: Path to save the file
+            format: Format to save the file ('csv' or 'json')
+        """
+        if format.lower() == 'csv':
+            centrality_df.to_csv(filepath, index=False)
+        elif format.lower() == 'json':
+            centrality_df.to_json(filepath, orient='records', indent=4)
+        else:
+            raise ValueError(f"Unsupported format: {format}. Use 'csv' or 'json'.")
+
+        print(f"Centrality metrics exported to {filepath}")
+
+    def add_community_to_centrality_metrics(self, centrality_df: pd.DataFrame, communities: Dict[Any, int]) -> pd.DataFrame:
+        """Add community information to centrality metrics DataFrame.
+
+        Args:
+            centrality_df: DataFrame with centrality metrics
+            communities: Dictionary mapping nodes to community IDs
+
+        Returns:
+            DataFrame with centrality metrics and community information
+        """
+        # Add community column
+        centrality_df['community'] = centrality_df['node'].map(lambda x: communities.get(x, -1))
+        return centrality_df
 
     def detect_communities(self, G: nx.Graph, algorithm: str = 'louvain') -> Tuple[Dict[Any, int], float]:
         """Detect communities in a graph using various algorithms.
