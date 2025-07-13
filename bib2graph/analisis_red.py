@@ -7,6 +7,8 @@ and exporting them for analysis in external tools.
 
 import os
 import networkx as nx
+import pandas as pd
+import matplotlib.pyplot as plt
 from neomodel import db, config
 from typing import Dict, Any, Tuple, Set
 
@@ -539,6 +541,73 @@ class BibliometricNetworkAnalyzer:
 
         return metrics
 
+    def calculate_node_centrality_metrics(self, G: nx.Graph) -> pd.DataFrame:
+        """Calculate centrality metrics for each node in the graph.
+
+        Args:
+            G: NetworkX graph to analyze
+
+        Returns:
+            DataFrame with node centrality metrics
+        """
+        # If graph is not connected, use the largest connected component
+        if not nx.is_connected(G):
+            largest_cc = max(nx.connected_components(G), key=len)
+            subgraph = G.subgraph(largest_cc).copy()
+        else:
+            subgraph = G.copy()
+
+        # Calculate centrality metrics
+        print("Calculating degree centrality...")
+        degree_centrality = nx.degree_centrality(subgraph)
+
+        print("Calculating betweenness centrality...")
+        betweenness_centrality = nx.betweenness_centrality(subgraph)
+
+        print("Calculating closeness centrality...")
+        closeness_centrality = nx.closeness_centrality(subgraph)
+
+        # Create DataFrame
+        centrality_df = pd.DataFrame({
+            'node': list(degree_centrality.keys()),
+            'degree_centrality': list(degree_centrality.values()),
+            'betweenness_centrality': [betweenness_centrality.get(node, 0) for node in degree_centrality.keys()],
+            'closeness_centrality': [closeness_centrality.get(node, 0) for node in degree_centrality.keys()]
+        })
+
+        return centrality_df
+
+    def export_centrality_metrics(self, centrality_df: pd.DataFrame, filepath: str, format: str = 'csv') -> None:
+        """Export centrality metrics to a file.
+
+        Args:
+            centrality_df: DataFrame with centrality metrics
+            filepath: Path to save the file
+            format: Format to save the file ('csv' or 'json')
+        """
+        if format.lower() == 'csv':
+            centrality_df.to_csv(filepath, index=False)
+        elif format.lower() == 'json':
+            centrality_df.to_json(filepath, orient='records', indent=4)
+        else:
+            raise ValueError(f"Unsupported format: {format}. Use 'csv' or 'json'.")
+
+        print(f"Centrality metrics exported to {filepath}")
+
+    def add_community_to_centrality_metrics(self, centrality_df: pd.DataFrame, communities: Dict[Any, int]) -> pd.DataFrame:
+        """Add community information to centrality metrics DataFrame.
+
+        Args:
+            centrality_df: DataFrame with centrality metrics
+            communities: Dictionary mapping nodes to community IDs
+
+        Returns:
+            DataFrame with centrality metrics and community information
+        """
+        # Add community column
+        centrality_df['community'] = centrality_df['node'].map(lambda x: communities.get(x, -1))
+        return centrality_df
+
     def detect_communities(self, G: nx.Graph, algorithm: str = 'louvain') -> Tuple[Dict[Any, int], float]:
         """Detect communities in a graph using various algorithms.
 
@@ -593,6 +662,311 @@ class BibliometricNetworkAnalyzer:
 
         # Default fallback
         return {node: 0 for node in G.nodes()}, 0.0
+
+    def analyze_community_entity_distribution(self, G: nx.Graph, communities: Dict[Any, int], 
+                                             entity_type: str = 'keyword') -> Dict[str, Any]:
+        """Analyze the distribution of entities (keywords, authors, institutions) within each community.
+
+        Args:
+            G: NetworkX graph to analyze
+            communities: Dictionary mapping nodes to community IDs
+            entity_type: Type of entity to analyze ('keyword', 'author', 'institution')
+
+        Returns:
+            Dictionary with distribution analysis results
+        """
+        print(f"Analyzing {entity_type} distribution within communities...")
+
+        # Group nodes by community
+        community_nodes = {}
+        for node, community_id in communities.items():
+            if community_id not in community_nodes:
+                community_nodes[community_id] = []
+            community_nodes[community_id].append(node)
+
+        # Get entity information based on entity_type
+        entity_distributions = {}
+
+        if entity_type == 'keyword':
+            # For keyword network, the nodes themselves are keywords
+            if 'coocurrencia_keywords' in str(list(G.nodes())[:1]):
+                for community_id, nodes in community_nodes.items():
+                    # Extract the actual keyword from the node ID (format: "coocurrencia_keywords_KEYWORD")
+                    keywords = [node.split('_', 2)[2] if '_' in node else node for node in nodes]
+                    entity_distributions[community_id] = self._count_entities(keywords)
+            # For other networks, we need to query the database
+            else:
+                for community_id, nodes in community_nodes.items():
+                    # For co-citation network, nodes are DOIs
+                    if 'cocitacion' in str(list(G.nodes())[:1]):
+                        dois = [node.split('_', 1)[1] if '_' in node else node for node in nodes]
+                        keywords = self._get_keywords_for_papers(dois)
+                    # For author network, nodes are author names
+                    elif 'colaboracion_autores' in str(list(G.nodes())[:1]):
+                        author_names = [node.split('_', 2)[2] if '_' in node else node for node in nodes]
+                        keywords = self._get_keywords_for_authors(author_names)
+                    else:
+                        # For combined network or other networks
+                        original_ids = []
+                        for node in nodes:
+                            attrs = G.nodes[node]
+                            if 'id_original' in attrs:
+                                original_ids.append(attrs['id_original'])
+                            else:
+                                original_ids.append(node)
+                        keywords = self._get_keywords_for_papers(original_ids)
+
+                    entity_distributions[community_id] = self._count_entities(keywords)
+
+        elif entity_type == 'author':
+            # For author network, the nodes themselves are authors
+            if 'colaboracion_autores' in str(list(G.nodes())[:1]):
+                for community_id, nodes in community_nodes.items():
+                    # Extract the actual author name from the node ID
+                    authors = [node.split('_', 2)[2] if '_' in node else node for node in nodes]
+                    entity_distributions[community_id] = self._count_entities(authors)
+            # For other networks, we need to query the database
+            else:
+                for community_id, nodes in community_nodes.items():
+                    # For co-citation network, nodes are DOIs
+                    if 'cocitacion' in str(list(G.nodes())[:1]):
+                        dois = [node.split('_', 1)[1] if '_' in node else node for node in nodes]
+                        authors = self._get_authors_for_papers(dois)
+                    # For keyword network, nodes are keywords
+                    elif 'coocurrencia_keywords' in str(list(G.nodes())[:1]):
+                        keyword_names = [node.split('_', 2)[2] if '_' in node else node for node in nodes]
+                        authors = self._get_authors_for_keywords(keyword_names)
+                    else:
+                        # For combined network or other networks
+                        original_ids = []
+                        for node in nodes:
+                            attrs = G.nodes[node]
+                            if 'id_original' in attrs:
+                                original_ids.append(attrs['id_original'])
+                            else:
+                                original_ids.append(node)
+                        authors = self._get_authors_for_papers(original_ids)
+
+                    entity_distributions[community_id] = self._count_entities(authors)
+
+        elif entity_type == 'institution':
+            for community_id, nodes in community_nodes.items():
+                # For co-citation network, nodes are DOIs
+                if 'cocitacion' in str(list(G.nodes())[:1]):
+                    dois = [node.split('_', 1)[1] if '_' in node else node for node in nodes]
+                    institutions = self._get_institutions_for_papers(dois)
+                # For author network, nodes are author names
+                elif 'colaboracion_autores' in str(list(G.nodes())[:1]):
+                    author_names = [node.split('_', 2)[2] if '_' in node else node for node in nodes]
+                    institutions = self._get_institutions_for_authors(author_names)
+                # For keyword network, nodes are keywords
+                elif 'coocurrencia_keywords' in str(list(G.nodes())[:1]):
+                    keyword_names = [node.split('_', 2)[2] if '_' in node else node for node in nodes]
+                    institutions = self._get_institutions_for_keywords(keyword_names)
+                else:
+                    # For combined network or other networks
+                    original_ids = []
+                    for node in nodes:
+                        attrs = G.nodes[node]
+                        if 'id_original' in attrs:
+                            original_ids.append(attrs['id_original'])
+                        else:
+                            original_ids.append(node)
+                    institutions = self._get_institutions_for_papers(original_ids)
+
+                entity_distributions[community_id] = self._count_entities(institutions)
+
+        return entity_distributions
+
+    def _count_entities(self, entities: List[str]) -> Dict[str, int]:
+        """Count occurrences of entities in a list.
+
+        Args:
+            entities: List of entity names
+
+        Returns:
+            Dictionary mapping entity names to their counts
+        """
+        entity_counts = {}
+        for entity in entities:
+            if entity in entity_counts:
+                entity_counts[entity] += 1
+            else:
+                entity_counts[entity] = 1
+
+        # Sort by count in descending order
+        return dict(sorted(entity_counts.items(), key=lambda x: x[1], reverse=True))
+
+    def _get_keywords_for_papers(self, dois: List[str]) -> List[str]:
+        """Get keywords for a list of papers.
+
+        Args:
+            dois: List of paper DOIs
+
+        Returns:
+            List of keywords
+        """
+        cypher_query = """
+        MATCH (p:Paper)-[:HAS_KEYWORD]->(k:Keyword)
+        WHERE p.doi IN $dois
+        RETURN k.name AS keyword
+        """
+        results, meta = db.cypher_query(cypher_query, {"dois": dois})
+        return [row[0] for row in results if row[0] is not None]
+
+    def _get_authors_for_papers(self, dois: List[str]) -> List[str]:
+        """Get authors for a list of papers.
+
+        Args:
+            dois: List of paper DOIs
+
+        Returns:
+            List of author names
+        """
+        cypher_query = """
+        MATCH (p:Paper)<-[:AUTHORED]-(a:Author)
+        WHERE p.doi IN $dois
+        RETURN a.name AS author
+        """
+        results, meta = db.cypher_query(cypher_query, {"dois": dois})
+        return [row[0] for row in results if row[0] is not None]
+
+    def _get_institutions_for_papers(self, dois: List[str]) -> List[str]:
+        """Get institutions for a list of papers.
+
+        Args:
+            dois: List of paper DOIs
+
+        Returns:
+            List of institution names
+        """
+        cypher_query = """
+        MATCH (p:Paper)<-[:AUTHORED]-(a:Author)-[:AFFILIATED_WITH]->(i:Institution)
+        WHERE p.doi IN $dois
+        RETURN i.name AS institution
+        """
+        results, meta = db.cypher_query(cypher_query, {"dois": dois})
+        return [row[0] for row in results if row[0] is not None]
+
+    def _get_keywords_for_authors(self, author_names: List[str]) -> List[str]:
+        """Get keywords for a list of authors.
+
+        Args:
+            author_names: List of author names
+
+        Returns:
+            List of keywords
+        """
+        cypher_query = """
+        MATCH (a:Author)-[:AUTHORED]->(p:Paper)-[:HAS_KEYWORD]->(k:Keyword)
+        WHERE a.name IN $author_names
+        RETURN k.name AS keyword
+        """
+        results, meta = db.cypher_query(cypher_query, {"author_names": author_names})
+        return [row[0] for row in results if row[0] is not None]
+
+    def _get_authors_for_keywords(self, keyword_names: List[str]) -> List[str]:
+        """Get authors for a list of keywords.
+
+        Args:
+            keyword_names: List of keyword names
+
+        Returns:
+            List of author names
+        """
+        cypher_query = """
+        MATCH (k:Keyword)<-[:HAS_KEYWORD]-(p:Paper)<-[:AUTHORED]-(a:Author)
+        WHERE k.name IN $keyword_names
+        RETURN a.name AS author
+        """
+        results, meta = db.cypher_query(cypher_query, {"keyword_names": keyword_names})
+        return [row[0] for row in results if row[0] is not None]
+
+    def _get_institutions_for_authors(self, author_names: List[str]) -> List[str]:
+        """Get institutions for a list of authors.
+
+        Args:
+            author_names: List of author names
+
+        Returns:
+            List of institution names
+        """
+        cypher_query = """
+        MATCH (a:Author)-[:AFFILIATED_WITH]->(i:Institution)
+        WHERE a.name IN $author_names
+        RETURN i.name AS institution
+        """
+        results, meta = db.cypher_query(cypher_query, {"author_names": author_names})
+        return [row[0] for row in results if row[0] is not None]
+
+    def _get_institutions_for_keywords(self, keyword_names: List[str]) -> List[str]:
+        """Get institutions for a list of keywords.
+
+        Args:
+            keyword_names: List of keyword names
+
+        Returns:
+            List of institution names
+        """
+        cypher_query = """
+        MATCH (k:Keyword)<-[:HAS_KEYWORD]-(p:Paper)<-[:AUTHORED]-(a:Author)-[:AFFILIATED_WITH]->(i:Institution)
+        WHERE k.name IN $keyword_names
+        RETURN i.name AS institution
+        """
+        results, meta = db.cypher_query(cypher_query, {"keyword_names": keyword_names})
+        return [row[0] for row in results if row[0] is not None]
+
+    def visualize_entity_distribution(self, entity_distributions: Dict[int, Dict[str, int]], 
+                                     entity_type: str, top_n: int = 10) -> Tuple[plt.Figure, Dict[int, pd.DataFrame]]:
+        """Visualize the distribution of entities within communities.
+
+        Args:
+            entity_distributions: Dictionary mapping community IDs to entity count dictionaries
+            entity_type: Type of entity ('keyword', 'author', 'institution')
+            top_n: Number of top entities to include in the visualization
+
+        Returns:
+            Tuple of (matplotlib figure, dictionary of DataFrames with entity distributions)
+        """
+        import matplotlib.pyplot as plt
+        import pandas as pd
+        import seaborn as sns
+
+        # Convert to DataFrames for easier manipulation
+        community_dfs = {}
+        for community_id, entity_counts in entity_distributions.items():
+            df = pd.DataFrame(list(entity_counts.items()), columns=[entity_type, 'count'])
+            df = df.sort_values('count', ascending=False).head(top_n)
+            community_dfs[community_id] = df
+
+        # Create a figure with subplots for each community (up to 9 communities)
+        n_communities = min(len(community_dfs), 9)
+        n_cols = min(3, n_communities)
+        n_rows = (n_communities + n_cols - 1) // n_cols
+
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 4 * n_rows))
+        if n_communities == 1:
+            axes = np.array([axes])
+        axes = axes.flatten()
+
+        # Plot top entities for each community
+        for i, (community_id, df) in enumerate(list(community_dfs.items())[:n_communities]):
+            if df.empty:
+                continue
+
+            ax = axes[i]
+            sns.barplot(x='count', y=entity_type, data=df, ax=ax)
+            ax.set_title(f'Community {community_id}: Top {entity_type}s')
+            ax.set_xlabel('Count')
+            ax.set_ylabel(entity_type.capitalize())
+
+        # Hide unused subplots
+        for i in range(n_communities, len(axes)):
+            axes[i].axis('off')
+
+        plt.tight_layout()
+
+        return fig, community_dfs
 
 # Example usage
 if __name__ == "__main__":
