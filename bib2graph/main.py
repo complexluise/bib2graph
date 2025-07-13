@@ -253,7 +253,7 @@ def analizar_red(
 
     # Extract the requested network with progress reporting
     with tqdm(total=5, desc="Análisis de red", unit="paso") as progress_bar:
-        if network_type == 'cocitation':
+        if network_type == "cocitacion":
             network_result = analyzer.extract_co_citation_network(min_weight=min_weight)
             # Handle the new return format (network, quality_report)
             if isinstance(network_result, tuple) and len(network_result) == 2:
@@ -283,13 +283,17 @@ def analizar_red(
             else:
                 # Fallback for backward compatibility
                 network = network_result
-        elif network_type == 'author':
+        elif network_type == 'colaboracion_autor':
             network = analyzer.extract_author_collaboration_network()
-        elif network_type == 'institution':
+        elif network_type == 'colaboracion_institucion':
             network = analyzer.extract_institution_collaboration_network()
-        elif network_type == 'keyword':
+        elif network_type == 'coocurrencia_palabra_clave':
             network = analyzer.extract_keyword_co_occurrence_network()
 
+        # Check if network is empty and exit if true
+        if network.number_of_nodes() == 0:
+            logger.warning(f"La red de {network_type} está vacía. No hay nada que analizar.")
+            return
         progress_bar.update(1)
 
         logger.info(
