@@ -37,9 +37,9 @@ from bib2graph import BibliometricDataLoader
 from bib2graph.enriquecimiento import BibliometricDataEnricher
 from bib2graph.analisis_red import BibliometricNetworkAnalyzer
 from bib2graph.config import (
-    Neo4jConfig, NETWORK_TYPES, COMMUNITY_ALGORITHMS, SUPPORTED_FILE_TYPES,
-    DEFAULT_MIN_WEIGHT, DEFAULT_OUTPUT_DIR, DEFAULT_COMMUNITY_ALGORITHM, 
-    DEFAULT_NETWORK_TYPE, VERSION
+    Neo4jConfig, TIPOS_REDES, ALGORITMOS_COMUNIDAD, TIPOS_ARCHIVOS_SOPORTADOS,
+    PESO_MINIMO_PREDETERMINADO, DIRECTORIO_SALIDA_PREDETERMINADO, ALGORITMO_COMUNIDAD_PREDETERMINADO, 
+    TIPO_RED_PREDETERMINADO, VERSION
 )
 
 # Configure logging
@@ -118,21 +118,21 @@ Ejemplos:
     parser.add_argument('--input', type=str, 
                         help='Archivo o directorio de entrada que contiene datos bibliométricos')
     parser.add_argument('--file-type', type=str, 
-                        choices=SUPPORTED_FILE_TYPES,
+                        choices=TIPOS_ARCHIVOS_SOPORTADOS,
                         help='Tipo de archivo de entrada (requerido para ingesta si el tipo no puede inferirse de la extensión)')
 
     # Network analysis options
     parser.add_argument('--network-type', type=str,
-                        choices=list(NETWORK_TYPES.keys()),
-                        default=DEFAULT_NETWORK_TYPE, 
+                        choices=list(TIPOS_REDES.keys()),
+                        default=TIPO_RED_PREDETERMINADO, 
                         help='Tipo de red a extraer y analizar')
-    parser.add_argument('--min-weight', type=int, default=DEFAULT_MIN_WEIGHT,
+    parser.add_argument('--min-weight', type=int, default=PESO_MINIMO_PREDETERMINADO,
                         help='Peso mínimo para relaciones en la red')
-    parser.add_argument('--output-dir', type=str, default=DEFAULT_OUTPUT_DIR,
+    parser.add_argument('--output-dir', type=str, default=DIRECTORIO_SALIDA_PREDETERMINADO,
                         help='Directorio para archivos de salida (se creará si no existe)')
     parser.add_argument('--community-algorithm', type=str,
-                        choices=COMMUNITY_ALGORITHMS,
-                        default=DEFAULT_COMMUNITY_ALGORITHM, 
+                        choices=ALGORITMOS_COMUNIDAD,
+                        default=ALGORITMO_COMUNIDAD_PREDETERMINADO, 
                         help='Algoritmo a usar para detección de comunidades')
 
     # Dry run flag
@@ -208,7 +208,7 @@ def ingest_data(
             raise NotImplementedError(f"Tipo de archivo no soportado: {ext}")
 
     # Check if file type is supported
-    if current_file_type and current_file_type not in SUPPORTED_FILE_TYPES:
+    if current_file_type and current_file_type not in TIPOS_ARCHIVOS_SOPORTADOS:
         logger.error(f"Tipo de archivo no soportado: {current_file_type}")
         raise NotImplementedError(f"Tipo de archivo no soportado: {current_file_type}")
 
@@ -372,7 +372,7 @@ def analyze_network(
         logger.info("Fase de análisis de red completada (simulación)")
         return
 
-    network_name = NETWORK_TYPES.get(network_type, network_type)
+    network_name = TIPOS_REDES.get(network_type, network_type)
 
     # Extract the requested network with progress reporting
     with tqdm(total=5, desc="Análisis de red", unit="paso") as progress_bar:
