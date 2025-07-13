@@ -406,6 +406,20 @@ files = [
 ]
 
 [[package]]
+name = "click"
+version = "8.2.1"
+description = "Composable command line interface toolkit"
+optional = false
+python-versions = ">=3.10"
+files = [
+    {file = "click-8.2.1-py3-none-any.whl", hash = "sha256:61a3265b914e850b85317d0b3109c7f8cd35a670f963866005d6ef1d5175a12b"},
+    {file = "click-8.2.1.tar.gz", hash = "sha256:27c491cc05d968d271d5a1db13e3b5a184636d9d930f148c50b038f0d0646202"},
+]
+
+[package.dependencies]
+colorama = {version = "*", markers = "platform_system == \"Windows\""}
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 description = "Cross-platform colored terminal text."
@@ -3131,4 +3145,4 @@ test = ["websockets"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "140accb8d1162e6fbcaf253d88f043ddb7a4a9200933602d83332bd4f21882ac"
+content-hash = "5dac6b13b521b531c8d0a1db73d0e39fc022f9a19ba4114f4338fa2dd80ed55d"
