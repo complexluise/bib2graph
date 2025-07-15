@@ -196,12 +196,18 @@ def crear_relaciones_red(
         logger.info("[MODO SIMULACIÓN] Se simularía la creación de relaciones de red")
         return
 
-    if network_type == 'cocitation':
+    if network_type == 'cocitacion':
         rel_count = analyzer.create_co_citation_relationships()
         logger.info(f"Creadas {rel_count} relaciones CO_CITED_WITH")
-    # You can add more cases based on network type
-    # elif network_type == 'author':
-    #     ...
+    elif network_type == 'autor':
+        rel_count = analyzer.create_author_collaboration_relationships()
+        logger.info(f"Creadas {rel_count} relaciones COLLABORATED_WITH entre autores")
+    elif network_type == 'institucion':
+        rel_count = analyzer.create_institution_collaboration_relationships()
+        logger.info(f"Creadas {rel_count} relaciones COLLABORATED_WITH entre instituciones")
+    elif network_type == 'palabra_clave':
+        rel_count = analyzer.create_keyword_co_occurrence_relationships()
+        logger.info(f"Creadas {rel_count} relaciones CO_OCCURS_WITH entre palabras clave")
 
     logger.info("Relaciones de red creadas en Neo4j")
 
@@ -267,24 +273,16 @@ def analizar_red(
 
             logger.info(f"  Puntuación de calidad general: {quality_report['quality_score']:.2f}% ({quality_report['criteria_met_count']}/{quality_report['criteria_total_count']} criterios cumplidos)")
 
-                # Log top authors if available
-                if quality_report.get('top_authors'):
-                    logger.info("  Autores principales:")
-                    for author in quality_report['top_authors']:
-                        logger.info(f"    {author['name']}: {author['paper_count']} artículos")
-            else:
-                # Fallback for backward compatibility
-                network = network_result
-        elif network_type == 'colaboracion_autor':
             if quality_report.get('top_authors'):
                 logger.info("  Autores principales:")
                 for author in quality_report['top_authors']:
                     logger.info(f"    {author['name']}: {author['paper_count']} artículos")
 
+        elif network_name == 'colaboracion_autor':
             network = analyzer.extract_author_collaboration_network()
-        elif network_type == 'colaboracion_institucion':
+        elif network_name == 'colaboracion_institucion':
             network = analyzer.extract_institution_collaboration_network()
-        elif network_type == 'coocurrencia_palabra_clave':
+        elif network_name == 'coocurrencia_palabra_clave':
             network = analyzer.extract_keyword_co_occurrence_network()
 
         # Check if network is empty and exit if true
@@ -366,7 +364,6 @@ def ejecutar_pipeline_completo(
     if dry_run:
         logger.info("[MODO SIMULACIÓN] Ejecutando pipeline en modo simulación")
 
-    # Initialize the network analyzer once and reuse it
     if not dry_run:
         analyzer = BibliometricNetworkAnalyzer(
             uri=neo4j_uri,
@@ -374,7 +371,6 @@ def ejecutar_pipeline_completo(
             password=neo4j_password
         )
     else:
-        # In dry-run mode, we don't need to connect to Neo4j
         analyzer = None
 
     # Run each step of the pipeline with progress reporting
