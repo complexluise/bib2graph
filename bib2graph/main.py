@@ -236,10 +236,7 @@ def analizar_red(
     if not dry_run:
         os.makedirs(output_dir, exist_ok=True)
 
-    # Create necessary relationships if needed
-    crear_relaciones_red(analyzer, network_type, dry_run)
-
-    # Extract the requested network
+        # Extract the requested network
     logger.info(f"Extrayendo red de tipo {network_type}...")
 
     if dry_run:
@@ -253,27 +250,22 @@ def analizar_red(
 
     # Extract the requested network with progress reporting
     with tqdm(total=5, desc="Análisis de red", unit="paso") as progress_bar:
-        if network_type == "cocitacion":
-            network_result = analyzer.extract_co_citation_network(min_weight=min_weight)
-            # Handle the new return format (network, quality_report)
-            if isinstance(network_result, tuple) and len(network_result) == 2:
-                network, quality_report = network_result
-                # Log quality report
-                logger.info("Informe de calidad para la red de co-citación:")
-                logger.info(f"  Recuento de documentos: {quality_report['document_count']} (Umbral: ≥200, Cumplido: {quality_report['meets_volume_threshold']})")
-                logger.info(f"  DOI y referencias: {quality_report['doi_ref_percentage']:.2f}% (Umbral: ≥90%, Cumplido: {quality_report['meets_doi_ref_threshold']})")
-                logger.info(f"  Cobertura temporal: {quality_report['temporal_coverage']} (Umbral: 2000-2024, Cumplido: {quality_report['meets_temporal_threshold']})")
-                logger.info(f"  Diversidad geográfica: {quality_report['country_count']} países (Umbral: ≥5, Cumplido: {quality_report['meets_geographic_threshold']})")
-                logger.info(f"  Autores clave: {quality_report['recurring_authors']} autores recurrentes (Umbral: ≥10, Cumplido: {quality_report['meets_author_threshold']})")
-                logger.info(f"  Duplicación de fuentes: {quality_report['source_duplication_percentage']:.2f}%")
+        if network_name == "cocitacion":
+            network, quality_report = analyzer.extract_co_citation_network(min_weight=min_weight)
 
-                # Log missing data percentages
-                logger.info("  Porcentajes de datos faltantes:")
-                for field, percentage in quality_report['missing_data_percentages'].items():
-                    logger.info(f"    {field}: {percentage:.2f}%")
+            logger.info("Informe de calidad para la red de co-citación:")
+            logger.info(f"  Recuento de documentos: {quality_report['document_count']} (Umbral: ≥200, Cumplido: {quality_report['meets_volume_threshold']})")
+            logger.info(f"  DOI y referencias: {quality_report['doi_ref_percentage']:.2f}% (Umbral: ≥90%, Cumplido: {quality_report['meets_doi_ref_threshold']})")
+            logger.info(f"  Cobertura temporal: {quality_report['temporal_coverage']} (Umbral: 2000-2024, Cumplido: {quality_report['meets_temporal_threshold']})")
+            logger.info(f"  Diversidad geográfica: {quality_report['country_count']} países (Umbral: ≥5, Cumplido: {quality_report['meets_geographic_threshold']})")
+            logger.info(f"  Autores clave: {quality_report['recurring_authors']} autores recurrentes (Umbral: ≥10, Cumplido: {quality_report['meets_author_threshold']})")
+            logger.info(f"  Duplicación de fuentes: {quality_report['source_duplication_percentage']:.2f}%")
 
-                # Log overall quality score
-                logger.info(f"  Puntuación de calidad general: {quality_report['quality_score']:.2f}% ({quality_report['criteria_met_count']}/{quality_report['criteria_total_count']} criterios cumplidos)")
+            logger.info("  Porcentajes de datos faltantes:")
+            for field, percentage in quality_report['missing_data_percentages'].items():
+                logger.info(f"    {field}: {percentage:.2f}%")
+
+            logger.info(f"  Puntuación de calidad general: {quality_report['quality_score']:.2f}% ({quality_report['criteria_met_count']}/{quality_report['criteria_total_count']} criterios cumplidos)")
 
                 # Log top authors if available
                 if quality_report.get('top_authors'):
@@ -284,6 +276,11 @@ def analizar_red(
                 # Fallback for backward compatibility
                 network = network_result
         elif network_type == 'colaboracion_autor':
+            if quality_report.get('top_authors'):
+                logger.info("  Autores principales:")
+                for author in quality_report['top_authors']:
+                    logger.info(f"    {author['name']}: {author['paper_count']} artículos")
+
             network = analyzer.extract_author_collaboration_network()
         elif network_type == 'colaboracion_institucion':
             network = analyzer.extract_institution_collaboration_network()
@@ -392,6 +389,7 @@ def ejecutar_pipeline_completo(
 
         progress_bar.set_description("Análisis de red")
         if not dry_run:
+            crear_relaciones_red(analyzer, network_type, dry_run)
             analizar_red(analyzer, network_type, min_weight, output_dir, community_algorithm, dry_run)
         else:
             logger.info("[MODO SIMULACIÓN] Se simularía el análisis de red")
