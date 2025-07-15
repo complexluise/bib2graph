@@ -54,6 +54,63 @@ class BibliometricNetworkAnalyzer:
         results, meta = db.cypher_query(cypher_query)
         return results[0][0] if results else 0
 
+    def create_author_collaboration_relationships(self) -> int:
+        """Create COLLABORATED_WITH relationships in Neo4j between authors who co-authored papers.
+
+        Returns:
+            Number of COLLABORATED_WITH relationships created
+        """
+        cypher_query = """
+        MATCH (a1:Author)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Author)
+        WHERE a1 <> a2
+        WITH a1, a2, COUNT(p) AS collaboration_count
+        WHERE collaboration_count > 0
+        MERGE (a1)-[r:COLLABORATED_WITH]-(a2)
+        ON CREATE SET r.weight = collaboration_count
+        RETURN COUNT(r) AS relationship_count
+        """
+
+        results, meta = db.cypher_query(cypher_query)
+        return results[0][0] if results else 0
+
+    def create_institution_collaboration_relationships(self) -> int:
+        """Create COLLABORATED_WITH relationships in Neo4j between institutions whose authors co-authored papers.
+
+        Returns:
+            Number of COLLABORATED_WITH relationships created
+        """
+        cypher_query = """
+        MATCH (i1:Institution)<-[:AFFILIATED_WITH]-(a1:Author)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Author)-[:AFFILIATED_WITH]->(i2:Institution)
+        WHERE i1 <> i2
+        WITH i1, i2, COUNT(DISTINCT p) AS collaboration_count
+        WHERE collaboration_count > 0
+        MERGE (i1)-[r:COLLABORATED_WITH]-(i2)
+        ON CREATE SET r.weight = collaboration_count
+        RETURN COUNT(r) AS relationship_count
+        """
+
+        results, meta = db.cypher_query(cypher_query)
+        return results[0][0] if results else 0
+
+    def create_keyword_co_occurrence_relationships(self) -> int:
+        """Create CO_OCCURS_WITH relationships in Neo4j between keywords that appear in the same papers.
+
+        Returns:
+            Number of CO_OCCURS_WITH relationships created
+        """
+        cypher_query = """
+        MATCH (k1:Keyword)<-[:HAS_KEYWORD]-(p:Paper)-[:HAS_KEYWORD]->(k2:Keyword)
+        WHERE k1 <> k2
+        WITH k1, k2, COUNT(p) AS cooccurrence_count
+        WHERE cooccurrence_count > 0
+        MERGE (k1)-[r:CO_OCCURS_WITH]-(k2)
+        ON CREATE SET r.weight = cooccurrence_count
+        RETURN COUNT(r) AS relationship_count
+        """
+
+        results, meta = db.cypher_query(cypher_query)
+        return results[0][0] if results else 0
+
     def generate_quality_report(self, dois_set: Set[str]) -> Dict[str, Any]:
         """Generate a quality report for the co-citation network.
 
