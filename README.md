@@ -82,58 +82,93 @@ El script principal proporciona una interfaz de línea de comandos para ejecutar
 
 ### Ejecutar el pipeline completo:
 ```bash
-bib2graph --mode full
+bib2graph completo
 ```
 
 ### Ejecutar solo la fase de ingesta de datos:
 ```bash
-bib2graph --mode ingest --input data/file.bib --file-type bibtex
+bib2graph ingestar --input data/file.bib --tipo-archivo bibtex
 ```
 
 ### Ejecutar solo la fase de enriquecimiento de datos:
 ```bash
-bib2graph --mode enrich
+bib2graph enriquecer
 ```
 
 ### Ejecutar solo la fase de análisis de redes:
 ```bash
-bib2graph --mode analyze --network-type cocitation --output-dir results
+bib2graph analizar --tipo-red cocitacion --directorio-salida results
+```
+
+### Ejecutar en modo simulación (sin efectos en la base de datos):
+```bash
+bib2graph completo --simulacion
+```
+
+### Mostrar la versión del paquete:
+```bash
+bib2graph --version
 ```
 
 ### Opciones disponibles:
+
+#### Opciones comunes:
 ```
---mode              Modo de operación (ingest, enrich, analyze, full)
---input             Archivo o directorio de entrada
---file-type         Tipo de archivo (csv, bibtex, json)
---network-type      Tipo de red (cocitation, author, institution, keyword)
---min-weight        Peso mínimo para relaciones
---output-dir        Directorio para archivos de salida
---community-algorithm  Algoritmo de detección de comunidades (louvain, label_propagation, greedy_modularity)
 --neo4j-uri         URI de conexión a Neo4j
 --neo4j-user        Nombre de usuario de Neo4j
 --neo4j-password    Contraseña de Neo4j
+--simulacion        Ejecuta en modo simulación sin realizar cambios en la base de datos
+```
+
+#### Comando 'ingestar':
+```
+--input             Archivo o directorio de entrada que contiene datos bibliométricos
+--tipo-archivo      Tipo de archivo de entrada (bibtex)
+```
+
+#### Comando 'analizar':
+```
+--tipo-red          Tipo de red a extraer y analizar (cocitacion, autor, institucion, palabra_clave)
+--peso-minimo       Peso mínimo para relaciones en la red
+--directorio-salida Directorio para archivos de salida
+--algoritmo-comunidad  Algoritmo a usar para detección de comunidades (louvain, label_propagation, greedy_modularity)
+```
+
+#### Comando 'completo':
+```
+--input             Archivo o directorio de entrada que contiene datos bibliométricos
+--tipo-archivo      Tipo de archivo de entrada (bibtex)
+--tipo-red          Tipo de red a extraer y analizar (cocitacion, autor, institucion, palabra_clave)
+--peso-minimo       Peso mínimo para relaciones en la red
+--directorio-salida Directorio para archivos de salida
+--algoritmo-comunidad  Algoritmo a usar para detección de comunidades (louvain, label_propagation, greedy_modularity)
 ```
 
 ## Ejemplos
 
 ### Procesar un archivo BibTeX y generar una red de co-citación:
 ```bash
-bib2graph --mode full --input data/references.bib --network-type cocitation --output-dir results
+bib2graph completo --input data/references.bib --tipo-red cocitacion --directorio-salida results
 ```
 
 ### Generar una red de colaboración entre autores:
 ```bash
-bib2graph --mode analyze --network-type author --output-dir results
+bib2graph analizar --tipo-red autor --directorio-salida results
 ```
 
 ### Generar una red de co-ocurrencia de palabras clave:
 ```bash
-bib2graph --mode analyze --network-type keyword --output-dir results
+bib2graph analizar --tipo-red palabra_clave --directorio-salida results
 ```
 
-### Procesar un archivo CSV con un peso mínimo de arista de 2:
+### Procesar un archivo BibTeX con un peso mínimo de arista de 2:
 ```bash
-bib2graph --mode full --input data/citations.csv --file-type csv --network-type cocitation --min-weight 2 --output-dir results
+bib2graph completo --input data/references.bib --tipo-archivo bibtex --tipo-red cocitacion --peso-minimo 2 --directorio-salida results
+```
+
+### Crear relaciones de red sin realizar análisis:
+```bash
+bib2graph crear-relaciones --tipo-red cocitacion
 ```
 
 ## Estructura del Proyecto
@@ -142,14 +177,19 @@ bib2graph --mode full --input data/citations.csv --file-type csv --network-type 
 bib2graph/
 ├── data/                      # Directorio de datos de entrada
 │   └── references.bib         # Archivo BibTeX de ejemplo
-├── src/                       # Código fuente
+├── bib2graph/                 # Código fuente
+│   ├── __init__.py            # Inicialización del paquete
+│   ├── __main__.py            # Punto de entrada del paquete
+│   ├── cli.py                 # Interfaz de línea de comandos
+│   ├── config.py              # Configuración y constantes
 │   ├── consigue_los_articulos.py  # Módulo de ingesta de datos
 │   ├── enriquecimiento.py     # Módulo de enriquecimiento de datos
 │   ├── analisis_red.py        # Módulo de análisis de redes
 │   ├── models.py              # Modelos de datos
-│   └── queries.py             # Consultas a la base de datos
+│   ├── queries.py             # Consultas a la base de datos
+│   └── main.py                # Funciones principales del pipeline
 ├── results/                   # Resultados generados
-├── main.py                    # Script principal
+├── tests/                     # Pruebas unitarias
 ├── pyproject.toml             # Configuración de Poetry
 ├── .github/                   # Flujos de trabajo de GitHub
 │   └── workflows/             # Flujos de trabajo de CI/CD
