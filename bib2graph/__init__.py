@@ -19,7 +19,7 @@ Core functions:
 - ejecutar_pipeline_completo: For running the complete pipeline
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 from bib2graph.consigue_los_articulos import BibliometricDataLoader
