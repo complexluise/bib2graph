@@ -242,6 +242,20 @@ def analizar_red(
     if not dry_run:
         os.makedirs(output_dir, exist_ok=True)
 
+        # Create subdirectories for different types of results
+        redes_dir = os.path.join(output_dir, "redes")
+        datos_dir = os.path.join(output_dir, "datos")
+        visualizaciones_dir = os.path.join(output_dir, "visualizaciones")
+        metricas_dir = os.path.join(output_dir, "metricas")
+        comunidades_dir = os.path.join(output_dir, "comunidades")
+
+        # Create subdirectories
+        os.makedirs(redes_dir, exist_ok=True)
+        os.makedirs(datos_dir, exist_ok=True)
+        os.makedirs(visualizaciones_dir, exist_ok=True)
+        os.makedirs(metricas_dir, exist_ok=True)
+        os.makedirs(comunidades_dir, exist_ok=True)
+
         # Extract the requested network
     logger.info(f"Extrayendo red de tipo {network_type}...")
 
@@ -296,9 +310,9 @@ def analizar_red(
 
         # Export the network
         progress_bar.set_description("Exportando red")
-        graphml_path = os.path.join(output_dir, f"{network_name}_network.graphml")
-        nodes_path = os.path.join(output_dir, f"{network_name}_nodes.csv")
-        edges_path = os.path.join(output_dir, f"{network_name}_edges.csv")
+        graphml_path = os.path.join(redes_dir, f"{network_name}_network.graphml")
+        nodes_path = os.path.join(datos_dir, f"{network_name}_nodes.csv")
+        edges_path = os.path.join(datos_dir, f"{network_name}_edges.csv")
 
         analyzer.export_graph_to_graphml(network, graphml_path)
         analyzer.export_graph_to_csv(network, nodes_path, edges_path)
