@@ -25,7 +25,7 @@ NEO4J_PASSWORD = "password"  # Change this in production
 config.DATABASE_URL = f"bolt://{NEO4J_USER}:{NEO4J_PASSWORD}@localhost:7687"
 
 # API keys (replace with your own)
-SEMANTIC_SCHOLAR_API_KEY = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
+SEMANTIC_SCHOLAR_API_KEY = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "L5EjfRH6jO6JF3Wo8yZuj6k4hKPCWCNS8dRwhZM0")
 SCOPUS_API_KEY = os.environ.get("SCOPUS_API_KEY", "")
 
 class BibliometricDataEnricher:
@@ -87,7 +87,7 @@ class BibliometricDataEnricher:
                 paperId=f"DOI:{doi}",
                 session=session,
                 retries=2,
-                wait=150,
+                wait=20,
                 params=dict(include_unknown_references=True)
             )
 
@@ -210,19 +210,44 @@ class BibliometricDataEnricher:
                 # Create REFERENCES relationship
                 paper_node.references.connect(ref_paper)
 
-        # Update authors with ORCID
+        # Update authors with Semantic Scholar ID
         for author_data in enriched_data.get('authors', []):
             if 'name' in author_data:
-                # Find author node
-                try:
-                    author_node = Author.nodes.get(name=author_data['name'])
+                # Try to find author by Semantic Scholar ID first
+                author_node = None
+                if 'authorId' in author_data and author_data['authorId']:
+                    try:
+                        author_node = Author.nodes.get(semantic_scholar_id=author_data['authorId'])
+                        # Update name if different (to handle variations)
+                        if author_node.name != author_data['name']:
+                            print(f"Updating author name from '{author_node.name}' to '{author_data['name']}'")
+                            author_node.name = author_data['name']
+                            author_node.save()
+                    except Author.DoesNotExist:
+                        pass
 
-                    # Update author with ORCID if available
-                    if 'orcid' in author_data and author_data['orcid']:
-                        author_node.orcid = author_data['orcid']
-                        author_node.save()
-                except Author.DoesNotExist:
-                    pass
+                # If not found by ID, try by name
+                if not author_node:
+                    try:
+                        author_node = Author.nodes.get(name=author_data['name'])
+                        # Update with Semantic Scholar ID if available
+                        if 'authorId' in author_data and author_data['authorId'] and not author_node.semantic_scholar_id:
+                            author_node.semantic_scholar_id = author_data['authorId']
+                            author_node.save()
+                    except Author.DoesNotExist:
+                        # Create new author
+                        author_node = Author(
+                            name=author_data['name'],
+                            semantic_scholar_id=author_data.get('authorId', '')
+                        ).save()
+
+                # Update author with ORCID if available
+                if 'orcid' in author_data and author_data['orcid'] and not author_node.orcid:
+                    author_node.orcid = author_data['orcid']
+                    author_node.save()
+
+                # Connect author to paper
+                author_node.papers.connect(paper_node)
 
         # Update institutions
         for institution in enriched_data.get('institutions', []):
@@ -282,7 +307,7 @@ class BibliometricDataEnricher:
         self.update_neo4j_with_enriched_data(paper_node, enriched_data)
 
         # Sleep to respect API rate limits
-        time.sleep(2)
+        time.sleep(1)
 
     def enrich_all_papers(self) -> None:
         """Enrich all papers in the database that have DOIs."""

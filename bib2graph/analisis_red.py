@@ -7,6 +7,7 @@ and exporting them for analysis in external tools.
 
 import os
 import networkx as nx
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from neomodel import db, config
@@ -47,6 +48,63 @@ class BibliometricNetworkAnalyzer:
         WHERE shared_refs > 0
         MERGE (p1)-[r:CO_CITED_WITH]-(p2)
         ON CREATE SET r.weight = shared_refs
+        RETURN COUNT(r) AS relationship_count
+        """
+
+        results, meta = db.cypher_query(cypher_query)
+        return results[0][0] if results else 0
+
+    def create_author_collaboration_relationships(self) -> int:
+        """Create COLLABORATED_WITH relationships in Neo4j between authors who co-authored papers.
+
+        Returns:
+            Number of COLLABORATED_WITH relationships created
+        """
+        cypher_query = """
+        MATCH (a1:Author)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Author)
+        WHERE a1 <> a2
+        WITH a1, a2, COUNT(p) AS collaboration_count
+        WHERE collaboration_count > 0
+        MERGE (a1)-[r:COLLABORATED_WITH]-(a2)
+        ON CREATE SET r.weight = collaboration_count
+        RETURN COUNT(r) AS relationship_count
+        """
+
+        results, meta = db.cypher_query(cypher_query)
+        return results[0][0] if results else 0
+
+    def create_institution_collaboration_relationships(self) -> int:
+        """Create COLLABORATED_WITH relationships in Neo4j between institutions whose authors co-authored papers.
+
+        Returns:
+            Number of COLLABORATED_WITH relationships created
+        """
+        cypher_query = """
+        MATCH (i1:Institution)<-[:AFFILIATED_WITH]-(a1:Author)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Author)-[:AFFILIATED_WITH]->(i2:Institution)
+        WHERE i1 <> i2
+        WITH i1, i2, COUNT(DISTINCT p) AS collaboration_count
+        WHERE collaboration_count > 0
+        MERGE (i1)-[r:COLLABORATED_WITH]-(i2)
+        ON CREATE SET r.weight = collaboration_count
+        RETURN COUNT(r) AS relationship_count
+        """
+
+        results, meta = db.cypher_query(cypher_query)
+        return results[0][0] if results else 0
+
+    def create_keyword_co_occurrence_relationships(self) -> int:
+        """Create CO_OCCURS_WITH relationships in Neo4j between keywords that appear in the same papers.
+
+        Returns:
+            Number of CO_OCCURS_WITH relationships created
+        """
+        cypher_query = """
+        MATCH (k1:Keyword)<-[:HAS_KEYWORD]-(p:Paper)-[:HAS_KEYWORD]->(k2:Keyword)
+        WHERE k1 <> k2
+        WITH k1, k2, COUNT(p) AS cooccurrence_count
+        WHERE cooccurrence_count > 0
+        MERGE (k1)-[r:CO_OCCURS_WITH]-(k2)
+        ON CREATE SET r.weight = cooccurrence_count
         RETURN COUNT(r) AS relationship_count
         """
 
@@ -778,11 +836,11 @@ class BibliometricNetworkAnalyzer:
 
         return entity_distributions
 
-    def _count_entities(self, entities: List[str]) -> Dict[str, int]:
+    def _count_entities(self, entities: list[str]) -> Dict[str, int]:
         """Count occurrences of entities in a list.
 
         Args:
-            entities: List of entity names
+            entities: list of entity names
 
         Returns:
             Dictionary mapping entity names to their counts
@@ -797,14 +855,14 @@ class BibliometricNetworkAnalyzer:
         # Sort by count in descending order
         return dict(sorted(entity_counts.items(), key=lambda x: x[1], reverse=True))
 
-    def _get_keywords_for_papers(self, dois: List[str]) -> List[str]:
+    def _get_keywords_for_papers(self, dois: list[str]) -> list[str]:
         """Get keywords for a list of papers.
 
         Args:
-            dois: List of paper DOIs
+            dois: list of paper DOIs
 
         Returns:
-            List of keywords
+            list of keywords
         """
         cypher_query = """
         MATCH (p:Paper)-[:HAS_KEYWORD]->(k:Keyword)
@@ -814,14 +872,14 @@ class BibliometricNetworkAnalyzer:
         results, meta = db.cypher_query(cypher_query, {"dois": dois})
         return [row[0] for row in results if row[0] is not None]
 
-    def _get_authors_for_papers(self, dois: List[str]) -> List[str]:
+    def _get_authors_for_papers(self, dois: list[str]) -> list[str]:
         """Get authors for a list of papers.
 
         Args:
-            dois: List of paper DOIs
+            dois: list of paper DOIs
 
         Returns:
-            List of author names
+            list of author names
         """
         cypher_query = """
         MATCH (p:Paper)<-[:AUTHORED]-(a:Author)
@@ -831,14 +889,14 @@ class BibliometricNetworkAnalyzer:
         results, meta = db.cypher_query(cypher_query, {"dois": dois})
         return [row[0] for row in results if row[0] is not None]
 
-    def _get_institutions_for_papers(self, dois: List[str]) -> List[str]:
+    def _get_institutions_for_papers(self, dois: list[str]) -> list[str]:
         """Get institutions for a list of papers.
 
         Args:
-            dois: List of paper DOIs
+            dois: list of paper DOIs
 
         Returns:
-            List of institution names
+            list of institution names
         """
         cypher_query = """
         MATCH (p:Paper)<-[:AUTHORED]-(a:Author)-[:AFFILIATED_WITH]->(i:Institution)
@@ -848,14 +906,14 @@ class BibliometricNetworkAnalyzer:
         results, meta = db.cypher_query(cypher_query, {"dois": dois})
         return [row[0] for row in results if row[0] is not None]
 
-    def _get_keywords_for_authors(self, author_names: List[str]) -> List[str]:
+    def _get_keywords_for_authors(self, author_names: list[str]) -> list[str]:
         """Get keywords for a list of authors.
 
         Args:
-            author_names: List of author names
+            author_names: list of author names
 
         Returns:
-            List of keywords
+            list of keywords
         """
         cypher_query = """
         MATCH (a:Author)-[:AUTHORED]->(p:Paper)-[:HAS_KEYWORD]->(k:Keyword)
@@ -865,14 +923,14 @@ class BibliometricNetworkAnalyzer:
         results, meta = db.cypher_query(cypher_query, {"author_names": author_names})
         return [row[0] for row in results if row[0] is not None]
 
-    def _get_authors_for_keywords(self, keyword_names: List[str]) -> List[str]:
+    def _get_authors_for_keywords(self, keyword_names: list[str]) -> list[str]:
         """Get authors for a list of keywords.
 
         Args:
-            keyword_names: List of keyword names
+            keyword_names: list of keyword names
 
         Returns:
-            List of author names
+            list of author names
         """
         cypher_query = """
         MATCH (k:Keyword)<-[:HAS_KEYWORD]-(p:Paper)<-[:AUTHORED]-(a:Author)
@@ -882,14 +940,14 @@ class BibliometricNetworkAnalyzer:
         results, meta = db.cypher_query(cypher_query, {"keyword_names": keyword_names})
         return [row[0] for row in results if row[0] is not None]
 
-    def _get_institutions_for_authors(self, author_names: List[str]) -> List[str]:
+    def _get_institutions_for_authors(self, author_names: list[str]) -> list[str]:
         """Get institutions for a list of authors.
 
         Args:
-            author_names: List of author names
+            author_names: list of author names
 
         Returns:
-            List of institution names
+            list of institution names
         """
         cypher_query = """
         MATCH (a:Author)-[:AFFILIATED_WITH]->(i:Institution)
@@ -899,14 +957,14 @@ class BibliometricNetworkAnalyzer:
         results, meta = db.cypher_query(cypher_query, {"author_names": author_names})
         return [row[0] for row in results if row[0] is not None]
 
-    def _get_institutions_for_keywords(self, keyword_names: List[str]) -> List[str]:
+    def _get_institutions_for_keywords(self, keyword_names: list[str]) -> list[str]:
         """Get institutions for a list of keywords.
 
         Args:
-            keyword_names: List of keyword names
+            keyword_names: list of keyword names
 
         Returns:
-            List of institution names
+            list of institution names
         """
         cypher_query = """
         MATCH (k:Keyword)<-[:HAS_KEYWORD]-(p:Paper)<-[:AUTHORED]-(a:Author)-[:AFFILIATED_WITH]->(i:Institution)
@@ -976,7 +1034,7 @@ if __name__ == "__main__":
     rel_count = analyzer.create_co_citation_relationships()
     print(f"Created {rel_count} CO_CITED_WITH relationships")
 
-    # Extract co-citation network with quality report
+    # Extract co-citation network with report quality
     cocitation_network, quality_report = analyzer.extract_co_citation_network(min_weight=1)
     print(f"Co-citation network has {cocitation_network.number_of_nodes()} nodes and {cocitation_network.number_of_edges()} edges")
 

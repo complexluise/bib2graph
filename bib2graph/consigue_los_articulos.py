@@ -35,16 +35,6 @@ class BibliometricDataLoader:
         # Configure neomodel connection
         config.DATABASE_URL = f"bolt://{user}:{password}@{uri.replace('bolt://', '')}"
 
-    def load_csv(self, filepath: str) -> pd.DataFrame:
-        """Load bibliographic data from a CSV file.
-
-        Args:
-            filepath: Path to the CSV file
-
-        Returns:
-            DataFrame containing the bibliographic data
-        """
-        return pd.read_csv(filepath)
 
     def load_bibtex(self, filepath: str) -> Dict[str, Any]:
         """Load bibliographic data from a BibTeX file.
@@ -59,17 +49,6 @@ class BibliometricDataLoader:
             parser = bibtexparser.bparser.BibTexParser(common_strings=True)
             return bibtexparser.load(bibtex_file, parser=parser)
 
-    def load_json(self, filepath: str) -> Dict[str, Any]:
-        """Load bibliographic data from a JSON file.
-
-        Args:
-            filepath: Path to the JSON file
-
-        Returns:
-            Dictionary containing the bibliographic data
-        """
-        with open(filepath, 'r', encoding='utf-8') as json_file:
-            return json.load(json_file)
 
     def normalize_metadata(self, data: Union[pd.DataFrame, Dict[str, Any]], source_type: str) -> List[Dict[str, Any]]:
         """Normalize metadata from different sources into a common format.
@@ -201,22 +180,16 @@ class BibliometricDataLoader:
 
         Args:
             filepath: Path to the file
-            file_type: Type of file ('csv', 'bibtex', 'json')
+            file_type: Type of file ('bibtex')
         """
-        # Load data based on file type
-        if file_type == 'csv':
-            data = self.load_csv(filepath)
-        elif file_type == 'bibtex':
+        if file_type == 'bibtex':
             data = self.load_bibtex(filepath)
-        elif file_type == 'json':
-            data = self.load_json(filepath)
+
         else:
             raise ValueError(f"Unsupported file type: {file_type}")
 
-        # Normalize metadata
         normalized_data = self.normalize_metadata(data, file_type)
 
-        # Create graph nodes and relationships
         self.create_graph_nodes(normalized_data)
 
     def process_directory(self, directory: str) -> None:
@@ -234,15 +207,3 @@ class BibliometricDataLoader:
                 self.process_file(filepath, 'bibtex')
             elif filename.endswith('.json'):
                 self.process_file(filepath, 'json')
-
-# Example usage
-if __name__ == "__main__":
-    loader = BibliometricDataLoader()
-
-    # Process a single CSV file
-    csv_file = "data/Citación semiconductores comercio internacional.txt"
-    if os.path.exists(csv_file):
-        loader.process_file(csv_file, 'csv')
-
-    # Process all files in a directory
-    # loader.process_directory("data")

@@ -1,10 +1,13 @@
 [tool.poetry]
-name = "bibliometria-sobre-cadena-semiconductores"
-version = "0.1.0"
+name = "bib2graph"
+version = "0.1.1"
 description = ""
 authors = ["complexluise <lhiguerac@unal.edu.co>"]
 readme = "README.md"
-package-mode = false
+package-mode = true
+
+[tool.poetry.scripts]
+bib2graph = "bib2graph.cli:main"
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -21,6 +24,8 @@ matplotlib = "^3.10.3"
 seaborn = "^0.13.2"
 notebook = "^7.4.2"
 scipy = "^1.15.3"
+tqdm = "^4.66.1"
+click = "^8.2.1"
 
 
 [build-system]
