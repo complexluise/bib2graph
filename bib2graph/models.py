@@ -46,9 +46,10 @@ class Paper(StructuredNode):
 
 class Author(StructuredNode):
     """Author node model."""
-    name = StringProperty(unique_index=True)
+    name = StringProperty(index=True)  # Ya no unique_index
     orcid = StringProperty(index=True)
-    
+    semantic_scholar_id = StringProperty(unique_index=True)  # Nuevo campo
+
     # Relationships
     papers = RelationshipTo('Paper', 'AUTHORED')
     institutions = RelationshipTo('Institution', 'AFFILIATED_WITH')
@@ -56,7 +57,7 @@ class Author(StructuredNode):
 class Keyword(StructuredNode):
     """Keyword node model."""
     name = StringProperty(unique_index=True)
-    
+
     # Relationships
     papers = RelationshipFrom('Paper', 'HAS_KEYWORD')
 
@@ -68,6 +69,6 @@ class ResearchArea(StructuredNode):
 class Institution(StructuredNode):
     """Institution node model."""
     name = StringProperty(unique_index=True)
-    
+
     # Relationships
     authors = RelationshipFrom('Author', 'AFFILIATED_WITH')

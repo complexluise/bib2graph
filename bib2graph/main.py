@@ -15,10 +15,12 @@ import logging
 from typing import Dict, Optional
 
 from tqdm import tqdm
+from neomodel import config
 
 from bib2graph import BibliometricDataLoader
 from bib2graph.enriquecimiento import BibliometricDataEnricher
 from bib2graph.analisis_red import BibliometricNetworkAnalyzer
+from bib2graph.models import Author
 from bib2graph.config import (
     Neo4jConfig, TIPOS_REDES, ALGORITMOS_COMUNIDAD, TIPOS_ARCHIVOS_SOPORTADOS,
     PESO_MINIMO_PREDETERMINADO, DIRECTORIO_SALIDA_PREDETERMINADO, ALGORITMO_COMUNIDAD_PREDETERMINADO, 
@@ -27,6 +29,87 @@ from bib2graph.config import (
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+
+def deduplicate_authors(
+    neo4j_uri: str, 
+    neo4j_user: str, 
+    neo4j_password: Optional[str],
+    dry_run: bool = False
+) -> None:
+    """Deduplica autores basándose en el ID de Semantic Scholar.
+
+    Esta función identifica y combina autores duplicados en la base de datos Neo4j
+    basándose en su identificador de Semantic Scholar.
+
+    Args:
+        neo4j_uri: URI para conectarse a la base de datos Neo4j.
+        neo4j_user: Nombre de usuario para autenticación de Neo4j.
+        neo4j_password: Contraseña para autenticación de Neo4j.
+        dry_run: Si es True, simula la operación sin realizar cambios en la base de datos.
+
+    Returns:
+        None
+    """
+    logger.info("Iniciando proceso de deduplicación de autores")
+
+    # Validate required parameters
+    if not neo4j_password and not dry_run:
+        logger.error("No se proporcionó contraseña para Neo4j")
+        raise ValueError("Se requiere contraseña para Neo4j")
+
+    if dry_run:
+        logger.info("[MODO SIMULACIÓN] Se simularía la deduplicación de autores")
+        logger.info("Proceso de deduplicación de autores completado (simulación)")
+        return
+
+    # Configure neomodel connection
+    config.DATABASE_URL = f"bolt://{neo4j_user}:{neo4j_password}@{neo4j_uri.replace('bolt://', '')}"
+
+    # Get all authors
+    all_authors = Author.nodes.all()
+
+    # Group authors by Semantic Scholar ID
+    authors_by_id = {}
+    for author in all_authors:
+        if author.semantic_scholar_id:
+            if author.semantic_scholar_id not in authors_by_id:
+                authors_by_id[author.semantic_scholar_id] = []
+            authors_by_id[author.semantic_scholar_id].append(author)
+
+    # Count duplicates
+    duplicate_count = 0
+    for author_id, authors in authors_by_id.items():
+        if len(authors) > 1:
+            duplicate_count += len(authors) - 1
+
+    logger.info(f"Encontrados {duplicate_count} autores duplicados para deduplicar")
+
+    # Merge duplicates with progress reporting
+    merged_count = 0
+    with tqdm(total=duplicate_count, desc="Deduplicación de autores", unit="autor") as progress_bar:
+        for author_id, authors in authors_by_id.items():
+            if len(authors) > 1:
+                logger.debug(f"Combinando {len(authors)} duplicados para el autor ID {author_id}")
+                # Keep the first author and merge relationships from others
+                primary_author = authors[0]
+                for duplicate in authors[1:]:
+                    # Transfer paper relationships
+                    for paper in duplicate.papers:
+                        if not primary_author.papers.is_connected(paper):
+                            primary_author.papers.connect(paper)
+
+                    # Transfer institution relationships
+                    for institution in duplicate.institutions:
+                        if not primary_author.institutions.is_connected(institution):
+                            primary_author.institutions.connect(institution)
+
+                    # Delete the duplicate
+                    duplicate.delete()
+                    merged_count += 1
+                    progress_bar.update(1)
+
+    logger.info(f"Proceso de deduplicación completado. {merged_count} autores duplicados combinados.")
 
 
 def ingestar_datos(
@@ -149,6 +232,7 @@ def enriquecer_datos(
 
     if dry_run:
         logger.info("[MODO SIMULACIÓN] Se simularía el enriquecimiento de todos los artículos")
+        logger.info("[MODO SIMULACIÓN] Se simularía la deduplicación de autores")
         logger.info("Fase de enriquecimiento de datos completada (simulación)")
         return
 
@@ -168,6 +252,10 @@ def enriquecer_datos(
         # Fallback if progress_callback is not supported
         logger.info("Usando método de enriquecimiento sin reporte de progreso")
         enricher.enrich_all_papers()
+
+    # Deduplicate authors after enrichment
+    logger.info("Ejecutando deduplicación de autores...")
+    deduplicate_authors(neo4j_uri, neo4j_user, neo4j_password, dry_run)
 
     logger.info("Fase de enriquecimiento de datos completada")
 
