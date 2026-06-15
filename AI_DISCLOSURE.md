@@ -44,5 +44,9 @@ Conviene no confundirlos, porque ambos están presentes a propósito:
 
 ## Licencia
 
-MIT — ver [`LICENSE`](LICENSE). El software se entrega "tal cual", sin garantías de ningún
-tipo, según los términos de la licencia.
+**GNU General Public License v3.0 o posterior (GPL-3.0-or-later)** — ver [`LICENSE`](LICENSE).
+Es **copyleft fuerte**: cualquiera puede usar, estudiar, modificar y redistribuir bib2graph,
+pero **todo trabajo derivado que se distribuya debe permanecer libre y con el código fuente
+abierto bajo la misma licencia**. Así queda garantizado que esto siga siendo de la humanidad y
+no pueda ser capturado en un producto propietario cerrado. El software se entrega "tal cual",
+sin garantías de ningún tipo, según los términos de la licencia.

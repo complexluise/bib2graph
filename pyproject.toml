@@ -26,7 +26,7 @@ version = "0.2.0"  # Hitos 1–6 construidos. Bump manual/local (tag v0.2.0); re
 description = "Librería de Python para transformar corpus bibliográficos en redes bibliométricas reproducibles (co-citación, colaboración, co-ocurrencia)."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "GPL-3.0-or-later" }
 authors = [
     { name = "Equipo bib2graph" },
 ]
@@ -34,7 +34,7 @@ keywords = ["bibliometrics", "co-citation", "network-analysis", "bibtex", "repro
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

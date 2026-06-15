@@ -168,3 +168,27 @@ decisión, en los [ADRs](docs/decisiones/).
 | [`docs/metodología.md`](docs/metodología.md) | Método bibliométrico (autoridad de dominio). |
 | [`docs/referentes.md`](docs/referentes.md) | Mapa del ecosistema (OpenAlex, bibliometrix, VOSviewer…) y dónde está el hueco. |
 | [`docs/critica-base.md`](docs/critica-base.md) · [`docs/Notas/`](docs/Notas/) | Red team del concepto, postmortem de v0, exploración y material de referencia. |
+
+## Licencia
+
+bib2graph es **software libre**, licenciado bajo la **GNU General Public License v3.0 o
+posterior** (`GPL-3.0-or-later`) — ver [`LICENSE`](LICENSE).
+
+```
+bib2graph — de una ecuación de búsqueda a redes bibliométricas reproducibles.
+Copyright (C) 2026  Equipo bib2graph (complexluise)
+
+Este programa es software libre: podés redistribuirlo y/o modificarlo bajo los
+términos de la GNU General Public License publicada por la Free Software
+Foundation, ya sea la versión 3 de la Licencia o (a tu elección) cualquier
+versión posterior.
+
+Se distribuye con la esperanza de que sea útil, pero SIN NINGUNA GARANTÍA; ni
+siquiera la garantía implícita de COMERCIABILIDAD o IDONEIDAD PARA UN PROPÓSITO
+PARTICULAR. Ver la GNU General Public License para más detalles.
+```
+
+Es **copyleft fuerte**: cualquier obra derivada que se distribuya debe seguir siendo libre y de
+código abierto bajo la misma licencia. Esto es deliberado — **esta herramienta queda para la
+humanidad** y no puede ser cerrada en un producto propietario. Ver también
+[`AI_DISCLOSURE.md`](AI_DISCLOSURE.md).
