@@ -64,9 +64,11 @@ bibtex = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/<org>/bib2graph"
-Documentation = "https://github.com/<org>/bib2graph/tree/main/docs"
-Issues = "https://github.com/<org>/bib2graph/issues"
+Homepage = "https://github.com/complexluise/bib2graph"
+Repository = "https://github.com/complexluise/bib2graph"
+Documentation = "https://github.com/complexluise/bib2graph/tree/main/docs"
+Changelog = "https://github.com/complexluise/bib2graph/blob/main/CHANGELOG.md"
+Issues = "https://github.com/complexluise/bib2graph/issues"
 
 [project.scripts]
 # CLI entry point. Hito 6: implementación real del CLI agente-native.
@@ -77,6 +79,16 @@ b2g = "bib2graph.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bib2graph"]
+
+# El sdist incluye fuente, tests y docs para reproducibilidad, pero NO el sandbox
+# de exploración (datos de investigación IED: CSV/parquet/graphml) ni los binarios
+# pesados de referencia: son del repo, no del paquete distribuible.
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "exploracion",
+    ".claude",
+    "docs/Notas/03-referencia",
+]
 
 # ----- uv (gestor del proyecto) -------------------------------------------
 # Dependencias de desarrollo gestionadas por uv: NO se publican en PyPI (a

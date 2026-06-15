@@ -23,6 +23,29 @@ cura, **la idea muta** y se vuelve a sembrar — acumulando sobre lo curado. La 
 > fuzzy (Hito 7), `Enricher` de co-citación (Hito 8), `NetworkSpec` YAML (Hito 9), visualización
 > (Hito 10) y costuras Zotero/Neo4j (Hito 11). Ver el [roadmap](docs/ROADMAP.md).
 
+## ⚠️ Experimental · construido con IA (AI-in-the-loop)
+
+**bib2graph es software experimental (alpha).** Mientras la versión mayor sea `0`, la API
+pública puede cambiar entre releases `MINOR` sin previo aviso (ver
+[`VERSIONING.md`](VERSIONING.md)). Usalo para explorar y validar, **no** como dependencia
+estable de producción todavía.
+
+**Declaración de uso de IA.** Este proyecto se construye con un proceso **AI-in-the-loop /
+humano-en-el-lazo**: una persona (Product Owner) plantea el problema, toma las decisiones y
+**revisa y aprueba** cada cambio; modelos de IA implementan el código, los tests y la
+documentación bajo esa dirección. Cada decisión de arquitectura queda en los
+[ADRs](docs/decisiones/) y las que tomó la IA en
+[`registro-ia.md`](docs/decisiones/registro-ia.md). El detalle del proceso y sus límites
+está en [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md).
+
+> **Dos sentidos de "AI-in-the-loop"**, ambos deliberados: (1) el *desarrollo* de la librería
+> es asistido por IA; y (2) el *producto* incorpora IA en el lazo de exploración bibliográfica
+> (forrajeo y curación asistidos). No los confundas.
+
+Como cualquier salida asistida por IA, **verificá los resultados** antes de usarlos en
+investigación: la reproducibilidad es un objetivo del diseño, pero la responsabilidad
+científica es de quien usa la herramienta.
+
 ## La arquitectura en un párrafo
 
 bib2graph es **un núcleo puro rodeado de costuras**. El núcleo opera sobre un **`Corpus`**
@@ -141,6 +164,7 @@ decisión, en los [ADRs](docs/decisiones/).
 | [`docs/API.md`](docs/API.md) | Contratos públicos: `Corpus`/`TabularBackend`, `Source`, `Store`, proyectores, analizadores, exportadores. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Secuencia de construcción y mapa de releases (v0.1 → v1.0), con estado por hito. |
 | [`docs/decisiones/`](docs/decisiones/) | ADRs (decisiones de arquitectura y su porqué) + `registro-ia.md` (decisiones tomadas por la IA). |
+| [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md) | Estado experimental y declaración de uso de IA (AI-in-the-loop): cómo se construye y qué implica. |
 | [`docs/metodología.md`](docs/metodología.md) | Método bibliométrico (autoridad de dominio). |
 | [`docs/referentes.md`](docs/referentes.md) | Mapa del ecosistema (OpenAlex, bibliometrix, VOSviewer…) y dónde está el hueco. |
 | [`docs/critica-base.md`](docs/critica-base.md) · [`docs/Notas/`](docs/Notas/) | Red team del concepto, postmortem de v0, exploración y material de referencia. |
