@@ -40,6 +40,14 @@
 > (no borran)**; `apply_thesaurus` **sobrescribe `keywords_id` desde `keywords_raw`** (ADR
 > [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md); thesaurus ADR 0011). `depth>1`
 > lanza `NotImplementedError`; `explain_candidate` (B4) es un stub gateado en `[llm]`.
+>
+> **Sincronizado con el Hito 6 (2026-06-15):** el **CLI agente-native `b2g`** está **construido**
+> (paquete `bib2graph.cli`, §convenciones): **11 subcomandos** (`seed`, `chain`, `filter`, `build`,
+> `export`, `snapshot`, `status`, `inspect`, `validate`, `accept`, `reject`), **envelope JSON común
+> versionado** (`schema="1"`), exit codes 0–5 mapeados **por tipo de error**, opción global
+> `--store` (obligatoria) y `LoopState` que transiciona automáticamente por comando (ADR
+> [0021](decisiones/0021-cli-agente-native-contrato.md)). **Con el Hito 6, las capacidades de v0.2
+> (Hitos 5–6) quedan completas** (ver [`ROADMAP.md`](ROADMAP.md)).
 
 ## Convenciones
 
@@ -50,18 +58,62 @@
 - Estado de implementación: **`v1`** vs **`futuro`** (declarado, NO implementado — marcado como
   tal, no falsamente prometido; lección 5 de v0).
 
-### Convenciones del CLI agente-native (ADR 0010; subcomandos en el Hito 6)
+### Convenciones del CLI agente-native (ADR 0010 / 0021; construido en el Hito 6)
 
-Cada subcomando lleva `--json` (salida estable/versionada) y exit codes (`0` éxito · `1` uso ·
-`2` datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado). Sin estado entre
-invocaciones: el estado vive en el archivo `.duckdb`. Subcomandos previstos:
+El CLI `b2g` (paquete `bib2graph.cli`, entry point `b2g = "bib2graph.cli:main"`) está
+**construido** con el contrato del ADR [0021](decisiones/0021-cli-agente-native-contrato.md). Cada
+subcomando lleva `--json` (envelope estable/versionado) y exit codes (`0` éxito · `1` uso · `2`
+datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado). **Sin estado entre
+invocaciones:** el estado vive en el archivo `.duckdb` (opción global `--store`).
+
+**Set de 11 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+y dejaba `accept`/`reject` como "solo programático"):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el `LoopState`:
-  `SEEDED/FORAGED/FILTERED/BUILT`, transiciones disponibles y conteos por `curation_status`).
-- El **`accept`/`reject` programático sobrevive** (vía backend / `Corpus`) para agentes y la
-  biblioteca viva (historia C4). La **curación interactiva rica (`curate`) y la GUI son futuro**:
-  ahí empieza la GUI (no en v0.2). Ver [`ROADMAP.md`](ROADMAP.md) Hito 6.
+  `SEEDED/FORAGED/FILTERED/BUILT`, transiciones disponibles y conteos por `curation_status`),
+  `inspect`, `validate`.
+- **`accept`** / **`reject`** (decisión del PO, ADR 0021 §A): curación programática por `--ids`,
+  ahora **subcomandos CLI de primera clase** (no solo API de librería), para que un agente cure la
+  biblioteca viva por subprocess (historia C4). La **curación interactiva rica (`curate`) y la GUI
+  siguen siendo futuro** (no en v0.2). Ver [`ROADMAP.md`](ROADMAP.md) Hito 6.
+
+**`--store` global (obligatoria).** Va en el grupo `b2g`, **antes** del subcomando:
+`b2g --store mi.duckdb seed --equation "..."`. Una investigación = un archivo `.duckdb` (ADR
+0015/0016). El CLI es stateful **vía archivo**, no vía proceso.
+
+**`build` y `export` separados** (decisión del PO, ADR 0021 §B): `build` computa `Networks.quick`
+(4 redes) y escribe artefactos a `<store_dir>/networks/<kind>/` (+ transiciona a `BUILT`);
+`export --format graphml|csv --out-dir ...` **relee** esos artefactos y los serializa (sin
+transición).
+
+**Transiciones automáticas de `LoopState`** (ADR 0021 §F): `seed`→`SEEDED`, `chain`→`FORAGED`,
+`filter`→`FILTERED`, `build`→`BUILT`; `accept`/`reject`/`export`/`snapshot`/`status`/`inspect`/
+`validate` **no transicionan**.
+
+**Envelope JSON común y versionado** (ADR 0021 §C): en modo `--json`, cada subcomando emite **un
+objeto JSON** con `schema="1"`:
+
+```json
+{
+  "schema": "1",
+  "ok": true,
+  "command": "seed",
+  "exit_code": 0,
+  "data": { },
+  "warnings": [],
+  "error": null
+}
+```
+
+En error conocido: `ok=false`, `data={}`, `error={"code": <CODE>, "message": <accionable>}`. Los
+exit codes se mapean **por tipo de error** (ADR 0021 §D): `DataError`→2, `ImportError`/
+`AttributeError`/`NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5.
+
+**Borde: el error de uso sale SIN envelope.** Si falta `--store` (u otra opción requerida), Click
+aborta el parseo **antes** de entrar al comando: se emite el mensaje de uso de Click en **stderr** y
+exit code `1`, **sin** envelope JSON. El envelope versionado solo cubre errores que ocurren
+**dentro** de la ejecución del comando.
 
 ---
 
@@ -800,8 +852,24 @@ for s in steps:
     print(s.name, s.count_before, "→", s.count_after)
 ```
 
-Y el modo declarativo (v0.2) para pipelines repetibles vía CLI (Hito 6):
+### 12.3 Por CLI agente-native (Hito 6 — construido)
+
+El mismo flujo, sin escribir Python, vía `b2g` (`--store` global, una línea JSON por comando):
 
 ```bash
-b2g networks --store biblioteca.duckdb --spec redes.yaml --json
+b2g --store biblioteca.duckdb seed --equation '"unequal ecological exchange"' --email luis@sostaina.com --json
+b2g --store biblioteca.duckdb chain --direction both --max-candidates 300 --json
+b2g --store biblioteca.duckdb filter --year-gte 2010 --language en --language es --json
+b2g --store biblioteca.duckdb accept --ids oa:abc123 --ids oa:def456 --json
+b2g --store biblioteca.duckdb build --json
+b2g --store biblioteca.duckdb export --format graphml --out-dir redes/ --json
+b2g --store biblioteca.duckdb status --json     # LoopState + conteos por curation_status
+```
+
+El **modo declarativo** (`b2g ... --spec redes.yaml`, `NetworkSpec` desde YAML) es del **Hito 9**
+(v0.3+), **no construido todavía**:
+
+```bash
+# Hito 9 (futuro): pipeline declarativo desde un YAML versionable
+b2g --store biblioteca.duckdb networks --spec redes.yaml --json
 ```

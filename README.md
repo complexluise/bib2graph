@@ -12,11 +12,16 @@ Kuhlthau): se siembra desde la ecuación, se forrajea (chaining rankeado por est
 cura, **la idea muta** y se vuelve a sembrar — acumulando sobre lo curado. La colección
 **vive y persiste** entre corridas en DuckDB.
 
-> **Estado: v0.1 feature-complete.** El flujo **de una ecuación a las redes, desde código
-> Python**, ya corre sobre la biblioteca viva. Construido y testeado: el `Corpus` canónico,
-> los proyectores/analizadores/exportadores, el backend DuckDB (biblioteca viva) y las fuentes
-> `OpenAlexSource`/`BibtexSource`. **Todavía no**: el forrajeo asistido (Hito 5) y la **CLI
-> `b2g`** (Hito 6) — hoy `b2g` es un placeholder honesto. Ver el [roadmap](docs/ROADMAP.md).
+> **Estado: v0.2 con capacidades completas** (Hitos 0–6 + 1.5 construidos y testeados). El flujo
+> completo **de una ecuación a las redes** ya corre sobre la biblioteca viva, **desde código Python
+> y desde el CLI `b2g`** (que **ya no es un placeholder**). Construido: el `Corpus` canónico sobre
+> `TabularBackend`, los proyectores/analizadores/exportadores, el backend DuckDB (biblioteca viva),
+> las fuentes `OpenAlexSource`/`BibtexSource`, el **forrajeo asistido** (`Forager`, chaining
+> rankeado por *information scent*) + `Preprocessor`/thesaurus + filtros PRISMA, y la **CLI
+> agente-native `b2g`** (11 subcomandos, `--json` versionado, exit codes; ADR
+> [0021](docs/decisiones/0021-cli-agente-native-contrato.md)). **Todavía no** (v0.3+ → v1.0): dedup
+> fuzzy (Hito 7), `Enricher` de co-citación (Hito 8), `NetworkSpec` YAML (Hito 9), visualización
+> (Hito 10) y costuras Zotero/Neo4j (Hito 11). Ver el [roadmap](docs/ROADMAP.md).
 
 ## La arquitectura en un párrafo
 
@@ -51,12 +56,35 @@ uv run pre-commit install     # hooks de pre-commit
 ```
 
 Capacidades opcionales como extras (lección de v0: núcleo liviano): `uv sync --extra bibtex`
-(sembrar desde un `.bib`), y `--extra zotero` / `--extra s2` / `--extra neo4j` / `--extra viz`
-/ `--extra dedup` / `--extra llm` a medida que se construyan.
+(sembrar desde un `.bib`, **ya construido**, Hito 4). Los extras `--extra dedup` (Hito 7) /
+`--extra s2` (Hito 8) / `--extra viz` (Hito 10) / `--extra zotero`·`--extra neo4j` (Hito 11) /
+`--extra llm` (`explain_candidate` + thesaurus fuzzy) están **declarados pero aún vacíos**: se
+poblarán a medida que se construya cada hito.
 
-## Uso (v0.1, desde código)
+## Uso
 
-De una ecuación a GraphML, sobre la biblioteca viva — sin CLI todavía:
+### Desde el CLI `b2g` (Hito 6 — construido)
+
+De una ecuación a un GraphML, sobre la biblioteca viva, **sin escribir código**. `--store` es
+global (una investigación = un archivo `.duckdb`); cada comando acepta `--json` (envelope
+versionado) para orquestar desde un agente:
+
+```bash
+b2g --store biblioteca.duckdb seed --equation '"unequal ecological exchange" OR "intercambio ecológico desigual"' --email vos@tucorreo.com
+b2g --store biblioteca.duckdb chain --direction both --max-candidates 300   # candidatos rankeados por scent
+b2g --store biblioteca.duckdb filter --year-gte 2010 --language en --language es   # PRISMA: marca rejected, no borra
+b2g --store biblioteca.duckdb build                                          # Networks.quick → artefactos
+b2g --store biblioteca.duckdb export --format graphml --out-dir redes/       # serializa GraphML/CSV
+b2g --store biblioteca.duckdb status --json                                  # LoopState + conteos por curation_status
+```
+
+Subcomandos: `seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`, `inspect`,
+`validate`, `accept`, `reject`. Exit codes `0` éxito · `1` uso · `2` datos · `3` dependencia ·
+`4` red · `5` store bloqueado/corrupto.
+
+### Desde código Python
+
+El mismo flujo, componiendo la librería:
 
 ```python
 from pathlib import Path
@@ -74,7 +102,7 @@ store.persist(seed.corpus)
 
 # 3) Proyectar a redes y exportar (acoplamiento sobre el corpus completo, co-autoría, etc.)
 for art in Networks.quick(store.load()):
-    GraphMLExporter().export(art.graph, art.metrics, out_dir=f"redes/{art.spec.kind}")
+    GraphMLExporter().export(art.graph, art.metrics, out_dir=Path(f"redes/{art.spec.kind}"))
 ```
 
 `Networks.quick` arma acoplamiento bibliográfico (corpus completo), co-autoría, instituciones

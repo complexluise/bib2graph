@@ -15,12 +15,20 @@
 > [0011](decisiones/0011-thesaurus-multilingue.md) (thesaurus). Diseño objetivo en
 > [`ARCHITECTURE.md`](ARCHITECTURE.md); contratos en [`API.md`](API.md) (ya reconciliado).
 >
-> **Estado de construcción (2026-06-15):** **Hitos 0, 1, 2, 1.5, 3, 4 y 5 TERMINADOS** — con el Hito 4,
-> el alcance de **v0.1 (Hitos 1–4 + 1.5) quedó feature-complete**: "ecuación → redes desde código
-> Python" es alcanzable end-to-end. El **Hito 5 (forrajeo + `Preprocessor` + filtros PRISMA)** está
-> construido (`Forager` con scent = frecuencia de enlace, `preview` sin red, filtros que marcan
-> `rejected`; ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)); falta el **CLI
-> agente-native (Hito 6)** para cerrar v0.2. Tras el **2º giro**
+> **Estado de construcción (2026-06-15):** **Hitos 0, 1, 2, 1.5, 3, 4, 5 y 6 TERMINADOS.** Con el
+> Hito 4, el alcance de **v0.1 (Hitos 1–4 + 1.5) quedó feature-complete** ("ecuación → redes desde
+> código Python", end-to-end). Con los **Hitos 5 (forrajeo + `Preprocessor` + filtros PRISMA) y 6
+> (CLI agente-native `b2g`)** construidos, **v0.2 tiene capacidades completas**: el flujo
+> `seed → chain → filter → build → export` corre de una **ecuación** a un **GraphML** **sin escribir
+> código** (criterio "V1 hecha" del PRD §9, a nivel de capacidades; el número de versión sigue en
+> 0.y). El Hito 6 (`b2g`, 11 subcomandos, envelope `--json` versionado, exit codes 0–5, `--store`
+> global, `LoopState` automático) está en el ADR
+> [0021](decisiones/0021-cli-agente-native-contrato.md); el forrajeo (`Forager`, scent = frecuencia
+> de enlace, `preview` sin red, filtros que marcan `rejected`) en el ADR
+> [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md). **Lo que falta** (v0.3+ → v1.0):
+> Hitos 7 (dedup fuzzy), 8 (`Enricher` co-citación), 9 (`NetworkSpec` YAML), 10 (viz) y 11
+> (Zotero/Neo4j), más la deuda declarada-no-construida (reporte de calidad concreto, traductor
+> WoS→OpenAlex, `explain_candidate` con LLM). Tras el **2º giro**
 > (acta del PO; ADR [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md))
 > se insertó un **Hito 1.5 — Rework de `Corpus` a `TabularBackend`** como el **paso inmediato
 > siguiente, secuenciado por delante del Hito 3** (instrucción explícita del PO: el rework va
@@ -47,11 +55,14 @@ reproducido, ver [`VERSIONING.md`](../VERSIONING.md)). Cortes acordados:
   proyectores/analizadores/export, `DuckDBBackend`/`DuckDBStore` y `OpenAlexSource`/`BibtexSource`.
   Con el **Hito 4 terminado**, todas las piezas existen y se componen en código (ver el ejemplo de
   `API.md` §12). **Sin CLI ni forrajeo todavía** (eso es v0.2). Es el **primer release etiquetado**.
-- **v0.2 — forrajeo + CLI agente-native (Hitos 5–6):** chaining rankeado, `Preprocessor`,
-  filtros PRISMA (comando **`filter`**), `b2g status` (`LoopState`) y la CLI `--json`. **El
-  forrajeo, el `Preprocessor` y los filtros (Hito 5) están construidos** (lógica desde código);
-  falta el CLI (Hito 6) para cerrar el corte. El
-  `accept`/`reject` programático sobrevive; la curación interactiva rica (`curate`) y la GUI son
+- **v0.2 — forrajeo + CLI agente-native (Hitos 5–6) · ✅ CAPACIDADES COMPLETAS (2026-06-15):**
+  chaining rankeado, `Preprocessor`, filtros PRISMA (comando **`filter`**), `b2g status`
+  (`LoopState`) y el CLI `b2g` con `--json`. **El forrajeo, el `Preprocessor` y los filtros (Hito 5)
+  y el CLI agente-native (Hito 6) están construidos.** El CLI expone **11 subcomandos** (`seed`,
+  `chain`, `filter`, `build`, `export`, `snapshot`, `status`, `inspect`, `validate`, `accept`,
+  `reject`) con envelope `--json` versionado y exit codes 0–5 (ADR
+  [0021](decisiones/0021-cli-agente-native-contrato.md)). El `accept`/`reject` programático
+  sobrevive (ahora como subcomando CLI); la curación interactiva rica (`curate`) y la GUI son
   futuro. Acá se cumple el criterio "V1 hecha" del PRD §9 a nivel de *capacidades* (el número de
   versión sigue en 0.y).
 - **v0.3+ — opcionales (Hitos 7–9):** dedup fuzzy, `Enricher` de co-citación, `NetworkSpec`.
@@ -499,14 +510,34 @@ keywords multilingües y curar con trazabilidad PRISMA.
 
 ---
 
-## Hito 6 — CLI agente-native como API (HITO DE PRODUCTO)
+## Hito 6 — CLI agente-native como API (HITO DE PRODUCTO) · ✅ TERMINADO
+
+> **Construido** así: paquete `src/bib2graph/cli/` (no `cli.py` plano) en **3 capas** — grupo Click
+> con opción global obligatoria `--store` (`cli/__init__.py`) → un módulo por comando en
+> `cli/commands/` con una **función núcleo `run_<cmd>(store_path, ...)` testeable sin Click** →
+> helpers compartidos (`_envelope` con `schema="1"`, `_errors` con el decorador `@handle_errors`,
+> `_store` con `open_store`). **11 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`,
+> `snapshot`, `status`, `inspect`, `validate`, **`accept`**, **`reject`**; los dos últimos y la
+> separación `build`/`export` son **decisiones del PO**). **Envelope JSON común versionado** por
+> comando; **exit codes 0–5 mapeados por tipo de excepción** (`DataError`→2, `ImportError`/
+> `AttributeError`/`NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5);
+> `--store` global (sin estado entre invocaciones, el estado vive en el `.duckdb`). El **`LoopState`
+> transiciona automáticamente** por comando (`seed`→SEEDED, `chain`→FORAGED, `filter`→FILTERED,
+> `build`→BUILT; el resto no transiciona). `build` computa `Networks.quick` + escribe artefactos a
+> `<store_dir>/networks/`; `export` los relee y serializa (GraphML/CSV). El error de uso "sin
+> `--store`" sale **sin envelope** (Click aborta el parseo: stderr + exit 1). ADR
+> [0021](decisiones/0021-cli-agente-native-contrato.md). Verifier PASA (**214 tests** verdes;
+> mypy/ruff limpios; el núcleo sigue importando sin `duckdb`). Decisiones de implementación de la IA
+> en [`decisiones/registro-ia.md`](decisiones/registro-ia.md) (Hito 6).
 
 **Alcance**
 
-- CLI (Click) delgado: `seed`, `chain`, **`filter`**, `build`, `export`, `snapshot`,
-  **`status`**, `inspect`, `validate`. **Cada subcomando con `--json`, exit codes (0–5), errores
-  accionables, `--help` rico** (ADR 0010, API.md §convenciones). Sin estado entre invocaciones (el
-  estado vive en el archivo `.duckdb`).
+- CLI (Click) delgado: **11 subcomandos** — `seed`, `chain`, **`filter`**, `build`, `export`,
+  `snapshot`, **`status`**, `inspect`, `validate`, **`accept`**, **`reject`** (los dos últimos,
+  decisión del PO que **amplía** el set de 9 de API.md §convenciones; ADR 0021). **Cada subcomando
+  con `--json` (envelope versionado), exit codes (0–5) por tipo de error, errores accionables,
+  `--help` rico** (ADR 0010/0021, API.md §convenciones). Sin estado entre invocaciones (el estado
+  vive en el archivo `.duckdb`, opción global `--store`).
 - **`filter`** (decisión del 2º giro, punto 4 del acta): comando **determinista** de filtros
   PRISMA (año/tipo/idioma/mínimo de citas) **con conteo en cada paso** → `Manifest.filters`. Es el
   nombre v0.2 de lo que antes se llamaba `curate`.
@@ -692,18 +723,18 @@ No se prometen ni se cablean clientes que no se usan.
 | A2 query ejecutada + reporte | 4 | `SeedResult` |
 | A3 sembrar por semillas/`.bib` | 4 | `BibtexSource` |
 | A4 ecuación registrada/versionada | 1 + 4 | `provenance`/`Manifest` |
-| A5 ecuaciones que mutan + acumular | 3 + 6 | biblioteca viva + re-seed por CLI |
+| A5 ecuaciones que mutan + acumular | 3 + 6 ✅ | biblioteca viva + re-seed por CLI (`b2g seed` acumula vía `--store`) |
 | B1 back/forward chaining | 5 ✅ | `Forager.chain` (backward puro / forward red vía `fetch_citing`) |
 | B2 profundidad + preview | 5 ✅ | `preview` SIN red (`forward_requires_fetch`), `max_candidates`; `depth>1` futuro |
 | B3 ranking por estructura | 5 ✅ | *information scent* = frecuencia de enlace (ADR 0020) |
 | B4 explicación opcional de IA | 5 | `explain_candidate` (`[llm]`) — **stub gateado**, LLM en v0.2 |
 | C1 dedup/normalización autores/inst. | 5 ✅ (det.) + 7 (fuzzy) | `normalize` conservador construido; fuzzy en Hito 7 |
 | C2 thesaurus multilingüe | 5 ✅ | `apply_thesaurus` (sobrescribe `keywords_id` desde `keywords_raw`) |
-| C3 filtros incl/excl con conteo | 5 ✅ (lógica) + 6 (CLI `filter`) | flujo PRISMA; marcan `rejected`, no borran |
-| C4 aceptar/rechazar + biblioteca viva | 1 (modelo) + 1.5 (backend) + 3 (persist DuckDB) + 11 (Zotero) | `accept`/`reject` programático sobrevive (CLI/agentes); `curate`+GUI = futuro |
+| C3 filtros incl/excl con conteo | 5 ✅ (lógica) + 6 ✅ (CLI `filter`) | flujo PRISMA; marcan `rejected`, no borran; `b2g filter` con conteos por paso |
+| C4 aceptar/rechazar + biblioteca viva | 1 (modelo) + 1.5 (backend) + 3 (persist DuckDB) + 6 ✅ (CLI `accept`/`reject`) + 11 (Zotero) | `accept`/`reject` ahora subcomandos CLI (`b2g accept/reject --ids`); `curate`+GUI = futuro |
 | D1 cinco proyecciones | 2 + 8 (co-citación) | |
 | D2 métricas y comunidades | 2 | |
 | D3 asortatividad + composición + proxy | 2 | |
 | D4 export GraphML/CSV | 2 | |
-| E1 snapshot reproducible | 1 + 6 | `snapshot` + CLI |
-| E2 CLI `--json` + exit codes | 0 (principios) + 6 (CLI) | |
+| E1 snapshot reproducible | 1 + 6 ✅ | `Corpus.snapshot` + `b2g snapshot` |
+| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) | `b2g` 11 subcomandos, envelope `--json` versionado, exit 0–5 (ADR 0021) |

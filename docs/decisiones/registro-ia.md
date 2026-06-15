@@ -218,3 +218,36 @@
 > historial de corridas de filtro a nivel Manifest (sí en `provenance` por paper); (c) el **reporte de
 > calidad** del ADR [0018](0018-source-agnostico-calidad.md) sigue **declarado, no construido**
 > (concreto v0.2+). Símbolos públicos nuevos en `__init__.py`: ver [`../API.md`](../API.md) §5–§6.
+
+---
+
+## 2026-06-15 — Hito 6 (CLI agente-native `b2g` como producto)
+
+> Las **decisiones de contrato** de este hito son **arquitectónicas** y van al ADR
+> [0021](0021-cli-agente-native-contrato.md): el **set de 11 subcomandos** (incl. `accept`/`reject`)
+> y la **separación `build`/`export`** son **decisiones del PO** (marcadas como tal en el ADR); la
+> forma del envelope JSON versionado, el mapeo de exit codes por tipo de excepción, el `--store`
+> global y las transiciones automáticas de `LoopState` son de la IA validadas por el PO proxy. Lo de
+> abajo son las decisiones **de implementación / proceso** que tomó la IA al construir el CLI. El
+> verifier PASA (**214 tests** verdes; mypy/ruff limpios; el núcleo sigue importando sin `duckdb`).
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| 6.0 **(PO)** | **Set de 11 subcomandos con `accept`/`reject` como CLI** (no solo API de librería) y **`build`/`export` separados** | El PO decidió exponer la curación programática (`accept`/`reject` por `--ids`) como subcomando de primera clase para agentes (C4), y separar el cómputo de redes (`build` → artefactos a disco + `BUILT`) de su serialización (`export` → formato pedido, sin transición). Amplía lo que decía `API.md` §convenciones | Baja: revertir contradice el ADR 0021 | **Sí — decisión del PO** (ADR 0021) |
+| 6.1 | **Paquete `cli/` (no `cli.py`) en 3 capas**: grupo Click + opción global `--store` (`cli/__init__.py`) → un módulo por comando en `cli/commands/` con una **función núcleo `run_<cmd>(store_path, ...)` testeable sin Click** → helpers compartidos (`_envelope`, `_errors`, `_store`) | El ROADMAP manda testear **la función detrás del comando**, no el parser de Click; separar `run_<cmd>` del decorador Click lo permite. Un módulo por comando mantiene cada subcomando aislado y el grupo trivial de leer | Alta: fusionar módulos no cambia la superficie (`b2g <cmd>`); el entry point sigue siendo `bib2graph.cli:main` | Sí (PO proxy; verifier PASA) |
+| 6.2 | **Envelope JSON con `build_envelope`/`emit` centralizados** (`cli/_envelope.py`), `schema="1"` como constante (`ENVELOPE_SCHEMA_VERSION`); `emit` imprime **una línea JSON** con `default=str` y `ensure_ascii=False` | El contrato `--json` debe ser idéntico entre los 11 comandos (ADR 0021 §C); una sola función constructora evita drift. `default=str` serializa tipos no-JSON (fechas) sin romper; `ensure_ascii=False` preserva acentos | Alta: cambiar la forma bumpea `schema`; los comandos no se reescriben (todos llaman `build_envelope`) | Sí (PO proxy; verifier PASA) |
+| 6.3 | **Decorador `@handle_errors(command)` que captura por tipo y mapea a exit codes** (`B2GError`→propio · `OSError`/`StoreLockedError`→5 · `ImportError`/`AttributeError`→3 · `httpx.HTTPError`→4); jerarquía `B2GError` (`UsageError`/`DataError`/`DependencyError`/`NetworkError`/`StoreError`) con `exit_code`+`code` por clase | Mapeo uniforme y testeable (un caso por código, ADR 0021 §D) sin que cada comando reinvente el try/except; la captura **por tipo** de `httpx.HTTPError` cubre toda la jerarquía de red (ConnectError/Timeout/…) en exit 4 | Media: cambiar el mapeo toca el decorador y sus tests; la jerarquía es aditiva | Sí (PO proxy; verifier PASA) |
+| 6.4 | **`open_store` helper** (`cli/_store.py`) que traduce `StoreLockedError`/`OSError` a `StoreError` (exit 5) en la apertura del store, reusado por todos los comandos | Centraliza el manejo del bloqueo single-writer (ADR 0019) para que ningún comando repita el try/except; el decorador captura `StoreError` y emite exit 5 | Alta: inlinear el helper es trivial | Sí (PO proxy; verifier PASA) |
+| 6.5 | **Transiciones de `LoopState` automáticas tras persistir** (`seed`→SEEDED, `chain`→FORAGED, `filter`→FILTERED, `build`→BUILT); `accept`/`reject`/`export`/`snapshot`/`status`/`inspect`/`validate` **no transicionan** | El usuario/agente no debería gestionar el lazo a mano; el comando que muta el corpus avanza el estado (transiciones permisivas, ADR 0016). Curar (`accept`/`reject`) no es una fase del flujo, así que no mueve el lazo | Alta: las transiciones son permisivas; cambiar a qué estado salta cada comando es local | Sí (PO proxy; verifier PASA) |
+| 6.6 | **Tabla `_TRANSITIONS` en `status`** mapea estado actual → próximos comandos disponibles (informativa, derivada del lazo permisivo de ADR 0016) | `b2g status` debe mostrar "próximos pasos" a humanos e IAs (ADR 0016: comparten el mapa). Como las transiciones son permisivas, la tabla es una **guía**, no un guardia que bloquee saltos | Alta: la tabla es presentación; ampliarla no cambia el comportamiento del lazo | Sí (PO proxy; verifier PASA) |
+| 6.7 | **`build` escribe artefactos intermedios a `<store_dir>/networks/<kind>/` y `export` los relee de disco**; `metrics.json` filtra a tipos JSON-serializables; las comunidades se fusionan como atributo de nodo `community` en el GraphML | Separar `build`/`export` (ADR 0021 §B) exige un punto de intercambio: el directorio `networks/` junto al store. **Gap conocido:** `export` relee GraphML en vez de recibir artefactos en memoria — acoplamiento por disco, precio de desacoplar los pasos | Media: pasar a artefactos en memoria exigiría unir `build`/`export` o un cache | Sí (PO proxy; verifier PASA) |
+
+> **Decisiones del PO de este ciclo** (en el ADR [0021](0021-cli-agente-native-contrato.md),
+> registradas acá para contexto): set de **11 subcomandos** con `accept`/`reject` como CLI (amplía
+> `API.md` §convenciones); **`build` y `export` separados**.
+>
+> **Gaps conocidos declarados** (no construidos): (a) `export` relee artefactos de **disco** (no en
+> memoria); (b) `b2g networks --spec redes.yaml` del ejemplo declarativo (`API.md` §12.2) es del
+> **Hito 9**, no construido; (c) un `OSError` del store no relacionado con el bloqueo igual cae en
+> exit 5 (conservador). El entry point `b2g = "bib2graph.cli:main"` ya estaba declarado desde el
+> Hito 0; el Hito 6 reemplaza el placeholder por los 11 subcomandos reales.

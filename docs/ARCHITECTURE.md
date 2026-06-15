@@ -152,17 +152,22 @@ GraphML y CSV (nodos y aristas). I/O de salida puro y predecible, sin backend.
 
 Orquestación pura sobre la costura `Source`: dado el corpus actual, computa candidatos por
 **backward chaining** (referencias de las semillas) y **forward chaining** (citantes), y los
-**rankea por *information scent*** (acoplamiento/co-citación, centralidad). Reglas (ADR 0008,
-nota 07): **profundidad 1 por defecto**, opt-in a 2; **preview de crecimiento** ("sumaría ~N
-papers") y **tope** configurable antes de traer; **pool cortés** de OpenAlex. Un **paso opcional
-de IA** explica *por qué* un candidato es relevante — **sin decidir** por el humano. La
-distinción importa: el chaining para **construir redes** (coupling/co-citación) usa refs/citas
-ya presentes y **no agranda** el set; el chaining para **crecer el corpus** (snowballing) es el
-que aplica profundidad.
+**rankea por *information scent***. El *information scent* concreto (decidido en el Hito 5, ADR
+[0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)) es la **frecuencia de enlace de
+cita con el corpus** —backward: nº de papers del corpus que listan al candidato; forward: nº de
+papers del corpus a los que el candidato cita— una **función pura sobre conteos**, **no**
+acoplamiento bibliográfico, co-citación ni centralidad de red. Reglas (ADR 0008, nota 07):
+**profundidad 1 por defecto** (`depth>1` lanza `NotImplementedError`); **preview de crecimiento**
+("sumaría ~N papers") **sin red** —backward exacto local; forward no estimable sin fetch
+(`forward_requires_fetch`)— y **tope** (`max_candidates`) configurable antes de traer; **pool
+cortés** de OpenAlex. Forward exige `source.fetch_citing(...)` (capacidad de `OpenAlexSource`, **no**
+del Protocol `Source`). Un **paso opcional de IA** (`explain_candidate`, stub gateado en `[llm]`)
+explica *por qué* un candidato es relevante — **sin decidir** por el humano.
 
 ### 3.6 `Preprocessor` — normalización (núcleo)
 
-Determinístico e idempotente: canonicalización de nombres de autor, periodización, y
+Determinístico e idempotente: canonicalización **conservadora** de nombres de autor
+(`authors_id`: lowercase + acentos + espacios) y `language` (ISO 639-1 primario), y
 **normalización de keywords vía thesaurus multilingüe** (en/es/pt; dict `canónico → aliases` en
 JSON portable; ADR 0011). Lo *fuzzy* (dedup aproximado de autores) vive en el extra `[dedup]`;
 el **fallback semántico/LLM del thesaurus** es v0.2.
@@ -271,7 +276,7 @@ El **snapshot** es un **export sellado** del estado vivo en un instante: `corpus
 git-lfs/DVC. A diferencia del diseño previo, el snapshot **no es** la persistencia: es una **foto
 derivable** de una biblioteca que sigue viva.
 
-### 6.3 CLI agente-native como columna primaria (ADR 0010)
+### 6.3 CLI agente-native como columna primaria (ADR 0010 / 0021)
 
 La CLI es **superficie primaria desde el primer comando**, no un adorno futuro: cada subcomando
 con **doble salida** (humana + `--json` estable/versionado), **exit codes** claros (`0` éxito ·
@@ -279,6 +284,24 @@ con **doble salida** (humana + `--json` estable/versionado), **exit codes** clar
 corrupto), **errores accionables**, `--help` rico y **eficiencia de tokens**. **Sin estado entre
 invocaciones**: el estado vive en el `Store` DuckDB, no en la sesión. Tool schemas JSON / MCP son
 trabajo posterior, pero la API se **diseña con estos principios desde el hito 1**.
+
+**As-built (Hito 6, ADR [0021](decisiones/0021-cli-agente-native-contrato.md)):** el CLI es un
+**paquete `bib2graph.cli/`** (no un `cli.py` plano) con **3 capas**:
+
+1. **Capa Click** (`cli/__init__.py` + `cli/commands/<cmd>.py`): el grupo `b2g` con la opción
+   global obligatoria `--store`, y un comando Click por subcomando que sólo parsea flags y delega.
+2. **Capa de funciones núcleo** (`run_<cmd>(store_path, ...)` en cada módulo de comando):
+   **testeable sin Click**, contiene la lógica del subcomando. El ROADMAP testea esta función, no
+   el parser de Click.
+3. **Capa de envelope/errores** (`cli/_envelope.py`, `cli/_errors.py`, `cli/_store.py`): el
+   envelope JSON versionado (`schema="1"`) compartido y el decorador `@handle_errors` que **mapea
+   errores a exit codes por tipo de excepción** (`DataError`→2, `ImportError`/`AttributeError`/
+   `NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5).
+
+Son **11 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
+`inspect`, `validate`, `accept`, `reject`); `build`/`export` están **separados** y el `LoopState`
+transiciona automáticamente por comando (ADR 0021). El error de uso (p. ej. falta `--store`) sale
+**sin envelope** (Click aborta el parseo: stderr + exit 1).
 
 ## 7. Layout de dependencias (extras)
 
@@ -332,6 +355,8 @@ Los canónicos — [`PRD.md`](PRD.md), este doc, [`API.md`](API.md), [`ROADMAP.m
 [ADR 0007–0011](decisiones/) — están **reconciliados** con el giro, y luego con el **2º giro** (ADR
 [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md):
 `Corpus` sobre `TabularBackend` con `DuckDBBackend` por defecto, `LoopState`, reproducibilidad por
-snapshot, `Source` agnóstico, single-writer). Las notas de proceso ya promovidas viven en
-[`_archivo/`](_archivo/). Implementación por hitos en curso (**Hitos 0–3 + 1.5 terminados**); ver
+snapshot, `Source` agnóstico, single-writer). El contrato del CLI agente-native está en el ADR
+[0021](decisiones/0021-cli-agente-native-contrato.md). Las notas de proceso ya promovidas viven en
+[`_archivo/`](_archivo/). Implementación por hitos en curso (**Hitos 0–6 + 1.5 terminados**: núcleo,
+biblioteca viva, fuentes, forrajeo y el CLI `b2g`; v0.2 con capacidades completas); ver
 [`ROADMAP.md`](ROADMAP.md).

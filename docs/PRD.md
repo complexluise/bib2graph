@@ -316,8 +316,8 @@ precisada por el ADR [0015](decisiones/0015-corpus-tabular-backend.md):
 - **Zotero** queda como **costura externa opt-in en V1.1**, no como la persistencia de 1.0.
 
 Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.2), `API.md` (§1, §4) y
-`ROADMAP.md` (Hitos 1.5/3). El estado de construcción (Hitos 0–3 + 1.5 terminados) vive en el
-`ROADMAP.md`.
+`ROADMAP.md` (Hitos 1.5/3). El estado de construcción (Hitos 0–6 + 1.5 terminados; v0.2 con
+capacidades completas) vive en el `ROADMAP.md`.
 
 ## 9. Criterios de "V1 hecha"
 
@@ -356,6 +356,10 @@ Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.
 2. ✅ `ARCHITECTURE.md`, `API.md` y `ROADMAP.md` **reconciliados** con este PRD (§8) y con los
    ADR 0007–0011, y luego con el **2º giro** (ADR
    [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md)).
-3. ✅ Implementación por hitos en curso (coder): **Hitos 0–3 + 1.5 terminados** (núcleo del corpus
-   stateful sobre `TabularBackend`, proyectores/analizadores/export y la biblioteca viva en DuckDB);
-   sigue el Hito 4 (sembrado por ecuación → OpenAlex). Estado vivo en el [`ROADMAP.md`](ROADMAP.md).
+3. ✅ Implementación por hitos en curso (coder): **Hitos 0–6 + 1.5 terminados** (núcleo del corpus
+   stateful sobre `TabularBackend`, proyectores/analizadores/export, biblioteca viva en DuckDB,
+   fuentes OpenAlex/BibTeX, forrajeo + `Preprocessor` + filtros PRISMA, y el **CLI agente-native
+   `b2g`** — 11 subcomandos, ADR [0021](decisiones/0021-cli-agente-native-contrato.md)). Con ello
+   **v0.2 alcanza capacidades completas** (criterio "V1 hecha" del §9 a nivel de capacidades).
+   Pendiente para v0.3+ → v1.0: Hitos 7–11 (dedup fuzzy, `Enricher` co-citación, `NetworkSpec` YAML,
+   viz, Zotero/Neo4j). Estado vivo en el [`ROADMAP.md`](ROADMAP.md).

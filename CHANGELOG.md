@@ -13,10 +13,11 @@ control y la reconcilia.
 
 ## [Unreleased]
 
-> **v0.1 feature-complete** (Hitos 0–4 + 1.5) y **Hito 5** construidos: de una
-> ecuación de búsqueda a las redes bibliométricas, desde código Python, sobre una
-> biblioteca viva en DuckDB. Falta el CLI (Hito 6) para cerrar las capacidades de
-> v0.2. Resumen por capacidad (no commit a commit):
+> **v0.1 feature-complete** (Hitos 0–4 + 1.5) + **Hitos 5 y 6** construidos: de
+> una ecuación de búsqueda a las redes bibliométricas, **desde código Python o
+> desde el CLI `b2g`**, sobre una biblioteca viva en DuckDB. v0.2 con capacidades
+> completas (forrajeo + CLI agente-native). Resumen por capacidad (no commit a
+> commit):
 
 ### Added
 - **Núcleo `Corpus`** (tabla canónica Arrow + Pydantic v2): identidad estable
@@ -34,6 +35,10 @@ control y la reconcilia.
 - **Forrajeo** (`Forager`: chaining backward/forward, ranking por *information
   scent* = frecuencia de enlace, `preview` sin red, filtros PRISMA que marcan
   `rejected`, `Preprocessor` + thesaurus multilingüe). ADR 0008/0011/0020.
+- **CLI agente-native `b2g`** (`cli/`): 11 subcomandos (`seed`/`chain`/`filter`/
+  `accept`/`reject`/`build`/`export`/`snapshot`/`status`/`inspect`/`validate`),
+  envelope `--json` versionado, exit codes 0–5, `--store` global sin estado,
+  transiciones `LoopState` automáticas. ADR 0021.
 - **2º giro** (ADR 0015–0019): `Corpus` sobre `TabularBackend`, máquina de estados
   del lazo (`LoopState`), reproducibilidad por snapshot sellado, `Source`
   agnóstico (mínimo universal vs enriquecimiento), concurrencia single-writer.
