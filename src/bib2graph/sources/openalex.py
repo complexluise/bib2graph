@@ -482,6 +482,58 @@ class OpenAlexSource:
             translation_report=translation_report,
         )
 
+    def fetch_citing(self, openalex_id: str) -> list[dict[str, Any]]:
+        """Trae los works que citan al paper con ``openalex_id`` dado.
+
+        Usa ``GET /works?filter=cites:{openalex_id}`` con paginación por
+        cursor, reutilizando el cliente httpx y ``_work_to_row``.  Es el
+        mecanismo del forward chaining (Hito 5, ADR 0008).
+
+        Calcula el ``id`` canónico (D1) de cada citante antes de devolverlo,
+        de modo que los consumidores de estas filas (``Forager``,
+        ``compute_forward_scent``) pueden identificar los candidatos.
+
+        Args:
+            openalex_id: ID corto de OpenAlex (p. ej. ``W12345``).
+
+        Returns:
+            Lista de dicts con el schema canónico de filas del Corpus
+            (misma estructura que produce ``_work_to_row`` + ``id`` calculado),
+            con ``is_seed=False`` y provenance ``chaining_hop=1``.
+        """
+        from bib2graph.corpus import _compute_id
+
+        filter_str = f"cites:{openalex_id}"
+        fetched_at = datetime.now(UTC).isoformat()
+        equation_id = f"chaining:forward:{openalex_id}"
+
+        works, _ = self._fetch_all(filter_str)
+        rows: list[dict[str, Any]] = []
+        for work in works:
+            row = _work_to_row(work, equation_id=equation_id, fetched_at=fetched_at)
+            # Sobrescribir is_seed y provenance para forward chaining
+            row["is_seed"] = False
+            provenance_event = {
+                "action": "fetched",
+                "equation_id": None,
+                "chaining_hop": 1,
+                "source": "openalex",
+                "fetched_at": fetched_at,
+                "decided_by": None,
+                "decided_at": None,
+            }
+            row["provenance"] = json.dumps([provenance_event])
+            # Calcular id canónico (D1) para que Forager y compute_forward_scent
+            # puedan identificar el candidato
+            row["id"] = _compute_id(
+                openalex_id=row.get("openalex_id"),
+                doi=row.get("doi"),
+                title=str(row.get("title") or ""),
+                year=row.get("year"),
+            )
+            rows.append(row)
+        return rows
+
     def load(self, path: str) -> Corpus:
         """Carga un export JSON de OpenAlex como ``Corpus``.
 

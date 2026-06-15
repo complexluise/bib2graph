@@ -6,6 +6,10 @@ Hito 2: proyectores, analizadores, exportadores y ``Networks``.
 Hito 3: ``DuckDBBackend`` / ``DuckDBStore`` (biblioteca viva, carga perezosa).
 Hito 4: ``OpenAlexSource``, ``BibtexSource``, ``Source``, ``SeedResult``
         (costura de siembra directa — httpx es núcleo, sin carga perezosa).
+Hito 5: ``Forager``, ``RankedCandidates``, ``GrowthPreview``, ``Preprocessor``,
+        ``apply_filters``, ``FilterCriterion`` (forrajeo + preprocessor + filtros
+        PRISMA).  ``explain_candidate`` se importa desde ``bib2graph.foraging``
+        (gateado en ``[llm]``, NO listo como capacidad de la raíz).
 
 Símbolos públicos exportados:
   - Hito 1/1.5: ``Corpus``, ``Manifest``, ``CorpusSnapshot``, ``SchemaError``,
@@ -17,6 +21,9 @@ Símbolos públicos exportados:
   - Hito 3: ``DuckDBBackend``, ``DuckDBStore`` (carga perezosa — PEP 562).
   - Hito 4: ``OpenAlexSource``, ``BibtexSource``, ``Source``, ``SeedResult``
     (import directo; httpx es núcleo, sin efectos de import).
+  - Hito 5: ``Forager``, ``RankedCandidates``, ``GrowthPreview``,
+    ``Preprocessor``, ``apply_filters``, ``FilterCriterion``
+    (import directo; núcleo puro sin efectos de import).
 
 ``DuckDBBackend`` y ``DuckDBStore`` se exponen vía ``__getattr__`` perezoso
 (PEP 562) para que ``import bib2graph`` NO importe ``duckdb`` y el smoke test
@@ -24,7 +31,7 @@ del Hito 0 siga verde (``'duckdb' not in sys.modules`` tras el import).
 ``OpenAlexSource`` y ``BibtexSource`` se importan directamente (httpx es
 núcleo — no hay efectos de import que deban diferirse).
 
-Ver ``docs/API.md`` §1-2, §4, §7-10.
+Ver ``docs/API.md`` §1-2, §4-6, §7-10.
 """
 
 from __future__ import annotations
@@ -32,6 +39,8 @@ from __future__ import annotations
 from bib2graph.backends import InMemoryBackend, TabularBackend
 from bib2graph.corpus import Corpus, CorpusSnapshot, Manifest
 from bib2graph.exporters import CsvExporter, GraphMLExporter
+from bib2graph.filters import FilterCriterion, apply_filters
+from bib2graph.foraging import Forager, GrowthPreview, RankedCandidates
 from bib2graph.networks.analyzer import (
     QualityThresholds,
     assortativity,
@@ -50,6 +59,7 @@ from bib2graph.networks.projectors import (
     KeywordCoOccurrenceProjector,
 )
 from bib2graph.networks.spec import NetworkArtifact
+from bib2graph.preprocessors import Preprocessor
 from bib2graph.schemas import SchemaError
 from bib2graph.sources import BibtexSource, OpenAlexSource, SeedResult, Source
 
@@ -63,7 +73,10 @@ __all__ = [
     "CsvExporter",
     "DuckDBBackend",
     "DuckDBStore",
+    "FilterCriterion",
+    "Forager",
     "GraphMLExporter",
+    "GrowthPreview",
     "InMemoryBackend",
     "InstitutionCollaborationProjector",
     "KeywordCoOccurrenceProjector",
@@ -71,11 +84,14 @@ __all__ = [
     "NetworkArtifact",
     "Networks",
     "OpenAlexSource",
+    "Preprocessor",
     "QualityThresholds",
+    "RankedCandidates",
     "SchemaError",
     "SeedResult",
     "Source",
     "TabularBackend",
+    "apply_filters",
     "assortativity",
     "centrality",
     "cocitation_quality_report",
