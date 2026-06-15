@@ -1,6 +1,18 @@
 """bib2graph — librería para construir redes bibliométricas reproducibles.
 
-El paquete está en Hito 0 (andamiaje). El núcleo puro y las costuras se
-construyen siguiendo ``docs/ROADMAP.md``. Esta versión no expone nada de la
-API pública todavía; la primera línea útil aparece con el Hito 1.
+Hito 1: núcleo de la tabla canónica ``Corpus``. Expone el wrapper de semántica
+de valor (``Corpus``), sus metadatos sellados (``Manifest``, ``CorpusSnapshot``)
+y la excepción de contrato (``SchemaError``). Ver ``docs/API.md`` §1.
 """
+
+from __future__ import annotations
+
+from bib2graph.corpus import Corpus, CorpusSnapshot, Manifest
+from bib2graph.schemas import SchemaError
+
+__all__ = [
+    "Corpus",
+    "CorpusSnapshot",
+    "Manifest",
+    "SchemaError",
+]
