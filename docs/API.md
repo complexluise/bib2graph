@@ -653,47 +653,56 @@ def deduplicate_keywords(corpus: Corpus, *, threshold: float = 0.9) -> Corpus:
 
 ---
 
-## 12. Ejemplo de uso (pipeline por defecto: ecuación → biblioteca viva → redes)
+## 12. Ejemplo de uso (ecuación → biblioteca viva → redes)
 
-> `DuckDBStore` se importa desde `bib2graph` (re-export **perezoso** vía PEP 562, §4.1):
-> `import bib2graph` no arrastra duckdb; el módulo se carga al tocar el símbolo. `OpenAlexSource`/
-> `BibtexSource` ya están **construidos** (Hito 4, import directo). `Forager`/`Preprocessor` son del
-> **Hito 5 (v0.2, aún no construidos)**: ese tramo (pasos 2–3) es el pipeline objetivo; el resto
-> (sembrar → persistir → snapshot → redes) ya corre con lo de v0.1.
+`DuckDBStore` se importa desde `bib2graph` (re-export **perezoso** vía PEP 562, §4.1): `import
+bib2graph` no arrastra duckdb. `OpenAlexSource`/`BibtexSource`/`Networks`/`GraphMLExporter` están
+**construidos** (Hitos 2 y 4).
+
+### 12.1 Hoy (v0.1) — corre con lo construido
+
+De una ecuación a las redes, curando a mano (sin forrajeo ni CLI todavía):
 
 ```python
 from pathlib import Path
-from bib2graph import OpenAlexSource, Forager, Preprocessor, DuckDBStore, Networks, GraphMLExporter
+from bib2graph import OpenAlexSource, DuckDBStore, Networks, GraphMLExporter
 
-store = DuckDBStore(Path("biblioteca.duckdb"))          # biblioteca viva: DuckDBBackend del Corpus
-                                                        # (1 archivo = 1 investigación, ADR 0015/0016)
-                                                        # DuckDBStore se carga perezosamente (PEP 562)
-
-# 1) Sembrar desde una ecuación consciente (query ejecutada + reporte de traducción visibles)
+# 1) Sembrar desde una ecuación consciente (query ejecutada + reporte de límites visibles)
 seed = OpenAlexSource(email="luis@sostaina.com").seed(
-    'title_and_abstract.search:("unequal ecological exchange" OR "intercambio ecológico desigual")'
-)
+    '"unequal ecological exchange" OR "intercambio ecológico desigual"')
 print(seed.executed_query); print("\n".join(seed.translation_report))
 
-# 2) Forrajear: candidatos rankeados por information scent (depth=1, con preview de crecimiento)
-forager = Forager(OpenAlexSource(email="luis@sostaina.com"), depth=1, max_candidates=300)
-print(forager.preview(seed.corpus))                     # "sumaría ~N papers"
-ranked = forager.chain(seed.corpus)
+# 2) Curar a mano (juicio humano): las semillas entran como `candidate`
+corpus = seed.corpus.accept(ids=[...]).reject(ids=[...])
 
-# 3) Curar (juicio humano) y normalizar (thesaurus multilingüe determinista)
-corpus = seed.corpus.merge(ranked.corpus).accept(ids=[...]).reject(ids=[...])
-corpus = Preprocessor().apply_thesaurus(corpus, Path("thesaurus_ied.json"))
-
-# 4) Persistir en la biblioteca viva + exportar un snapshot reproducible
+# 3) Persistir en la biblioteca viva (DuckDB; acumula entre corridas) + snapshot reproducible
+store = DuckDBStore(Path("biblioteca.duckdb"))          # 1 archivo = 1 investigación (ADR 0015/0016)
 store.persist(corpus)
 snap = store.load().snapshot(Path("snapshots/ied-2026-06-15"))
 
-# 5) Redes (acoplamiento sobre corpus completo) + export
+# 4) Redes (acoplamiento sobre corpus completo, co-autoría, instituciones, co-word) + export
 for art in Networks.quick(snap.corpus):
     GraphMLExporter().export(art.graph, art.metrics, out_dir=Path(f"redes/{art.spec.kind}"))
 ```
 
-El modo declarativo (v0.2) para pipelines repetibles:
+### 12.2 Objetivo (v0.2) — con forrajeo y thesaurus
+
+`Forager`/`Preprocessor` son del **Hito 5 (aún no construidos)**; este es el pipeline objetivo:
+
+```python
+from bib2graph import OpenAlexSource, Forager, Preprocessor   # Forager/Preprocessor: v0.2
+
+# 2') Forrajear: candidatos rankeados por information scent (depth=1, con preview de crecimiento)
+forager = Forager(OpenAlexSource(email="luis@sostaina.com"), depth=1, max_candidates=300)
+print(forager.preview(seed.corpus))                     # "sumaría ~N papers"
+ranked = forager.chain(seed.corpus)
+
+# 3') Curar lo forrajeado y normalizar (thesaurus multilingüe determinista)
+corpus = seed.corpus.merge(ranked.corpus).accept(ids=[...]).reject(ids=[...])
+corpus = Preprocessor().apply_thesaurus(corpus, Path("thesaurus_ied.json"))
+```
+
+Y el modo declarativo (v0.2) para pipelines repetibles vía CLI (Hito 6):
 
 ```bash
 b2g networks --store biblioteca.duckdb --spec redes.yaml --json

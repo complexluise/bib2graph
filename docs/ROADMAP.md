@@ -103,8 +103,10 @@ Testcontainers). El núcleo es todo `unit`.
 **Alcance**
 
 - Estructura del paquete y `pyproject.toml` con **núcleo** (`pyarrow`, `pydantic`, `networkx`,
-  `click`, `tqdm`, **`duckdb`**, **`httpx`** como cliente OpenAlex) y extras declarados pero
-  mínimos (`[zotero]`, `[s2]`, `[neo4j]`, `[viz]`, `[dedup]`, `[llm]`; ADR 0005).
+  `click`, `tqdm`, **`duckdb`**, **`httpx`** como cliente OpenAlex) y extras opt-in (`[bibtex]`,
+  `[zotero]`, `[s2]`, `[neo4j]`, `[viz]`, `[dedup]`, `[llm]`). **La lista canónica de extras vive
+  en `pyproject.toml`** (fuente de verdad); el ADR 0005 fija el *principio* (núcleo liviano +
+  import perezoso), no la lista, que crece por hito.
 - **Tooling desde el día uno** (ADR 0006): `ruff`, `mypy`, `pytest`, `pre-commit`, `commitizen`,
   `release-please`, GitHub Actions. SemVer estricto, `CHANGELOG.md` auto, `CONTRIBUTING.md`.
 - **Principios agente-native adoptados desde el inicio** (ADR 0010): convención de doble salida y
