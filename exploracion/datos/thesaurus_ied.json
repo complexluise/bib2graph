@@ -1,0 +1,140 @@
+{
+  "_meta": {
+    "purpose": "Thesaurus multilingüe mínimo para el campo IED (intercambio ecológicamente desigual). Usado por la sandbox de exploracion/ para colapsar keywords equivalentes en en/es/pt a un mismo concepto canónico.",
+    "scope": "IED, deuda ecológica, world-system, footprint, telecoupling, justicia ambiental, extractivismo.",
+    "limitations": [
+      "Curado a mano a partir de los términos que aparecen en el corpus semilla (exploracion/datos/semillas_ied.bib).",
+      "No es exhaustivo: si un paper usa un término fuera de este thesaurus, queda como nodo propio en el grafo de co-word.",
+      "Variantes ortográficas y morfológicas no se infieren: hay que listar la variante explícita (ej: 'huella ecológica' Y 'huella ecologica').",
+      "Idiomas soportados: español (es), inglés (en), portugués (pt). Otros idiomas quedan como nodo propio."
+    ],
+    "extension": "Para extender: agregar entradas siguiendo el formato. Las claves canónicas son las que aparecen como nodos finales en el grafo; los aliases son las formas originales que se colapsan."
+  },
+  "concepts": {
+    "unequal_exchange": {
+      "aliases_en": ["unequal exchange", "ecological unequal exchange", "unequal ecological exchange"],
+      "aliases_es": ["intercambio desigual", "intercambio ecológicamente desigual", "intercambio ecologico desigual"],
+      "aliases_pt": ["troca desigual", "troca ecológica desigual", "troca ecologica desigual"]
+    },
+    "ecological_debt": {
+      "aliases_en": ["ecological debt", "ecological deficit"],
+      "aliases_es": ["deuda ecológica", "deuda ecologica"],
+      "aliases_pt": ["dívida ecológica", "divida ecologica"]
+    },
+    "ecological_footprint": {
+      "aliases_en": ["ecological footprint", "footprint", "footprint analysis"],
+      "aliases_es": ["huella ecológica", "huella ecologica"],
+      "aliases_pt": ["pegada ecológica", "pegada ecologica"]
+    },
+    "material_footprint": {
+      "aliases_en": ["material footprint", "MRIO", "multi-region input-output"],
+      "aliases_es": ["huella material", "huella de materiales"],
+      "aliases_pt": ["pegada material"]
+    },
+    "material_flow_analysis": {
+      "aliases_en": ["material flow analysis", "MFA", "material flows"],
+      "aliases_es": ["análisis de flujos de materiales", "analisis de flujos de materiales"],
+      "aliases_pt": ["análise de fluxos de materiais", "analise de fluxos de materiais"]
+    },
+    "telecoupling": {
+      "aliases_en": ["telecoupling", "teleconnection", "teleconnections"],
+      "aliases_es": ["teleacoplamiento"],
+      "aliases_pt": ["teleacoplamento"]
+    },
+    "biophysical_trade": {
+      "aliases_en": ["biophysical trade", "physical trade", "biophysical trade balance"],
+      "aliases_es": ["comercio biofísico", "comercio biophysico", "balanza comercial física"],
+      "aliases_pt": ["comércio biofísico", "comercio biophysico"]
+    },
+    "virtual_water": {
+      "aliases_en": ["virtual water", "water footprint"],
+      "aliases_es": ["agua virtual", "huella hídrica"],
+      "aliases_pt": ["água virtual", "agua virtual", "pegada hídrica"]
+    },
+    "food_miles": {
+      "aliases_en": ["food miles", "food trade", "food supply chain"],
+      "aliases_es": ["kilometraje de los alimentos", "cadena alimentaria"],
+      "aliases_pt": ["quilometragem dos alimentos"]
+    },
+    "carbon_labeling": {
+      "aliases_en": ["carbon labeling", "carbon labels", "carbon footprint labeling"],
+      "aliases_es": ["etiquetado de carbono", "etiquetado carbono"],
+      "aliases_pt": ["rotulagem de carbono"]
+    },
+    "world_system": {
+      "aliases_en": ["world-system", "world system", "world-systems", "world systems", "core-periphery"],
+      "aliases_es": ["sistema-mundo", "sistema mundo", "centro-periferia"],
+      "aliases_pt": ["sistema-mundo", "sistema mundo", "centro-periferia"]
+    },
+    "periphery": {
+      "aliases_en": ["periphery", "peripheral", "semi-periphery"],
+      "aliases_es": ["periferia", "semi-periferia"],
+      "aliases_pt": ["periferia", "semi-periferia"]
+    },
+    "extractive_economy": {
+      "aliases_en": ["extractivism", "extractive economy", "extractive industries"],
+      "aliases_es": ["extractivismo", "economía extractiva", "economia extractiva"],
+      "aliases_pt": ["extrativismo", "economia extrativa"]
+    },
+    "environmental_justice": {
+      "aliases_en": ["environmental justice", "ecological distribution", "ecological distribution conflicts"],
+      "aliases_es": ["justicia ambiental", "justicia ecológica"],
+      "aliases_pt": ["justiça ambiental", "justiça ecológica"]
+    },
+    "south_south_trade": {
+      "aliases_en": ["South-South trade", "south-south trade", "BRICS trade"],
+      "aliases_es": ["comercio Sur-Sur", "comercio sur-sur"],
+      "aliases_pt": ["comércio Sul-Sul", "comercio sul-sul"]
+    },
+    "land_use": {
+      "aliases_en": ["land use", "land-use", "land use change"],
+      "aliases_es": ["uso del suelo", "uso de la tierra"],
+      "aliases_pt": ["uso da terra", "uso do solo"]
+    },
+    "commodity_agriculture": {
+      "aliases_en": ["commodity agriculture", "agricultural commodities", "agricultural commodity"],
+      "aliases_es": ["agricultura de commodities", "commodities agrícolas"],
+      "aliases_pt": ["agricultura de commodities"]
+    },
+    "methodology_mfa": {
+      "aliases_en": ["MFA methodology", "methodology critique"],
+      "aliases_es": ["metodología MFA", "crítica metodológica", "critica metodologica"],
+      "aliases_pt": ["metodologia MFA", "crítica metodológica"]
+    },
+    "treadmill_of_production": {
+      "aliases_en": ["treadmill of production"],
+      "aliases_es": ["cinta sin fin de la producción", "carrusel de la producción"],
+      "aliases_pt": ["esteira da produção"]
+    },
+    "postcolonial_critique": {
+      "aliases_en": ["postcolonial", "postcolonial critique", "post-colonial"],
+      "aliases_es": ["postcolonial", "crítica postcolonial", "critica postcolonial"],
+      "aliases_pt": ["pós-colonial", "crítica pós-colonial"]
+    },
+    "northern_consumption": {
+      "aliases_en": ["Northern consumption", "consumption", "consumerism"],
+      "aliases_es": ["consumo del Norte", "consumo norte", "consumismo"],
+      "aliases_pt": ["consumo do Norte", "consumismo"]
+    },
+    "pharmaceuticals": {
+      "aliases_en": ["pharmaceuticals", "pharmaceutical exports", "pharma industry"],
+      "aliases_es": ["farmacéutica", "industria farmacéutica", "industria farmaceutica"],
+      "aliases_pt": ["farmacêutica", "indústria farmacêutica"]
+    },
+    "minerals": {
+      "aliases_en": ["minerals", "mineral trade", "mining"],
+      "aliases_es": ["minerales", "comercio de minerales", "minería", "mineria"],
+      "aliases_pt": ["minerais", "mineração", "mineracao"]
+    },
+    "open_data": {
+      "aliases_en": ["openalex", "open data", "open infrastructure"],
+      "aliases_es": ["datos abiertos", "infraestructura abierta"],
+      "aliases_pt": ["dados abertos", "infraestrutura aberta"]
+    },
+    "bibliometrics": {
+      "aliases_en": ["bibliometrics", "scientometrics"],
+      "aliases_es": ["bibliometría", "bibliometria", "cientometría"],
+      "aliases_pt": ["bibliometria", "cientometria"]
+    }
+  }
+}

@@ -1,0 +1,2477 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd"><key id="d6" for="edge" attr.name="weight" attr.type="long"/>
+<key id="d5" for="node" attr.name="is_seed" attr.type="boolean"/>
+<key id="d4" for="node" attr.name="year" attr.type="long"/>
+<key id="d3" for="node" attr.name="label" attr.type="string"/>
+<key id="d2" for="graph" attr.name="n_seeds" attr.type="long"/>
+<key id="d1" for="graph" attr.name="seed_only" attr.type="boolean"/>
+<key id="d0" for="graph" attr.name="kind" attr.type="string"/>
+<graph edgedefault="undirected"><data key="d0">coupling</data>
+<data key="d1">True</data>
+<data key="d2">24</data>
+<node id="10.1086/227972">
+  <data key="d3">Modes of Extraction, Unequal Exchange, and the Progressive
+Underdevelopment of an Extreme Periphery: The Brazilian Amazon,
+1600--1980</data>
+  <data key="d4">1984</data>
+  <data key="d5">True</data>
+</node>
+<node id="10.1016/S0921-8009(97)00100-6">
+  <data key="d3">Towards an Ecological Theory of Unequal Exchange: Articulating
+World System Theory and Ecological Economics</data>
+  <data key="d4">1998</data>
+  <data key="d5">True</data>
+</node>
+<node id="10.1016/j.ecolecon.2017.08.001">
+  <data key="d3">Biophysical Trade Balance of Ecuador: A Biophysical Perspective
+on Asymmetric Exchange</data>
+  <data key="d4">2018</data>
+  <data key="d5">True</data>
+</node>
+<node id="10.1111/jiec.12830">
+  <data key="d3">Physical Trade Deficits of Brazil 1990--2015: A Material Flow
+Analysis</data>
+  <data key="d4">2019</data>
+  <data key="d5">True</data>
+</node>
+<node id="10.1080/01436597.2020.1723088">
+  <data key="d3">South-South Trade and Ecological Unequal Exchange: The Case of
+India's Pharmaceutical Exports</data>
+  <data key="d4">2020</data>
+  <data key="d5">True</data>
+</node>
+<node id="W2342655129">
+  <data key="d3">Is there a global environmental justice movement?</data>
+  <data key="d4">2016</data>
+  <data key="d5">True</data>
+</node>
+<node id="10.5194/esd-8-435-2017">
+  <data key="d3">Increased Food Production and Reduced Water Use Through
+Teleconnection Between Producers and Consumers</data>
+  <data key="d4">2017</data>
+  <data key="d5">True</data>
+</node>
+<node id="10.1080/09644016.2019.1549779">
+  <data key="d3">Food Miles, Carbon Labeling, and the Hidden Ecological Costs of
+Northern Consumption</data>
+  <data key="d4">2019</data>
+  <data key="d5">True</data>
+</node>
+<node id="10.1073/pnas.1220362110">
+  <data key="d3">The Material Footprint of Nations</data>
+  <data key="d4">2015</data>
+  <data key="d5">True</data>
+</node>
+<node id="10.1088/1748-9326/9/10/104005">
+  <data key="d3">Rapidly Increasing Pressure on Commodity Agriculture in Latin
+America</data>
+  <data key="d4">2014</data>
+  <data key="d5">True</data>
+</node>
+<node id="10.1080/10455752.2018.1556455">
+  <data key="d3">A Critique of Material Flow Analysis as a Tool for Ecological
+Unequal Exchange Research</data>
+  <data key="d4">2019</data>
+  <data key="d5">True</data>
+</node>
+<node id="10.5195/jwsr.2021.1011">
+  <data key="d3">Postcolonial Critiques of the Treadmill of Production: The Case
+of India-Brazil Mineral Trade</data>
+  <data key="d4">2021</data>
+  <data key="d5">True</data>
+</node>
+<node id="W2119211517">
+  <data key="d3">Ecological Unequal Exchange: International Trade and Uneven Utilization of Environmental Space in the World System</data>
+  <data key="d4">2007</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2142043891">
+  <data key="d3">Ecological Unequal Exchange: Consumption, Equity, and Unsustainable Structural Relationships within the Global Economy</data>
+  <data key="d4">2007</data>
+  <data key="d5">False</data>
+</node>
+<node id="W1973954730">
+  <data key="d3">Ecologically Unequal Exchange, Ecological Debt, and Climate Justice</data>
+  <data key="d4">2009</data>
+  <data key="d5">False</data>
+</node>
+<node id="W1862702728">
+  <data key="d3">Ecologically unequal exchange and ecological debt</data>
+  <data key="d4">2016</data>
+  <data key="d5">False</data>
+</node>
+<node id="W1967360446">
+  <data key="d3">Classifying and valuing ecosystem services for urban planning</data>
+  <data key="d4">2012</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2048051304">
+  <data key="d3">Reversing the arrow of arrears: The concept of “ecological debt” and its value for environmental justice</data>
+  <data key="d4">2014</data>
+  <data key="d5">False</data>
+</node>
+<node id="W1986875667">
+  <data key="d3">The concept of ecological debt: some steps towards an enriched sustainability paradigm</data>
+  <data key="d4">2009</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2951306510">
+  <data key="d3">Environmental Space, Equity and the Ecological Debt</data>
+  <data key="d4">2012</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2137540105">
+  <data key="d3">North—South Relations and the Ecological Debt: Asserting a Counter-Hegemonic Discourse</data>
+  <data key="d4">2009</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4400018219">
+  <data key="d3">ECOLOGICAL DEBT:</data>
+  <data key="d4">2009</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2108953279">
+  <data key="d3">Natural Resource Extraction, Armed Violence, and Environmental Degradation</data>
+  <data key="d4">2010</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2104859737">
+  <data key="d3">Ecological Debt and Property Rights on Carbon Sinks and Reservoirs</data>
+  <data key="d4">2002</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2048293151">
+  <data key="d3">The Transnational Organization of Production and Uneven Environmental Degradation and Change in the World Economy</data>
+  <data key="d4">2009</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4401069570">
+  <data key="d3">Ecological debts induced by heat extremes</data>
+  <data key="d4">2024</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4292338315">
+  <data key="d3">Ecological unequal exchange: quantifying emissions of toxic chemicals embodied in the global trade of chemicals, products, and waste</data>
+  <data key="d4">2022</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2930040016">
+  <data key="d3">Ecologically unequal exchange: A theory of global environmental &lt;i&gt;in&lt;/i&gt; justice</data>
+  <data key="d4">2019</data>
+  <data key="d5">False</data>
+</node>
+<node id="W1539308977">
+  <data key="d3">Just Sustainabilities</data>
+  <data key="d4">2012</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4403094069">
+  <data key="d3">Ecological unequal exchange: Evidence from imbalanced cropland soil erosion and agricultural value-added embodied in global agricultural trade</data>
+  <data key="d4">2024</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4409540095">
+  <data key="d3">Ecological Unequal Exchange</data>
+  <data key="d4">2025</data>
+  <data key="d5">False</data>
+</node>
+<node id="W3209184812">
+  <data key="d3">Ecological unequal exchange between Turkey and the European Union: An assessment from value added perspective</data>
+  <data key="d4">2021</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2562324168">
+  <data key="d3">Linking ecological debt and ecologically unequal exchange: stocks, flows, and unequal sink appropriation</data>
+  <data key="d4">2016</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2620457709">
+  <data key="d3">Cumulative material flows provide indicators to quantify the ecological debt</data>
+  <data key="d4">2016</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4316371191">
+  <data key="d3">Ecological unequal exchange between China and European Union: An investigation from global value chains and carbon emissions viewpoint</data>
+  <data key="d4">2023</data>
+  <data key="d5">False</data>
+</node>
+<node id="W1978028715">
+  <data key="d3">Ecological Debt: Exploring the Factors that Affect National Footprints</data>
+  <data key="d4">2010</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2592356138">
+  <data key="d3">Between activism and science: grassroots concepts for sustainability coined by Environmental Justice Organizations</data>
+  <data key="d4">2014</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2801148776">
+  <data key="d3">The Ecological Debt</data>
+  <data key="d4">2002</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2041321854">
+  <data key="d3">The ‘Environmentalism of the Poor’ revisited: Territory and place in disconnected glocal struggles</data>
+  <data key="d4">2014</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2896815490">
+  <data key="d3">Great expectations: the psychodynamics of ecological debt</data>
+  <data key="d4">2012</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2767845126">
+  <data key="d3">A modest proposal: global rationalization of ecological footprint to eliminate ecological debt</data>
+  <data key="d4">2008</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2012254774">
+  <data key="d3">An Ecological Footprint Approach to External Debt Relief</data>
+  <data key="d4">2003</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2945557658">
+  <data key="d3">Environmental Homogenization or Heterogenization? The Effects of Globalization on Carbon Dioxide Emissions, 1970–2014</data>
+  <data key="d4">2019</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2771312157">
+  <data key="d3">Decolonizing the Atmosphere: The Climate Justice Movement on Climate Debt</data>
+  <data key="d4">2017</data>
+  <data key="d5">False</data>
+</node>
+<node id="W1598844417">
+  <data key="d3">Engaging with Climate Change</data>
+  <data key="d4">2012</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2195484168">
+  <data key="d3">Unequal carbon exchanges: understanding pollution embodied in global trade</data>
+  <data key="d4">2015</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2594589186">
+  <data key="d3">Measuring environmental injustice: how ecological debt defines a radical change in the international legal system</data>
+  <data key="d4">2016</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4240411357">
+  <data key="d3">Ecological Unequal Exchange</data>
+  <data key="d4">2021</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4255108584">
+  <data key="d3">Ecological Unequal Exchange</data>
+  <data key="d4">2019</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4387873668">
+  <data key="d3">Ecological unequal exchange</data>
+  <data key="d4">2023</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2117633894">
+  <data key="d3">Contemporary Contradictions of the Global Development Project: geopolitics, global ecology and the ‘development climate’</data>
+  <data key="d4">2009</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2321511225">
+  <data key="d3">The evolution of global trade and impacts on countries’ carbon trade imbalances</data>
+  <data key="d4">2016</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2788955535">
+  <data key="d3">Modelling Multi-regional Ecological Exchanges: The Case of UK and Africa</data>
+  <data key="d4">2018</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2066023656">
+  <data key="d3">The International Handbook of Environmental Sociology</data>
+  <data key="d4">1997</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2999036754">
+  <data key="d3">Land-use history impacts functional diversity across multiple trophic groups</data>
+  <data key="d4">2020</data>
+  <data key="d5">False</data>
+</node>
+<node id="W147127987">
+  <data key="d3">Breaking Ships in the World-System: An Analysis of Two Ship Breaking Capitals, Alang-Sosiya, India and Chittagong, Bangladesh</data>
+  <data key="d4">2015</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2119904838">
+  <data key="d3">Unpacking the politics of natural capital and economic metaphors in environmental policy discourse</data>
+  <data key="d4">2015</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4391474705">
+  <data key="d3">The semi-periphery and ecologically unequal exchange: carbon emissions and recursive exploitation</data>
+  <data key="d4">2024</data>
+  <data key="d5">False</data>
+</node>
+<node id="W1765082176">
+  <data key="d3">Leading Towards a Level Playing Field, Repaying Ecological Debt, or Making Environmental Space: Three Stories about International Environmental Cooperation</data>
+  <data key="d4">2005</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2901782820">
+  <data key="d3">Public knowledge, attitudes and perception of ecological debt</data>
+  <data key="d4">2018</data>
+  <data key="d5">False</data>
+</node>
+<node id="W3017089289">
+  <data key="d3">Expanding treadmill of production analysis within green criminology by integrating metabolic rift and ecological unequal exchange theories</data>
+  <data key="d4">2020</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4387183420">
+  <data key="d3">The impact of FDI on ecological unequal exchange in China’s manufacturing industry</data>
+  <data key="d4">2023</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4415915422">
+  <data key="d3">Two Sides of the Same Coin: A Synthesis of Economic and Ecological Unequal Exchange</data>
+  <data key="d4">2025</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4242353811">
+  <data key="d3">Environmental justice and ecological debt in Belgium: the UMICORE case</data>
+  <data key="d4">2013</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2424450747">
+  <data key="d3">Where have all the funds gone? Multiregional input-output analysis of the European Agricultural Fund for Rural Development</data>
+  <data key="d4">2016</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4312219881">
+  <data key="d3">Climate, violence, resource extraction and ecological debt: global implications of an assassination on South Africa's coal mining belt</data>
+  <data key="d4">2022</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4250250916">
+  <data key="d3">Ecological Debt</data>
+  <data key="d4">2009</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2023267627">
+  <data key="d3">Natural capital: The limiting factor</data>
+  <data key="d4">2006</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2796372547">
+  <data key="d3">Ecological Debt: An Integrating Concept for Socio-Environmental Change</data>
+  <data key="d4">2010</data>
+  <data key="d5">False</data>
+</node>
+<node id="W3210510104">
+  <data key="d3">Circularity, entropy, ecological conflicts and LFFU</data>
+  <data key="d4">2021</data>
+  <data key="d5">False</data>
+</node>
+<node id="W4394877371">
+  <data key="d3">Exploring the Impact of FDI and Technological Progress Path on Ecological Unequal Exchange within Manufacturing Industry in China</data>
+  <data key="d4">2024</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2087385946">
+  <data key="d3">Fueling Injustice: Globalization, Ecologically Unequal Exchange and Climate Change</data>
+  <data key="d4">2007</data>
+  <data key="d5">False</data>
+</node>
+<node id="W3135111755">
+  <data key="d3">Improvement and application of the three-dimensional ecological footprint model</data>
+  <data key="d4">2021</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2051634160">
+  <data key="d3">Carbon Markets, Debt and Uneven Development</data>
+  <data key="d4">2013</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2021230127">
+  <data key="d3">Cut ecological debt or humanity is at risk</data>
+  <data key="d4">2007</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2026461148">
+  <data key="d3">Structural impediments to sustainable groundwater management in the High Plains Aquifer of western Kansas</data>
+  <data key="d4">2014</data>
+  <data key="d5">False</data>
+</node>
+<node id="bib:ricardo1817principles">
+  <data key="d3">On the Principles of Political Economy and Taxation</data>
+  <data key="d4">1817</data>
+  <data key="d5">True</data>
+</node>
+<node id="bib:wallis1969">
+  <data key="d3">The Ecology of Unequal Exchange</data>
+  <data key="d4">1969</data>
+  <data key="d5">True</data>
+</node>
+<node id="bib:reyes2020deuda">
+  <data key="d3">Deuda ecológica del Perú con el mundo, 1990--2018</data>
+  <data key="d4">2020</data>
+  <data key="d5">True</data>
+</node>
+<node id="bib:castro2021comercio">
+  <data key="d3">Comercio internacional y deuda ecológica en Bolivia</data>
+  <data key="d4">2021</data>
+  <data key="d5">True</data>
+</node>
+<node id="bib:bringezu2015assessing">
+  <data key="d3">Assessing Global Land Use: Balancing Consumption with
+Sustainable Supply</data>
+  <data key="d4">2015</data>
+  <data key="d5">True</data>
+</node>
+<node id="bib:hoekstra2011water">
+  <data key="d3">The Water Footprint Assessment Manual</data>
+  <data key="d4">2011</data>
+  <data key="d5">True</data>
+</node>
+<node id="bib:openalex2024">
+  <data key="d3">OpenAlex: Open Infrastructure for Bibliographic Data</data>
+  <data key="d4">2024</data>
+  <data key="d5">True</data>
+</node>
+<node id="bib:lopez2017extractivism">
+  <data key="d3">Extractivismo y deuda ecológica: revisitando el debate</data>
+  <data key="d4">2017</data>
+  <data key="d5">True</data>
+</node>
+<node id="bib:anomimo2010">
+  <data key="d3">Notas sobre comercio y medio ambiente</data>
+  <data key="d4">2010</data>
+  <data key="d5">True</data>
+</node>
+<node id="bib:garcia2015">
+  <data key="d3">Huella ecológica y comercio Sur-Norte</data>
+  <data key="d4">2015</data>
+  <data key="d5">True</data>
+</node>
+<node id="bib:ecofootprint2020">
+  <data key="d3">Global Ecological Footprint Report</data>
+  <data key="d4">2020</data>
+  <data key="d5">True</data>
+</node>
+<node id="bib:anomimo2022">
+  <data key="d3">Tensiones Norte-Sur en políticas climáticas</data>
+  <data key="d4">2022</data>
+  <data key="d5">True</data>
+</node>
+<node id="W644940498">
+  <data key="d3">Ecological Debt: The Health of the Planet and the Wealth of Nations</data>
+  <data key="d4">2005</data>
+  <data key="d5">False</data>
+</node>
+<node id="W1538980473">
+  <data key="d3">Ecological Unequal Exchange</data>
+  <data key="d4">2001</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2319568853">
+  <data key="d3">The Concept of Ecological Debt: Its Meaning and Applicability in International Policy</data>
+  <data key="d4">2009</data>
+  <data key="d5">False</data>
+</node>
+<node id="W591561411">
+  <data key="d3">Ecological Debt: Global Warming and the Wealth of Nations</data>
+  <data key="d4">2009</data>
+  <data key="d5">False</data>
+</node>
+<node id="W3128101214">
+  <data key="d3">Elaboration of the Concept of Ecological Debt</data>
+  <data key="d4">2004</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2379365567">
+  <data key="d3">Human's Consumption of Ecosystem Services and Ecological Debt in China</data>
+  <data key="d4">2010</data>
+  <data key="d5">False</data>
+</node>
+<node id="W647204147">
+  <data key="d3">An environmental war economy : the lessons of ecological debt and global warming</data>
+  <data key="d4">2001</data>
+  <data key="d5">False</data>
+</node>
+<node id="W1760358764">
+  <data key="d3">Social Ecography: International Trade, Network Analysis and an Emmanuelian Conceptualization of Ecological Unequal Exchange</data>
+  <data key="d4">2010</data>
+  <data key="d5">False</data>
+</node>
+<node id="W91194789">
+  <data key="d3">Ecological Debt and Historical Responsibility Revisited: The case of climate change</data>
+  <data key="d4">2012</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2980187407">
+  <data key="d3">Preceding and governing measurements : an Emmanuelian conceptualization of ecological unequal exchange</data>
+  <data key="d4">2014</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2140675380">
+  <data key="d3">VLIR-BVO project 2003 'Elaboration of the concept of ecological debt'</data>
+  <data key="d4">2004</data>
+  <data key="d5">False</data>
+</node>
+<node id="W3124841667">
+  <data key="d3">Leading Towards a Level Playing Field, Repaying Ecological Debt, or Making Environmental Space: Three Stories About International Environmental Cooperation</data>
+  <data key="d4">2005</data>
+  <data key="d5">False</data>
+</node>
+<node id="W2594382053">
+  <data key="d3">Asymmetries : Conceptualizing Environmental Inequalities as Ecological Debt and Ecologically Unequal Exchange</data>
+  <data key="d4">2017</data>
+  <data key="d5">False</data>
+</node>
+<node id="W409900855">
+  <data key="d3">Eco-Sufficiency and Global Justice : Women Write Political Ecology</data>
+  <data key="d4">2009</data>
+  <data key="d5">False</data>
+</node>
+<node id="W3164354311">
+  <data key="d3">Environmental justice and ecological debt in Belgium: The UMICORE case</data>
+  <data key="d4">2013</data>
+  <data key="d5">False</data>
+</node>
+<edge source="W2342655129" target="W2119211517">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2342655129" target="W2142043891">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2342655129" target="W1973954730">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2342655129" target="W1862702728">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2342655129" target="W1967360446">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2342655129" target="W2048051304">
+  <data key="d6">12</data>
+</edge>
+<edge source="W2342655129" target="W1986875667">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2342655129" target="W2137540105">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2342655129" target="W2048293151">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2342655129" target="W4292338315">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2342655129" target="W2930040016">
+  <data key="d6">8</data>
+</edge>
+<edge source="W2342655129" target="W4409540095">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2342655129" target="W3209184812">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2342655129" target="W2562324168">
+  <data key="d6">8</data>
+</edge>
+<edge source="W2342655129" target="W2620457709">
+  <data key="d6">9</data>
+</edge>
+<edge source="W2342655129" target="W1978028715">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2342655129" target="W2592356138">
+  <data key="d6">71</data>
+</edge>
+<edge source="W2342655129" target="W2041321854">
+  <data key="d6">33</data>
+</edge>
+<edge source="W2342655129" target="W2767845126">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2342655129" target="W2012254774">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2342655129" target="W2945557658">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2342655129" target="W2771312157">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2342655129" target="W2195484168">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2342655129" target="W2594589186">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2342655129" target="W4240411357">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2342655129" target="W4255108584">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2342655129" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2342655129" target="W2321511225">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2342655129" target="W2788955535">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2342655129" target="W2066023656">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2342655129" target="W147127987">
+  <data key="d6">8</data>
+</edge>
+<edge source="W2342655129" target="W2901782820">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2342655129" target="W4415915422">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2342655129" target="W4312219881">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2342655129" target="W2023267627">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2342655129" target="W3210510104">
+  <data key="d6">18</data>
+</edge>
+<edge source="W2342655129" target="W2087385946">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2342655129" target="W2026461148">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2342655129" target="W91194789">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2342655129" target="W2980187407">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2342655129" target="W2140675380">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2119211517" target="W2142043891">
+  <data key="d6">30</data>
+</edge>
+<edge source="W2119211517" target="W1973954730">
+  <data key="d6">10</data>
+</edge>
+<edge source="W2119211517" target="W1862702728">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2119211517" target="W2048051304">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2119211517" target="W1986875667">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2119211517" target="W2137540105">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2119211517" target="W2108953279">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2119211517" target="W2048293151">
+  <data key="d6">17</data>
+</edge>
+<edge source="W2119211517" target="W4292338315">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2119211517" target="W2930040016">
+  <data key="d6">12</data>
+</edge>
+<edge source="W2119211517" target="W4409540095">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2119211517" target="W3209184812">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2119211517" target="W2562324168">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2119211517" target="W2620457709">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2119211517" target="W1978028715">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2119211517" target="W2592356138">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2119211517" target="W2041321854">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2119211517" target="W2767845126">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2119211517" target="W2012254774">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2119211517" target="W2945557658">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2119211517" target="W2195484168">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2119211517" target="W2594589186">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2119211517" target="W4240411357">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2119211517" target="W4255108584">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2119211517" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2119211517" target="W2321511225">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2119211517" target="W147127987">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2119211517" target="W4391474705">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2119211517" target="W2901782820">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2119211517" target="W4415915422">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2119211517" target="W3210510104">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2119211517" target="W2087385946">
+  <data key="d6">9</data>
+</edge>
+<edge source="W2119211517" target="W2026461148">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2119211517" target="W2319568853">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2119211517" target="W91194789">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2119211517" target="W2980187407">
+  <data key="d6">8</data>
+</edge>
+<edge source="W2119211517" target="W2140675380">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2142043891" target="W1973954730">
+  <data key="d6">13</data>
+</edge>
+<edge source="W2142043891" target="W1862702728">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2142043891" target="W1967360446">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2142043891" target="W2048051304">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2142043891" target="W1986875667">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2142043891" target="W2137540105">
+  <data key="d6">10</data>
+</edge>
+<edge source="W2142043891" target="W2108953279">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2142043891" target="W2048293151">
+  <data key="d6">24</data>
+</edge>
+<edge source="W2142043891" target="W4292338315">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2142043891" target="W2930040016">
+  <data key="d6">16</data>
+</edge>
+<edge source="W2142043891" target="W4409540095">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2142043891" target="W3209184812">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2142043891" target="W2562324168">
+  <data key="d6">9</data>
+</edge>
+<edge source="W2142043891" target="W2620457709">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2142043891" target="W1978028715">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2142043891" target="W2592356138">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2142043891" target="W2041321854">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2142043891" target="W2767845126">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2142043891" target="W2012254774">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2142043891" target="W2945557658">
+  <data key="d6">10</data>
+</edge>
+<edge source="W2142043891" target="W2771312157">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2142043891" target="W2195484168">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2142043891" target="W2594589186">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2142043891" target="W4240411357">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2142043891" target="W4255108584">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2142043891" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2142043891" target="W2321511225">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2142043891" target="W147127987">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2142043891" target="W4391474705">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2142043891" target="W2901782820">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2142043891" target="W4415915422">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2142043891" target="W3210510104">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2142043891" target="W2087385946">
+  <data key="d6">12</data>
+</edge>
+<edge source="W2142043891" target="W2026461148">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2142043891" target="W2319568853">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2142043891" target="W91194789">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2142043891" target="W2980187407">
+  <data key="d6">12</data>
+</edge>
+<edge source="W2142043891" target="W2140675380">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1973954730" target="W1862702728">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1973954730" target="W2048051304">
+  <data key="d6">4</data>
+</edge>
+<edge source="W1973954730" target="W1986875667">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1973954730" target="W2137540105">
+  <data key="d6">10</data>
+</edge>
+<edge source="W1973954730" target="W2048293151">
+  <data key="d6">14</data>
+</edge>
+<edge source="W1973954730" target="W4292338315">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1973954730" target="W2930040016">
+  <data key="d6">15</data>
+</edge>
+<edge source="W1973954730" target="W4409540095">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1973954730" target="W3209184812">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1973954730" target="W2562324168">
+  <data key="d6">9</data>
+</edge>
+<edge source="W1973954730" target="W2620457709">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1973954730" target="W2592356138">
+  <data key="d6">4</data>
+</edge>
+<edge source="W1973954730" target="W2041321854">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1973954730" target="W2012254774">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1973954730" target="W2945557658">
+  <data key="d6">5</data>
+</edge>
+<edge source="W1973954730" target="W2195484168">
+  <data key="d6">4</data>
+</edge>
+<edge source="W1973954730" target="W2594589186">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1973954730" target="W4240411357">
+  <data key="d6">5</data>
+</edge>
+<edge source="W1973954730" target="W4255108584">
+  <data key="d6">5</data>
+</edge>
+<edge source="W1973954730" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1973954730" target="W2321511225">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1973954730" target="W2788955535">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1973954730" target="W147127987">
+  <data key="d6">6</data>
+</edge>
+<edge source="W1973954730" target="W4391474705">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1973954730" target="W2901782820">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1973954730" target="W4415915422">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1973954730" target="W3210510104">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1973954730" target="W2087385946">
+  <data key="d6">34</data>
+</edge>
+<edge source="W1973954730" target="W2026461148">
+  <data key="d6">6</data>
+</edge>
+<edge source="W1973954730" target="W91194789">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1973954730" target="W2980187407">
+  <data key="d6">8</data>
+</edge>
+<edge source="W1973954730" target="W2140675380">
+  <data key="d6">4</data>
+</edge>
+<edge source="W1862702728" target="W2048051304">
+  <data key="d6">4</data>
+</edge>
+<edge source="W1862702728" target="W1986875667">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W2137540105">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1862702728" target="W2108953279">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W2048293151">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1862702728" target="W4292338315">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W2930040016">
+  <data key="d6">10</data>
+</edge>
+<edge source="W1862702728" target="W4409540095">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1862702728" target="W3209184812">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W2562324168">
+  <data key="d6">9</data>
+</edge>
+<edge source="W1862702728" target="W2620457709">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1862702728" target="W2592356138">
+  <data key="d6">4</data>
+</edge>
+<edge source="W1862702728" target="W2041321854">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1862702728" target="W2771312157">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W2195484168">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1862702728" target="W2594589186">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W4240411357">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1862702728" target="W4255108584">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1862702728" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W2321511225">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1862702728" target="W147127987">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1862702728" target="W4391474705">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W2901782820">
+  <data key="d6">9</data>
+</edge>
+<edge source="W1862702728" target="W4387183420">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W4415915422">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1862702728" target="W2424450747">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W3210510104">
+  <data key="d6">4</data>
+</edge>
+<edge source="W1862702728" target="W4394877371">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W2087385946">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1862702728" target="W2026461148">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W91194789">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1862702728" target="W2980187407">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1862702728" target="W2140675380">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1967360446" target="W2048293151">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1967360446" target="W2620457709">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1967360446" target="W2592356138">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1967360446" target="W2041321854">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1967360446" target="W2767845126">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1967360446" target="W2012254774">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1967360446" target="W2771312157">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1967360446" target="W147127987">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1967360446" target="W3210510104">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1967360446" target="W2087385946">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1967360446" target="W3135111755">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048051304" target="W1986875667">
+  <data key="d6">9</data>
+</edge>
+<edge source="W2048051304" target="W2137540105">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2048051304" target="W2048293151">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2048051304" target="W4292338315">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048051304" target="W2930040016">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2048051304" target="W4409540095">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048051304" target="W3209184812">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2048051304" target="W2562324168">
+  <data key="d6">16</data>
+</edge>
+<edge source="W2048051304" target="W2620457709">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2048051304" target="W2592356138">
+  <data key="d6">26</data>
+</edge>
+<edge source="W2048051304" target="W2041321854">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2048051304" target="W2012254774">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2048051304" target="W2771312157">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2048051304" target="W2195484168">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2048051304" target="W2594589186">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2048051304" target="W4240411357">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048051304" target="W4255108584">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048051304" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048051304" target="W2321511225">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2048051304" target="W147127987">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2048051304" target="W2119904838">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048051304" target="W2901782820">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2048051304" target="W4415915422">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048051304" target="W3210510104">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048051304" target="W2087385946">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2048051304" target="W2026461148">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2048051304" target="W91194789">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2048051304" target="W2980187407">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2048051304" target="W2140675380">
+  <data key="d6">6</data>
+</edge>
+<edge source="W1986875667" target="W2137540105">
+  <data key="d6">7</data>
+</edge>
+<edge source="W1986875667" target="W2048293151">
+  <data key="d6">3</data>
+</edge>
+<edge source="W1986875667" target="W2930040016">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1986875667" target="W2562324168">
+  <data key="d6">7</data>
+</edge>
+<edge source="W1986875667" target="W2620457709">
+  <data key="d6">5</data>
+</edge>
+<edge source="W1986875667" target="W1978028715">
+  <data key="d6">4</data>
+</edge>
+<edge source="W1986875667" target="W2592356138">
+  <data key="d6">7</data>
+</edge>
+<edge source="W1986875667" target="W2041321854">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1986875667" target="W2767845126">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1986875667" target="W2012254774">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1986875667" target="W2945557658">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1986875667" target="W2771312157">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1986875667" target="W2594589186">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1986875667" target="W4240411357">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1986875667" target="W4255108584">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1986875667" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1986875667" target="W147127987">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1986875667" target="W2901782820">
+  <data key="d6">7</data>
+</edge>
+<edge source="W1986875667" target="W3210510104">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1986875667" target="W2087385946">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1986875667" target="W2026461148">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1986875667" target="W91194789">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1986875667" target="W2140675380">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2137540105" target="W2048293151">
+  <data key="d6">11</data>
+</edge>
+<edge source="W2137540105" target="W4292338315">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2137540105" target="W2930040016">
+  <data key="d6">10</data>
+</edge>
+<edge source="W2137540105" target="W4409540095">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2137540105" target="W3209184812">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2137540105" target="W2562324168">
+  <data key="d6">11</data>
+</edge>
+<edge source="W2137540105" target="W2620457709">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2137540105" target="W2592356138">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2137540105" target="W2041321854">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2137540105" target="W2012254774">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2137540105" target="W2945557658">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2137540105" target="W2771312157">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2137540105" target="W2195484168">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2137540105" target="W2594589186">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2137540105" target="W4240411357">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2137540105" target="W4255108584">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2137540105" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2137540105" target="W2321511225">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2137540105" target="W2788955535">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2137540105" target="W147127987">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2137540105" target="W4391474705">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2137540105" target="W2901782820">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2137540105" target="W4415915422">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2137540105" target="W3210510104">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2137540105" target="W2087385946">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2137540105" target="W2026461148">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2137540105" target="W91194789">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2137540105" target="W2980187407">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2137540105" target="W2140675380">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2108953279" target="W2048293151">
+  <data key="d6">8</data>
+</edge>
+<edge source="W2108953279" target="W2930040016">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2108953279" target="W4409540095">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2108953279" target="W2562324168">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2108953279" target="W2041321854">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2108953279" target="W2767845126">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2108953279" target="W2945557658">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2108953279" target="W2195484168">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2108953279" target="W4240411357">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2108953279" target="W4255108584">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2108953279" target="W147127987">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2108953279" target="W4415915422">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2108953279" target="W2026461148">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2108953279" target="W2980187407">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2048293151" target="W2930040016">
+  <data key="d6">23</data>
+</edge>
+<edge source="W2048293151" target="W4409540095">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2048293151" target="W3209184812">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2048293151" target="W2562324168">
+  <data key="d6">14</data>
+</edge>
+<edge source="W2048293151" target="W2620457709">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2048293151" target="W2592356138">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2048293151" target="W2041321854">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2048293151" target="W2767845126">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2048293151" target="W2012254774">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2048293151" target="W2945557658">
+  <data key="d6">12</data>
+</edge>
+<edge source="W2048293151" target="W2771312157">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2048293151" target="W2195484168">
+  <data key="d6">9</data>
+</edge>
+<edge source="W2048293151" target="W2594589186">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048293151" target="W4240411357">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2048293151" target="W4255108584">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2048293151" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048293151" target="W2321511225">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2048293151" target="W2788955535">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048293151" target="W147127987">
+  <data key="d6">14</data>
+</edge>
+<edge source="W2048293151" target="W4391474705">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2048293151" target="W2901782820">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2048293151" target="W4415915422">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2048293151" target="W3210510104">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2048293151" target="W2087385946">
+  <data key="d6">11</data>
+</edge>
+<edge source="W2048293151" target="W2026461148">
+  <data key="d6">8</data>
+</edge>
+<edge source="W2048293151" target="W2319568853">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048293151" target="W91194789">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2048293151" target="W2980187407">
+  <data key="d6">11</data>
+</edge>
+<edge source="W2048293151" target="W2140675380">
+  <data key="d6">4</data>
+</edge>
+<edge source="W4292338315" target="W2930040016">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4292338315" target="W4403094069">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4292338315" target="W4409540095">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4292338315" target="W3209184812">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4292338315" target="W2562324168">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4292338315" target="W2592356138">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4292338315" target="W2945557658">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4292338315" target="W2195484168">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4292338315" target="W2321511225">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4292338315" target="W147127987">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4292338315" target="W4415915422">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4292338315" target="W2424450747">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4292338315" target="W2087385946">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4292338315" target="W2026461148">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4292338315" target="W2980187407">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2930040016" target="W4409540095">
+  <data key="d6">9</data>
+</edge>
+<edge source="W2930040016" target="W3209184812">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2930040016" target="W2562324168">
+  <data key="d6">23</data>
+</edge>
+<edge source="W2930040016" target="W2620457709">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2930040016" target="W2592356138">
+  <data key="d6">8</data>
+</edge>
+<edge source="W2930040016" target="W2041321854">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2930040016" target="W2767845126">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2930040016" target="W2012254774">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2930040016" target="W2945557658">
+  <data key="d6">17</data>
+</edge>
+<edge source="W2930040016" target="W2771312157">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2930040016" target="W2195484168">
+  <data key="d6">13</data>
+</edge>
+<edge source="W2930040016" target="W2594589186">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2930040016" target="W4240411357">
+  <data key="d6">10</data>
+</edge>
+<edge source="W2930040016" target="W4255108584">
+  <data key="d6">10</data>
+</edge>
+<edge source="W2930040016" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2930040016" target="W2321511225">
+  <data key="d6">8</data>
+</edge>
+<edge source="W2930040016" target="W2788955535">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2930040016" target="W147127987">
+  <data key="d6">13</data>
+</edge>
+<edge source="W2930040016" target="W4391474705">
+  <data key="d6">11</data>
+</edge>
+<edge source="W2930040016" target="W2901782820">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2930040016" target="W4387183420">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2930040016" target="W4415915422">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2930040016" target="W2424450747">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2930040016" target="W3210510104">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2930040016" target="W4394877371">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2930040016" target="W2087385946">
+  <data key="d6">10</data>
+</edge>
+<edge source="W2930040016" target="W3135111755">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2930040016" target="W2026461148">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2930040016" target="W2319568853">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2930040016" target="W91194789">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2930040016" target="W2980187407">
+  <data key="d6">20</data>
+</edge>
+<edge source="W2930040016" target="W2140675380">
+  <data key="d6">3</data>
+</edge>
+<edge source="W4409540095" target="W3209184812">
+  <data key="d6">6</data>
+</edge>
+<edge source="W4409540095" target="W2562324168">
+  <data key="d6">7</data>
+</edge>
+<edge source="W4409540095" target="W4316371191">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4409540095" target="W2592356138">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4409540095" target="W2945557658">
+  <data key="d6">3</data>
+</edge>
+<edge source="W4409540095" target="W2195484168">
+  <data key="d6">3</data>
+</edge>
+<edge source="W4409540095" target="W4240411357">
+  <data key="d6">4</data>
+</edge>
+<edge source="W4409540095" target="W4255108584">
+  <data key="d6">4</data>
+</edge>
+<edge source="W4409540095" target="W2321511225">
+  <data key="d6">3</data>
+</edge>
+<edge source="W4409540095" target="W2788955535">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4409540095" target="W147127987">
+  <data key="d6">3</data>
+</edge>
+<edge source="W4409540095" target="W4391474705">
+  <data key="d6">3</data>
+</edge>
+<edge source="W4409540095" target="W2901782820">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4409540095" target="W4387183420">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4409540095" target="W4415915422">
+  <data key="d6">8</data>
+</edge>
+<edge source="W4409540095" target="W2424450747">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4409540095" target="W2087385946">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4409540095" target="W2026461148">
+  <data key="d6">3</data>
+</edge>
+<edge source="W4409540095" target="W2980187407">
+  <data key="d6">6</data>
+</edge>
+<edge source="W3209184812" target="W2562324168">
+  <data key="d6">5</data>
+</edge>
+<edge source="W3209184812" target="W4316371191">
+  <data key="d6">2</data>
+</edge>
+<edge source="W3209184812" target="W2592356138">
+  <data key="d6">2</data>
+</edge>
+<edge source="W3209184812" target="W2945557658">
+  <data key="d6">2</data>
+</edge>
+<edge source="W3209184812" target="W2195484168">
+  <data key="d6">5</data>
+</edge>
+<edge source="W3209184812" target="W4240411357">
+  <data key="d6">5</data>
+</edge>
+<edge source="W3209184812" target="W4255108584">
+  <data key="d6">5</data>
+</edge>
+<edge source="W3209184812" target="W2321511225">
+  <data key="d6">4</data>
+</edge>
+<edge source="W3209184812" target="W2788955535">
+  <data key="d6">5</data>
+</edge>
+<edge source="W3209184812" target="W147127987">
+  <data key="d6">3</data>
+</edge>
+<edge source="W3209184812" target="W4391474705">
+  <data key="d6">1</data>
+</edge>
+<edge source="W3209184812" target="W4387183420">
+  <data key="d6">1</data>
+</edge>
+<edge source="W3209184812" target="W4415915422">
+  <data key="d6">3</data>
+</edge>
+<edge source="W3209184812" target="W2424450747">
+  <data key="d6">6</data>
+</edge>
+<edge source="W3209184812" target="W4394877371">
+  <data key="d6">1</data>
+</edge>
+<edge source="W3209184812" target="W2087385946">
+  <data key="d6">2</data>
+</edge>
+<edge source="W3209184812" target="W2026461148">
+  <data key="d6">2</data>
+</edge>
+<edge source="W3209184812" target="W2980187407">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2562324168" target="W2620457709">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2562324168" target="W4316371191">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2562324168" target="W2592356138">
+  <data key="d6">18</data>
+</edge>
+<edge source="W2562324168" target="W2041321854">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2562324168" target="W2012254774">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2562324168" target="W2945557658">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2562324168" target="W2771312157">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2562324168" target="W2195484168">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2562324168" target="W2594589186">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2562324168" target="W4240411357">
+  <data key="d6">8</data>
+</edge>
+<edge source="W2562324168" target="W4255108584">
+  <data key="d6">8</data>
+</edge>
+<edge source="W2562324168" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2562324168" target="W2321511225">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2562324168" target="W2788955535">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2562324168" target="W147127987">
+  <data key="d6">9</data>
+</edge>
+<edge source="W2562324168" target="W2119904838">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2562324168" target="W4391474705">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2562324168" target="W2901782820">
+  <data key="d6">9</data>
+</edge>
+<edge source="W2562324168" target="W4387183420">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2562324168" target="W4415915422">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2562324168" target="W2424450747">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2562324168" target="W2023267627">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2562324168" target="W3210510104">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2562324168" target="W4394877371">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2562324168" target="W2087385946">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2562324168" target="W2026461148">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2562324168" target="W91194789">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2562324168" target="W2980187407">
+  <data key="d6">18</data>
+</edge>
+<edge source="W2562324168" target="W2140675380">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2620457709" target="W2592356138">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2620457709" target="W2041321854">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2620457709" target="W2012254774">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2620457709" target="W2945557658">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2620457709" target="W2771312157">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2620457709" target="W2594589186">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2620457709" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2620457709" target="W2788955535">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2620457709" target="W147127987">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2620457709" target="W2901782820">
+  <data key="d6">8</data>
+</edge>
+<edge source="W2620457709" target="W2424450747">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2620457709" target="W3210510104">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2620457709" target="W2087385946">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2620457709" target="W3135111755">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2620457709" target="W91194789">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2620457709" target="W2140675380">
+  <data key="d6">3</data>
+</edge>
+<edge source="W4316371191" target="W147127987">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4316371191" target="W4387183420">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4316371191" target="W4415915422">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4316371191" target="W2424450747">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4316371191" target="W4394877371">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1978028715" target="W2592356138">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1978028715" target="W2767845126">
+  <data key="d6">2</data>
+</edge>
+<edge source="W1978028715" target="W3135111755">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1978028715" target="W2026461148">
+  <data key="d6">1</data>
+</edge>
+<edge source="W1978028715" target="W2140675380">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2592356138" target="W2041321854">
+  <data key="d6">42</data>
+</edge>
+<edge source="W2592356138" target="W2767845126">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2592356138" target="W2012254774">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2592356138" target="W2945557658">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2592356138" target="W2771312157">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2592356138" target="W2195484168">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2592356138" target="W2594589186">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2592356138" target="W4240411357">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2592356138" target="W4255108584">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2592356138" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2592356138" target="W2321511225">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2592356138" target="W2788955535">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2592356138" target="W147127987">
+  <data key="d6">13</data>
+</edge>
+<edge source="W2592356138" target="W2119904838">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2592356138" target="W2901782820">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2592356138" target="W4415915422">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2592356138" target="W2023267627">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2592356138" target="W3210510104">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2592356138" target="W2087385946">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2592356138" target="W2026461148">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2592356138" target="W91194789">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2592356138" target="W2980187407">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2592356138" target="W2140675380">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2041321854" target="W2767845126">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2041321854" target="W2012254774">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2041321854" target="W2771312157">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2041321854" target="W2195484168">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2041321854" target="W2594589186">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2041321854" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2041321854" target="W147127987">
+  <data key="d6">11</data>
+</edge>
+<edge source="W2041321854" target="W2901782820">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2041321854" target="W3210510104">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2041321854" target="W2087385946">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2041321854" target="W91194789">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2041321854" target="W2140675380">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2767845126" target="W2012254774">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2767845126" target="W2945557658">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2767845126" target="W2771312157">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2767845126" target="W2788955535">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2767845126" target="W147127987">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2767845126" target="W2023267627">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2767845126" target="W2087385946">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2767845126" target="W2140675380">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2012254774" target="W2771312157">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2012254774" target="W147127987">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2012254774" target="W2901782820">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2012254774" target="W3210510104">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2012254774" target="W2087385946">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2012254774" target="W3135111755">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2012254774" target="W2140675380">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2945557658" target="W2771312157">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2945557658" target="W2195484168">
+  <data key="d6">11</data>
+</edge>
+<edge source="W2945557658" target="W4240411357">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2945557658" target="W4255108584">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2945557658" target="W2321511225">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2945557658" target="W2788955535">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2945557658" target="W147127987">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2945557658" target="W4391474705">
+  <data key="d6">5</data>
+</edge>
+<edge source="W2945557658" target="W4387183420">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2945557658" target="W4415915422">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2945557658" target="W3210510104">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2945557658" target="W4394877371">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2945557658" target="W2087385946">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2945557658" target="W2026461148">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2945557658" target="W2980187407">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2945557658" target="W2140675380">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2771312157" target="W2195484168">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2771312157" target="W2594589186">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2771312157" target="W2321511225">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2771312157" target="W2788955535">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2771312157" target="W147127987">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2771312157" target="W2901782820">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2771312157" target="W3210510104">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2771312157" target="W2087385946">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2771312157" target="W91194789">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2195484168" target="W4240411357">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2195484168" target="W4255108584">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2195484168" target="W2321511225">
+  <data key="d6">26</data>
+</edge>
+<edge source="W2195484168" target="W2788955535">
+  <data key="d6">9</data>
+</edge>
+<edge source="W2195484168" target="W147127987">
+  <data key="d6">10</data>
+</edge>
+<edge source="W2195484168" target="W2119904838">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2195484168" target="W4391474705">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2195484168" target="W4387183420">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2195484168" target="W4415915422">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2195484168" target="W2424450747">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2195484168" target="W4394877371">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2195484168" target="W2087385946">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2195484168" target="W2026461148">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2195484168" target="W2980187407">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2594589186" target="W2117633894">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2594589186" target="W147127987">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2594589186" target="W2901782820">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2594589186" target="W2087385946">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2594589186" target="W2026461148">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2594589186" target="W91194789">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2594589186" target="W2140675380">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4240411357" target="W4255108584">
+  <data key="d6">36</data>
+</edge>
+<edge source="W4240411357" target="W2321511225">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4240411357" target="W2788955535">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4240411357" target="W147127987">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4240411357" target="W4391474705">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4240411357" target="W2901782820">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4240411357" target="W4387183420">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4240411357" target="W4415915422">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4240411357" target="W2424450747">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4240411357" target="W3210510104">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4240411357" target="W4394877371">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4240411357" target="W2087385946">
+  <data key="d6">4</data>
+</edge>
+<edge source="W4240411357" target="W2026461148">
+  <data key="d6">4</data>
+</edge>
+<edge source="W4240411357" target="W2319568853">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4240411357" target="W2980187407">
+  <data key="d6">6</data>
+</edge>
+<edge source="W4240411357" target="W2140675380">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4255108584" target="W2321511225">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4255108584" target="W2788955535">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4255108584" target="W147127987">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4255108584" target="W4391474705">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4255108584" target="W2901782820">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4255108584" target="W4387183420">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4255108584" target="W4415915422">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4255108584" target="W2424450747">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4255108584" target="W3210510104">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4255108584" target="W4394877371">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4255108584" target="W2087385946">
+  <data key="d6">4</data>
+</edge>
+<edge source="W4255108584" target="W2026461148">
+  <data key="d6">4</data>
+</edge>
+<edge source="W4255108584" target="W2319568853">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4255108584" target="W2980187407">
+  <data key="d6">6</data>
+</edge>
+<edge source="W4255108584" target="W2140675380">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2117633894" target="W147127987">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2117633894" target="W2901782820">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2117633894" target="W2087385946">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2117633894" target="W91194789">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2117633894" target="W2140675380">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2321511225" target="W2788955535">
+  <data key="d6">8</data>
+</edge>
+<edge source="W2321511225" target="W147127987">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2321511225" target="W4391474705">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2321511225" target="W4387183420">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2321511225" target="W4415915422">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2321511225" target="W2424450747">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2321511225" target="W4394877371">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2321511225" target="W2087385946">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2321511225" target="W2026461148">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2321511225" target="W2980187407">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2788955535" target="W147127987">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2788955535" target="W4387183420">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2788955535" target="W4415915422">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2788955535" target="W2424450747">
+  <data key="d6">7</data>
+</edge>
+<edge source="W2788955535" target="W4394877371">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2788955535" target="W2087385946">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2788955535" target="W2026461148">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2788955535" target="W2980187407">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2066023656" target="W147127987">
+  <data key="d6">1</data>
+</edge>
+<edge source="W147127987" target="W2901782820">
+  <data key="d6">1</data>
+</edge>
+<edge source="W147127987" target="W4387183420">
+  <data key="d6">1</data>
+</edge>
+<edge source="W147127987" target="W4415915422">
+  <data key="d6">3</data>
+</edge>
+<edge source="W147127987" target="W2087385946">
+  <data key="d6">5</data>
+</edge>
+<edge source="W147127987" target="W2026461148">
+  <data key="d6">4</data>
+</edge>
+<edge source="W147127987" target="W91194789">
+  <data key="d6">1</data>
+</edge>
+<edge source="W147127987" target="W2980187407">
+  <data key="d6">5</data>
+</edge>
+<edge source="W147127987" target="W2140675380">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4391474705" target="W4387183420">
+  <data key="d6">2</data>
+</edge>
+<edge source="W4391474705" target="W4394877371">
+  <data key="d6">3</data>
+</edge>
+<edge source="W4391474705" target="W2087385946">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4391474705" target="W2026461148">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4391474705" target="W2980187407">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2901782820" target="W4387183420">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2901782820" target="W3210510104">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2901782820" target="W4394877371">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2901782820" target="W2087385946">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2901782820" target="W91194789">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2901782820" target="W2140675380">
+  <data key="d6">5</data>
+</edge>
+<edge source="W4387183420" target="W4415915422">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4387183420" target="W4394877371">
+  <data key="d6">4</data>
+</edge>
+<edge source="W4387183420" target="W2980187407">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4415915422" target="W2087385946">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4415915422" target="W2026461148">
+  <data key="d6">3</data>
+</edge>
+<edge source="W4415915422" target="W2980187407">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2424450747" target="W4394877371">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4312219881" target="W3210510104">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2023267627" target="W3210510104">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2023267627" target="W2980187407">
+  <data key="d6">1</data>
+</edge>
+<edge source="W3210510104" target="W2087385946">
+  <data key="d6">1</data>
+</edge>
+<edge source="W3210510104" target="W2026461148">
+  <data key="d6">1</data>
+</edge>
+<edge source="W4394877371" target="W2980187407">
+  <data key="d6">1</data>
+</edge>
+<edge source="W2087385946" target="W2026461148">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2087385946" target="W91194789">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2087385946" target="W2980187407">
+  <data key="d6">3</data>
+</edge>
+<edge source="W2087385946" target="W2140675380">
+  <data key="d6">4</data>
+</edge>
+<edge source="W2026461148" target="W2980187407">
+  <data key="d6">6</data>
+</edge>
+<edge source="W2026461148" target="W2140675380">
+  <data key="d6">3</data>
+</edge>
+<edge source="W91194789" target="W2140675380">
+  <data key="d6">2</data>
+</edge>
+<edge source="W2980187407" target="W2140675380">
+  <data key="d6">1</data>
+</edge>
+</graph></graphml>

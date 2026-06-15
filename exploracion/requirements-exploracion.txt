@@ -1,0 +1,17 @@
+# Dependencias de la sandbox de exploración.
+# Instalación: pip install -r requirements-exploracion.txt
+# Estas libs son EXCLUSIVAS de exploracion/. El núcleo de bib2graph
+# (pyproject.toml) NO las conoce.
+
+# Backbone de datos
+pyalex>=0.15         # cliente Python de la API de OpenAlex
+bibtexparser>=1.4    # parser de .bib (defensivo, no rompe con campos faltantes)
+
+# Datos y redes
+pandas>=2.2          # manipulación tabular
+pyarrow>=15          # parquet (alineado con el núcleo)
+networkx>=3.2        # grafos (alineado con el núcleo)
+python-louvain>=0.16 # detección de comunidades (louvain)
+
+# Viz opcional
+matplotlib>=3.8

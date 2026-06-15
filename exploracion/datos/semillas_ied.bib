@@ -1,0 +1,333 @@
+% =====================================================================
+% semillas_ied.bib — corpus semilla sintético para el caso de uso IED
+% =====================================================================
+% NO son papers reales. Autores, títulos, DOIs y journals son inventados
+% pero plausibles, modelados a partir del patrón observado en la
+% literatura real sobre intercambio ecológicamente desigual, deuda
+% ecológica y huella ecológica transferida.
+%
+% Estructura intencional del corpus semilla:
+%   - Cluster "marcos teóricos" (Bunker-style, Hornborg-style):     ~5 refs
+%   - Cluster "estudios empíricos IED" Global South-led:             ~8 refs
+%   - Cluster "estudios empíricos IED" Global North-led:            ~6 refs
+%   - Cluster "metodología / materiales":                            ~4 refs
+%   - Cluster "crítica y tensiones internas":                        ~3 refs
+%   - Refs "huérfanas" (sin keywords/abstract) para testear parser:  ~4 refs
+%
+% CAMPO EXTRA vs BibTeX estándar:
+%   - affiliation = {Pais}: país principal de afiliación del paper.
+%     Lo lee 02_load_bibtex.py y lo mapea a authors_affiliations para
+%     permitir análisis de asimetrías Norte-Sur. No es un campo BibTeX
+%     estándar; es metadata específica de esta sandbox.
+% =====================================================================
+
+@article{bunker1984dep,
+  author    = {Bunker, Stephen G.},
+  title     = {Modes of Extraction, Unequal Exchange, and the Progressive
+               Underdevelopment of an Extreme Periphery: The Brazilian Amazon,
+               1600--1980},
+  journal   = {American Journal of Sociology},
+  year      = {1984},
+  volume    = {89},
+  number    = {5},
+  pages     = {1017--1064},
+  doi       = {10.1086/227972},
+  keywords  = {unequal exchange, ecological exchange, periphery, world-system},
+  abstract  = {We develop a framework for analyzing unequal ecological exchange
+               between core and peripheral regions, drawing on the case of the
+               Brazilian Amazon.},
+  affiliation = {US},
+}
+
+@article{hornborg1998ecology,
+  author    = {Hornborg, Alf},
+  title     = {Towards an Ecological Theory of Unequal Exchange: Articulating
+               World System Theory and Ecological Economics},
+  journal   = {Ecological Economics},
+  year      = {1998},
+  volume    = {25},
+  number    = {1},
+  pages     = {127--136},
+  doi       = {10.1016/S0921-8009(97)00100-6},
+  keywords  = {unequal exchange, ecological economics, world-system, throughput},
+  abstract  = {We articulate world-system theory and ecological economics to
+               develop a biophysical theory of unequal exchange.},
+  affiliation = {SE},
+}
+
+@article{ricardo1817principles,
+  author    = {Ricardo, David},
+  title     = {On the Principles of Political Economy and Taxation},
+  year      = {1817},
+  keywords  = {political economy, comparative advantage, classical},
+  affiliation = {UK},
+  % Sin journal, sin doi: referencia clásica antigua. Testea el parser.
+}
+
+@incollection{wallis1969,
+  author    = {Wallis, Victor},
+  title     = {The Ecology of Unequal Exchange},
+  booktitle = {Environments and Societies},
+  publisher = {Macmillan},
+  year      = {1969},
+  keywords  = {ecology, unequal exchange, marxism},
+  affiliation = {US},
+}
+
+@article{aldas2018biophysical,
+  author    = {Aldas, C. and {\'A}lvarez, M. and Orta, L.},
+  title     = {Biophysical Trade Balance of Ecuador: A Biophysical Perspective
+               on Asymmetric Exchange},
+  journal   = {Ecological Economics},
+  year      = {2018},
+  volume    = {144},
+  pages     = {137--152},
+  doi       = {10.1016/j.ecolecon.2017.08.001},
+  keywords  = {biophysical trade, Ecuador, unequal exchange, Latin America},
+  abstract  = {We compute the physical trade balance of Ecuador to expose
+               asymmetric ecological exchange.},
+  affiliation = {EC},
+}
+
+@article{pereira2019physical,
+  author    = {Pereira, J. and Silva, R. and Costa, P.},
+  title     = {Physical Trade Deficits of Brazil 1990--2015: A Material Flow
+               Analysis},
+  journal   = {Journal of Industrial Ecology},
+  year      = {2019},
+  volume    = {23},
+  number    = {4},
+  pages     = {812--826},
+  doi       = {10.1111/jiec.12830},
+  keywords  = {material flow analysis, Brazil, biophysical trade, periphery},
+  abstract  = {Material flow analysis applied to Brazilian trade shows persistent
+               physical deficits with the Global North.},
+  affiliation = {BR},
+}
+
+@article{reyes2020deuda,
+  author    = {Reyes, G. and Carrasco, H.},
+  title     = {Deuda ecol{\'o}gica del Per{\'u} con el mundo, 1990--2018},
+  journal   = {Ecolog{\'i}a Pol{\'i}tica},
+  year      = {2020},
+  number    = {59},
+  pages     = {45--62},
+  keywords  = {deuda ecol{\'o}gica, Per{\'u}, comercio, Am{\'e}rica Latina},
+  abstract  = {Estimaci{\'o}n de la deuda ecol{\'o}gica del Per{\'u} mediante
+               an{\'a}lisis de flujos de materiales y huella ecol{\'o}gica.},
+  affiliation = {PE},
+  % Sin doi: revista latinoamericana no siempre indexada.
+}
+
+@article{castro2021comercio,
+  author    = {Castro, V. and Berm{\'u}dez, A.},
+  title     = {Comercio internacional y deuda ecol{\'o}gica en Bolivia},
+  journal   = {Revista Boliviana de Investigaci{\'o}n},
+  year      = {2021},
+  volume    = {12},
+  pages     = {33--58},
+  keywords  = {deuda ecol{\'o}gica, Bolivia, comercio, extractivismo},
+  affiliation = {BO},
+}
+
+@article{khor2020south,
+  author    = {Khor, M. and Narayanan, S.},
+  title     = {South-South Trade and Ecological Unequal Exchange: The Case of
+               India's Pharmaceutical Exports},
+  journal   = {Third World Quarterly},
+  year      = {2020},
+  volume    = {41},
+  number    = {7},
+  pages     = {1234--1250},
+  doi       = {10.1080/01436597.2020.1723088},
+  keywords  = {South-South trade, India, unequal exchange, pharmaceuticals},
+  abstract  = {We challenge the assumption that South-South trade is intrinsically
+               more ecological, examining the Indian pharmaceutical sector.},
+  affiliation = {IN},
+}
+
+@article{martinez2014ecological,
+  author    = {Mart{\'i}nez-Alier, Joan and Temper, Leah and Del Bene, Daniela
+               and Scheidel, Arnim},
+  title     = {Is There a Global Environmental Justice Movement?},
+  journal   = {The Journal of Peasant Studies},
+  year      = {2016},
+  volume    = {43},
+  number    = {3},
+  pages     = {731--755},
+  doi       = {10.1080/03066150.2016.1141198},
+  keywords  = {environmental justice, ecological distribution, movements},
+  abstract  = {We map the global environmental justice movement and its tensions
+               with Marxist and post-colonial political ecology.},
+  affiliation = {ES},
+}
+
+@article{davis2018telecoupling,
+  author    = {Davis, K. F. and Rulli, M. C. and Seveso, A. and D'Odorico, P.},
+  title     = {Increased Food Production and Reduced Water Use Through
+               Teleconnection Between Producers and Consumers},
+  journal   = {Earth System Dynamics},
+  year      = {2017},
+  volume    = {8},
+  number    = {2},
+  pages     = {435--452},
+  doi       = {10.5194/esd-8-435-2017},
+  keywords  = {telecoupling, virtual water, food trade, teleconnections},
+  abstract  = {We document increased teleconnections between food producers and
+               consumers globally, with implications for water resources.},
+  affiliation = {US},
+}
+
+@article{heikkine2019food,
+  author    = {Heikkine{\"a}, T. and Pietola, K.},
+  title     = {Food Miles, Carbon Labeling, and the Hidden Ecological Costs of
+               Northern Consumption},
+  journal   = {Environmental Politics},
+  year      = {2019},
+  volume    = {28},
+  number    = {2},
+  pages     = {245--264},
+  doi       = {10.1080/09644016.2019.1549779},
+  keywords  = {food miles, carbon labeling, consumption, Northern Europe},
+  abstract  = {We examine the political economy of carbon labeling in food trade
+               and the hidden ecological costs of Northern consumption.},
+  affiliation = {FI},
+}
+
+@article{wiedmann2015footprint,
+  author    = {Wiedmann, T. O. and Schandl, H. and Lenzen, M. and Moran, D. and
+               Suh, S. and West, J. and Kanemoto, K.},
+  title     = {The Material Footprint of Nations},
+  journal   = {Proceedings of the National Academy of Sciences},
+  year      = {2015},
+  volume    = {112},
+  number    = {20},
+  pages     = {6271--6276},
+  doi       = {10.1073/pnas.1220362110},
+  keywords  = {material footprint, MRIO, consumption, trade},
+  abstract  = {We compute the material footprint of nations using multi-region
+               input-output analysis.},
+  affiliation = {AU},
+}
+
+@article{kastner2014regime,
+  author    = {Kastner, T. and Erb, K.-H. and Haberl, H.},
+  title     = {Rapidly Increasing Pressure on Commodity Agriculture in Latin
+               America},
+  journal   = {Environmental Research Letters},
+  year      = {2014},
+  volume    = {9},
+  number    = {10},
+  pages     = {104005},
+  doi       = {10.1088/1748-9326/9/10/104005},
+  keywords  = {land use, commodity agriculture, Latin America, telecoupling},
+  abstract  = {We map growing pressure on commodity agriculture in Latin America
+               driven by Northern demand.},
+  affiliation = {AT},
+}
+
+@article{bringezu2015assessing,
+  author    = {Bringezu, S. and Schuetz, H. and Pengue, W. and O'Brien, M. and
+               Garcia, F. and Sims, R. and Wirtz, D.},
+  title     = {Assessing Global Land Use: Balancing Consumption with
+               Sustainable Supply},
+  year      = {2015},
+  journal   = {UNEP Report},
+  keywords  = {land use, global, methodology, supply chain},
+  affiliation = {DE},
+  % Sin doi, sin abstract: testea el parser.
+}
+
+@article{hoekstra2011water,
+  author    = {Hoekstra, A. Y. and Chapagain, A. K. and Aldaya, M. M. and
+               Mekonnen, M. M.},
+  title     = {The Water Footprint Assessment Manual},
+  year      = {2011},
+  publisher = {Earthscan},
+  keywords  = {water footprint, manual, methodology},
+  affiliation = {NL},
+}
+
+@misc{openalex2024,
+  author    = {{OurResearch}},
+  title     = {OpenAlex: Open Infrastructure for Bibliographic Data},
+  year      = {2024},
+  howpublished = {Online},
+  note      = {https://openalex.org},
+  keywords  = {openalex, open data, bibliometrics},
+  affiliation = {US},
+}
+
+@article{warrior2019critique,
+  author    = {Warrior, R. and {\'A}lvarez, L.},
+  title     = {A Critique of Material Flow Analysis as a Tool for Ecological
+               Unequal Exchange Research},
+  journal   = {Capitalism Nature Socialism},
+  year      = {2019},
+  volume    = {30},
+  number    = {4},
+  pages     = {78--94},
+  doi       = {10.1080/10455752.2018.1556455},
+  keywords  = {methodology critique, MFA, unequal exchange, political ecology},
+  abstract  = {We critically examine methodological assumptions in MFA-based IED
+               research and propose a political-ecology framing.},
+  affiliation = {AR},
+}
+
+@article{frey2021postcolonial,
+  author    = {Frey, B. and Subramaniam, B.},
+  title     = {Postcolonial Critiques of the Treadmill of Production: The Case
+               of India-Brazil Mineral Trade},
+  journal   = {Journal of World-Systems Research},
+  year      = {2021},
+  volume    = {27},
+  number    = {2},
+  pages     = {312--340},
+  doi       = {10.5195/jwsr.2021.1011},
+  keywords  = {postcolonial, treadmill of production, minerals, India, Brazil},
+  abstract  = {We bring postcolonial theory to bear on treadmill-of-production
+               analyses of mineral trade between India and Brazil.},
+  affiliation = {US},
+}
+
+@article{lopez2017extractivism,
+  author    = {L{\'o}pez, A. and V{\'a}zquez, R.},
+  title     = {Extractivismo y deuda ecol{\'o}gica: revisitando el debate},
+  journal   = {Ecolog{\'i}a Pol{\'i}tica},
+  year      = {2017},
+  number    = {53},
+  pages     = {12--28},
+  keywords  = {extractivismo, deuda ecol{\'o}gica, Am{\'e}rica Latina, cr{\'i}tica},
+  abstract  = {Repaso cr{\'i}tico de la literatura latinoamericana sobre
+               extractivismo y deuda ecol{\'o}gica.},
+  affiliation = {AR},
+}
+
+@article{anomimo2010,
+  author    = {Anonymous, A.},
+  title     = {Notas sobre comercio y medio ambiente},
+  year      = {2010},
+  affiliation = {MX},
+}
+
+@article{garcia2015,
+  author    = {Garc{\'i}a, M.},
+  title     = {Huella ecol{\'o}gica y comercio Sur-Norte},
+  year      = {2015},
+  journal   = {Cuadernos Latinoamericanos},
+  affiliation = {CO},
+}
+
+@misc{ecofootprint2020,
+  title     = {Global Ecological Footprint Report},
+  year      = {2020},
+  howpublished = {Global Footprint Network},
+  affiliation = {US},
+}
+
+@article{anomimo2022,
+  author    = {Smith, J. and Patel, R.},
+  title     = {Tensiones Norte-Sur en pol{\'i}ticas clim{\'a}ticas},
+  year      = {2022},
+  affiliation = {IN},
+}

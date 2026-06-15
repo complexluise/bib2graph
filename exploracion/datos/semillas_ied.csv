@@ -1,0 +1,52 @@
+id,doi,title,year,abstract,authors_raw,authors_id,authors_affiliations,keywords_raw,keywords_id,references_doi,source,language,is_seed
+10.1086/227972,10.1086/227972,"Modes of Extraction, Unequal Exchange, and the Progressive
+Underdevelopment of an Extreme Periphery: The Brazilian Amazon,
+1600--1980",1984,"We develop a framework for analyzing unequal ecological exchange
+between core and peripheral regions, drawing on the case of the
+Brazilian Amazon.","Bunker, Stephen G.",bunker_stephen_g,Paper affiliation: US,unequal exchange; ecological exchange; periphery; world-system,unequal_exchange; ecological_exchange; periphery; world-system,,American Journal of Sociology,,True
+10.1016/S0921-8009(97)00100-6,10.1016/S0921-8009(97)00100-6,"Towards an Ecological Theory of Unequal Exchange: Articulating
+World System Theory and Ecological Economics",1998,"We articulate world-system theory and ecological economics to
+develop a biophysical theory of unequal exchange.","Hornborg, Alf",hornborg_alf,Paper affiliation: SE,unequal exchange; ecological economics; world-system; throughput,unequal_exchange; ecological_economics; world-system; throughput,,Ecological Economics,,True
+bib:ricardo1817principles,,On the Principles of Political Economy and Taxation,1817,,"Ricardo, David",ricardo_david,Paper affiliation: UK,political economy; comparative advantage; classical,political_economy; comparative_advantage; classical,,,,True
+bib:wallis1969,,The Ecology of Unequal Exchange,1969,,"Wallis, Victor",wallis_victor,Paper affiliation: US,ecology; unequal exchange; marxism,ecology; unequal_exchange; marxism,,Environments and Societies,,True
+10.1016/j.ecolecon.2017.08.001,10.1016/j.ecolecon.2017.08.001,"Biophysical Trade Balance of Ecuador: A Biophysical Perspective
+on Asymmetric Exchange",2018,"We compute the physical trade balance of Ecuador to expose
+asymmetric ecological exchange.","Aldas, C.; Álvarez, M.; Orta, L.",aldas_c; álvarez_m; orta_l,Paper affiliation: EC,biophysical trade; Ecuador; unequal exchange; Latin America,biophysical_trade; ecuador; unequal_exchange; latin_america,,Ecological Economics,,True
+10.1111/jiec.12830,10.1111/jiec.12830,"Physical Trade Deficits of Brazil 1990--2015: A Material Flow
+Analysis",2019,"Material flow analysis applied to Brazilian trade shows persistent
+physical deficits with the Global North.","Pereira, J.; Silva, R.; Costa, P.",pereira_j; silva_r; costa_p,Paper affiliation: BR,material flow analysis; Brazil; biophysical trade; periphery,material_flow_analysis; brazil; biophysical_trade; periphery,,Journal of Industrial Ecology,,True
+bib:reyes2020deuda,,"Deuda ecológica del Perú con el mundo, 1990--2018",2020,"Estimación de la deuda ecológica del Perú mediante
+análisis de flujos de materiales y huella ecológica.","Reyes, G.; Carrasco, H.",reyes_g; carrasco_h,Paper affiliation: PE,deuda ecológica; Perú; comercio; América Latina,deuda_ecológica; perú; comercio; américa_latina,,Ecología Política,,True
+bib:castro2021comercio,,Comercio internacional y deuda ecológica en Bolivia,2021,,"Castro, V.; Bermúdez, A.",castro_v; bermúdez_a,Paper affiliation: BO,deuda ecológica; Bolivia; comercio; extractivismo,deuda_ecológica; bolivia; comercio; extractivismo,,Revista Boliviana de Investigación,,True
+10.1080/01436597.2020.1723088,10.1080/01436597.2020.1723088,"South-South Trade and Ecological Unequal Exchange: The Case of
+India's Pharmaceutical Exports",2020,"We challenge the assumption that South-South trade is intrinsically
+more ecological, examining the Indian pharmaceutical sector.","Khor, M.; Narayanan, S.",khor_m; narayanan_s,Paper affiliation: IN,South-South trade; India; unequal exchange; pharmaceuticals,south-south_trade; india; unequal_exchange; pharmaceuticals,,Third World Quarterly,,True
+10.1080/03066150.2016.1141198,10.1080/03066150.2016.1141198,Is There a Global Environmental Justice Movement?,2016,"We map the global environmental justice movement and its tensions
+with Marxist and post-colonial political ecology.","Martínez-Alier, Joan; Temper, Leah; Del Bene, Daniela; Scheidel, Arnim",martínezalier_joan; temper_leah; del_bene_daniela; scheidel_arnim,Paper affiliation: ES,environmental justice; ecological distribution; movements,environmental_justice; ecological_distribution; movements,,The Journal of Peasant Studies,,True
+10.5194/esd-8-435-2017,10.5194/esd-8-435-2017,"Increased Food Production and Reduced Water Use Through
+Teleconnection Between Producers and Consumers",2017,"We document increased teleconnections between food producers and
+consumers globally, with implications for water resources.","Davis, K. F.; Rulli, M. C.; Seveso, A.; D'Odorico, P.",davis_k_f; rulli_m_c; seveso_a; dodorico_p,Paper affiliation: US,telecoupling; virtual water; food trade; teleconnections,telecoupling; virtual_water; food_trade; teleconnections,,Earth System Dynamics,,True
+10.1080/09644016.2019.1549779,10.1080/09644016.2019.1549779,"Food Miles, Carbon Labeling, and the Hidden Ecological Costs of
+Northern Consumption",2019,"We examine the political economy of carbon labeling in food trade
+and the hidden ecological costs of Northern consumption.","Heikkineá, T.; Pietola, K.",heikkineá_t; pietola_k,Paper affiliation: FI,food miles; carbon labeling; consumption; Northern Europe,food_miles; carbon_labeling; consumption; northern_europe,,Environmental Politics,,True
+10.1073/pnas.1220362110,10.1073/pnas.1220362110,The Material Footprint of Nations,2015,"We compute the material footprint of nations using multi-region
+input-output analysis.","Wiedmann, T. O.; Schandl, H.; Lenzen, M.; Moran, D.; Suh, S.; West, J.; Kanemoto, K.",wiedmann_t_o; schandl_h; lenzen_m; moran_d; suh_s; west_j; kanemoto_k,Paper affiliation: AU,material footprint; MRIO; consumption; trade,material_footprint; mrio; consumption; trade,,Proceedings of the National Academy of Sciences,,True
+10.1088/1748-9326/9/10/104005,10.1088/1748-9326/9/10/104005,"Rapidly Increasing Pressure on Commodity Agriculture in Latin
+America",2014,"We map growing pressure on commodity agriculture in Latin America
+driven by Northern demand.","Kastner, T.; Erb, K.-H.; Haberl, H.",kastner_t; erb_kh; haberl_h,Paper affiliation: AT,land use; commodity agriculture; Latin America; telecoupling,land_use; commodity_agriculture; latin_america; telecoupling,,Environmental Research Letters,,True
+bib:bringezu2015assessing,,"Assessing Global Land Use: Balancing Consumption with
+Sustainable Supply",2015,,"Bringezu, S.; Schuetz, H.; Pengue, W.; O'Brien, M.; Garcia, F.; Sims, R.; Wirtz, D.",bringezu_s; schuetz_h; pengue_w; obrien_m; garcia_f; sims_r; wirtz_d,Paper affiliation: DE,land use; global; methodology; supply chain,land_use; global; methodology; supply_chain,,UNEP Report,,True
+bib:hoekstra2011water,,The Water Footprint Assessment Manual,2011,,"Hoekstra, A. Y.; Chapagain, A. K.; Aldaya, M. M.; Mekonnen, M. M.",hoekstra_a_y; chapagain_a_k; aldaya_m_m; mekonnen_m_m,Paper affiliation: NL,water footprint; manual; methodology,water_footprint; manual; methodology,,Earthscan,,True
+bib:openalex2024,,OpenAlex: Open Infrastructure for Bibliographic Data,2024,,{OurResearch},ourresearch_,Paper affiliation: US,openalex; open data; bibliometrics,openalex; open_data; bibliometrics,,,,True
+10.1080/10455752.2018.1556455,10.1080/10455752.2018.1556455,"A Critique of Material Flow Analysis as a Tool for Ecological
+Unequal Exchange Research",2019,"We critically examine methodological assumptions in MFA-based IED
+research and propose a political-ecology framing.","Warrior, R.; Álvarez, L.",warrior_r; álvarez_l,Paper affiliation: AR,methodology critique; MFA; unequal exchange; political ecology,methodology_critique; mfa; unequal_exchange; political_ecology,,Capitalism Nature Socialism,,True
+10.5195/jwsr.2021.1011,10.5195/jwsr.2021.1011,"Postcolonial Critiques of the Treadmill of Production: The Case
+of India-Brazil Mineral Trade",2021,"We bring postcolonial theory to bear on treadmill-of-production
+analyses of mineral trade between India and Brazil.","Frey, B.; Subramaniam, B.",frey_b; subramaniam_b,Paper affiliation: US,postcolonial; treadmill of production; minerals; India; Brazil,postcolonial; treadmill_of_production; minerals; india; brazil,,Journal of World-Systems Research,,True
+bib:lopez2017extractivism,,Extractivismo y deuda ecológica: revisitando el debate,2017,"Repaso crítico de la literatura latinoamericana sobre
+extractivismo y deuda ecológica.","López, A.; Vázquez, R.",lópez_a; vázquez_r,Paper affiliation: AR,extractivismo; deuda ecológica; América Latina; crítica,extractivismo; deuda_ecológica; américa_latina; crítica,,Ecología Política,,True
+bib:anomimo2010,,Notas sobre comercio y medio ambiente,2010,,"Anonymous, A.",anonymous_a,Paper affiliation: MX,,,,,,True
+bib:garcia2015,,Huella ecológica y comercio Sur-Norte,2015,,"García, M.",garcía_m,Paper affiliation: CO,,,,Cuadernos Latinoamericanos,,True
+bib:ecofootprint2020,,Global Ecological Footprint Report,2020,,,,Paper affiliation: US,,,,,,True
+bib:anomimo2022,,Tensiones Norte-Sur en políticas climáticas,2022,,"Smith, J.; Patel, R.",smith_j; patel_r,Paper affiliation: IN,,,,,,True
