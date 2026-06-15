@@ -153,3 +153,34 @@
 > `DuckDBStore` (vía `bib2graph.__getattr__`); `LoopState`, `StoreLockedError` (desde
 > `bib2graph.backends.duckdb` / `bib2graph.stores.duckdb`). `DuckDBBackend` reusa la suite de
 > contrato de backend del Hito 1.5 (D1/D2/D3), ahora parametrizada también con él.
+
+---
+
+## 2026-06-15 — Hito 4 (`OpenAlexSource` + `BibtexSource`: costura de siembra por red)
+
+> Las **decisiones de contrato/arquitectura** de este hito ya viven en ADRs previos y **no** se
+> re-deciden acá: `Source` agnóstico (mínimo universal vs enriquecimiento) en
+> [0018](0018-source-agnostico-calidad.md); OpenAlex backbone + límites WoS en
+> [0007](0007-openalex-backbone.md); credenciales en [0012](0012-openalex-credenciales.md);
+> `openalex_version` que ancla la foto en [0017](0017-reproducibilidad-historia-snapshot.md);
+> `bibtexparser` como extra en [0005](0005-dependencias-extras.md). Las filas marcadas **(PO)** son
+> decisiones del Product Owner humano de este ciclo (registradas para contexto, no autónomas de la
+> IA); el resto son decisiones **de implementación** que tomó la IA. **Con el Hito 4, v0.1 queda
+> feature-complete.** El verifier PASA (**133 tests** verdes; mypy/ruff limpios; núcleo sin `duckdb`).
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| 4.0 **(PO)** | **`bibtexparser` como extra `[bibtex]`**, no en el núcleo | BibTeX es una **fuente secundaria** (sembrar desde *pearls*); el núcleo no debe arrastrarla. Coherente con la política de extras del ADR [0005](0005-dependencias-extras.md) | Media: mover al núcleo es aditivo pero contradiría 0005 | **Sí — decisión del PO** |
+| 4.1 **(PO)** | **Semillas con `curation_status="candidate"`** (no `accepted`): `is_seed` y `curation_status` son **ejes ortogonales** | Sembrar marca **procedencia** (`is_seed=True`), no **aceptación**: el juicio humano de curar (accept/reject) es un paso aparte (biblioteca viva, C4). Una semilla puede rechazarse sin perder su `is_seed` | Media: cambiar el default tocaría el modelo de curación y tests | **Sí — decisión del PO** |
+| 4.a | **Traducción ecuación→OpenAlex PASSTHROUGH + reporte** (envuelve en `title_and_abstract.search:(...)` y **reporta** NEAR/comodín/tags WoS sin traducirlos); el **traductor WoS→OpenAlex (A2) se difiere a v0.2** | Un traductor WoS completo es trabajo grande y especulativo para v0.1; el passthrough ya cumple A1 (sembrar por ecuación) y A2 a nivel de **consciencia** (la query ejecutada + qué se descartó son visibles en `SeedResult`). Construir el traductor ahora arriesgaría regresiones sin caso real que lo valide | Alta: agregar el traductor es aditivo (el passthrough queda como `native`/fallback); ningún contrato cambia | Sí (PO proxy; verifier PASA) |
+| 4.b | **Flag `native=True` en `seed()`** (escape hatch): pasa la query **cruda** sin envolver ni reportar | Da una vía consciente para usuarios que ya escriben sintaxis OpenAlex nativa (filtros, `from_publication_date`, etc.) sin pelear con el wrapper passthrough; es el "escape hatch" que pide el ADR 0007 | Alta: quitar el flag solo elimina el atajo, no rompe el camino por defecto | Sí (PO proxy; verifier PASA) |
+| 4.c | **`max_results=200` + cursor paging; `cited_by_id` diferido al chaining/Enricher** (el seed lo deja `[]`) | El cursor paging acota el costo de red por seed (tope configurable); traer **citantes** por paper en el seed multiplicaría las llamadas y pertenece al **forward chaining** (Hito 5) / 2º nivel del `Enricher` (Hito 8), no a la siembra. Las **referencias** sí vienen inline (OpenAlex las da en el work) | Alta: subir el tope o adelantar `cited_by_id` es aditivo; el schema ya admite la columna | Sí (PO proxy; verifier PASA) |
+| 4.d | **`transport` de httpx inyectable** en `OpenAlexSource.__init__` (`transport=None` → cliente real; `MockTransport` en tests) | Cumple "costuras de red contra API simulada, nunca red en CI" (ROADMAP, disciplina de tests) sin un wrapper extra: el `MockTransport` se inyecta directo y el cliente real es el default | Alta: es un parámetro opt-in; el default no cambia el comportamiento de producción | Sí (PO proxy; verifier PASA) |
+| 4.e | **`Corpus.with_manifest(manifest) -> Corpus`** como API pública canónica para sellar metadata (lo usa `seed()` para poblar `openalex_version`/`equations`) | El source necesita escribir en el Manifest **sin** tocar el backend ni reconstruir el corpus; `with_manifest` lo hace con semántica de valor y `corpus_hash` invariante (el hash es sobre la tabla, no el manifest). Lo reusarán Forager/Enricher/Filter | Alta: es aditivo a la superficie de `Corpus`; no cambia ningún contrato existente | Sí (PO proxy; verifier PASA) |
+| 4.f | **`SeedResult.corpus` validado en runtime vía `arbitrary_types_allowed`** (import directo de `Corpus` en `sources.base`), **sin** `model_rebuild()` ni referencia diferida | `corpus.py` **no** importa `sources`, así que el import directo de `Corpus` no crea circularidad; `arbitrary_types_allowed` basta para que Pydantic acepte un `Corpus` (que no es `BaseModel`). Evita la fragilidad de las forward-refs + `model_rebuild` | Alta: pasar a forward-ref + rebuild es posible si surgiera un ciclo, pero hoy no hace falta | Sí (PO proxy; verifier PASA) |
+
+> Símbolos públicos nuevos del hito en `__init__.py` (import **directo** — httpx es núcleo, sin
+> efectos de import; ver [`../API.md`](../API.md) §2): `OpenAlexSource`, `BibtexSource`, `Source`
+> (Protocol), `SeedResult`. El nuevo método `Corpus.with_manifest()` se documenta en
+> [`../API.md`](../API.md) §1.2. No se abrió ADR nuevo: el contrato del hito está cubierto por los
+> ADR 0005/0007/0012/0017/0018.

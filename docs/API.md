@@ -25,6 +25,13 @@
 > (§4/§4.1): mutación por SQL puro, `LoopState` (log append-only), fachada `DuckDBStore` con
 > `.backend`, single-writer (`StoreLockedError`) y **carga perezosa** (PEP 562) para no acoplar el
 > núcleo a duckdb.
+>
+> **Sincronizado con el Hito 4 (2026-06-15):** `OpenAlexSource` y `BibtexSource` están **construidos**
+> (§2): traducción **passthrough** + reporte (traductor WoS diferido a v0.2), flag `native`,
+> `cited_by_id` diferido al chaining/Enricher, `bibtexparser` como extra **`[bibtex]`**, credenciales
+> inyectadas (ADR 0012) y `Manifest.openalex_version` poblada (ADR 0017). El método
+> `Corpus.with_manifest()` (§1.2) es la API canónica que usan para sellar metadata. **Con el Hito 4,
+> v0.1 queda feature-complete** (ver [`ROADMAP.md`](ROADMAP.md)).
 
 ## Convenciones
 
@@ -158,6 +165,13 @@ class Corpus:
     def seeds(self) -> pa.Table:        """Vista is_seed == True."""
     def candidates(self) -> pa.Table:   """Vista curation_status == 'candidate'."""
     def accepted(self) -> pa.Table:     """Vista curation_status == 'accepted' (la biblioteca curada)."""
+
+    def with_manifest(self, manifest: Manifest) -> "Corpus":
+        """Devuelve un Corpus nuevo con el MISMO contenido y otro Manifest (semántica de valor:
+        el original no muta). No toca el backend; el `corpus_hash` no cambia (el hash es sobre la
+        tabla, no sobre el Manifest). API canónica para que las costuras (Source/Forager/Filter)
+        sellen su metadata —p. ej. `OpenAlexSource.seed()` puebla `openalex_version`/`equations`—
+        sin reconstruir el corpus. v1 (Hito 4)."""
 
     def add_paper(self, row: dict) -> "Corpus":
         """Valida la fila (PaperRow) y agrega el paper. Calcula `id` (D1) si no viene."""
@@ -312,7 +326,8 @@ class Source(Protocol):
 
     def seed(self, query: str) -> "SeedResult":
         """Siembra desde una ecuación de búsqueda. Devuelve el Corpus + la query ejecutada
-        y el reporte de traducción (qué mapeó, qué se aproximó, qué se descartó)."""
+        y el reporte de traducción (qué mapeó, qué se aproximó, qué se descartó).
+        Una Source que no siembra por ecuación (p. ej. BibtexSource) lanza NotImplementedError."""
     def load(self, path: str) -> Corpus:
         """Siembra desde un archivo (export/pearls). is_seed=True."""
 
@@ -324,8 +339,8 @@ class SeedResult(BaseModel):
 
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
-| `OpenAlexSource` | **v1** | **Referencia/backbone.** Entrega mínimo + enriquecimiento completo: refs + citantes + afiliaciones per-autor. Pool cortés (email inyectado). Escape hatch: query nativa. Puebla `Manifest.openalex_version` (ADR 0017). |
-| `BibtexSource` | **v1, secundaria** | Sembrar desde *pearls*. Pre-procesa el bug de `bibtexparser` (T1 del sandbox). Típicamente solo mínimo universal. |
+| `OpenAlexSource` | **v1 (construido, Hito 4)** | **Referencia/backbone**, sobre `httpx`. Entrega mínimo + enriquecimiento: refs inline + afiliaciones per-autor + instituciones; `cited_by_id` queda **diferido** al chaining/`Enricher` (no se trae en el seed). Traducción **passthrough** —envuelve la ecuación en `title_and_abstract.search:(...)` y **reporta** los límites WoS (NEAR/comodín/tags) sin traducirlos; el traductor WoS→OpenAlex es v0.2. Flag `native=True` (query cruda). Credenciales inyectadas (arg → `OPENALEX_API_KEY` → `~/.openalex/credentials` → polite pool; ADR 0012). Cursor paging con tope `max_results=200`. Puebla `Manifest.openalex_version` (header o fecha del fetch; ADR 0017). `transport` inyectable (tests con `MockTransport`, sin red en CI). |
+| `BibtexSource` | **v1, secundaria (construido, Hito 4)** | Sembrar desde *pearls* vía `load()`. Extra **`[bibtex]`** (import perezoso de `bibtexparser`, ADR 0005); acceso defensivo (fix del bug T1: campos faltantes sin `KeyError`). Mínimo universal. `seed()` lanza `NotImplementedError` (BibTeX no siembra por ecuación). |
 | `ScieloSource` / `RedalycSource` / `LaReferenciaSource` | futuro | Fuentes regionales, mínimo universal. Declaradas, no implementadas (ADR 0018). |
 | `RisSource` / `CsvSource` | futuro | No implementados. |
 
@@ -642,7 +657,9 @@ def deduplicate_keywords(corpus: Corpus, *, threshold: float = 0.9) -> Corpus:
 
 > `DuckDBStore` se importa desde `bib2graph` (re-export **perezoso** vía PEP 562, §4.1):
 > `import bib2graph` no arrastra duckdb; el módulo se carga al tocar el símbolo. `OpenAlexSource`/
-> `Forager` son del Hito 4/5 (aún no construidos): el ejemplo es el pipeline objetivo.
+> `BibtexSource` ya están **construidos** (Hito 4, import directo). `Forager`/`Preprocessor` son del
+> **Hito 5 (v0.2, aún no construidos)**: ese tramo (pasos 2–3) es el pipeline objetivo; el resto
+> (sembrar → persistir → snapshot → redes) ya corre con lo de v0.1.
 
 ```python
 from pathlib import Path

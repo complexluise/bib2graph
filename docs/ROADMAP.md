@@ -15,7 +15,9 @@
 > [0011](decisiones/0011-thesaurus-multilingue.md) (thesaurus). Diseño objetivo en
 > [`ARCHITECTURE.md`](ARCHITECTURE.md); contratos en [`API.md`](API.md) (ya reconciliado).
 >
-> **Estado de construcción (2026-06-15):** **Hitos 0, 1, 2, 1.5 y 3 TERMINADOS.** Tras el **2º giro**
+> **Estado de construcción (2026-06-15):** **Hitos 0, 1, 2, 1.5, 3 y 4 TERMINADOS** — con el Hito 4,
+> el alcance de **v0.1 (Hitos 1–4 + 1.5) queda feature-complete**: "ecuación → redes desde código
+> Python" es alcanzable end-to-end (sin CLI ni forrajeo, que son v0.2). Tras el **2º giro**
 > (acta del PO; ADR [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md))
 > se insertó un **Hito 1.5 — Rework de `Corpus` a `TabularBackend`** como el **paso inmediato
 > siguiente, secuenciado por delante del Hito 3** (instrucción explícita del PO: el rework va
@@ -36,10 +38,12 @@ costura.
 SemVer 0.y: la API es inestable hasta `1.0.0` (que requiere API estable + caso real
 reproducido, ver [`VERSIONING.md`](../VERSIONING.md)). Cortes acordados:
 
-- **v0.1 — pipeline mínimo end-to-end (Hitos 1–4, incl. el rework 1.5):** de una **ecuación de
-  búsqueda a las redes desde código Python**, sobre una **biblioteca viva en DuckDB**. Incluye
-  `Corpus` (sobre `TabularBackend`), proyectores/analizadores/export, `DuckDBBackend`/`DuckDBStore`
-  y `OpenAlexSource`. **Sin CLI ni forrajeo todavía.** Es el **primer release etiquetado**.
+- **v0.1 — pipeline mínimo end-to-end (Hitos 1–4, incl. el rework 1.5) · ✅ FEATURE-COMPLETE
+  (2026-06-15):** de una **ecuación de búsqueda a las redes desde código Python**, sobre una
+  **biblioteca viva en DuckDB**. Incluye `Corpus` (sobre `TabularBackend`),
+  proyectores/analizadores/export, `DuckDBBackend`/`DuckDBStore` y `OpenAlexSource`/`BibtexSource`.
+  Con el **Hito 4 terminado**, todas las piezas existen y se componen en código (ver el ejemplo de
+  `API.md` §12). **Sin CLI ni forrajeo todavía** (eso es v0.2). Es el **primer release etiquetado**.
 - **v0.2 — forrajeo + CLI agente-native (Hitos 5–6):** chaining rankeado, `Preprocessor`,
   filtros PRISMA (comando **`filter`**), `b2g status` (`LoopState`) y la CLI `--json`. El
   `accept`/`reject` programático sobrevive; la curación interactiva rica (`curate`) y la GUI son
@@ -360,7 +364,29 @@ infraestructura. El estado deja de vivir en la sesión.
 
 ---
 
-## Hito 4 — Costura por defecto (red): `OpenAlexSource`
+## Hito 4 — Costura por defecto (red): `OpenAlexSource` + `BibtexSource` · ✅ TERMINADO
+
+> **Construido** así: `src/bib2graph/sources/` con `Source` (Protocol), `SeedResult` (valida
+> `corpus: Corpus` en runtime vía `arbitrary_types_allowed`, sin circularidad), `OpenAlexSource` y
+> `BibtexSource`. **Con este hito, v0.1 (Hitos 1–4 + 1.5) queda feature-complete.**
+> `OpenAlexSource(*, email=None, api_key=None, transport=None, base_url=…, max_results=200)`:
+> traducción **PASSTHROUGH** (envuelve la ecuación en `title_and_abstract.search:(...)` y **reporta**
+> los límites del ADR [0007](decisiones/0007-openalex-backbone.md) — NEAR / comodín / tags WoS — sin
+> traducirlos; el **traductor WoS→OpenAlex queda diferido a v0.2**); flag `native=True` en `seed()`
+> para pasar la query cruda. Cliente `httpx` con **transport inyectable** (tests con `MockTransport`,
+> sin red en CI), credenciales inyectadas (arg → `OPENALEX_API_KEY` → `~/.openalex/credentials` →
+> polite pool, ADR [0012](decisiones/0012-openalex-credenciales.md)), **cursor paging** con tope
+> `max_results`, mapeo a las 22 columnas (refs inline; `cited_by_id=[]` **diferido al
+> chaining/Enricher**; afiliaciones per-autor; `abstract` reconstruido defensivo del
+> `abstract_inverted_index`) y **puebla `Manifest.openalex_version`** (header `x-openalex-api-version`
+> o fecha ISO del fetch, ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)) +
+> `equations`. `BibtexSource` (extra **`[bibtex]`**, import perezoso de `bibtexparser`): acceso
+> defensivo (fix del bug T1, campos faltantes sin `KeyError`), mínimo universal; `seed()` lanza
+> `NotImplementedError` (BibTeX no siembra por ecuación → usar `load()`). Semillas con `is_seed=True`,
+> `curation_status="candidate"` y evento de provenance. Nuevo `Corpus.with_manifest()` como API
+> pública para actualizar el manifest sin tocar el backend (lo reusarán Forager/Enricher/Filter).
+> Verifier PASA (**133 tests** verdes; mypy/ruff limpios; núcleo sin `duckdb`). Decisiones de
+> implementación de la IA en [`decisiones/registro-ia.md`](decisiones/registro-ia.md) (Hito 4).
 
 **Alcance**
 
