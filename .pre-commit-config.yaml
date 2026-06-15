@@ -1,6 +1,7 @@
 # pre-commit hooks para bib2graph.
-# Instalá con: pre-commit install
-# Corrérselo a todo el repo: pre-commit run --all-files
+# Instalá con: uv run pre-commit install
+# Corrérselo a todo el repo: uv run pre-commit run --all-files
+# (los hooks corren en entornos aislados que pre-commit gestiona; no dependen del venv de uv)
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit

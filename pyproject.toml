@@ -1,14 +1,17 @@
 # pyproject.toml — bib2graph
 #
-# Hito 0: andamiaje. Núcleo liviano + extras declarados pero vacíos. Tooling
+# Hito 0: andamiaje. Núcleo (incluye biblioteca viva DuckDB + cliente OpenAlex
+# sobre httpx, ADR 0007/0009) + extras opt-in declarados pero vacíos. Tooling
 # estándar (ruff, mypy, pytest, pre-commit, commitizen, release-please)
-# configurado desde el día uno (ADR 0006).
+# configurado desde el día uno (ADR 0006/0010).
 #
 # Ver:
 #   - docs/ARCHITECTURE.md
 #   - docs/API.md
 #   - docs/ROADMAP.md
-#   - docs/decisiones/0006-tabla-canonica-y-networkspec.md
+#   - docs/decisiones/0007-openalex-backbone.md  (OpenAlex backbone)
+#   - docs/decisiones/0009-biblioteca-viva-duckdb.md  (DuckDB en el núcleo)
+#   - docs/decisiones/0005-dependencias-extras.md  (matriz de extras)
 
 [build-system]
 requires = ["hatchling>=1.18"]
@@ -39,18 +42,45 @@ dependencies = [
     "pyarrow>=15",       # tabla canónica (ADR 0006)
     "pydantic>=2.6",     # validación del wrapper Corpus y Manifest
     "networkx>=3.2",     # grafos
-    "click>=8.1",        # CLI
+    "click>=8.1",        # CLI agente-native (ADR 0010)
     "tqdm>=4.66",        # progreso
+    "duckdb>=0.10",      # biblioteca viva, persistencia por defecto (ADR 0009)
+    "httpx>=0.27",       # cliente OpenAlex backbone; testeable con MockTransport (ADR 0007)
+    "python-louvain>=0.16",  # comunidades Louvain; DECLARADO, nunca usado sin declarar (lección 7)
 ]
 
 [project.optional-dependencies]
-# Extras opt-in (ADR 0005). Núcleo NO los requiere.
-s2 = []        # Hito 6: pys2 (a decidir al implementar)
-neo4j = []     # Hito 10: neoomodel o driver oficial (a decidir)
-duckdb = []    # Hito 7: duckdb
-dedup = []     # Hito 5: fuzzywuzzy, python-levenshtein
-viz = []       # Hito 9: matplotlib, seaborn
-dev = [
+# Extras opt-in (ADR 0005). El núcleo NO los requiere; cada capacidad importa su
+# extra de forma perezosa con un error claro si falta. Hitos según docs/ROADMAP.md.
+zotero = []    # Hito 11 (V1.1): pyzotero — sincronizar la biblioteca viva con Zotero
+s2 = []        # Hito 8: cliente Semantic Scholar — enricher opt-in (refs/2º nivel)
+neo4j = []     # Hito 11 (post-V1.2): neomodel o driver oficial — adaptador tabla→grafo
+dedup = []     # Hito 7: rapidfuzz / splink — dedup fuzzy
+viz = []       # Hito 10: matplotlib, seaborn
+llm = []       # Hito 5 (B4) y thesaurus fuzzy v0.2: cliente LLM
+
+[project.urls]
+Homepage = "https://github.com/<org>/bib2graph"
+Documentation = "https://github.com/<org>/bib2graph/tree/main/docs"
+Issues = "https://github.com/<org>/bib2graph/issues"
+
+[project.scripts]
+# CLI entry point. Hito 6: la implementación real. Mientras tanto, un
+# placeholder honesto que falla con un mensaje útil.
+b2g = "bib2graph.cli:main"
+
+# ----- Build (hatchling, src layout) --------------------------------------
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bib2graph"]
+
+# ----- uv (gestor del proyecto) -------------------------------------------
+# Dependencias de desarrollo gestionadas por uv: NO se publican en PyPI (a
+# diferencia de un extra). `uv sync` las instala por defecto; `uv sync --no-dev`
+# instala solo el núcleo. Agregar deps con `uv add` / `uv add --dev`.
+
+[tool.uv]
+dev-dependencies = [
     "pytest>=8",
     "pytest-cov>=4",
     "mypy>=1.8",
@@ -59,16 +89,6 @@ dev = [
     "commitizen>=3.13",
     "types-tqdm",
 ]
-
-[project.urls]
-Homepage = "https://github.com/<org>/bib2graph"
-Documentation = "https://github.com/<org>/bib2graph/tree/main/docs"
-Issues = "https://github.com/<org>/bib2graph/issues"
-
-[project.scripts]
-# CLI entry point. Hito 4: la implementación real. Mientras tanto, un
-# placeholder honesto que falla con un mensaje útil.
-b2g = "bib2graph.cli:main"
 
 # ----- Tooling ------------------------------------------------------------
 
@@ -110,11 +130,8 @@ disallow_untyped_defs = true
 no_implicit_optional = true
 warn_redundant_casts = true
 plugins = ["pydantic.mypy"]
-# Cobertura gradual: el núcleo es estricto; los extras pueden relajarse.
-
-[[tool.mypy.overrides]]
-module = ["bib2graph.enrichers.*", "bib2graph.stores.neo4j"]
-ignore_missing_imports = true
+# Cobertura gradual: el núcleo es estricto. Los overrides para extras con stubs
+# faltantes (enrichers, stores.neo4j) se agregan cuando esos módulos existan.
 
 [tool.pytest.ini_options]
 minversion = "8.0"
