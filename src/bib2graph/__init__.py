@@ -1,10 +1,12 @@
 """bib2graph — librería para construir redes bibliométricas reproducibles.
 
 Hito 1: núcleo de la tabla canónica ``Corpus``.
+Hito 1.5: costura ``TabularBackend`` + ``InMemoryBackend``.
 Hito 2: proyectores, analizadores, exportadores y ``Networks``.
 
 Símbolos públicos exportados:
-  - Hito 1: ``Corpus``, ``Manifest``, ``CorpusSnapshot``, ``SchemaError``.
+  - Hito 1/1.5: ``Corpus``, ``Manifest``, ``CorpusSnapshot``, ``SchemaError``,
+    ``TabularBackend``, ``InMemoryBackend``.
   - Hito 2: proyectores (5), ``Networks``, ``NetworkArtifact``,
     ``GraphMLExporter``, ``CsvExporter``, ``network_metrics``, ``centrality``,
     ``detect_communities``, ``assortativity``, ``community_composition``,
@@ -15,6 +17,7 @@ Ver ``docs/API.md`` §1, §7-10.
 
 from __future__ import annotations
 
+from bib2graph.backends import InMemoryBackend, TabularBackend
 from bib2graph.corpus import Corpus, CorpusSnapshot, Manifest
 from bib2graph.exporters import CsvExporter, GraphMLExporter
 from bib2graph.networks.analyzer import (
@@ -45,6 +48,7 @@ __all__ = [
     "CorpusSnapshot",
     "CsvExporter",
     "GraphMLExporter",
+    "InMemoryBackend",
     "InstitutionCollaborationProjector",
     "KeywordCoOccurrenceProjector",
     "Manifest",
@@ -52,6 +56,7 @@ __all__ = [
     "Networks",
     "QualityThresholds",
     "SchemaError",
+    "TabularBackend",
     "assortativity",
     "centrality",
     "cocitation_quality_report",
