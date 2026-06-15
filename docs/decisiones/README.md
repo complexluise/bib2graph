@@ -42,3 +42,4 @@ Qué se vuelve posible/fácil y qué se vuelve costoso/imposible. Trade-offs hon
 | [0010](0010-agente-native-columna.md) | CLI agente-native como columna primaria | Aceptada |
 | [0011](0011-thesaurus-multilingue.md) | Thesaurus multilingüe determinista para keywords | Aceptada |
 | [0012](0012-openalex-credenciales.md) | Credenciales de OpenAlex: email + API key opcional, inyectados | Aceptada |
+| [0013](0013-identidad-hash-merge-corpus.md) | Identidad estable de papers, hash de corpus order-independent y reglas de merge | Aceptada |

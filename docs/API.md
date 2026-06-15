@@ -30,6 +30,10 @@ Wrapper sobre una **tabla Arrow** (`pa.Table`) con schema fijo por paper, valida
 devuelven un `Corpus` nuevo); la **biblioteca viva** (estado entre corridas) la mantiene el
 `Store` DuckDB (§4).
 
+**Símbolos públicos del Hito 1** (`from bib2graph import ...`): `Corpus`, `Manifest`,
+`CorpusSnapshot` y `SchemaError` (la excepción de contrato que lanzan `Corpus.from_arrow()` y
+`add_paper()` al violarse el schema canónico).
+
 ### 1.1 Schema de la tabla (columnas canónicas)
 
 | Columna | Tipo Arrow | Nullable | Notas |
@@ -46,7 +50,7 @@ devuelven un `Corpus` nuevo); la **biblioteca viva** (estado entre corridas) la 
 | `research_areas` | `list[string]` | — | atributos, no entidades |
 | `is_seed` | `bool` | no | `True` si entró por la ecuación/semilla; `False` si lo trajo el chaining |
 | `curation_status` | `string` | no | `candidate` / `accepted` / `rejected` (biblioteca viva) |
-| `provenance` | `string` | sí | JSON: `{equation_id, chaining_hop, source, fetched_at, decided_by, decided_at}` — base del **log de procedencia** |
+| `provenance` | `string` | sí | JSON: **lista de eventos** (log append-only). Cada evento `{action, equation_id, chaining_hop, source, fetched_at, decided_by, decided_at}`. Ver nota abajo (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md)) |
 | `authors_raw` / `authors_id` | `list[string]` | — | nombres crudos / ids canónicos (ORCID si hay) |
 | `authors_affiliations` | `list[string]` | — | **per-autor** (de OpenAlex `authorships`); habilita geografía/asortatividad |
 | `keywords_raw` / `keywords_id` | `list[string]` | — | crudos / canónicos (post-thesaurus) |
@@ -57,6 +61,30 @@ devuelven un `Corpus` nuevo); la **biblioteca viva** (estado entre corridas) la 
 
 El schema exacto vive en `bib2graph.schemas`. La validación se hace en `Corpus.from_arrow()` y en
 cada `Source.seed()/load()`.
+
+**`provenance` es un log append-only** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md),
+D4), no un objeto único: la columna `string` guarda un JSON que es una **lista de eventos**. Cada
+evento tiene la forma:
+
+```json
+{
+  "action": "fetched | accepted | rejected",
+  "equation_id": "string | null",
+  "chaining_hop": "int | null",
+  "source": "string | null",
+  "fetched_at": "ISO8601 | null",
+  "decided_by": "string | null",
+  "decided_at": "ISO8601 | null"
+}
+```
+
+`accept()`/`reject()` **agregan** un evento (`action='accepted'`/`'rejected'`, con `decided_by` y
+`decided_at`) sin borrar los previos. `None`/cadena vacía equivalen a "sin eventos".
+
+**`id` estable y determinista** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md), D1):
+`id = f"{prefix}:{sha256(valor)[:16]}"` con precedencia `openalex_id` (`oa:`) → `doi` normalizado
+(`doi:`) → `title+year` (`tt:`). El mismo paper produce el mismo `id` entre corridas; es la base
+de la dedup en `merge` y en la biblioteca viva.
 
 ### 1.2 `Corpus` (wrapper)
 
@@ -80,33 +108,56 @@ class Corpus:
     def candidates(self) -> pa.Table:   """Vista curation_status == 'candidate'."""
     def accepted(self) -> pa.Table:     """Vista curation_status == 'accepted' (la biblioteca curada)."""
 
-    def add_paper(self, row: dict) -> "Corpus": ...
+    def add_paper(self, row: dict) -> "Corpus":
+        """Valida la fila (PaperRow) y agrega el paper. Calcula `id` (D1) si no viene."""
     def merge(self, other: "Corpus") -> "Corpus":
-        """Combina deduplicando por `id`/`openalex_id`/`doi` (idempotente)."""
+        """Combina deduplicando por `id` (idempotente). Combinación por campo: escalar no-nulo
+        gana (ambos no-nulos → `other`); columnas de lista = unión deduplicada (preserva `None`);
+        `curation_status` por decisión humana más reciente (`provenance.decided_at`), fallback
+        `accepted`>`rejected`>`candidate`; `provenance` = unión de eventos únicos (log).
+        Orden de filas: **primera aparición** (filas de `self` en orden, luego las nuevas de
+        `other`). Ver ADR 0013 (D3)."""
     def accept(self, ids: list[str], *, by: str = "human") -> "Corpus":
-        """Marca papers como 'accepted' y registra la decisión en provenance. Devuelve Corpus nuevo."""
+        """Marca papers como 'accepted' y AGREGA un evento al log de provenance. Devuelve Corpus nuevo."""
     def reject(self, ids: list[str], *, by: str = "human") -> "Corpus": ...
     def materialize(self, view: Literal["author", "keyword", "institution"]) -> pa.Table: ...
     def snapshot(self, path: Path) -> "CorpusSnapshot":
         """Exporta una FOTO sellada del estado actual (parquet + manifest.json) para reportar/
-        reproducir. NO es la persistencia (eso es el Store DuckDB); es un export derivable."""
+        reproducir. CALCULA el `corpus_hash` real (D2) y lo escribe en el Manifest del snapshot.
+        NO es la persistencia (eso es el Store DuckDB); es un export derivable."""
+
+    def __eq__(self, other: object) -> bool:
+        """Igualdad canónica vía `corpus_hash` (D2): mismo contenido semántico, insensible al
+        orden de filas y al orden interno de las columnas de lista; no compara el Manifest.
+        Robusta ante cualquier `PYTHONHASHSEED`. Ver ADR 0013."""
 ```
+
+**Notas de contrato** (Hito 1, ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md)):
+
+- **`__eq__` es por `corpus_hash`, no por `pa.Table.equals`:** dos `Corpus` con el mismo contenido
+  en distinto orden de filas (o de elementos de listas) son iguales. El `corpus_hash` hashea solo
+  el contenido de la tabla (incluye `curation_status` y `provenance`), nunca campos volátiles del
+  Manifest (D2).
+- **`merge` emite filas en orden determinista** (primera aparición): habilita diffs y snapshots
+  reproducibles. Es idempotente: `c.merge(c) == c`.
 
 ### 1.3 `Manifest` y `CorpusSnapshot`
 
 ```python
 class Manifest(BaseModel):
     """Metadatos del Corpus. Se serializa a manifest.json junto al parquet del snapshot."""
+    # Obligatorios (sin default) — D5
     schema_version: str
     corpus_hash: str
     lib_version: str
-    openalex_version: str | None       # versión/fecha del snapshot de OpenAlex usado
-    equations: list[EquationRef]        # ecuaciones + query OpenAlex ejecutada + reporte de traducción
-    chaining: ChainingParams | None     # profundidad, topes, dirección
-    preprocessors: list[PreprocRef]     # normalize + thesaurus aplicados
-    filters: list[FilterStep]           # criterios incl/excl con conteos (flujo PRISMA)
-    enrichers: list[EnricherRef]        # opcional (resolución de refs / 2º nivel)
     created_at: datetime
+    # Con default — D5
+    openalex_version: str | None = None          # versión/fecha del snapshot de OpenAlex usado
+    equations: list[EquationRef] = []            # ecuaciones + query OpenAlex ejecutada + reporte de traducción
+    chaining: ChainingParams | None = None       # profundidad, topes, dirección
+    preprocessors: list[PreprocRef] = []         # normalize + thesaurus aplicados
+    filters: list[FilterStep] = []               # criterios incl/excl con conteos (flujo PRISMA)
+    enrichers: list[EnricherRef] = []            # opcional (resolución de refs / 2º nivel)
 
 class CorpusSnapshot:
     """Carpeta con corpus.parquet + manifest.json: EXPORT sellado del estado vivo en un instante.
@@ -117,6 +168,17 @@ class CorpusSnapshot:
     @property
     def corpus(self) -> Corpus: ...
 ```
+
+**Notas de contrato** (Hito 1, ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md); D5/D6):
+
+- **`corpus_hash` se calcula al sellar.** El Manifest del `Corpus` en memoria lleva
+  `corpus_hash=""` (placeholder); el hash real (D2) se computa en `snapshot()` y vive en el
+  `CorpusSnapshot.manifest`. No tratar el hash del Manifest en memoria como autoritativo.
+- **Obligatorios vs default** (D5): `schema_version`, `corpus_hash`, `lib_version`, `created_at`
+  no tienen default; el resto sí (`equations=[]`, `chaining=None`, `preprocessors=[]`,
+  `filters=[]`, `enrichers=[]`, `openalex_version=None`).
+- **`schema_version`** (D6): en Hito 1 solo se escribe y se round-tripea (sin lógica de rechazo
+  por incompatibilidad; queda para un hito posterior con migraciones sobre el store vivo).
 
 ---
 
