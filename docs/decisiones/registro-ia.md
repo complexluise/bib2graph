@@ -184,3 +184,37 @@
 > (Protocol), `SeedResult`. El nuevo método `Corpus.with_manifest()` se documenta en
 > [`../API.md`](../API.md) §1.2. No se abrió ADR nuevo: el contrato del hito está cubierto por los
 > ADR 0005/0007/0012/0017/0018.
+
+---
+
+## 2026-06-15 — Hito 5 (Forrajeo + `Preprocessor` + filtros PRISMA)
+
+> Las **decisiones de método** de este hito son **arquitectónicas** y van al ADR
+> [0020](0020-metodo-forrajeo-scent-filtros-reject.md), no como filas acá: el **scent = frecuencia
+> de enlace** y los **filtros que marcan `rejected` (no borran)** son **decisiones del PO**
+> (marcadas `Decidido por: mixto` en el ADR); backward puro vs forward red, `keywords_id`
+> pre/post-thesaurus y el `preview` local-only son de la IA validadas por el PO proxy. Lo de abajo
+> son las decisiones **de implementación / proceso** que tomó la IA al construir el hito. El verifier
+> PASA (**192 tests** verdes; el preview network-free quedó corregido; núcleo sin `duckdb`).
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| 5.1 | **Estructura en paquetes `foraging/`** (`scent` puro, `base`, `forager`, `explain`), **`preprocessors/`** (`normalize`, `thesaurus`, `preprocessor`) y **`filters/`** (`prisma`), no módulos planos | Separa el cómputo puro de scent del orquestador que toca la red; cada módulo de API.md §5–§6 mapea a un archivo. Los símbolos públicos se re-exportan desde `__init__.py` (`Forager`, `GrowthPreview`, `RankedCandidates`, `Preprocessor`, `FilterCriterion`, `apply_filters`); `explain_candidate`/`apply_filter` quedan en su sub-paquete | Alta: mover/fusionar módulos no cambia la superficie pública | Sí (PO proxy; verifier PASA) |
+| 5.2 | **`preview` local-only con `forward_requires_fetch`** (`by_direction["forward"]=0` cuando se pide forward/both): backward se estima exacto desde `references_id`, forward NO se estima sin red | `cited_by_id` está vacío tras el seed (decisión 4.c, Hito 4); estimar forward exigiría `fetch_citing` (red), y el `preview` debe ser barato y honesto. El flag deja claro al llamador que el conteo real llega con `chain()` (corrige el preview que antes tocaba red) | Media: estimar forward sin red es imposible con el schema actual; el flag es el contrato honesto | Sí (PO proxy; verifier PASA) |
+| 5.3 | **Forward chaining exige `source.fetch_citing(openalex_id)`** y falla con `AttributeError` accionable si falta; **NO se amplió el Protocol `Source`** (§2). `OpenAlexSource.fetch_citing` calcula el `id` D1 de cada citante con la misma función que `add_paper` | `fetch_citing` (`GET works?filter=cites:`) es capacidad de OpenAlex, no contrato universal: una `Source` de solo-mínimo (ADR 0018) no debe verse forzada a implementarlo. Calcular el `id` en el source deja a `Forager`/`compute_forward_scent` identificar candidatos sin recomputar | Media: subir `fetch_citing` al Protocol obligaría a toda Source; revertir el cálculo del id duplicaría D1 | Sí (PO proxy; verifier PASA) |
+| 5.4 | **Candidatos backward = stubs id-only** (título placeholder `[candidate:{id}]`, `openalex_id` poblado, resto nulo; `is_seed=False`, `curation_status='candidate'`, `provenance` con `chaining_hop=1`) | Backward solo aporta el id (sale de `references_id`); fabricar metadata sería inventar datos. El placeholder pasa la validación del schema sin contaminar las redes (no tienen autores/keywords reales); se enriquecen después. **Gap conocido:** quedan id-only hasta un enrich/curación posterior | Alta: enriquecer los stubs es aditivo (Hito 8) | Sí (PO proxy; verifier PASA) |
+| 5.5 | **`apply_thesaurus` SOBRESCRIBE `keywords_id` desde `keywords_raw`** (no fusiona) | El schema (API.md §1.1) ya dice que `keywords_id` son "canónicos post-thesaurus": antes del thesaurus no es autoritativa. Sobrescribir hace la operación idempotente y predecible (el thesaurus es la única fuente de los canónicos). Precisado en el ADR 0020 (D) | Alta: cambiar a merge exigiría re-tocar tests de idempotencia | Sí (PO proxy; verifier PASA) |
+| 5.6 | **`normalize` conservador**: `authors_id` (lowercase + acentos + espacios) y `language` (ISO 639-1 primario); **sin fuzzy, sin columna de periodización** | El fuzzy es del extra `[dedup]` (Hito 7, lección 5: no adelantar); la "periodización" del API.md §6 previo no tenía contrato claro ni caso que la valide, así que no se inventó una columna nueva. Idempotente | Alta: agregar periodización/fuzzy es aditivo | Sí (PO proxy; verifier PASA) |
+| 5.7 | **`apply_filters` SELLA `Manifest.filters` reemplazando** (una corrida = una secuencia PRISMA), con `count_before/after` por `FilterStep` contando papers **no-rejected** | Una corrida de filtros describe **su** secuencia PRISMA; acumular mezclaría corridas distintas. El `provenance` por paper (append-only, D4) ya guarda cada rechazo individual, así que no se pierde historia. **Gap conocido:** no hay un historial de todas las corridas de filtro a nivel Manifest | Media: pasar a acumular cambiaría la semántica del reporte PRISMA | Sí (PO proxy; verifier PASA) |
+| 5.8 | **`explain_candidate` (B4) = stub gateado en `[llm]`**: firma real + import perezoso del extra; sin extra → `ImportError` accionable, con extra → `NotImplementedError` (la llamada LLM no está construida) | El forrajeo debe funcionar sin LLM (B4 es opcional). El stub fija el contrato y el aislamiento del extra sin prometer una capacidad inexistente (lección 5). La integración LLM es v0.2 | Alta: construir la llamada LLM es aditivo | Sí (PO proxy; criterio del ROADMAP) |
+
+> **Decisiones del PO de este ciclo** (en el ADR [0020](0020-metodo-forrajeo-scent-filtros-reject.md),
+> registradas acá para contexto): scent = **frecuencia de enlace** (descarta acoplamiento/centralidad);
+> alcance Hito 5 completo (forrajeo + thesaurus + filtros); **filtros marcan `rejected`, no borran**
+> (biblioteca viva + trazabilidad PRISMA).
+>
+> **Gaps conocidos declarados** (no construidos, marcados para no falsear el estado): (a) candidatos
+> backward **id-only** — se enriquecen luego (Hito 8); (b) `Manifest.filters` **reemplaza** — no hay
+> historial de corridas de filtro a nivel Manifest (sí en `provenance` por paper); (c) el **reporte de
+> calidad** del ADR [0018](0018-source-agnostico-calidad.md) sigue **declarado, no construido**
+> (concreto v0.2+). Símbolos públicos nuevos en `__init__.py`: ver [`../API.md`](../API.md) §5–§6.

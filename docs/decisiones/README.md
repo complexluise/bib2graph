@@ -49,3 +49,4 @@ Qué se vuelve posible/fácil y qué se vuelve costoso/imposible. Trade-offs hon
 | [0017](0017-reproducibilidad-historia-snapshot.md) | Reproducibilidad por historia auditable + snapshot, no por recómputo | Aceptada |
 | [0018](0018-source-agnostico-calidad.md) | Contrato `Source` agnóstico (mínimo universal vs enriquecimiento) + reporte de calidad declarado | Aceptada |
 | [0019](0019-concurrencia-diferida.md) | Concurrencia diferida: limitación conocida, 1 archivo = 1 escritor | Aceptada |
+| [0020](0020-metodo-forrajeo-scent-filtros-reject.md) | Método de forrajeo: scent = frecuencia de enlace, backward puro / forward red, filtros que marcan `rejected` | Aceptada |

@@ -15,9 +15,12 @@
 > [0011](decisiones/0011-thesaurus-multilingue.md) (thesaurus). Diseño objetivo en
 > [`ARCHITECTURE.md`](ARCHITECTURE.md); contratos en [`API.md`](API.md) (ya reconciliado).
 >
-> **Estado de construcción (2026-06-15):** **Hitos 0, 1, 2, 1.5, 3 y 4 TERMINADOS** — con el Hito 4,
-> el alcance de **v0.1 (Hitos 1–4 + 1.5) queda feature-complete**: "ecuación → redes desde código
-> Python" es alcanzable end-to-end (sin CLI ni forrajeo, que son v0.2). Tras el **2º giro**
+> **Estado de construcción (2026-06-15):** **Hitos 0, 1, 2, 1.5, 3, 4 y 5 TERMINADOS** — con el Hito 4,
+> el alcance de **v0.1 (Hitos 1–4 + 1.5) quedó feature-complete**: "ecuación → redes desde código
+> Python" es alcanzable end-to-end. El **Hito 5 (forrajeo + `Preprocessor` + filtros PRISMA)** está
+> construido (`Forager` con scent = frecuencia de enlace, `preview` sin red, filtros que marcan
+> `rejected`; ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)); falta el **CLI
+> agente-native (Hito 6)** para cerrar v0.2. Tras el **2º giro**
 > (acta del PO; ADR [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md))
 > se insertó un **Hito 1.5 — Rework de `Corpus` a `TabularBackend`** como el **paso inmediato
 > siguiente, secuenciado por delante del Hito 3** (instrucción explícita del PO: el rework va
@@ -45,7 +48,9 @@ reproducido, ver [`VERSIONING.md`](../VERSIONING.md)). Cortes acordados:
   Con el **Hito 4 terminado**, todas las piezas existen y se componen en código (ver el ejemplo de
   `API.md` §12). **Sin CLI ni forrajeo todavía** (eso es v0.2). Es el **primer release etiquetado**.
 - **v0.2 — forrajeo + CLI agente-native (Hitos 5–6):** chaining rankeado, `Preprocessor`,
-  filtros PRISMA (comando **`filter`**), `b2g status` (`LoopState`) y la CLI `--json`. El
+  filtros PRISMA (comando **`filter`**), `b2g status` (`LoopState`) y la CLI `--json`. **El
+  forrajeo, el `Preprocessor` y los filtros (Hito 5) están construidos** (lógica desde código);
+  falta el CLI (Hito 6) para cerrar el corte. El
   `accept`/`reject` programático sobrevive; la curación interactiva rica (`curate`) y la GUI son
   futuro. Acá se cumple el criterio "V1 hecha" del PRD §9 a nivel de *capacidades* (el número de
   versión sigue en 0.y).
@@ -437,7 +442,21 @@ query registrada para reproducir.
 
 ---
 
-## Hito 5 — Forrajeo/chaining + `Preprocessor` + filtros de curación
+## Hito 5 — Forrajeo/chaining + `Preprocessor` + filtros de curación · ✅ TERMINADO
+
+> **Construido** así: `src/bib2graph/foraging/` (`Forager(source, *, depth=1, max_candidates=None)`
+> con `preview` **sin red** —backward exacto local, `forward_requires_fetch` cuando se pide
+> forward/both— y `chain` rankeado por *information scent* = **frecuencia de enlace** —`scent.py`
+> puro, sin acoplamiento/centralidad—; `explain_candidate` stub gateado en `[llm]`);
+> `src/bib2graph/preprocessors/` (`normalize` conservador + `apply_thesaurus` que **sobrescribe
+> `keywords_id` desde `keywords_raw`**, multilingüe en/es/pt, idempotente); `src/bib2graph/filters/`
+> (`apply_filter`/`apply_filters` puros que **marcan `rejected` —NO borran—** con conteo PRISMA por
+> `FilterStep` y sellan `Manifest.filters`). Forward chaining usa `OpenAlexSource.fetch_citing` (no
+> amplió el Protocol `Source`); `depth>1` → `NotImplementedError`. ADR
+> [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md). Verifier PASA (**192 tests**
+> verdes; preview network-free corregido). Decisiones de implementación de la IA en
+> [`decisiones/registro-ia.md`](decisiones/registro-ia.md) (Hito 5). El comando CLI **`filter`** y la
+> curación interactiva llegan en el Hito 6.
 
 **Alcance**
 
@@ -674,13 +693,13 @@ No se prometen ni se cablean clientes que no se usan.
 | A3 sembrar por semillas/`.bib` | 4 | `BibtexSource` |
 | A4 ecuación registrada/versionada | 1 + 4 | `provenance`/`Manifest` |
 | A5 ecuaciones que mutan + acumular | 3 + 6 | biblioteca viva + re-seed por CLI |
-| B1 back/forward chaining | 5 | `Forager.chain` |
-| B2 profundidad + preview | 5 | `preview`, `max_candidates` |
-| B3 ranking por estructura | 5 | *information scent* |
-| B4 explicación opcional de IA | 5 | `explain_candidate` (`[llm]`) |
-| C1 dedup/normalización autores/inst. | 5 (det.) + 7 (fuzzy) | |
-| C2 thesaurus multilingüe | 5 | `apply_thesaurus` |
-| C3 filtros incl/excl con conteo | 5 (lógica) + 6 (CLI `filter`) | flujo PRISMA |
+| B1 back/forward chaining | 5 ✅ | `Forager.chain` (backward puro / forward red vía `fetch_citing`) |
+| B2 profundidad + preview | 5 ✅ | `preview` SIN red (`forward_requires_fetch`), `max_candidates`; `depth>1` futuro |
+| B3 ranking por estructura | 5 ✅ | *information scent* = frecuencia de enlace (ADR 0020) |
+| B4 explicación opcional de IA | 5 | `explain_candidate` (`[llm]`) — **stub gateado**, LLM en v0.2 |
+| C1 dedup/normalización autores/inst. | 5 ✅ (det.) + 7 (fuzzy) | `normalize` conservador construido; fuzzy en Hito 7 |
+| C2 thesaurus multilingüe | 5 ✅ | `apply_thesaurus` (sobrescribe `keywords_id` desde `keywords_raw`) |
+| C3 filtros incl/excl con conteo | 5 ✅ (lógica) + 6 (CLI `filter`) | flujo PRISMA; marcan `rejected`, no borran |
 | C4 aceptar/rechazar + biblioteca viva | 1 (modelo) + 1.5 (backend) + 3 (persist DuckDB) + 11 (Zotero) | `accept`/`reject` programático sobrevive (CLI/agentes); `curate`+GUI = futuro |
 | D1 cinco proyecciones | 2 + 8 (co-citación) | |
 | D2 métricas y comunidades | 2 | |

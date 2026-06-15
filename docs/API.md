@@ -32,6 +32,14 @@
 > inyectadas (ADR 0012) y `Manifest.openalex_version` poblada (ADR 0017). El método
 > `Corpus.with_manifest()` (§1.2) es la API canónica que usan para sellar metadata. **Con el Hito 4,
 > v0.1 queda feature-complete** (ver [`ROADMAP.md`](ROADMAP.md)).
+>
+> **Sincronizado con el Hito 5 (2026-06-15):** `Forager`, `GrowthPreview`, `RankedCandidates`,
+> `Preprocessor`, `FilterCriterion`/`apply_filters` están **construidos** (§5/§6). El *information
+> scent* es **frecuencia de enlace** (no acoplamiento/centralidad); `preview` opera **sin red**
+> (backward exacto local; forward no estimable → `chain`); los filtros PRISMA **marcan `rejected`
+> (no borran)**; `apply_thesaurus` **sobrescribe `keywords_id` desde `keywords_raw`** (ADR
+> [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md); thesaurus ADR 0011). `depth>1`
+> lanza `NotImplementedError`; `explain_candidate` (B4) es un stub gateado en `[llm]`.
 
 ## Convenciones
 
@@ -453,45 +461,122 @@ las transiciones son **permisivas** (ADR 0016: no se bloquea ningún salto, p. e
 
 ---
 
-## 5. Núcleo — Forrajeo / chaining (inserción de IA nº1, v1)
+## 5. Núcleo — Forrajeo / chaining (inserción de IA nº1, v1 — construido, Hito 5)
+
+El *information scent* es **frecuencia de enlace de cita con el corpus** (ADR
+[0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)), **no** acoplamiento
+bibliográfico, co-citación ni centralidad de red. Es una **función pura** sobre conteos
+(`bib2graph.foraging.scent`), sin construir grafo:
+
+- **Backward** (puro, local): scent = nº de papers del corpus que listan al candidato en
+  `references_id`. No toca la red (las referencias ya vienen en el corpus tras el seed).
+- **Forward** (requiere red): scent = nº de papers del corpus a los que el candidato cita. Exige
+  traer los citantes vía `source.fetch_citing(...)` (ver abajo).
+
+El ranking es descendente por scent con **desempate por `id` ascendente** (estable ante cualquier
+`PYTHONHASHSEED`).
 
 ```python
+Direction = Literal["backward", "forward", "both"]   # bib2graph.foraging.Direction
+
 class Forager:
     """Orquesta el chaining sobre un Source, rankeando candidatos por *information scent*
-    (estructura bibliométrica), no por lista plana. ADR 0008; nota 07."""
+    (frecuencia de enlace de cita, ADR 0008/0020). Solo el Forager toca la red; el núcleo
+    de scent es puro."""
     def __init__(self, source: Source, *, depth: int = 1, max_candidates: int | None = None) -> None:
-        """depth=1 por defecto (opt-in a 2). max_candidates = tope configurable."""
+        """depth=1 por defecto; depth>1 lanza NotImplementedError (futuro v0.3+).
+        max_candidates = tope configurable del ranking (None = sin límite)."""
 
-    def preview(self, corpus: Corpus, *,
-                direction: Literal["backward", "forward", "both"] = "both") -> "GrowthPreview":
-        """'Esta expansión sumaría ~N papers' SIN traerlos (control de crecimiento)."""
+    def preview(self, corpus: Corpus, *, direction: Direction = "both") -> "GrowthPreview":
+        """'Esta expansión sumaría ~N papers' SIN traerlos. Opera SOLO localmente, SIN red.
+        Backward: estimación EXACTA local desde references_id. Forward: NO estimable sin red
+        (cited_by_id está vacío tras el seed) → by_direction['forward']=0 y
+        forward_requires_fetch=True; el conteo real solo llega con chain(). NO muta el corpus."""
 
-    def chain(self, corpus: Corpus, *,
-              direction: Literal["backward", "forward", "both"] = "both") -> "RankedCandidates":
-        """Computa candidatos (curation_status='candidate') rankeados por scent."""
+    def chain(self, corpus: Corpus, *, direction: Direction = "both") -> "RankedCandidates":
+        """Computa candidatos (curation_status='candidate', is_seed=False) rankeados por scent.
+        Devuelve SOLO los candidatos nuevos (no mergeados): el humano hace
+        corpus.merge(ranked.corpus). NO muta el corpus de entrada. Sella Manifest.chaining."""
+
+class GrowthPreview(BaseModel):
+    estimated_new: int             # total estimable localmente (forward=0 si requiere fetch)
+    by_direction: dict[str, int]   # {'backward': N, 'forward': 0 si requiere fetch}
+    direction: Direction
+    forward_requires_fetch: bool = False   # True si se pidió forward/both → forward desconocido sin red
 
 class RankedCandidates(BaseModel):
-    corpus: Corpus                 # candidatos agregados, con scent_score
-    ranking: list[tuple[str, float]]   # (id, information_scent)
+    corpus: Corpus                     # SOLO los candidatos nuevos (no mergeado con el corpus semilla)
+    ranking: list[tuple[str, float]]   # (id, information_scent), desc scent / asc id
 
 def explain_candidate(corpus: Corpus, paper_id: str) -> str:
-    """Paso OPCIONAL de IA: explica por qué un candidato es relevante / a qué conversación
-    pertenece. NO decide por el humano (historia B4)."""
+    """Paso OPCIONAL de IA: explica por qué un candidato es relevante (historia B4). NO decide
+    por el humano. STUB gateado en el extra [llm]: la firma existe y el error es accionable, pero
+    la integración LLM es v0.2. Se importa desde bib2graph.foraging (NO se re-exporta desde la raíz)."""
 ```
+
+**Notas de contrato** (Hito 5, ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)):
+
+- **Forward chaining requiere `source.fetch_citing(openalex_id) -> list[dict]`** (`GET
+  works?filter=cites:`). El `Forager` **exige ese método al source** y lanza `AttributeError`
+  accionable si no lo tiene; **no se amplió el Protocol `Source`** (§2) — `fetch_citing` es
+  capacidad de `OpenAlexSource`, no contrato universal. Una `Source` de solo-mínimo (ADR 0018) no
+  habilita forward chaining.
+- **Candidatos backward = stubs id-only**: título placeholder `[candidate:{id}]`, `openalex_id`
+  poblado, resto nulo, `is_seed=False`, `curation_status='candidate'`, `provenance` con
+  `chaining_hop=1`. No contaminan las redes; son curables/enriquecibles después (gap conocido).
+- **`preview` y `chain` no mutan** el corpus de entrada (semántica de valor).
 
 ---
 
-## 6. Núcleo — `Preprocessor` (v1)
+## 6. Núcleo — `Preprocessor` + filtros PRISMA (v1 — construido, Hito 5)
 
 ```python
 class Preprocessor:
-    """Determinístico e idempotente. La parte fuzzy vive en [dedup] (§11)."""
+    """Determinístico e idempotente. La parte fuzzy vive en [dedup] (§11). Registra un
+    PreprocRef en el Manifest por cada operación aplicada."""
     def normalize(self, corpus: Corpus) -> Corpus:
-        """Canonicaliza nombres de autor, periodiza, normaliza idiomas."""
+        """Normalización CONSERVADORA (decisión b=A): authors_id (lowercase + quitar acentos +
+        colapso de espacios) y language (subtag ISO 639-1 primario). SIN fuzzy (eso es [dedup],
+        §11), SIN columna de periodización. Idempotente. NO muta el corpus de entrada."""
     def apply_thesaurus(self, corpus: Corpus, thesaurus: dict | Path) -> Corpus:
-        """Normaliza keywords con un thesaurus multilingüe CURADO (en/es/pt), dict
-        canónico→aliases en JSON. Determinista (ADR 0011). El fallback fuzzy/LLM es v0.2."""
+        """Lee keywords_raw y SOBRESCRIBE keywords_id con los conceptos canónicos del thesaurus
+        multilingüe CURADO (en/es/pt), dict canónico→aliases en JSON o Path a ese JSON.
+        Determinista e idempotente (ADR 0011). El fallback fuzzy/LLM es v0.2."""
 ```
+
+**Filtros de inclusión/exclusión** (funciones puras, flujo PRISMA; ADR
+[0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)):
+
+```python
+class FilterCriterion(BaseModel):
+    field: Literal["year", "type", "language", "min_citations"]
+    op: Literal["gte", "lte", "in", "not_in", "eq"]
+    value: int | str | list[str]
+    # year: gte/lte · type: in/not_in (sobre research_areas) · language: eq/in/not_in
+    # min_citations: gte (sobre len(cited_by_id))
+
+def apply_filter(corpus: Corpus, criterion: FilterCriterion) -> tuple[Corpus, FilterStep]: ...
+def apply_filters(corpus: Corpus, criteria: list[FilterCriterion]) -> tuple[Corpus, list[FilterStep]]:
+    """Encadena los criterios en orden y SELLA Manifest.filters con todos los pasos
+    (reemplaza: una corrida = una secuencia PRISMA). Devuelve (corpus_final, [FilterStep, ...])."""
+```
+
+**Notas de contrato** (Hito 5, ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)):
+
+- **Los filtros MARCAN `rejected`, NO borran** (decisión del PO): un paper excluido queda en la
+  tabla con `curation_status='rejected'` vía `corpus.reject(...)` (con el criterio como
+  `provenance`/`decided_by`), nunca se borra. Coherente con la biblioteca viva (ADR
+  [0009](decisiones/0009-biblioteca-viva-duckdb.md), C4) y el `provenance` append-only (ADR 0013,
+  D4): la exclusión es curación **reversible y auditable**.
+- **Conteo PRISMA por paso**: cada `FilterStep` lleva `count_before`/`count_after` contando los
+  papers **no-rejected** (candidate + accepted) antes/después del filtro.
+- **`keywords_id` es post-thesaurus**: hasta que se corre `apply_thesaurus`, `keywords_id` no es
+  autoritativa (puede estar cruda o vacía); los proyectores de co-ocurrencia de keywords (§7)
+  deben correr **después** del thesaurus.
+- **Símbolos públicos del Hito 5** (`from bib2graph import ...`): `Forager`, `GrowthPreview`,
+  `RankedCandidates`, `Preprocessor`, `FilterCriterion`, `apply_filters`. `explain_candidate` y
+  `apply_filter` (singular) se importan desde sus sub-paquetes (`bib2graph.foraging` /
+  `bib2graph.filters`).
 
 ---
 
@@ -685,21 +770,34 @@ for art in Networks.quick(snap.corpus):
     GraphMLExporter().export(art.graph, art.metrics, out_dir=Path(f"redes/{art.spec.kind}"))
 ```
 
-### 12.2 Objetivo (v0.2) — con forrajeo y thesaurus
+### 12.2 Con forrajeo y thesaurus (Hito 5 — construido)
 
-`Forager`/`Preprocessor` son del **Hito 5 (aún no construidos)**; este es el pipeline objetivo:
+`Forager`/`Preprocessor`/filtros están **construidos** (Hito 5). El *information scent* es
+frecuencia de enlace; `preview` opera sin red (forward → `chain`); los filtros marcan `rejected`:
 
 ```python
-from bib2graph import OpenAlexSource, Forager, Preprocessor   # Forager/Preprocessor: v0.2
+from bib2graph import (
+    OpenAlexSource, Forager, Preprocessor, FilterCriterion, apply_filters,
+)
 
-# 2') Forrajear: candidatos rankeados por information scent (depth=1, con preview de crecimiento)
+# 2') Forrajear: candidatos rankeados por information scent (depth=1, preview SIN red)
 forager = Forager(OpenAlexSource(email="luis@sostaina.com"), depth=1, max_candidates=300)
-print(forager.preview(seed.corpus))                     # "sumaría ~N papers"
-ranked = forager.chain(seed.corpus)
+prev = forager.preview(seed.corpus)                     # backward exacto; forward → chain
+print(prev.estimated_new, prev.forward_requires_fetch)  # p. ej. 142  True
+ranked = forager.chain(seed.corpus)                     # forward fetchea citantes
 
-# 3') Curar lo forrajeado y normalizar (thesaurus multilingüe determinista)
+# 3') Curar lo forrajeado, normalizar y aplicar el thesaurus multilingüe determinista
 corpus = seed.corpus.merge(ranked.corpus).accept(ids=[...]).reject(ids=[...])
-corpus = Preprocessor().apply_thesaurus(corpus, Path("thesaurus_ied.json"))
+corpus = Preprocessor().normalize(corpus)
+corpus = Preprocessor().apply_thesaurus(corpus, Path("thesaurus_ied.json"))  # puebla keywords_id
+
+# 4') Filtrar (PRISMA): marca rejected, NO borra; sella Manifest.filters con los conteos
+corpus, steps = apply_filters(corpus, [
+    FilterCriterion(field="year", op="gte", value=2010),
+    FilterCriterion(field="language", op="in", value=["en", "es", "pt"]),
+])
+for s in steps:
+    print(s.name, s.count_before, "→", s.count_after)
 ```
 
 Y el modo declarativo (v0.2) para pipelines repetibles vía CLI (Hito 6):
