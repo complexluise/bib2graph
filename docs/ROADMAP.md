@@ -47,14 +47,21 @@ costura.
 ## Mapa de releases (cortes de versión)
 
 SemVer 0.y: la API es inestable hasta `1.0.0` (que requiere API estable + caso real
-reproducido, ver [`VERSIONING.md`](../VERSIONING.md)). Cortes acordados:
+reproducido, ver [`VERSIONING.md`](../VERSIONING.md)). El **mecanismo de release DISEÑADO es
+`release-please`** (ver [`VERSIONING.md`](../VERSIONING.md) / ADR 0006), pero **aún no está
+conectado** (no existe `.github/` ni CI). Mientras tanto, el versionado/tag se hace
+**manual/local** y `commitizen` solo sirve para lintear commits y **previsualizar** el bump
+(`cz bump --dry-run`); no es el publicador. Al 2026-06-15 existen los tags **anotados locales
+`v0.1.0` y `v0.2.0`** (sin push); el **release publicado** (push de tags + artefactos) queda
+**pendiente de conectar `release-please` + CI**. Cortes acordados:
 
 - **v0.1 — pipeline mínimo end-to-end (Hitos 1–4, incl. el rework 1.5) · ✅ FEATURE-COMPLETE
   (2026-06-15):** de una **ecuación de búsqueda a las redes desde código Python**, sobre una
   **biblioteca viva en DuckDB**. Incluye `Corpus` (sobre `TabularBackend`),
   proyectores/analizadores/export, `DuckDBBackend`/`DuckDBStore` y `OpenAlexSource`/`BibtexSource`.
   Con el **Hito 4 terminado**, todas las piezas existen y se componen en código (ver el ejemplo de
-  `API.md` §12). **Sin CLI ni forrajeo todavía** (eso es v0.2). Es el **primer release etiquetado**.
+  `API.md` §12). **Sin CLI ni forrajeo todavía** (eso es v0.2). **Tag local `v0.1.0`** creado el
+  2026-06-15 (anotado, sin push).
 - **v0.2 — forrajeo + CLI agente-native (Hitos 5–6) · ✅ CAPACIDADES COMPLETAS (2026-06-15):**
   chaining rankeado, `Preprocessor`, filtros PRISMA (comando **`filter`**), `b2g status`
   (`LoopState`) y el CLI `b2g` con `--json`. **El forrajeo, el `Preprocessor` y los filtros (Hito 5)
@@ -64,7 +71,7 @@ reproducido, ver [`VERSIONING.md`](../VERSIONING.md)). Cortes acordados:
   [0021](decisiones/0021-cli-agente-native-contrato.md)). El `accept`/`reject` programático
   sobrevive (ahora como subcomando CLI); la curación interactiva rica (`curate`) y la GUI son
   futuro. Acá se cumple el criterio "V1 hecha" del PRD §9 a nivel de *capacidades* (el número de
-  versión sigue en 0.y).
+  versión sigue en 0.y). **Tag local `v0.2.0`** creado en HEAD el 2026-06-15 (anotado, sin push).
 - **v0.3+ — opcionales (Hitos 7–9):** dedup fuzzy, `Enricher` de co-citación, `NetworkSpec`.
 - **1.0.0:** API congelada + caso real (IED/semiconductores) reproducido.
 
@@ -123,8 +130,11 @@ Testcontainers). El núcleo es todo `unit`.
   `[zotero]`, `[s2]`, `[neo4j]`, `[viz]`, `[dedup]`, `[llm]`). **La lista canónica de extras vive
   en `pyproject.toml`** (fuente de verdad); el ADR 0005 fija el *principio* (núcleo liviano +
   import perezoso), no la lista, que crece por hito.
-- **Tooling desde el día uno** (ADR 0006): `ruff`, `mypy`, `pytest`, `pre-commit`, `commitizen`,
-  `release-please`, GitHub Actions. SemVer estricto, `CHANGELOG.md` auto, `CONTRIBUTING.md`.
+- **Tooling LOCAL desde el día uno** (ADR 0006): `ruff`, `mypy`, `pytest`, `pre-commit` y
+  `commitizen` (linter de Conventional Commits + `cz bump --dry-run` para previsualizar el bump).
+  SemVer estricto, `CONTRIBUTING.md`. **La automatización de releases (`release-please` + CI/PyPI)
+  está DISEÑADA pero AÚN NO conectada** (no existe `.github/`): el gate corre en local y el
+  versionado/tag es manual por ahora.
 - **Principios agente-native adoptados desde el inicio** (ADR 0010): convención de doble salida y
   exit codes documentada antes del primer comando.
 - Configuración **inyectada**, sin secretos ni efectos de import.
@@ -134,7 +144,8 @@ Testcontainers). El núcleo es todo `unit`.
 **Criterios de aceptación (DoD)**
 
 - `pip install -e ".[dev]"` instala el núcleo y el toolchain sin errores.
-- `ruff check`, `ruff format --check`, `mypy src` y `pytest` corren en verde en local y en CI.
+- `ruff check`, `ruff format --check`, `mypy src` y `pytest` corren en verde **en local** (el
+  gate en CI queda pendiente de conectar `.github/`).
 - `pre-commit install` deja los hooks activos; un commit que viola Conventional Commits o lint
   es rechazado.
 - `b2g --help` no lanza `ModuleNotFoundError`: imprime el placeholder honesto y sale con código 1.
@@ -144,10 +155,10 @@ Testcontainers). El núcleo es todo `unit`.
 
 - Un *smoke test*: `import bib2graph` no tiene efectos colaterales (no abre red/archivos).
 - Que el entry point `b2g` exista y el placeholder devuelva exit code 1.
-- *No testear* el contenido del `pyproject` ni la config de ruff/mypy: lo verifica el propio CI.
+- *No testear* el contenido del `pyproject` ni la config de ruff/mypy: lo verifican el linter/formatter locales (y el CI cuando se conecte).
 
-**Se vuelve posible:** instalar el esqueleto y correr CI; el primer commit respeta semver +
-changelog + pre-commit.
+**Se vuelve posible:** instalar el esqueleto y correr los hooks locales (pre-commit); el primer
+commit respeta semver + changelog + pre-commit. (El gate en CI queda pendiente de conectar `.github/`.)
 
 ---
 

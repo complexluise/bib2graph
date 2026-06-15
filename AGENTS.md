@@ -1,8 +1,10 @@
 # AGENTS.md — bib2graph
 
-> Guía para agentes que operen en este repositorio. El proyecto está en **reescritura
-> clean-room desde cero** (Hito 0 del `docs/ROADMAP.md`): primero docs, luego núcleo puro y
-> tests, luego costuras. El diseño objetivo vive en `docs/ARCHITECTURE.md`; los contratos
+> Guía para agentes que operen en este repositorio. El proyecto es una **reescritura
+> clean-room** construida de adentro hacia afuera (docs → núcleo puro y tests → costuras).
+> **Estado: Hitos 0–6 + 1.5 terminados** (v0.1 feature-complete + v0.2 con capacidades
+> completas; ver `docs/ROADMAP.md` y "Estado actual" abajo). El diseño objetivo vive en
+> `docs/ARCHITECTURE.md`; los contratos
 > públicos en `docs/API.md`; el producto en `docs/PRD.md`; las reglas que motivan este código en
 > `docs/Notas/01-lecciones-v0.md`. Las decisiones vigentes tras **el giro** son los ADR
 > [0007](docs/decisiones/0007-openalex-backbone.md) (OpenAlex backbone),
@@ -14,10 +16,17 @@
 
 ## Estado actual
 
-- **Casi no hay código todavía** (Hito 0, andamiaje): existen `pyproject.toml`, `uv.lock`,
-  `.python-version` (3.12), `src/bib2graph/__init__.py`, un placeholder de `cli.py` y
-  `tests/unit/test_smoke.py` (import sin efectos + placeholder del CLI). El núcleo real arranca
-  con el Hito 1 (`Corpus`). El entorno se levanta con `uv sync`.
+- **Hitos 0–6 + 1.5 CONSTRUIDOS** (2026-06-15): de una ecuación de búsqueda a las redes
+  bibliométricas, desde código Python **o** desde el CLI `b2g`, sobre una biblioteca viva
+  en DuckDB. El árbol `src/bib2graph/` tiene ~30 módulos: `corpus.py`, `schemas.py`,
+  `backends/` (`TabularBackend` + `InMemoryBackend` + `DuckDBBackend`), `stores/`
+  (`DuckDBStore`), `sources/` (`OpenAlexSource`, `BibtexSource`), `foraging/` (`Forager`,
+  scent, `explain` stub), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
+  `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
+  El **CLI `b2g` es real** —paquete `cli/` con 11 subcomandos en `cli/commands/`, no un
+  placeholder—. **214 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+  El **próximo hito es el 7** (deduplicación fuzzy, extra `[dedup]`). El entorno se levanta
+  con `uv sync`.
 - Toda la información del producto, la arquitectura, los contratos y la secuencia de
   construcción está en `docs/`. **Leer `docs/ROADMAP.md` antes de tocar nada**: cada hito declara
   qué historias del PRD §7 cumple, sus criterios de aceptación (DoD) y los tests TDD que se
@@ -58,19 +67,29 @@ El proyecto se gestiona con **uv** (entorno + lockfile + versión de Python). **
 - **Tipos:** `uv run mypy src`
 - **Todo en uno (gate de CI):** `uv run ruff check src tests && uv run mypy src && uv run pytest`
 
-Regla de Hito 0: **uv, linter, formatter, hooks, CI y tooling de release quedan configurados
-desde el día uno** (ADR 0006/0010). La versión de Python la fija `.python-version` (3.12;
-`requires-python >=3.11`).
+Regla de Hito 0: el **tooling LOCAL** —uv, linter (`ruff`), tipos (`mypy`), tests
+(`pytest`), hooks (`pre-commit`) y **commitizen** (linter de Conventional Commits +
+`cz bump --dry-run` para previsualizar el bump)— quedó configurado desde el día uno
+(ADR 0006/0010). El gate de calidad corre en local (`ruff` + `mypy` + `pytest`). En
+cambio, **la automatización de releases (release-please + CI/PyPI) está DISEÑADA pero
+AÚN NO conectada**: no existe `.github/` ni CI/GitHub Actions (ver §Comandos de release).
+La versión de Python la fija `.python-version` (3.12; `requires-python >=3.11`).
 
 ## Comandos de release
 
+El **mecanismo de release DISEÑADO es `release-please`** (PR de release → bump +
+`CHANGELOG.md` → tag + publicación a PyPI; ver [`VERSIONING.md`](VERSIONING.md) y
+[ADR 0006](docs/decisiones/0006-tabla-canonica-y-networkspec.md)). **Pero AÚN NO está
+conectado**: no existe `.github/` ni CI. Hasta conectarlo, el versionado/tag se hace
+**manual/local**. `commitizen` **no** es el publicador de releases: es (a) el linter de
+Conventional Commits (hook de `pre-commit`) y (b) la herramienta para **previsualizar**
+el bump localmente con `cz bump --dry-run`.
+
 - **Hacer un commit conventional:** `uv run cz commit` (interactivo, recomendado).
-- **Previsualizar el bump de versión:** `uv run cz bump --dry-run`.
-- **Bumpear la versión localmente** (no suele ser necesario, lo hace
-  `release-please`): `uv run cz bump`.
-- **Generar el PR de release** lo hace automáticamente `release-please` desde
-  los Conventional Commits mergeados a `main`. Revisá el CHANGELOG antes de
-  mergear.
+- **Previsualizar qué versión saldría:** `uv run cz bump --dry-run` (solo preview, no publica).
+- **Tags actuales (locales, anotados, sin push):** `v0.1.0` (cierre Hitos 1–4) y `v0.2.0`
+  (HEAD, Hitos 5–6), creados a mano. El **release publicado** (push de tags + artefactos a
+  PyPI) queda **pendiente de conectar `release-please` + CI**.
 
 Detalle en [`CONTRIBUTING.md`](CONTRIBUTING.md) y [`VERSIONING.md`](VERSIONING.md).
 
@@ -126,16 +145,20 @@ src/bib2graph/
   schemas.py           # modelos Pydantic v2 (validación de schema)
   sources/             # OpenAlexSource (núcleo, backbone); BibtexSource (secundaria);
                        # RIS, CSV (futuro, no publicar)
-  foraging/            # Forager (chaining + ranking por scent); explain_candidate ([llm])
+  backends/            # TabularBackend (Protocol) + InMemoryBackend (núcleo puro) +
+                       # DuckDBBackend (biblioteca viva, carga perezosa de duckdb)
+  foraging/            # Forager (chaining + ranking por scent); explain_candidate ([llm], stub)
   preprocessors/       # normalize + thesaurus multilingüe (núcleo); dedup fuzzy en [dedup]
   filters/             # filtros de inclusión/exclusión con conteo PRISMA (núcleo)
-  enrichers/           # OpenAlexEnricher opt-in (refs→DOI, 2º nivel); S2 ([s2])
+  enrichers/           # FUTURO (Hito 8): OpenAlexEnricher opt-in (refs→DOI, 2º nivel); S2 ([s2])
   networks/            # Projector, Analyzer, NetworkSpec, NetworkArtifact, Networks
   exporters/           # GraphML, CSV
   stores/              # DuckDBStore (núcleo, por defecto: biblioteca viva);
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
-  cli.py               # Click, delgado, CLI = API para LLM y agentes (Hito 6)
+  cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
+                       # cli/commands/ = 11 subcomandos. CLI = API para LLM y agentes (Hito 6,
+                       # ARCHITECTURE.md §6.3). No es un cli.py plano.
 tests/
   unit/                # tests puros, sin red ni I/O (default)
   integration/         # red / APIs externas / Neo4j; @pytest.mark.integration
@@ -282,9 +305,11 @@ reproducido). Detalle y tabla de ejemplos en
 
 ## Changelog
 
-**Keep a Changelog** auto-generado por `release-please` desde Conventional
-Commits. El PR de release se revisa antes de mergear. Plantilla en
-[`docs/RELEASE_TEMPLATE.md`](docs/RELEASE_TEMPLATE.md).
+**Keep a Changelog**. Cuando se conecte `release-please` (mecanismo diseñado, ADR 0006 /
+[`VERSIONING.md`](VERSIONING.md)), el PR de release actualizará el `CHANGELOG.md` desde los
+Conventional Commits. Como ese tooling **aún no está conectado** (no hay `.github/`/CI), por
+ahora las secciones se mantienen **a mano** antes de cada tag (con `cz bump --dry-run` como
+ayuda de preview local). Plantilla en [`docs/RELEASE_TEMPLATE.md`](docs/RELEASE_TEMPLATE.md).
 
 ## Dónde mirar primero según la tarea
 
@@ -305,7 +330,7 @@ Commits. El PR de release se revisa antes de mergear. Plantilla en
   correspondiente, `docs/Notas/01-lecciones-v0.md` (reglas 1, 3, 5, 6, 7).
 - CLI agente-native → `docs/API.md` §convenciones, `docs/ARCHITECTURE.md` §6.3,
   [ADR 0010](docs/decisiones/0010-agente-native-columna.md) (Hito 6).
-- Capa D / `NetworkSpec` → `docs/API.md` §10, se libera en v0.2 (Hito 9).
+- Capa D / `NetworkSpec` → `docs/API.md` §10, se libera en v0.3+ (Hito 9).
 - Decisiones de dependencias / extras → `docs/decisiones/0005-...`.
 - Cambios al método bibliométrico (qué cuenta como co-citación, umbrales) →
   `docs/metodología.md`.
