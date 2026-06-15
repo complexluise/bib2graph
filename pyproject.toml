@@ -1,0 +1,164 @@
+# pyproject.toml — bib2graph
+#
+# Hito 0: andamiaje. Núcleo liviano + extras declarados pero vacíos. Tooling
+# estándar (ruff, mypy, pytest, pre-commit, commitizen, release-please)
+# configurado desde el día uno (ADR 0006).
+#
+# Ver:
+#   - docs/ARCHITECTURE.md
+#   - docs/API.md
+#   - docs/ROADMAP.md
+#   - docs/decisiones/0006-tabla-canonica-y-networkspec.md
+
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bib2graph"
+version = "0.0.0"  # 0.0.0 hasta que arranque el Hito 1; release-please bumpea.
+description = "Librería de Python para transformar corpus bibliográficos en redes bibliométricas reproducibles (co-citación, colaboración, co-ocurrencia)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Equipo bib2graph" },
+]
+keywords = ["bibliometrics", "co-citation", "network-analysis", "bibtex", "reproducible-research"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Text Processing :: Markup",
+]
+dependencies = [
+    "pyarrow>=15",       # tabla canónica (ADR 0006)
+    "pydantic>=2.6",     # validación del wrapper Corpus y Manifest
+    "networkx>=3.2",     # grafos
+    "click>=8.1",        # CLI
+    "tqdm>=4.66",        # progreso
+]
+
+[project.optional-dependencies]
+# Extras opt-in (ADR 0005). Núcleo NO los requiere.
+s2 = []        # Hito 6: pys2 (a decidir al implementar)
+neo4j = []     # Hito 10: neoomodel o driver oficial (a decidir)
+duckdb = []    # Hito 7: duckdb
+dedup = []     # Hito 5: fuzzywuzzy, python-levenshtein
+viz = []       # Hito 9: matplotlib, seaborn
+dev = [
+    "pytest>=8",
+    "pytest-cov>=4",
+    "mypy>=1.8",
+    "ruff>=0.3",
+    "pre-commit>=3.6",
+    "commitizen>=3.13",
+    "types-tqdm",
+]
+
+[project.urls]
+Homepage = "https://github.com/<org>/bib2graph"
+Documentation = "https://github.com/<org>/bib2graph/tree/main/docs"
+Issues = "https://github.com/<org>/bib2graph/issues"
+
+[project.scripts]
+# CLI entry point. Hito 4: la implementación real. Mientras tanto, un
+# placeholder honesto que falla con un mensaje útil.
+b2g = "bib2graph.cli:main"
+
+# ----- Tooling ------------------------------------------------------------
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+# Reglas activas. Select conservador al ppio; se expande en Hito 2 cuando
+# haya código real.
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (orden de imports)
+    "B",   # bugbear
+    "UP",  # pyupgrade (sintaxis moderna)
+    "SIM", # simplificaciones
+    "RUF", # reglas ruff específicas
+]
+ignore = [
+    "E501",  # line length (lo maneja ruff format)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]  # asserts en tests están bien
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+warn_return_any = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+plugins = ["pydantic.mypy"]
+# Cobertura gradual: el núcleo es estricto; los extras pueden relajarse.
+
+[[tool.mypy.overrides]]
+module = ["bib2graph.enrichers.*", "bib2graph.stores.neo4j"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=bib2graph",
+    "--cov-report=term-missing",
+]
+markers = [
+    "unit: tests puros, sin red ni I/O (default)",
+    "integration: tests con red, servicios externos, o Testcontainers",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src/bib2graph"]
+omit = [
+    "src/bib2graph/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+
+# ----- Commitizen (Conventional Commits + versionado) --------------------
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.0.0"
+version_files = [
+    "pyproject.toml:version",
+]
+tag_format = "v$version"
+changelog_file = "CHANGELOG.md"
+# Mapeo de tipos a secciones del CHANGELOG (Keep a Changelog style).
+update_changelog_on_bump = true
+# Mensaje de bump cuando hay BREAKING.
+bump_message = "bump: version $current_version → $new_version"
+# Conventional Commits en español: tipos y descripciones.
+# commitizen los acepta en inglés igual; los defaults son razonables.
