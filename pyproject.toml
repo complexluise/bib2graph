@@ -1,9 +1,11 @@
 # pyproject.toml — bib2graph
 #
-# Hito 0: andamiaje. Núcleo (incluye biblioteca viva DuckDB + cliente OpenAlex
-# sobre httpx, ADR 0007/0009) + extras opt-in declarados pero vacíos. Tooling
-# estándar (ruff, mypy, pytest, pre-commit, commitizen, release-please)
-# configurado desde el día uno (ADR 0006/0010).
+# Núcleo construido (Hitos 1–6): biblioteca viva DuckDB + cliente OpenAlex
+# sobre httpx (ADR 0007/0009), redes, sources, forrajeo y CLI b2g. Extras
+# opt-in declarados; [bibtex] poblado, el resto vacío hasta su hito. Tooling
+# LOCAL estándar (ruff, mypy, pytest, pre-commit, commitizen) configurado desde
+# el día uno (ADR 0006/0010). release-please + CI quedan diseñados pero NO
+# conectados todavía (no existe .github/); ver VERSIONING.md.
 #
 # Ver:
 #   - docs/ARCHITECTURE.md
@@ -19,7 +21,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bib2graph"
-version = "0.0.0"  # 0.0.0 hasta que arranque el Hito 1; release-please bumpea.
+version = "0.2.0"  # Hitos 1–6 construidos. Bump manual/local (tag v0.2.0); release-please
+                   # bumpeará automáticamente cuando se conecte CI (.github/ aún no existe).
 description = "Librería de Python para transformar corpus bibliográficos en redes bibliométricas reproducibles (co-citación, colaboración, co-ocurrencia)."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -173,7 +176,7 @@ exclude_lines = [
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.0.0"
+version = "0.2.0"
 version_files = [
     "pyproject.toml:version",
 ]
