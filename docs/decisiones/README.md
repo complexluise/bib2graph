@@ -4,6 +4,10 @@ Cada decisión que cambia la arquitectura, los contratos o el "porqué" del proy
 registra como un ADR numerado e inmutable una vez aceptado. Si una decisión se revierte, se
 crea un ADR nuevo que la supersede; no se reescribe la historia.
 
+Las decisiones **de implementación/proceso** que toma la **IA** de forma autónoma (no
+arquitectónicas) se anotan en [`registro-ia.md`](registro-ia.md). Los ADR decididos por la IA
+llevan el campo `Decidido por: IA` en su encabezado.
+
 ## Plantilla
 
 ```markdown
@@ -37,3 +41,4 @@ Qué se vuelve posible/fácil y qué se vuelve costoso/imposible. Trade-offs hon
 | [0009](0009-biblioteca-viva-duckdb.md) | Biblioteca viva stateful en DuckDB; snapshot = export | Aceptada |
 | [0010](0010-agente-native-columna.md) | CLI agente-native como columna primaria | Aceptada |
 | [0011](0011-thesaurus-multilingue.md) | Thesaurus multilingüe determinista para keywords | Aceptada |
+| [0012](0012-openalex-credenciales.md) | Credenciales de OpenAlex: email + API key opcional, inyectados | Aceptada |
