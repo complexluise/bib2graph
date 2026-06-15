@@ -64,14 +64,16 @@ D1/D2/D3) son **contrato que cada backend cumple** (InMemory en Python, DuckDB e
 `corpus.to_arrow()` es el puente estable a los proyectores/analizadores puros (§7–§8): **solo
 cambia el contenedor, no el núcleo de análisis**.
 
-> **Nota de construcción:** en el Hito 1 el `Corpus` ya está implementado con semántica de valor
-> pura sobre `pa.Table` (`src/bib2graph/corpus.py`). La migración a `TabularBackend` es el **rework
-> inmediato siguiente** (ver [`ROADMAP.md`](ROADMAP.md), "Hito 1.5"). El `InMemoryBackend` cae en
-> ese rework (núcleo); el `DuckDBBackend` en el Hito 3 (costura por defecto).
+> **Nota de construcción:** el rework del **Hito 1.5 está hecho** (ver [`ROADMAP.md`](ROADMAP.md),
+> "Hito 1.5"). El `Corpus` ya **delega en `self._backend: TabularBackend`** (no guarda `self._table`);
+> el `InMemoryBackend` (núcleo puro, semántica de valor) está implementado en
+> `src/bib2graph/backends/`. El `DuckDBBackend` llega en el Hito 3 (costura por defecto). El núcleo
+> **no importa `duckdb`**.
 
-**Símbolos públicos del Hito 1** (`from bib2graph import ...`): `Corpus`, `Manifest`,
-`CorpusSnapshot` y `SchemaError` (la excepción de contrato que lanzan `Corpus.from_arrow()` y
-`add_paper()` al violarse el schema canónico).
+**Símbolos públicos del Hito 1/1.5** (`from bib2graph import ...`): `Corpus`, `Manifest`,
+`CorpusSnapshot`, `SchemaError` (la excepción de contrato que lanzan `Corpus.from_arrow()` y
+`add_paper()` al violarse el schema canónico), y —del rework del Hito 1.5— `TabularBackend`
+(Protocol) e `InMemoryBackend` (ver §1.4).
 
 ### 1.1 Schema de la tabla (columnas canónicas)
 
@@ -233,6 +235,46 @@ class CorpusSnapshot:
 - **`schema_version`** (D6): en Hito 1 solo se escribe y se round-tripea (sin lógica de rechazo
   por incompatibilidad; queda para un hito posterior con migraciones sobre el store vivo).
 
+### 1.4 `TabularBackend` (Protocol) e `InMemoryBackend` (núcleo, v1)
+
+El **contenedor** del `Corpus` es un `TabularBackend` (Protocol `@runtime_checkable`); el `Corpus`
+**delega** en él (ADR [0015](decisiones/0015-corpus-tabular-backend.md)). El núcleo depende **solo
+del Protocol** (no de `duckdb`). Las **mutaciones tienen semántica de valor**: cada operación
+devuelve una **instancia nueva** del backend; la original no muta. `id` ya viene calculado por
+`Corpus.add_paper` (D1 se valida antes de delegar). Las reglas D1/D2/D3 (ADR
+[0013](decisiones/0013-identidad-hash-merge-corpus.md)) son **contrato de este Protocol**: cada
+implementación las cumple a su manera (InMemory en Python, DuckDB en SQL).
+
+```python
+@runtime_checkable
+class TabularBackend(Protocol):
+    """Respalda el contenido del Corpus. Cumple D1/D2/D3 (ADR 0013).
+    Implementaciones: InMemoryBackend (puro, tests) / DuckDBBackend (biblioteca viva, Hito 3)."""
+
+    def to_arrow(self) -> pa.Table: ...
+        # Contenido completo como tabla Arrow canónica. Puente a los proyectores puros.
+    def add_paper(self, row: dict) -> "TabularBackend": ...
+        # `id` ya calculado y fila ya validada por Corpus.add_paper. Devuelve backend nuevo.
+    def merge(self, other_table: pa.Table) -> "TabularBackend": ...
+        # Fusión D3: orden por primera aparición (filas de self, luego nuevas), dedup por `id`.
+    def apply_curation(self, ids: list[str], *, action: str, by: str) -> "TabularBackend": ...
+        # accept/reject: AGREGA un evento al log `provenance` (action/decided_by/decided_at).
+    def filter_view(self, view: Literal["seeds", "candidates", "accepted"]) -> pa.Table: ...
+        # Vista filtrada (is_seed / curation_status == 'candidate' | 'accepted').
+    def corpus_hash(self) -> str: ...        # D2, order-independent, sobre el contenido
+    def __len__(self) -> int: ...
+    def __eq__(self, other: object) -> bool: ...   # igualdad canónica por corpus_hash (D2)
+```
+
+| Implementación | Estado | Notas |
+|----------------|--------|-------|
+| `InMemoryBackend` | **v1** | **Núcleo puro, sin I/O.** *Working set* efímero y backend de los tests (el núcleo se testea sin DuckDB). Semántica de valor; hereda la lógica del Hito 1 (mutación en Python sobre listas de dicts, table-rebuild). No persiste. |
+| `DuckDBBackend` | **futuro (Hito 3, por defecto)** | La **biblioteca viva** (ADR 0009/0015): mutación por SQL `UPDATE`/`MERGE` por `id`, persiste entre corridas, aloja el `LoopState` (ADR 0016). Reusa la suite de contrato de backend (D1/D2/D3). Ver §4. |
+
+`TabularBackend` e `InMemoryBackend` son **símbolos públicos v1** (`from bib2graph import
+TabularBackend, InMemoryBackend`). El contrato D1/D2/D3 se verifica con una **suite parametrizada
+por backend** (`tests/unit/test_backends.py`), que `DuckDBBackend` reusará en el Hito 3.
+
 ---
 
 ## 2. Costura `Source` — sembrar un corpus
@@ -315,16 +357,12 @@ defecto es el **`DuckDBBackend`** del `Corpus`: DuckDB deja de ser un `Store` qu
 destinos externos opt-in (Zotero, Neo4j). El `LoopState` (ADR 0016) vive en el backend
 persistente.
 
-```python
-class TabularBackend(Protocol):
-    """Respalda el contenido del Corpus. Cumple D1/D2/D3 (ADR 0013) a su manera.
-    InMemoryBackend (puro, tests) / DuckDBBackend (biblioteca viva, por defecto)."""
-    def to_arrow(self) -> pa.Table: ...
-    def add_paper(self, row: dict) -> "TabularBackend": ...
-    def merge(self, other: "TabularBackend") -> "TabularBackend": ...
-    def apply_curation(self, ids: list[str], action: str, by: str) -> "TabularBackend": ...
-    def corpus_hash(self) -> str: ...        # D2, sobre el contenido
+El contrato `TabularBackend` (Protocol) y su firma completa viven en **§1.4** (núcleo): `to_arrow`,
+`add_paper`, `merge(other_table: pa.Table)`, `apply_curation(ids, *, action, by)`, `filter_view`,
+`corpus_hash`, `__len__`, `__eq__`. El `DuckDBBackend` lo implementa en SQL (Hito 3); el `Store` de
+abajo es la costura de persistencia/intercambio **externa**, distinta del backend del `Corpus`.
 
+```python
 class Store(Protocol):
     """Costura de persistencia/intercambio externa. El respaldo por defecto del Corpus es el
     DuckDBBackend; esta costura cubre destinos opt-in (Zotero, Neo4j) y export (Parquet)."""

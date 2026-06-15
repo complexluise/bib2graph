@@ -15,12 +15,12 @@
 > [0011](decisiones/0011-thesaurus-multilingue.md) (thesaurus). Diseño objetivo en
 > [`ARCHITECTURE.md`](ARCHITECTURE.md); contratos en [`API.md`](API.md) (ya reconciliado).
 >
-> **Estado de construcción (2026-06-15):** **Hitos 0, 1 y 2 TERMINADOS.** Tras el **2º giro**
+> **Estado de construcción (2026-06-15):** **Hitos 0, 1, 2 y 1.5 TERMINADOS.** Tras el **2º giro**
 > (acta del PO; ADR [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md))
-> se inserta un **Hito 1.5 — Rework de `Corpus` a `TabularBackend`** como el **paso inmediato
+> se insertó un **Hito 1.5 — Rework de `Corpus` a `TabularBackend`** como el **paso inmediato
 > siguiente, secuenciado por delante del Hito 3** (instrucción explícita del PO: el rework va
-> antes del resto). Parte del backend abstracto (`InMemoryBackend`) cae en el núcleo (Hito 1.5);
-> el `DuckDBBackend` queda como la costura por defecto (Hito 3).
+> antes del resto), **ya construido**. La parte del backend abstracto (`InMemoryBackend`) cayó en
+> el núcleo (Hito 1.5); el `DuckDBBackend` queda como la costura por defecto (Hito 3).
 
 ## Principio de orden
 
@@ -219,12 +219,22 @@ asortatividad, y exportarlas — todo puro y testeado.
 
 ---
 
-## Hito 1.5 — Rework: `Corpus` sobre `TabularBackend` + `InMemoryBackend` (NÚCLEO; PASO INMEDIATO)
+## Hito 1.5 — Rework: `Corpus` sobre `TabularBackend` + `InMemoryBackend` (NÚCLEO) · ✅ TERMINADO
 
-> **Inserción del 2º giro, secuenciada por delante del Hito 3** (instrucción del PO). Migra el
+> **Inserción del 2º giro, secuenciada por delante del Hito 3** (instrucción del PO). Migró el
 > contenedor del `Corpus` del Hito 1 sin cambiar el contrato D1–D6 (ADR 0013) ni los proyectores
 > puros (Hito 2). ADR [0015](decisiones/0015-corpus-tabular-backend.md); enmienda 0006, reencuadra
 > 0009. Es **núcleo puro** (la parte DuckDB cae en el Hito 3).
+>
+> **Construido** así: `src/bib2graph/backends/` con `TabularBackend` (Protocol `@runtime_checkable`)
+> e `InMemoryBackend` (semántica de valor; cada operación devuelve una instancia nueva, heredando
+> la lógica del Hito 1). El `Corpus` dejó de guardar `self._table` y **delega** en
+> `self._backend: TabularBackend`; `from_arrow(table, *, backend=None)` usa `InMemoryBackend` por
+> defecto. El **núcleo no importa `duckdb`**. D1/D2/D3 quedaron como **contrato del backend**,
+> verificado por una **suite de contrato parametrizada por backend** (`tests/unit/test_backends.py`),
+> lista para sumar `DuckDBBackend` en el Hito 3. Verifier PASA (73 tests verdes bajo 2 seeds, núcleo
+> sin DuckDB). Las decisiones de implementación de la IA están en
+> [`decisiones/registro-ia.md`](decisiones/registro-ia.md) (Hito 1.5).
 
 **Alcance**
 

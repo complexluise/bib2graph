@@ -101,3 +101,27 @@
 > usan **`0015`–`0019`**. La separación `filter`/`curate` (punto 4 del acta) **no recibió ADR
 > propio**: es una decisión de superficie CLI/roadmap, no de arquitectura — se refleja en
 > [`../ROADMAP.md`](../ROADMAP.md) (Hito 6) y [`../API.md`](../API.md) (§convenciones CLI).
+
+---
+
+## 2026-06-15 — Hito 1.5 (Rework: `Corpus` sobre `TabularBackend` + `InMemoryBackend`)
+
+> La **decisión arquitectónica de fondo es del Product Owner humano**: el `Corpus` se respalda en
+> un `TabularBackend` (Protocol), `InMemoryBackend` puro + `DuckDBBackend` por defecto, mutaciones
+> delegadas — está en el ADR [0015](0015-corpus-tabular-backend.md) (enmienda 0006, reencuadra
+> 0009), **sin** el campo `Decidido por: IA`. Lo de abajo son las decisiones **de implementación**
+> que tomó la IA al construir ese rework. El verifier PASA (73 tests verdes bajo 2 `PYTHONHASHSEED`,
+> núcleo sin `duckdb`).
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| 1.5.1 | **`_compute_corpus_hash` queda como alias** en `corpus.py` → `backends.memory.compute_corpus_hash` (misma función) | Preserva el import histórico de los tests del Hito 1 (`from bib2graph.corpus import _compute_corpus_hash`) sin debilitarlos ni duplicar la lógica del hash (D2 vive una sola vez, en el backend) | Alta: borrar el alias solo afecta el import histórico; la función canónica no se mueve | Sí (PO proxy; verifier PASA) |
+| 1.5.2 | **`_compute_id` (D1) permanece en `corpus.py`**, no en `backends/`; `Corpus.add_paper` calcula el `id` y valida la fila ANTES de delegar al backend | Evita un import circular `corpus ↔ backends`; deja el cálculo de identidad y la validación `PaperRow` en el borde del `Corpus`. El Protocol documenta que el `id` llega **ya calculado** al backend | Media: mover `_compute_id` al backend exigiría romper el ciclo de otro modo (p. ej. un módulo `identity`) | Sí (PO proxy; verifier PASA) |
+| 1.5.3 | **`InMemoryBackend` con semántica de valor** (cada operación devuelve una instancia nueva); conserva la estrategia table-rebuild del Hito 1 (mutación en Python sobre listas de dicts), sin optimizar | Mantiene la semántica inmutable del `Corpus` del Hito 1 y tests deterministas; optimizar la escala es trabajo del `DuckDBBackend` (Hito 3), no del backend puro de tests/working-set | Alta: cambiar a mutación in-place del backend in-memory es aditivo y aislado | Sí (PO proxy; verifier PASA) |
+| 1.5.4 | **`TabularBackend` con `@runtime_checkable`** | Permite `isinstance(x, TabularBackend)` en chequeos defensivos y en la parametrización de la suite de contrato, sin imponer herencia (sigue siendo structural typing) | Alta: quitar el decorador solo deshabilita el `isinstance` en runtime, no el contrato estático | Sí (PO proxy; verifier PASA) |
+| 1.5.5 | **Suite de contrato de backend parametrizada** (`tests/unit/test_backends.py`): los invariantes D1/D2/D3 (dedup por `id`, orden por primera aparición, `corpus_hash` order-independent, idempotencia de `merge`, accept/reject que agregan evento de provenance) se escriben una vez y se parametrizan por backend | Garantiza que `InMemoryBackend` y el futuro `DuckDBBackend` (Hito 3) cumplan **el mismo contrato** con los mismos casos; mitiga el riesgo de divergencia entre implementaciones (ADR 0015 §Consecuencias) | Alta: agregar `DuckDBBackend` a la parametrización es aditivo; ningún caso se reescribe | Sí (PO proxy; verifier PASA) |
+
+> Las reglas D1/D2/D3 (arquitectónicas) están en el ADR
+> [0013](0013-identidad-hash-merge-corpus.md), elevadas a **contrato del backend** por el ADR
+> [0015](0015-corpus-tabular-backend.md). Símbolos públicos nuevos del hito en `__init__.py`
+> (ver [`../API.md`](../API.md) §1.4): `TabularBackend`, `InMemoryBackend`.
