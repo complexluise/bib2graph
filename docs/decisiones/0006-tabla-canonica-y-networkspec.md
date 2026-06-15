@@ -10,6 +10,13 @@
   **supersedida por [0009](0009-biblioteca-viva-duckdb.md)** (biblioteca viva stateful en DuckDB;
   el snapshot pasa a ser un *export* derivable del estado vivo). El resto de este ADR (tabla
   canónica Arrow + Pydantic, `NetworkSpec`, versionado/tooling) **sigue vigente**.
+- **Enmienda (2026-06-15, 2º giro):** el punto "el `Corpus` es un *wrapper* delgado sobre la
+  tabla" (sección A) queda **enmendado por [0015](0015-corpus-tabular-backend.md)**: el `Corpus`
+  ya no envuelve una `pa.Table` cruda con semántica de valor, sino un **`TabularBackend`
+  (Protocol)** que delega las mutaciones (`InMemoryBackend` puro / `DuckDBBackend` por defecto).
+  La **tabla canónica Arrow sigue siendo la representación del contenido** (`corpus.to_arrow()`
+  es el puente a los proyectores puros); solo cambia el *contenedor*. El resto de A (Arrow +
+  Pydantic, vistas derivadas, columnas de estado) **sigue vigente**.
 
 ## Contexto
 

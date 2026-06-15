@@ -12,23 +12,62 @@
 > [`ARCHITECTURE.md`](ARCHITECTURE.md); método en [`metodología.md`](metodología.md). El `Corpus`
 > sigue siendo una **tabla Arrow validada con Pydantic v2** (ADR 0006); `Paper`/`Author`/
 > `Keyword`/`Institution` son **vistas derivadas**, no tipos del modelo.
+>
+> **Reconciliado con el 2º giro (2026-06-15):** el `Corpus` se respalda en un **`TabularBackend`
+> (Protocol)** —`InMemoryBackend` puro / `DuckDBBackend` por defecto— y **delega las mutaciones**
+> al backend (ADR [0015](decisiones/0015-corpus-tabular-backend.md)), en vez de la semántica de
+> valor por copia en memoria del Hito 1. `corpus.to_arrow()` sigue siendo el **puente a los
+> proyectores puros**. El estado del lazo (`LoopState`) vive en el backend persistente (ADR
+> [0016](decisiones/0016-maquina-estados-lazo.md)). El contrato `Source` separa **mínimo universal
+> vs enriquecimiento opcional** (ADR [0018](decisiones/0018-source-agnostico-calidad.md)).
 
 ## Convenciones
 
 - Tipado estático en todas las firmas públicas. Las costuras se definen como `Protocol` o ABC.
 - **Funciones puras** en el núcleo (proyectores, analizadores, preprocesador): sin red, sin
-  estado global. El estado (biblioteca viva) vive en el `Store` DuckDB, no en la sesión.
+  estado global. El estado (biblioteca viva + `LoopState`) vive en el backend persistente
+  (`DuckDBBackend`), no en la sesión.
 - Estado de implementación: **`v1`** vs **`futuro`** (declarado, NO implementado — marcado como
   tal, no falsamente prometido; lección 5 de v0).
+
+### Convenciones del CLI agente-native (ADR 0010; subcomandos en el Hito 6)
+
+Cada subcomando lleva `--json` (salida estable/versionada) y exit codes (`0` éxito · `1` uso ·
+`2` datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado). Sin estado entre
+invocaciones: el estado vive en el archivo `.duckdb`. Subcomandos previstos:
+
+- `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
+  en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el `LoopState`:
+  `SEEDED/FORAGED/FILTERED/BUILT`, transiciones disponibles y conteos por `curation_status`).
+- El **`accept`/`reject` programático sobrevive** (vía backend / `Corpus`) para agentes y la
+  biblioteca viva (historia C4). La **curación interactiva rica (`curate`) y la GUI son futuro**:
+  ahí empieza la GUI (no en v0.2). Ver [`ROADMAP.md`](ROADMAP.md) Hito 6.
 
 ---
 
 ## 1. Modelo de dominio — `Corpus` (núcleo, v1)
 
-Wrapper sobre una **tabla Arrow** (`pa.Table`) con schema fijo por paper, validada con
-**Pydantic v2** (ADR 0006). El `Corpus` en memoria tiene **semántica de valor** (los métodos
-devuelven un `Corpus` nuevo); la **biblioteca viva** (estado entre corridas) la mantiene el
-`Store` DuckDB (§4).
+Wrapper sobre un **`TabularBackend`** (Protocol) cuyo contenido es una **tabla Arrow** (`pa.Table`)
+con schema fijo por paper, validada con **Pydantic v2** (ADR 0006). El `Corpus` **delega las
+mutaciones** al backend (ADR [0015](decisiones/0015-corpus-tabular-backend.md)): los métodos
+siguen devolviendo un `Corpus` (semántica de valor a nivel de API), pero `accept`/`reject`/
+`merge`/`add_paper` no reconstruyen la tabla entera en memoria — piden la operación al backend.
+
+- **`InMemoryBackend`** — puro, sin I/O: *working set* efímero y backend de los **tests** (el
+  núcleo se testea sin DuckDB). Es el comportamiento del Hito 1, movido al backend.
+- **`DuckDBBackend`** — la **biblioteca viva** (ADR 0009): archivo `.duckdb` o `:memory:`,
+  mutaciones por SQL `UPDATE`/`MERGE` por `id`. Es el **backend por defecto** con persistencia, y
+  donde vive el `LoopState` (ADR [0016](decisiones/0016-maquina-estados-lazo.md)).
+
+Las reglas de identidad/hash/merge (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md),
+D1/D2/D3) son **contrato que cada backend cumple** (InMemory en Python, DuckDB en SQL).
+`corpus.to_arrow()` es el puente estable a los proyectores/analizadores puros (§7–§8): **solo
+cambia el contenedor, no el núcleo de análisis**.
+
+> **Nota de construcción:** en el Hito 1 el `Corpus` ya está implementado con semántica de valor
+> pura sobre `pa.Table` (`src/bib2graph/corpus.py`). La migración a `TabularBackend` es el **rework
+> inmediato siguiente** (ver [`ROADMAP.md`](ROADMAP.md), "Hito 1.5"). El `InMemoryBackend` cae en
+> ese rework (núcleo); el `DuckDBBackend` en el Hito 3 (costura por defecto).
 
 **Símbolos públicos del Hito 1** (`from bib2graph import ...`): `Corpus`, `Manifest`,
 `CorpusSnapshot` y `SchemaError` (la excepción de contrato que lanzan `Corpus.from_arrow()` y
@@ -90,20 +129,23 @@ de la dedup en `merge` y en la biblioteca viva.
 
 ```python
 class Corpus:
-    """Wrapper de semántica de valor sobre una tabla Arrow + un Manifest.
+    """Wrapper sobre un TabularBackend + un Manifest (ADR 0015).
 
     Lo que circula por el pipeline: Source lo siembra, el Forager lo expande,
-    el humano lo cura, el Preprocessor lo normaliza, el Store lo persiste (biblioteca
-    viva), los Projectors lo consumen. NO envuelve una base de datos.
+    el humano lo cura, el Preprocessor lo normaliza, el backend lo persiste (biblioteca
+    viva), los Projectors lo consumen vía to_arrow(). Las mutaciones se DELEGAN al
+    backend (InMemoryBackend puro / DuckDBBackend por defecto): la API mantiene
+    semántica de valor (devuelve Corpus), pero no copia la tabla entera en memoria.
     """
-    table: pa.Table
     manifest: Manifest
 
     @classmethod
-    def from_arrow(cls, table: pa.Table) -> "Corpus":
-        """Valida con Pydantic y construye el Corpus. Falla ruidoso si el schema no coincide."""
+    def from_arrow(cls, table: pa.Table, *, backend: "TabularBackend | None" = None) -> "Corpus":
+        """Valida con Pydantic y construye el Corpus sobre `backend` (default InMemoryBackend).
+        Falla ruidoso si el schema no coincide."""
 
-    def to_arrow(self) -> pa.Table: ...
+    def to_arrow(self) -> pa.Table:
+        """Materializa el contenido del backend como pa.Table. Puente a los proyectores puros."""
     def seeds(self) -> pa.Table:        """Vista is_seed == True."""
     def candidates(self) -> pa.Table:   """Vista curation_status == 'candidate'."""
     def accepted(self) -> pa.Table:     """Vista curation_status == 'accepted' (la biblioteca curada)."""
@@ -140,6 +182,17 @@ class Corpus:
   Manifest (D2).
 - **`merge` emite filas en orden determinista** (primera aparición): habilita diffs y snapshots
   reproducibles. Es idempotente: `c.merge(c) == c`.
+
+**Backend y estado del lazo** (2º giro, ADR [0015](decisiones/0015-corpus-tabular-backend.md) /
+[0016](decisiones/0016-maquina-estados-lazo.md)):
+
+- **Las mutaciones se delegan al `TabularBackend`.** D1/D2/D3 son contrato que cada backend
+  cumple: `InMemoryBackend` en Python, `DuckDBBackend` por SQL `UPDATE`/`MERGE` por `id`. El
+  `corpus_hash` (D2) se computa siempre sobre `to_arrow()`, nunca sobre detalles del backend.
+- **El `LoopState`** (`SEEDED → FORAGED → FILTERED → BUILT`, transiciones permisivas) vive en el
+  **backend persistente** (`DuckDBBackend`), **no** en el `Corpus` efímero. **Una investigación =
+  un archivo `.duckdb`**. Se expone vía `b2g status` (§convenciones CLI). El `LoopState` y su
+  persistencia caen en el Hito 3; `b2g status` en el Hito 6.
 
 ### 1.3 `Manifest` y `CorpusSnapshot`
 
@@ -184,9 +237,26 @@ class CorpusSnapshot:
 
 ## 2. Costura `Source` — sembrar un corpus
 
+El contrato `Source` es **agnóstico de la forma de OpenAlex** (ADR
+[0018](decisiones/0018-source-agnostico-calidad.md)): separa lo que **todo** corpus necesita para
+existir de lo que **algunas** fuentes pueden o no entregar.
+
+- **Mínimo universal** (obligatorio para toda `Source`): `id`, `title`, `year`, `authors_raw`,
+  `keywords_raw`. Habilita ya las redes de **co-autoría** y **co-ocurrencia de keywords**.
+- **Enriquecimiento opcional** (la `Source` puede omitirlo; el schema admite nulos): `references_id`
+  / `references_doi`, `cited_by_id`, `authors_affiliations` (per-autor), `institutions_id`.
+  Habilita acoplamiento, co-citación, redes de instituciones y asortatividad geográfica.
+
+Una `Source` que solo provee el mínimo es **ciudadana legítima** (habilita fuentes
+latinoamericanas — SciELO, Redalyc, La Referencia — sin obligarlas a entregar lo que no tienen);
+los proyectores de enriquecimiento producen redes parciales sobre esos papers y lo **reportan**
+(no fallan). *(El contrato se declara en v0.1; las fuentes nuevas e impl son posteriores.)*
+
 ```python
 class Source(Protocol):
-    """Convierte una entrada externa en un Corpus. Acceso a campos DEFENSIVO (sin KeyError)."""
+    """Convierte una entrada externa en un Corpus. Acceso a campos DEFENSIVO (sin KeyError).
+    Debe entregar el MÍNIMO UNIVERSAL (id, title, year, authors_raw, keywords_raw); el
+    enriquecimiento (refs/citantes/afiliaciones/instituciones) es OPCIONAL (ADR 0018)."""
 
     def seed(self, query: str) -> "SeedResult":
         """Siembra desde una ecuación de búsqueda. Devuelve el Corpus + la query ejecutada
@@ -202,9 +272,16 @@ class SeedResult(BaseModel):
 
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
-| `OpenAlexSource` | **v1** | **Referencia/backbone.** Traduce ecuación→query OpenAlex; trae refs + citantes + afiliaciones per-autor. Pool cortés (email inyectado). Escape hatch: query nativa. |
-| `BibtexSource` | **v1, secundaria** | Sembrar desde *pearls*. Pre-procesa el bug de `bibtexparser` (T1 del sandbox). |
+| `OpenAlexSource` | **v1** | **Referencia/backbone.** Entrega mínimo + enriquecimiento completo: refs + citantes + afiliaciones per-autor. Pool cortés (email inyectado). Escape hatch: query nativa. Puebla `Manifest.openalex_version` (ADR 0017). |
+| `BibtexSource` | **v1, secundaria** | Sembrar desde *pearls*. Pre-procesa el bug de `bibtexparser` (T1 del sandbox). Típicamente solo mínimo universal. |
+| `ScieloSource` / `RedalycSource` / `LaReferenciaSource` | futuro | Fuentes regionales, mínimo universal. Declaradas, no implementadas (ADR 0018). |
 | `RisSource` / `CsvSource` | futuro | No implementados. |
+
+**Reporte de cobertura/calidad** (concepto declarado, concreto **v0.2+**; ADR 0018): por
+seed/source, mide % de refs resueltas, % con DOI, distribución idioma/región y completitud del
+enriquecimiento. Alimenta el juicio humano de **cuándo cambiar de Source** y acota la
+incertidumbre del ranking por *information scent* sobre datos parciales. Se declara como contrato
+en v0.1 (función pura sobre `pa.Table`), sin cablearse vacío (lección 5).
 
 ---
 
@@ -229,11 +306,28 @@ class Enricher(Protocol):
 
 ---
 
-## 4. Costura `Store` — persistencia (biblioteca viva)
+## 4. Costura `Store` / backend de persistencia (biblioteca viva)
+
+Tras el 2º giro (ADR [0015](decisiones/0015-corpus-tabular-backend.md)), la persistencia por
+defecto es el **`DuckDBBackend`** del `Corpus`: DuckDB deja de ser un `Store` que persiste un
+`Corpus` Arrow aparte y pasa a ser el **backend por defecto** del `Corpus` (mutaciones por SQL
+`UPDATE`/`MERGE` por `id`). El `Store` sigue siendo la **costura/punto de extensión** para
+destinos externos opt-in (Zotero, Neo4j). El `LoopState` (ADR 0016) vive en el backend
+persistente.
 
 ```python
+class TabularBackend(Protocol):
+    """Respalda el contenido del Corpus. Cumple D1/D2/D3 (ADR 0013) a su manera.
+    InMemoryBackend (puro, tests) / DuckDBBackend (biblioteca viva, por defecto)."""
+    def to_arrow(self) -> pa.Table: ...
+    def add_paper(self, row: dict) -> "TabularBackend": ...
+    def merge(self, other: "TabularBackend") -> "TabularBackend": ...
+    def apply_curation(self, ids: list[str], action: str, by: str) -> "TabularBackend": ...
+    def corpus_hash(self) -> str: ...        # D2, sobre el contenido
+
 class Store(Protocol):
-    """Persiste y recupera un Corpus."""
+    """Costura de persistencia/intercambio externa. El respaldo por defecto del Corpus es el
+    DuckDBBackend; esta costura cubre destinos opt-in (Zotero, Neo4j) y export (Parquet)."""
     def persist(self, corpus: Corpus) -> None:
         """Funde el corpus en la biblioteca viva (merge idempotente + log de procedencia)."""
     def load(self) -> Corpus:
@@ -242,10 +336,16 @@ class Store(Protocol):
 
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
-| `DuckDBStore` | **v1, por defecto** | **Biblioteca viva** (ADR 0009): stateful, acumula entre corridas, tablas de procedencia/curación, query SQL. Es **núcleo**, no extra. |
+| `DuckDBBackend` | **v1, por defecto** | **Biblioteca viva** (ADR 0009/0015): backend del `Corpus`, stateful, acumula entre corridas, mutación por SQL `UPDATE`/`MERGE` por `id`, log de procedencia/curación + `LoopState`, query SQL. Es **núcleo**, no extra. (El `DuckDBStore` es su fachada de costura.) |
+| `InMemoryBackend` | **v1** | Backend puro (tests + working set efímero). Sin I/O. No persiste. |
 | `ParquetStore` | **v1** | Formato de **export/intercambio** del snapshot, no la persistencia viva. |
 | `ZoteroStore` | **futuro (V1.1, `[zotero]`)** | Sincroniza la biblioteca con una colección Zotero. Costura, no el corazón. |
 | `Neo4jStore` | **futuro (post-V1, `[neo4j]`)** | Adaptador tabla→grafo para Cypher. Ya no es sustrato (ADR 0002). |
+
+> **Concurrencia (ADR [0019](decisiones/0019-concurrencia-diferida.md)):** DuckDB es
+> single-writer. V1 asume **1 archivo `.duckdb` = 1 escritor** (lecturas concurrentes OK). El CLI
+> falla claro (exit code `5`) si el archivo está bloqueado por otro escritor. Multi-escritor
+> concurrente es post-v1.0.
 
 ---
 
@@ -455,7 +555,8 @@ def deduplicate_keywords(corpus: Corpus, *, threshold: float = 0.9) -> Corpus:
 from pathlib import Path
 from bib2graph import OpenAlexSource, Forager, Preprocessor, DuckDBStore, Networks, GraphMLExporter
 
-store = DuckDBStore(Path("biblioteca.duckdb"))          # biblioteca viva (estado entre corridas)
+store = DuckDBStore(Path("biblioteca.duckdb"))          # biblioteca viva: DuckDBBackend del Corpus
+                                                        # (1 archivo = 1 investigación, ADR 0015/0016)
 
 # 1) Sembrar desde una ecuación consciente (query ejecutada + reporte de traducción visibles)
 seed = OpenAlexSource(email="luis@sostaina.com").seed(

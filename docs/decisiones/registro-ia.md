@@ -78,3 +78,26 @@
 > en `__init__.py` (ver `API.md` §1, §7–10): los 5 proyectores, `Networks`, `NetworkArtifact`,
 > `GraphMLExporter`, `CsvExporter`, `network_metrics`, `centrality`, `detect_communities`,
 > `assortativity`, `community_composition`, `cocitation_quality_report`, `QualityThresholds`.
+
+---
+
+## 2026-06-15 — 2º giro (tensiones de arquitectura tras el Hito 2)
+
+> Las decisiones de este giro son **arquitectónicas y las tomó el Product Owner humano** (acta
+> acordada); por eso van en ADRs numerados **sin** el campo `Decidido por: IA`. La IA solo las
+> **formalizó en docs** (los 5 ADR nuevos + enmiendas + reconciliación de PRD/ARCHITECTURE/API/
+> ROADMAP). Se anotan acá para contexto, no como decisiones autónomas de la IA.
+
+| ADR | Decisión del PO | Acta |
+|---|---|---|
+| [0015](0015-corpus-tabular-backend.md) | `Corpus` sobre `TabularBackend` (Protocol); `InMemoryBackend` puro + `DuckDBBackend` por defecto; mutaciones delegadas, no copia en memoria. Enmienda 0006, reencuadra 0009 | Punto 3 del acta |
+| [0016](0016-maquina-estados-lazo.md) | Máquina de estados del lazo `SEEDED→FORAGED→FILTERED→BUILT` (transiciones permisivas); `LoopState` en el backend; una investigación = un archivo `.duckdb`; `b2g status` | Punto 5 |
+| [0017](0017-reproducibilidad-historia-snapshot.md) | Reproducibilidad por historia auditable + snapshot sellado, no por recómputo; `openalex_version` ancla la foto | Punto 2 |
+| [0018](0018-source-agnostico-calidad.md) | `Source` agnóstico: mínimo universal (id/título/año/autores/keywords) vs enriquecimiento opcional (refs/citantes/afiliaciones); reporte de calidad declarado (concreto v0.2+) | Puntos 1 y 7 |
+| [0019](0019-concurrencia-diferida.md) | Concurrencia single-writer = limitación conocida; resolver post-v1.0 | Punto 6 |
+
+> **Borde de decisión (IA):** el acta numeraba los ADR como `0014`–`0018`, pero `0014` ya estaba
+> tomado por el ADR de proyección de redes (Hito 2). Para no reescribir historia, los ADR nuevos
+> usan **`0015`–`0019`**. La separación `filter`/`curate` (punto 4 del acta) **no recibió ADR
+> propio**: es una decisión de superficie CLI/roadmap, no de arquitectura — se refleja en
+> [`../ROADMAP.md`](../ROADMAP.md) (Hito 6) y [`../API.md`](../API.md) (§convenciones CLI).

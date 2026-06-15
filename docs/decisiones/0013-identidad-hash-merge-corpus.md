@@ -9,6 +9,13 @@
   [0009](0009-biblioteca-viva-duckdb.md) (biblioteca viva stateful en DuckDB)
 - **Cierra la tensión abierta de:** [0009](0009-biblioteca-viva-duckdb.md) §Consecuencias
   ("hay que manejar **identidad estable de papers entre corridas**").
+- **Reencuadrado (2026-06-15, 2º giro) por [0015](0015-corpus-tabular-backend.md):** las reglas
+  D1 (`id` estable), D2 (`corpus_hash` order-independent) y D3 (`merge` campo a campo) **siguen
+  vigentes como contrato**, pero **suben de "implementación del `Corpus`" a "contrato del
+  `TabularBackend`"**: cada backend debe cumplirlas a su manera (`InMemoryBackend` en Python,
+  `DuckDBBackend` en SQL `UPDATE`/`MERGE` por `id`). El `corpus_hash` (D2) se computa siempre
+  sobre el contenido (`corpus.to_arrow()`), nunca sobre detalles del backend. D4 (`provenance`
+  como log append-only), D5/D6 (Manifest) no cambian.
 
 ## Contexto
 

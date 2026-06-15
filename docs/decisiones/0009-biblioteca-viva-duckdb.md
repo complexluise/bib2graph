@@ -8,6 +8,16 @@
   [0003](0003-persistencia-opcional.md) y el **"snapshot inmutable, sin in-memory store"** de
   [0006](0006-tabla-canonica-y-networkspec.md). El resto de 0006 (tabla Arrow + Pydantic,
   NetworkSpec, tooling/semver) **sigue vigente**.
+- **Reencuadrado (2026-06-15, 2º giro) por [0015](0015-corpus-tabular-backend.md):** DuckDB deja
+  de ser un **`Store` opcional aparte** que persiste un `Corpus` Arrow y pasa a ser el **backend
+  por defecto del `Corpus`** (`DuckDBBackend`, vía el Protocol `TabularBackend`), con mutaciones
+  por SQL `UPDATE`/`MERGE` por `id` en vez de copia en memoria. Sigue siendo **costura** (el punto
+  de extensión persiste), y la **biblioteca viva, el snapshot=export y la reproducibilidad por
+  historia** de este ADR **siguen vigentes**. El "por qué del recómputo no basta" se precisa en
+  [0017](0017-reproducibilidad-historia-snapshot.md); el estado del lazo (`LoopState`,
+  una investigación = un archivo `.duckdb`) se modela en
+  [0016](0016-maquina-estados-lazo.md); la concurrencia single-writer se declara en
+  [0019](0019-concurrencia-diferida.md).
 
 ## Contexto
 

@@ -14,6 +14,13 @@
 > [0010](decisiones/0010-agente-native-columna.md) (agente-native columna),
 > [0011](decisiones/0011-thesaurus-multilingue.md) (thesaurus). Diseño objetivo en
 > [`ARCHITECTURE.md`](ARCHITECTURE.md); contratos en [`API.md`](API.md) (ya reconciliado).
+>
+> **Estado de construcción (2026-06-15):** **Hitos 0, 1 y 2 TERMINADOS.** Tras el **2º giro**
+> (acta del PO; ADR [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md))
+> se inserta un **Hito 1.5 — Rework de `Corpus` a `TabularBackend`** como el **paso inmediato
+> siguiente, secuenciado por delante del Hito 3** (instrucción explícita del PO: el rework va
+> antes del resto). Parte del backend abstracto (`InMemoryBackend`) cae en el núcleo (Hito 1.5);
+> el `DuckDBBackend` queda como la costura por defecto (Hito 3).
 
 ## Principio de orden
 
@@ -27,13 +34,15 @@ costura.
 SemVer 0.y: la API es inestable hasta `1.0.0` (que requiere API estable + caso real
 reproducido, ver [`VERSIONING.md`](../VERSIONING.md)). Cortes acordados:
 
-- **v0.1 — pipeline mínimo end-to-end (Hitos 1–4):** de una **ecuación de búsqueda a las redes
-  desde código Python**, sobre una **biblioteca viva en DuckDB**. Incluye `Corpus`,
-  proyectores/analizadores/export, `DuckDBStore` y `OpenAlexSource`. **Sin CLI ni forrajeo
-  todavía.** Es el **primer release etiquetado**.
+- **v0.1 — pipeline mínimo end-to-end (Hitos 1–4, incl. el rework 1.5):** de una **ecuación de
+  búsqueda a las redes desde código Python**, sobre una **biblioteca viva en DuckDB**. Incluye
+  `Corpus` (sobre `TabularBackend`), proyectores/analizadores/export, `DuckDBBackend`/`DuckDBStore`
+  y `OpenAlexSource`. **Sin CLI ni forrajeo todavía.** Es el **primer release etiquetado**.
 - **v0.2 — forrajeo + CLI agente-native (Hitos 5–6):** chaining rankeado, `Preprocessor`,
-  filtros PRISMA y la CLI `--json`. Acá se cumple el criterio "V1 hecha" del PRD §9 a nivel de
-  *capacidades* (el número de versión sigue en 0.y).
+  filtros PRISMA (comando **`filter`**), `b2g status` (`LoopState`) y la CLI `--json`. El
+  `accept`/`reject` programático sobrevive; la curación interactiva rica (`curate`) y la GUI son
+  futuro. Acá se cumple el criterio "V1 hecha" del PRD §9 a nivel de *capacidades* (el número de
+  versión sigue en 0.y).
 - **v0.3+ — opcionales (Hitos 7–9):** dedup fuzzy, `Enricher` de co-citación, `NetworkSpec`.
 - **1.0.0:** API congelada + caso real (IED/semiconductores) reproducido.
 
@@ -83,7 +92,7 @@ Testcontainers). El núcleo es todo `unit`.
 
 ---
 
-## Hito 0 — Andamiaje del proyecto
+## Hito 0 — Andamiaje del proyecto · ✅ TERMINADO
 
 **Alcance**
 
@@ -118,7 +127,12 @@ changelog + pre-commit.
 
 ---
 
-## Hito 1 — Núcleo: tabla canónica `Corpus` (PIEDRA ANGULAR)
+## Hito 1 — Núcleo: tabla canónica `Corpus` (PIEDRA ANGULAR) · ✅ TERMINADO
+
+> **Construido** con **semántica de valor pura** sobre `pa.Table` (`src/bib2graph/corpus.py`):
+> `accept`/`reject`/`merge`/`add_paper` hacen `to_pylist()` → mutar en memoria → reconstruir la
+> tabla entera. El 2º giro lo **reencuadra**: ese contenedor migra a `TabularBackend` en el **Hito
+> 1.5** (abajo). Las decisiones D1–D6 (ADR 0013) **se preservan como contrato**.
 
 **Alcance**
 
@@ -159,7 +173,11 @@ releerlo. **Sin servidores, sin red.** La testabilidad que v0 nunca tuvo.
 
 ---
 
-## Hito 2 — Núcleo: proyectores + analizadores + exportadores + `Networks.quick`
+## Hito 2 — Núcleo: proyectores + analizadores + exportadores + `Networks.quick` · ✅ TERMINADO
+
+> Decisiones del hito en el ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md).
+> Los proyectores/analizadores son **funciones puras sobre `pa.Table`** y **no cambian** con el
+> rework del Hito 1.5: consumen `corpus.to_arrow()`, indiferentes al backend.
 
 **Alcance**
 
@@ -201,14 +219,89 @@ asortatividad, y exportarlas — todo puro y testeado.
 
 ---
 
-## Hito 3 — Costura por defecto (local): `DuckDBStore` stateful (biblioteca viva)
+## Hito 1.5 — Rework: `Corpus` sobre `TabularBackend` + `InMemoryBackend` (NÚCLEO; PASO INMEDIATO)
+
+> **Inserción del 2º giro, secuenciada por delante del Hito 3** (instrucción del PO). Migra el
+> contenedor del `Corpus` del Hito 1 sin cambiar el contrato D1–D6 (ADR 0013) ni los proyectores
+> puros (Hito 2). ADR [0015](decisiones/0015-corpus-tabular-backend.md); enmienda 0006, reencuadra
+> 0009. Es **núcleo puro** (la parte DuckDB cae en el Hito 3).
 
 **Alcance**
 
-- `DuckDBStore` (núcleo, **por defecto**; ADR 0009, API.md §4): persiste la tabla Arrow **entre
-  corridas** + tablas de **procedencia y decisiones de curación** (aceptar/rechazar). `persist`
-  funde por merge idempotente; `load` devuelve el corpus acumulado. Query SQL sobre el corpus.
-  El snapshot se exporta desde el estado vivo (`store.load().snapshot(...)`).
+- Extraer **`TabularBackend` (Protocol)** en `src/bib2graph/backends/`: operaciones mínimas
+  `to_arrow`, `add_paper`, `merge`, `apply_curation` (accept/reject), `filter_view`
+  (seeds/candidates/accepted), `corpus_hash`, `__len__`, igualdad por hash.
+- **`InMemoryBackend`**: mover ahí la lógica actual de `corpus.py` (mutación en Python). El
+  `Corpus` **delega** en `self._backend` en vez de operar `self._table` directo.
+- El **núcleo NO importa `duckdb`**: depende del Protocol. `corpus.to_arrow()` sigue siendo el
+  puente a los proyectores/analizadores puros.
+- Las reglas **D1/D2/D3 (ADR 0013) suben a contrato del backend**; el `InMemoryBackend` las cumple
+  en Python (idéntico al Hito 1).
+
+**Historias:** ninguna nueva; **preserva** A4/C4/E1 (modelo de la biblioteca viva) y **habilita**
+el Hito 3 (`DuckDBBackend`) sin acoplar el núcleo a DuckDB.
+
+**Criterios de aceptación (DoD)**
+
+- `Corpus.from_arrow(table)` usa `InMemoryBackend` por defecto; `accept`/`reject`/`merge`/
+  `add_paper` delegan al backend y **no** reconstruyen toda la tabla en el `Corpus`.
+- D1 (`id` estable), D2 (`corpus_hash` order-independent vía `to_arrow()`) y D3 (orden e
+  idempotencia de `merge`) **se conservan**: los tests del Hito 1 pasan sin cambios de semántica.
+- El núcleo importa `bib2graph` **sin** `duckdb` (los tests corren sin DuckDB instalado).
+- Existe un set de **tests de contrato de backend** parametrizable (mismos invariantes D1/D2/D3),
+  que `DuckDBBackend` reusará en el Hito 3.
+
+**Tests (TDD — los justos)**
+
+- Re-apuntar los tests del Hito 1 (`tests/unit/test_corpus*.py`, `test_*` de merge/accept/snapshot)
+  al `Corpus` sobre `InMemoryBackend` (deben pasar sin cambiar expectativas).
+- Suite de **contrato de backend** (parametrizada por backend): idempotencia de `merge`, dedup por
+  `id`, orden por primera aparición, `corpus_hash` estable y order-independent, accept/reject que
+  agregan evento de provenance.
+- *No testear* el passthrough `Corpus → backend` más allá de un caso por operación.
+
+**Recomendación concreta para el `coder`** (no escribir código aquí; apuntar a `archivo:símbolo`):
+
+- `src/bib2graph/corpus.py:Corpus` — dejar de guardar `self._table`; guardar `self._backend:
+  TabularBackend`. `table` (property) → `self._backend.to_arrow()`.
+- `src/bib2graph/corpus.py:Corpus.from_arrow` — aceptar `backend: TabularBackend | None`
+  (default `InMemoryBackend`), validar con `validate_table`, construir el backend desde la tabla.
+- `Corpus.add_paper` / `Corpus.merge` / `Corpus._apply_curation` (`accept`/`reject`) /
+  `Corpus.materialize` / `Corpus.seeds` / `Corpus.candidates` / `Corpus.accepted` →
+  **delegar** en el backend.
+- `Corpus.snapshot` / `Corpus.__eq__` / `Corpus.__len__` → calcular sobre `self._backend.to_arrow()`
+  / `self._backend.corpus_hash()`; `snapshot()` sigue sellando `corpus_hash` (D2).
+- **Mover al `InMemoryBackend`** los helpers de módulo de `corpus.py`: `_merge_rows`,
+  `_merge_curation_status`, `_merge_list_field`, `_merge_scalar`, `_latest_human_decided_at`,
+  `_parse_provenance`, `_apply_curation` (lógica), `_rows_to_table`, `_compute_corpus_hash`,
+  `_CURATION_PRIORITY`, `_LIST_COLS`. **Preservar** `_compute_id` (D1) accesible al backend.
+- **No tocar** `src/bib2graph/networks/` ni `src/bib2graph/exporters/` (funciones puras sobre
+  `pa.Table`): consumen `corpus.to_arrow()`, indiferentes al backend.
+- **Tests a ajustar:** `tests/unit/test_*` que construyen `Corpus` siguen igual (default
+  InMemory); agregar `tests/unit/test_backends.py` con la suite de contrato parametrizada.
+- **Diferir al Hito 3:** `DuckDBBackend` (SQL `UPDATE`/`MERGE` por `id`), `LoopState` y el manejo
+  single-writer.
+
+**Se vuelve posible:** mutar/escalar el corpus sin copiar la tabla entera, y enchufar
+`DuckDBBackend` (Hito 3) sin que el núcleo dependa de DuckDB. Núcleo puro testeable sin I/O.
+
+---
+
+## Hito 3 — Costura por defecto (local): `DuckDBBackend`/`DuckDBStore` stateful (biblioteca viva)
+
+**Alcance**
+
+- **`DuckDBBackend`** (núcleo, **backend por defecto**; ADR 0009 reencuadrado por
+  [0015](decisiones/0015-corpus-tabular-backend.md), API.md §4): respalda el `Corpus` con estado,
+  **mutación por SQL `UPDATE`/`MERGE` por `id`** (no copia en memoria), cumpliendo D1/D2/D3 (ADR
+  0013) en SQL. Persiste el contenido Arrow **entre corridas** + tablas de **procedencia,
+  decisiones de curación** y el **`LoopState`** (ADR [0016](decisiones/0016-maquina-estados-lazo.md):
+  `SEEDED→FORAGED→FILTERED→BUILT`, transiciones permisivas; **una investigación = un archivo
+  `.duckdb`**). `DuckDBStore` es su fachada de costura (`persist`/`load`). Query SQL sobre el
+  corpus. El snapshot se exporta desde el estado vivo (`store.load().snapshot(...)`).
+- **Single-writer** (ADR [0019](decisiones/0019-concurrencia-diferida.md)): 1 archivo = 1
+  escritor; lecturas concurrentes OK; archivo bloqueado → error accionable (exit code `5` a
+  cablear en el CLI, Hito 6).
 
 **Historias:** **C4** (biblioteca viva persistida en DuckDB que crece entre corridas con log de
 procedencia) y base de **A5** (acumular a través de iteraciones / re-sembrado).
@@ -217,15 +310,20 @@ procedencia) y base de **A5** (acumular a través de iteraciones / re-sembrado).
 
 - `persist` luego `load` en otra "corrida" (otra instancia) devuelve el corpus acumulado.
 - `persist` es idempotente: persistir dos veces el mismo corpus no duplica filas.
-- Las decisiones de curación y la procedencia quedan en sus tablas y sobreviven al reinicio.
+- El **`DuckDBBackend` pasa la suite de contrato de backend del Hito 1.5** (D1/D2/D3) — misma
+  semántica que `InMemoryBackend`, expresada en SQL.
+- Las decisiones de curación, la procedencia y el **`LoopState`** quedan en sus tablas y
+  sobreviven al reinicio; `b2g status` (Hito 6) lo lee.
 - `store.load().snapshot(...)` produce un snapshot sellado válido (enlaza con Hito 1).
+- Archivo bloqueado por otro escritor → error accionable (no corrupción), single-writer (ADR 0019).
 - Todo corre con DuckDB **en proceso**, sin servidores.
 
 **Tests (TDD — los justos)**
 
+- La **suite de contrato de backend** (Hito 1.5) parametrizada también con `DuckDBBackend`.
 - Persistir → releer en instancia nueva (acumulación entre corridas) sobre archivo temporal.
 - Idempotencia de `persist` (sin filas duplicadas).
-- Procedencia/curación se registran y se recuperan.
+- Procedencia/curación/`LoopState` se registran y se recuperan; una transición de `LoopState`.
 - *No testear* SQL arbitrario de DuckDB ni el motor en sí; sí una consulta representativa.
 
 **Se vuelve posible:** una **biblioteca viva** que crece y se cura entre corridas, sin
@@ -321,10 +419,20 @@ keywords multilingües y curar con trazabilidad PRISMA.
 
 **Alcance**
 
-- CLI (Click) delgado: `seed`, `chain`, `curate`, `build`, `export`, `snapshot`, `inspect`,
-  `validate`. **Cada subcomando con `--json`, exit codes (0–5), errores accionables, `--help`
-  rico** (ADR 0010, API.md §convenciones). Sin estado entre invocaciones (el estado vive en
-  DuckDB). `curate` aplica filtros + accept/reject; `build`/`export` corren `Networks.quick`.
+- CLI (Click) delgado: `seed`, `chain`, **`filter`**, `build`, `export`, `snapshot`,
+  **`status`**, `inspect`, `validate`. **Cada subcomando con `--json`, exit codes (0–5), errores
+  accionables, `--help` rico** (ADR 0010, API.md §convenciones). Sin estado entre invocaciones (el
+  estado vive en el archivo `.duckdb`).
+- **`filter`** (decisión del 2º giro, punto 4 del acta): comando **determinista** de filtros
+  PRISMA (año/tipo/idioma/mínimo de citas) **con conteo en cada paso** → `Manifest.filters`. Es el
+  nombre v0.2 de lo que antes se llamaba `curate`.
+- El **`accept`/`reject` programático sobrevive** (vía `Corpus`/backend, para agentes y la
+  biblioteca viva — historia C4). La **curación interactiva rica (`curate`) y la GUI son futuro**:
+  ahí empieza la GUI, **no** en v0.2.
+- **`status`** expone el `LoopState` (ADR [0016](decisiones/0016-maquina-estados-lazo.md)):
+  estado actual (`SEEDED/FORAGED/FILTERED/BUILT`), transiciones disponibles y conteos por
+  `curation_status`. Humanos e IAs comparten el mismo mapa del lazo.
+- `build`/`export` corren `Networks.quick`.
 
 **Historias:** **E2** (cada paso por CLI con `--json` y exit codes), cierra **A5** (re-sembrar
 sobre la biblioteca viva acumulada vía CLI) y expone **C3** (filtros con conteo) y **E1**
@@ -332,19 +440,23 @@ sobre la biblioteca viva acumulada vía CLI) y expone **C3** (filtros con conteo
 
 **Criterios de aceptación (DoD)**
 
-- El flujo `seed → chain → curate → build → export` corre end-to-end de una **ecuación** a un
+- El flujo `seed → chain → filter → build → export` corre end-to-end de una **ecuación** a un
   **GraphML**, sobre una **biblioteca viva**, **sin escribir código ni servidores**.
+- `b2g status` reporta el `LoopState` y los conteos de curación de forma consistente con el
+  archivo `.duckdb`.
 - Cada subcomando soporta `--json` con salida estructurada **estable/versionada**.
 - Exit codes correctos: `0` éxito · `1` uso · `2` datos · `3` dependencia · `4` red · `5`
-  store/snapshot corrupto.
-- Sin estado entre invocaciones: dos `b2g` consecutivos comparten estado solo vía el `Store`.
+  store/snapshot corrupto **o bloqueado** (single-writer, ADR 0019).
+- Sin estado entre invocaciones: dos `b2g` consecutivos comparten estado solo vía el archivo vivo.
 - *Criterio "V1 hecha" del PRD §9* satisfecho.
 
 **Tests (TDD — los justos)**
 
 - **Contrato `--json`** de cada subcomando: forma del objeto de salida no driftea (golden/schema).
 - Mapeo de errores a **exit codes** (uso, datos, red, dependencia) — un caso por código relevante.
-- Un test end-to-end del flujo de 10 minutos con `Source`/red **mockeados** y DuckDB temporal.
+- Un test end-to-end del flujo de 10 minutos (`seed → chain → filter → build → export`) con
+  `Source`/red **mockeados** y DuckDB temporal.
+- `b2g status` devuelve el `LoopState` y conteos esperados tras una secuencia de comandos.
 - *No testear* el parser de Click ni el `--help` literal; se testea la función detrás de cada
   comando, ya cubierta en Hitos 1–5.
 
@@ -503,8 +615,8 @@ No se prometen ni se cablean clientes que no se usan.
 | B4 explicación opcional de IA | 5 | `explain_candidate` (`[llm]`) |
 | C1 dedup/normalización autores/inst. | 5 (det.) + 7 (fuzzy) | |
 | C2 thesaurus multilingüe | 5 | `apply_thesaurus` |
-| C3 filtros incl/excl con conteo | 5 (lógica) + 6 (CLI) | flujo PRISMA |
-| C4 aceptar/rechazar + biblioteca viva | 1 (modelo) + 3 (persist) + 11 (Zotero) | |
+| C3 filtros incl/excl con conteo | 5 (lógica) + 6 (CLI `filter`) | flujo PRISMA |
+| C4 aceptar/rechazar + biblioteca viva | 1 (modelo) + 1.5 (backend) + 3 (persist DuckDB) + 11 (Zotero) | `accept`/`reject` programático sobrevive (CLI/agentes); `curate`+GUI = futuro |
 | D1 cinco proyecciones | 2 + 8 (co-citación) | |
 | D2 métricas y comunidades | 2 | |
 | D3 asortatividad + composición + proxy | 2 | |

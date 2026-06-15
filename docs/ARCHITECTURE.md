@@ -71,12 +71,21 @@ ni servidores** en proyección/análisis/normalización: todo el núcleo es unit
 con tablas sintéticas. (El `Source` OpenAlex y el `Store` DuckDB se instalan por defecto y sí
 hacen I/O, pero son **costuras**: el núcleo puro no depende de ellas — ver §4.)
 
-### 3.1 `Corpus` — el contrato central (tabla canónica Arrow)
+### 3.1 `Corpus` — el contrato central (tabla canónica Arrow sobre un `TabularBackend`)
 
 El `Corpus` es la **única fuente de verdad del modelo** y el formato que circula por el
-pipeline. Internamente es **una sola tabla Arrow** (`pa.Table`) con schema fijo por paper,
+pipeline. Su contenido es **una sola tabla Arrow** (`pa.Table`) con schema fijo por paper,
 validada por el wrapper público con **Pydantic v2** (ADR 0006). `Paper`/`Author`/`Keyword`/
 `Institution` **no son tipos del modelo**: son **vistas derivadas** vía `groupby + explode`.
+
+**El `Corpus` se respalda en un `TabularBackend` (Protocol) y delega las mutaciones** (ADR
+[0015](decisiones/0015-corpus-tabular-backend.md)): `InMemoryBackend` (puro, tests + working set
+efímero) o `DuckDBBackend` (biblioteca viva por defecto, mutación por SQL `UPDATE`/`MERGE` por
+`id`). El **núcleo no importa `duckdb`**: depende del Protocol. `corpus.to_arrow()` es el **puente
+estable a los proyectores/analizadores puros** — solo cambia el *contenedor*, no el núcleo de
+análisis. Las reglas de identidad/hash/merge (ADR
+[0013](decisiones/0013-identidad-hash-merge-corpus.md), D1/D2/D3) son contrato que cada backend
+cumple a su manera.
 
 **Columnas** (esquema completo en [`API.md`](API.md) §1 — *pendiente de reconciliar*):
 
@@ -157,13 +166,25 @@ implementaciones concretas: las recibe inyectadas.
 
 ### 4.1 `Source` — sembrar un corpus
 
-Convierte una entrada externa en `Corpus`. **Implementación de referencia: OpenAlex** (ADR
-0007): traduce la **ecuación de búsqueda** a una query OpenAlex, muestra la **query ejecutada +
-reporte de traducción** (qué mapeó limpio, qué se aproximó, qué se descartó), y trae metadatos +
-`references_id` + `cited_by_id`. Power-users pueden pasar query OpenAlex nativa (escape hatch).
-**`BibtexSource` es `Source` secundaria** para sembrar desde *pearls* conocidos (acceso
-defensivo a campos; el sandbox documenta un bug de `bibtexparser` que exige un pre-procesador).
-RIS/CSV: futuras, no publicadas.
+Convierte una entrada externa en `Corpus`. El contrato es **agnóstico de la forma de OpenAlex**
+(ADR [0018](decisiones/0018-source-agnostico-calidad.md)): separa el **mínimo universal**
+(`id`, `title`, `year`, `authors_raw`, `keywords_raw` — habilita ya co-autoría y co-word) del
+**enriquecimiento opcional** (`references_id`/`references_doi`, `cited_by_id`, afiliaciones
+per-autor, `institutions_id` — habilita acoplamiento, co-citación, instituciones, asortatividad).
+Una `Source` que solo entrega el mínimo es legítima; los proyectores de enriquecimiento producen
+redes parciales y lo reportan (no fallan). Esto habilita fuentes regionales (SciELO, Redalyc, La
+Referencia) sin obligarlas a entregar lo que no tienen.
+
+**Implementación de referencia: OpenAlex** (ADR 0007): traduce la **ecuación de búsqueda** a una
+query OpenAlex, muestra la **query ejecutada + reporte de traducción** (qué mapeó limpio, qué se
+aproximó, qué se descartó), y trae mínimo + enriquecimiento completo (`references_id`,
+`cited_by_id`, afiliaciones per-autor) y ancla `Manifest.openalex_version` (ADR
+[0017](decisiones/0017-reproducibilidad-historia-snapshot.md)). Power-users pueden pasar query
+OpenAlex nativa (escape hatch). **`BibtexSource` es `Source` secundaria** para sembrar desde
+*pearls* conocidos (acceso defensivo a campos; el sandbox documenta un bug de `bibtexparser` que
+exige un pre-procesador). SciELO/Redalyc/La Referencia, RIS/CSV: futuras, no publicadas. Un
+**reporte de cobertura/calidad** por seed/source (concreto v0.2+, ADR 0018) mide qué tan completa
+es la fuente y alimenta el juicio de cuándo cambiar de `Source`.
 
 ### 4.2 `Enricher` — señal extra (opt-in)
 
@@ -173,16 +194,22 @@ el **segundo nivel de fetch** (citantes con sus citas) que habilita la co-citaci
 Scopus: futuras. Reglas: config inyectada (nunca embebida), sin ramas muertas, rate limit y
 reintentos sin perder papers.
 
-### 4.3 `Store` — persistencia (biblioteca viva)
+### 4.3 `Store` / backend de persistencia (biblioteca viva)
 
-**Por defecto: `DuckDBStore` stateful** (ADR 0009): la **biblioteca viva**. Persiste la tabla
-Arrow **entre corridas**, más tablas de **procedencia y decisiones de curación**
-(aceptar/rechazar). Soporta query SQL sobre el corpus. Es **núcleo**, no extra. El **snapshot**
-es un **export sellado** del estado vivo (ver §6.2), no la persistencia en sí; `ParquetStore`
-puede servir como **formato de export/intercambio**. **`ZoteroStore`** (sincronizar la
-biblioteca con una colección Zotero) es **costura opt-in en V1.1** (`[zotero]`). **`Neo4jStore`**
-es adaptador opt-in post-V1 (`[neo4j]`): un destino de persistencia más, **ya no el sustrato**
-(ADR 0002).
+**Por defecto: `DuckDBBackend` stateful** (ADR 0009 reencuadrado por
+[0015](decisiones/0015-corpus-tabular-backend.md)): la **biblioteca viva** es el **backend por
+defecto del `Corpus`**, no un `Store` aparte. Persiste el contenido Arrow **entre corridas**, más
+tablas de **procedencia, decisiones de curación** (aceptar/rechazar) y el **`LoopState`** (ADR
+[0016](decisiones/0016-maquina-estados-lazo.md)). Muta por SQL `UPDATE`/`MERGE` por `id` (no copia
+en memoria). Soporta query SQL. Es **núcleo**, no extra. **Una investigación = un archivo
+`.duckdb`** (single-writer; concurrencia diferida, ADR
+[0019](decisiones/0019-concurrencia-diferida.md)).
+
+El **snapshot** es un **export sellado** del estado vivo (ver §6.2), no la persistencia en sí;
+`ParquetStore` puede servir como **formato de export/intercambio**. La costura `Store` sigue
+siendo el punto de extensión para destinos externos: **`ZoteroStore`** (sincronizar la biblioteca
+con una colección Zotero) es **opt-in en V1.1** (`[zotero]`); **`Neo4jStore`** es adaptador opt-in
+post-V1 (`[neo4j]`): un destino más, **ya no el sustrato** (ADR 0002).
 
 ## 5. Flujo de datos (ciclo iterativo, no pipeline lineal)
 
@@ -202,6 +229,12 @@ es adaptador opt-in post-V1 (`[neo4j]`): un destino de persistencia más, **ya n
 El lazo **2→3→4→1** (la query y la idea mutan; Bates/Ellis/Kuhlthau) es la propiedad central:
 la biblioteca viva existe para que ese lazo no pierda lo acumulado (PRD §1–§2).
 
+La no-linealidad se modela como una **máquina de estados explícita** (`LoopState`:
+`SEEDED → FORAGED → FILTERED → BUILT`, con **transiciones permisivas** — re-sembrar desde casi
+cualquier estado; ADR [0016](decisiones/0016-maquina-estados-lazo.md)). El `LoopState` vive en el
+backend persistente (`DuckDBBackend`), no en el `Corpus` efímero, y se expone con `b2g status`:
+humanos e IAs comparten el mismo mapa del lazo.
+
 ## 6. Configuración, persistencia y reproducibilidad
 
 ### 6.1 Configuración inyectada
@@ -215,9 +248,13 @@ la biblioteca viva existe para que ese lazo no pierda lo acumulado (PRD §1–§
 
 ### 6.2 Persistencia por defecto: biblioteca viva en DuckDB + snapshot exportable
 
-La persistencia por defecto es **stateful**: un `DuckDBStore` que conserva el corpus **entre
-corridas** (ADR 0009). Reproducibilidad por **historia auditable** (el log de procedencia: qué
-ecuación, qué salto de chaining, qué decisión humana, cuándo) **+ snapshot exportable**.
+La persistencia por defecto es **stateful**: el `DuckDBBackend` conserva el corpus **entre
+corridas** (ADR 0009/0015). Reproducibilidad por **historia auditable** (el log de procedencia: qué
+ecuación, qué salto de chaining, qué decisión humana, cuándo) **+ snapshot exportable**, **no por
+recómputo** (ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)): re-ejecutar la
+misma ecuación contra OpenAlex NO garantiza el mismo corpus (OpenAlex cambia en el tiempo). El
+artefacto reproducible es el **snapshot**; el `openalex_version` del Manifest lo ancla a la
+versión/fecha de OpenAlex usada.
 
 El **snapshot** es un **export sellado** del estado vivo en un instante: `corpus.parquet` + un
 `manifest.json` con `schema_version`, `corpus_hash`, `lib_version`, `openalex_version`/fecha,
