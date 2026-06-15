@@ -3,7 +3,8 @@
 > Documento de Requisitos de Producto de la **V1** de `bib2graph`. Reescribe el PRD anterior
 > (que describía una librería BibTeX→redes con Semantic Scholar como enricher estructural y
 > Neo4j como preocupación central) tras el **giro** documentado en `Notas/04`–`07` y la
-> demolición de [`critica-base.md`](critica-base.md). Fecha: 2026-06-14.
+> demolición de [`critica-base.md`](critica-base.md). Fecha: 2026-06-15 (reconciliado con el 2º
+> giro).
 >
 > Documentos hermanos: la dirección "IA in the loop" en
 > [`Notas/04-direccion-ia-in-the-loop.md`](Notas/04-direccion-ia-in-the-loop.md), el ciclo de
@@ -17,6 +18,16 @@
 > agente-native, thesaurus). El `ROADMAP.md` ata cada hito a las historias del §7 con criterios
 > de aceptación. Los ADR 0001–0006 son **registro histórico** (inmutables): los puntos superados
 > quedan marcados como tales por los ADR 0007–0011, no se reescriben.
+>
+> ✅ **Reconciliado con el 2º giro (2026-06-15):** este PRD incorpora los ADR
+> [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md)
+> (breaking change). En síntesis: la persistencia por defecto es el **`DuckDBBackend` del `Corpus`**
+> (no un `Store` aparte), con `DuckDBStore` como **fachada de costura** (0015); el lazo es una
+> **máquina de estados explícita** (`LoopState`, 0016); **reproducir = re-leer el snapshot, no
+> re-correr la ecuación** (0017); el contrato `Source` es **agnóstico** (mínimo universal vs
+> enriquecimiento opcional, habilita fuentes regionales, 0018); y la **concurrencia single-writer**
+> es límite conocido (0019). El §8 ("modelo de datos") deja de ser una reconciliación *pendiente* y
+> pasa a registrar la decisión adoptada.
 
 ## 1. Qué es
 
@@ -33,7 +44,12 @@ cura, y **la ecuación y la idea mutan** — se vuelve a sembrar con otra pregun
 lineal "query → resultados → fin" contradice a Bates/Ellis/Kuhlthau a la vez
 ([`Notas/05`](Notas/05-ciclo-investigacion-humano.md) §3). El corpus **vive y persiste** entre
 esas iteraciones en **DuckDB** desde la V1.0 (no es el export de una sola corrida): es el
-**sustrato que hace posible el lazo** — se acepta/rechaza, crece y se cultiva en el tiempo.
+**sustrato que hace posible el lazo** — se acepta/rechaza, crece y se cultiva en el tiempo. Tras
+el 2º giro, ese sustrato es el **`DuckDBBackend` del `Corpus`** (el backend por defecto, no un
+`Store` aparte; ADR [0015](decisiones/0015-corpus-tabular-backend.md)), y el lazo es una **máquina
+de estados explícita** (`LoopState`: `SEEDED → FORAGED → FILTERED → BUILT`, ADR
+[0016](decisiones/0016-maquina-estados-lazo.md)): **una investigación = un archivo `.duckdb`**, su
+estado se consulta con `b2g status`.
 
 *El final siguen siendo las redes; lo nuevo es **cómo se llega a ellas** (forrajeo asistido) y
 que **la colección vive** (berry growing).*
@@ -76,7 +92,12 @@ Mapeo del ciclo de 9 pasos (05 §3–4) sobre la V1:
 
 La **no-linealidad** (el lazo 2→3→4→1) es propiedad de primera clase, no un detalle: la
 biblioteca viva existe precisamente para que la idea pueda mutar y volver a sembrarse sin perder
-lo acumulado.
+lo acumulado. Tras el 2º giro esa no-linealidad **deja de ser solo prosa** y se modela como una
+**máquina de estados explícita** (`LoopState`: `SEEDED → FORAGED → FILTERED → BUILT`, con
+**transiciones permisivas** —se puede re-sembrar desde casi cualquier estado; ADR
+[0016](decisiones/0016-maquina-estados-lazo.md)). El `LoopState` vive en el archivo `.duckdb` (no
+en el `Corpus` efímero) y se expone con `b2g status`: humanos e IAs comparten el mismo mapa del
+lazo en vez de inferir el punto del ciclo a partir del contenido.
 
 ## 3. Para quién
 
@@ -104,7 +125,12 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   no una lista plana.
 - **Abierta y reproducible.** Cada corrida registra ecuación, query OpenAlex, profundidad,
   filtros, conteos y hash; se puede **exportar un snapshot** (foto reproducible) desde el estado
-  vivo. Reproducibilidad por **historia auditable**, no por inmutabilidad.
+  vivo. Reproducibilidad por **historia auditable + snapshot sellado**, no por inmutabilidad ni por
+  recómputo: **reproducir = re-leer/re-sellar el snapshot, NO re-correr la ecuación** (ADR
+  [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)). OpenAlex **cambia en el tiempo**,
+  así que la misma ecuación corrida en otra fecha devuelve otro corpus (eso es *re-investigar*, no
+  reproducir); el `openalex_version` del Manifest **ancla la foto** a la versión/fecha de OpenAlex
+  usada.
 - **Agente-native como columna** (no adorno): doble salida (`--json`), exit codes claros,
   errores accionables, sin estado entre invocaciones.
 - **Sin infraestructura pesada.** DuckDB embebido, sin servidores; OpenAlex sin clave
@@ -116,6 +142,15 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 
 - **Sembrado** por **ecuación de búsqueda** (términos, campos, años, idioma, tipo) y/o por
   **papers semilla** (DOIs / IDs / un export BibTeX).
+- **Contrato `Source` agnóstico** (ADR [0018](decisiones/0018-source-agnostico-calidad.md)):
+  separa el **mínimo universal** que todo corpus necesita para existir (`id`, título, año, autores,
+  keywords — ya habilita co-autoría y co-ocurrencia de keywords) del **enriquecimiento opcional**
+  (referencias, citantes, afiliaciones per-autor, instituciones — habilita acoplamiento,
+  co-citación, instituciones y asortatividad). Una `Source` que solo da el mínimo es **ciudadana
+  legítima**: esto **habilita fuentes regionales** (SciELO / Redalyc / La Referencia) sin
+  obligarlas a entregar lo que no tienen; los proyectores de enriquecimiento producen redes
+  parciales y lo **reportan** (no fallan). El **reporte de cobertura/calidad** por seed/source se
+  **declara** como contrato en V1 y se concreta en **v0.2+**.
 - **Traducción** de la ecuación a query OpenAlex con **query ejecutada visible + reporte de
   traducción**, ambas **registradas** con la corrida.
 - **Chaining asistido** backward/forward sobre OpenAlex; **profundidad 1 por defecto**, opt-in a
@@ -170,6 +205,11 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 - **Neo4j** → adaptador `Store` opt-in post-V1; **ya no es sustrato**.
 - **Enricher Semantic Scholar como camino para co-citación** → innecesario: las referencias y
   citantes vienen de OpenAlex ([ADR 0007](decisiones/0007-openalex-backbone.md)).
+- **Concurrencia multi-escritor** → **limitación conocida, no defecto** (ADR
+  [0019](decisiones/0019-concurrencia-diferida.md)): DuckDB es single-writer, así que la V1 asume
+  **1 archivo `.duckdb` = 1 escritor** a la vez (lecturas concurrentes OK; varias investigaciones =
+  varios archivos). Abrir el mismo archivo para escribir desde dos procesos falla claro (exit code
+  `5`), no corrompe. Multi-escritor concurrente se resuelve post-v1.0 según demanda.
 
 ## 6. Principios de producto
 
@@ -254,20 +294,30 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 - **E2** · Como **agente/automatización**, quiero invocar cada paso por **CLI con `--json`** y
   exit codes claros, para orquestar bib2graph sin GUI.
 
-## 8. Modelo de datos (reconciliación pendiente)
+## 8. Modelo de datos (reconciliado)
 
-La elección **biblioteca viva desde V1** (corpus stateful en DuckDB) es **incompatible con el
-snapshot inmutable** que hoy consagran `ARCHITECTURE.md` §6.2 y el ADR 0006, y con el
-`InMemoryStore` por defecto del ADR 0003. Reconciliación adoptada por este PRD:
+La elección **biblioteca viva desde V1** (corpus stateful en DuckDB) era **incompatible con el
+snapshot inmutable** que consagraban `ARCHITECTURE.md` §6.2 y el ADR 0006, y con el `InMemoryStore`
+por defecto del ADR 0003. La reconciliación quedó cerrada por los ADR 0009 y, tras el 2º giro,
+precisada por el ADR [0015](decisiones/0015-corpus-tabular-backend.md):
 
-- El **núcleo de V1.0 tiene un `Store` con estado** (DuckDB embebido): el corpus persiste entre
-  corridas, con **log de procedencia** de cada decisión.
-- El **snapshot deja de ser el modelo de datos** y pasa a ser un **export derivable del estado
-  vivo** (foto sellada para reportar).
+- El **`Corpus` se respalda en un `TabularBackend` (Protocol)** y **delega las mutaciones**
+  (ADR [0015](decisiones/0015-corpus-tabular-backend.md)). La persistencia por defecto **no es un
+  `Store` con estado aparte**, sino el **`DuckDBBackend` del propio `Corpus`** (archivo `.duckdb`,
+  mutación por SQL `UPDATE`/`MERGE` por `id`), que conserva el corpus entre corridas con su **log de
+  procedencia**. El **`InMemoryBackend`** puro es el backend de los tests y del working set efímero
+  (el núcleo se testea sin DuckDB). El **`DuckDBStore` es la fachada de costura** (`persist`/`load`)
+  y el punto de extensión para destinos externos.
+- El **`LoopState`** (ADR [0016](decisiones/0016-maquina-estados-lazo.md)) vive en ese backend
+  persistente: **una investigación = un archivo `.duckdb`**, con su estado del lazo.
+- El **snapshot deja de ser el modelo de datos** y es un **export sellado derivable del estado
+  vivo** (foto reproducible para reportar). **Reproducir = re-leer ese snapshot, no re-correr la
+  ecuación** (ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)).
 - **Zotero** queda como **costura externa opt-in en V1.1**, no como la persistencia de 1.0.
 
-Llevar esto a `ARCHITECTURE.md`, `ROADMAP.md` (Hito 1: `seal`→inmutable) y a nuevos ADRs es
-tarea del **architect** (ver §11).
+Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.2), `API.md` (§1, §4) y
+`ROADMAP.md` (Hitos 1.5/3). El estado de construcción (Hitos 0–3 + 1.5 terminados) vive en el
+`ROADMAP.md`.
 
 ## 9. Criterios de "V1 hecha"
 
@@ -276,7 +326,9 @@ tarea del **architect** (ver §11).
 - El **chaining** rankea candidatos por estructura, no por lista plana, con preview de
   crecimiento.
 - El corpus **persiste y crece entre corridas** en DuckDB, con log de procedencia.
-- La corrida es **reportable**: se exporta un snapshot reproducible con la query OpenAlex visible.
+- La corrida es **reportable**: se exporta un snapshot **sellado** (con la query OpenAlex visible y
+  el `openalex_version` que ancla la foto) que **otro investigador reproduce releyéndolo**, sin
+  volver a llamar a OpenAlex (ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)).
 - Dedup/normalización funciona apoyada en OpenAlex **sin configuración manual de nombres**.
 - Cada subcomando tiene `--json`.
 
@@ -302,6 +354,8 @@ tarea del **architect** (ver §11).
    premisa de 0003 y 0006); agente-native como columna; **thesaurus multilingüe** (T6/T10 del
    sandbox: exhaustivo vs cobertura+fuzzy, formato JSON portable).
 2. ✅ `ARCHITECTURE.md`, `API.md` y `ROADMAP.md` **reconciliados** con este PRD (§8) y con los
-   ADR 0007–0011.
-3. Recién entonces, implementación por hitos (coder), empezando por el núcleo del corpus
-   stateful y el sembrado por ecuación → OpenAlex.
+   ADR 0007–0011, y luego con el **2º giro** (ADR
+   [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md)).
+3. ✅ Implementación por hitos en curso (coder): **Hitos 0–3 + 1.5 terminados** (núcleo del corpus
+   stateful sobre `TabularBackend`, proyectores/analizadores/export y la biblioteca viva en DuckDB);
+   sigue el Hito 4 (sembrado por ecuación → OpenAlex). Estado vivo en el [`ROADMAP.md`](ROADMAP.md).

@@ -54,15 +54,23 @@ DuckDB es el sustrato que lo sostiene entre corridas.
     profundidad 1)              │             │ normalize +│
                                 ▼             │ thesaurus  │
                         ┌─────────────┐       └────────────┘
-                        │    STORE    │  persistencia POR DEFECTO (biblioteca viva)
-                        │ DuckDB      │  stateful: acepta/rechaza, crece entre corridas,
-                        │ (stateful)  │  log de procedencia. Snapshot = export sellado.
-                        │ Zotero(1.1) │  Neo4j adaptador opt-in post-V1.
+                        │ DuckDBBackend│  BACKEND POR DEFECTO del CORPUS (biblioteca viva,
+                        │  del CORPUS  │  ADR 0015): stateful, acepta/rechaza, crece entre
+                        │  (stateful)  │  corridas, log de procedencia + LoopState (ADR 0016).
+                        │ DuckDBStore  │  Snapshot = export sellado. 1 archivo = 1 escritor
+                        │  = fachada   │  (single-writer, ADR 0019). Store/Zotero(1.1)/Neo4j
+                        │ Store→Zotero │  = costura externa opt-in, NO la persistencia primaria.
                         └─────────────┘
 ```
 
-Lo marcado `(BibTeX 2ª)`, `Zotero(1.1)`, `Neo4j` son costuras secundarias/futuras. La **máquina
-de tensiones** (inserción de IA nº2) es **v2** (ADR 0008). Solo se publica lo que existe.
+El **`DuckDBBackend` es el backend por defecto del `Corpus`** (ADR
+[0015](decisiones/0015-corpus-tabular-backend.md)), no un `Store` separado: persiste, muta por SQL
+`UPDATE`/`MERGE` por `id` y aloja el `LoopState` (ADR
+[0016](decisiones/0016-maquina-estados-lazo.md)). El **`DuckDBStore` es su fachada** de costura
+(`persist`/`load`); la costura `Store` sigue siendo el punto de extensión externo
+(`ZoteroStore`/`Neo4jStore`, opt-in). Lo marcado `(BibTeX 2ª)`, `Zotero(1.1)`, `Neo4j` son costuras
+secundarias/futuras. La **máquina de tensiones** (inserción de IA nº2) es **v2** (ADR 0008). Solo
+se publica lo que existe.
 
 ## 3. El núcleo (puro, sin red ni servidores)
 
@@ -307,7 +315,9 @@ core         pyarrow, pydantic, networkx, click, tqdm,
 2. **Fuente de referencia:** ✅ **OpenAlex** (ADR 0007); BibTeX secundaria. El Enricher deja de
    ser estructural.
 3. **Biblioteca viva vs. snapshot inmutable** (abierta en Nota 04 §6.2): ✅ **biblioteca viva
-   stateful en DuckDB**; el snapshot pasa a **export** (ADR 0009). Resuelta a nivel modelo de
+   stateful en DuckDB**; el snapshot pasa a **export** (ADR 0009). Tras el 2º giro, ese sustrato es
+   el **`DuckDBBackend` del `Corpus`** (backend por defecto, no un `Store` aparte; ADR 0015) y
+   reproducir = re-leer el snapshot, no re-correr la ecuación (ADR 0017). Resuelta a nivel modelo de
    datos.
 4. **Wedge** (abierto en Nota 05 §6): ✅ **forrajeo asistido**; tensiones a **v2** (ADR 0008).
 5. **Agente-native:** ✅ **columna primaria** desde el hito 1 (ADR 0010), ya no extra futuro.
@@ -319,6 +329,9 @@ core         pyarrow, pydantic, networkx, click, tqdm,
 ## 10. Estado de la documentación
 
 Los canónicos — [`PRD.md`](PRD.md), este doc, [`API.md`](API.md), [`ROADMAP.md`](ROADMAP.md) y los
-[ADR 0007–0011](decisiones/) — están **reconciliados** con el giro. Las notas de proceso ya
-promovidas viven en [`_archivo/`](_archivo/). Próximo: implementación por hitos (ver
-[`ROADMAP.md`](ROADMAP.md)).
+[ADR 0007–0011](decisiones/) — están **reconciliados** con el giro, y luego con el **2º giro** (ADR
+[0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md):
+`Corpus` sobre `TabularBackend` con `DuckDBBackend` por defecto, `LoopState`, reproducibilidad por
+snapshot, `Source` agnóstico, single-writer). Las notas de proceso ya promovidas viven en
+[`_archivo/`](_archivo/). Implementación por hitos en curso (**Hitos 0–3 + 1.5 terminados**); ver
+[`ROADMAP.md`](ROADMAP.md).

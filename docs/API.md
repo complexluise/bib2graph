@@ -20,6 +20,11 @@
 > proyectores puros**. El estado del lazo (`LoopState`) vive en el backend persistente (ADR
 > [0016](decisiones/0016-maquina-estados-lazo.md)). El contrato `Source` separa **mínimo universal
 > vs enriquecimiento opcional** (ADR [0018](decisiones/0018-source-agnostico-calidad.md)).
+>
+> **Sincronizado con el Hito 3 (2026-06-15):** `DuckDBBackend` y `DuckDBStore` están **construidos**
+> (§4/§4.1): mutación por SQL puro, `LoopState` (log append-only), fachada `DuckDBStore` con
+> `.backend`, single-writer (`StoreLockedError`) y **carga perezosa** (PEP 562) para no acoplar el
+> núcleo a duckdb.
 
 ## Convenciones
 
@@ -67,8 +72,10 @@ cambia el contenedor, no el núcleo de análisis**.
 > **Nota de construcción:** el rework del **Hito 1.5 está hecho** (ver [`ROADMAP.md`](ROADMAP.md),
 > "Hito 1.5"). El `Corpus` ya **delega en `self._backend: TabularBackend`** (no guarda `self._table`);
 > el `InMemoryBackend` (núcleo puro, semántica de valor) está implementado en
-> `src/bib2graph/backends/`. El `DuckDBBackend` llega en el Hito 3 (costura por defecto). El núcleo
-> **no importa `duckdb`**.
+> `src/bib2graph/backends/`. El `DuckDBBackend` (costura por defecto) **también está construido**
+> (Hito 3, `src/bib2graph/backends/duckdb.py`). El núcleo **no importa `duckdb`**: `DuckDBBackend` y
+> `DuckDBStore` se exponen por **carga perezosa** (PEP 562, `__getattr__`) — `import bib2graph` no
+> arrastra duckdb.
 
 **Símbolos públicos del Hito 1/1.5** (`from bib2graph import ...`): `Corpus`, `Manifest`,
 `CorpusSnapshot`, `SchemaError` (la excepción de contrato que lanzan `Corpus.from_arrow()` y
@@ -193,8 +200,10 @@ class Corpus:
   `corpus_hash` (D2) se computa siempre sobre `to_arrow()`, nunca sobre detalles del backend.
 - **El `LoopState`** (`SEEDED → FORAGED → FILTERED → BUILT`, transiciones permisivas) vive en el
   **backend persistente** (`DuckDBBackend`), **no** en el `Corpus` efímero. **Una investigación =
-  un archivo `.duckdb`**. Se expone vía `b2g status` (§convenciones CLI). El `LoopState` y su
-  persistencia caen en el Hito 3; `b2g status` en el Hito 6.
+  un archivo `.duckdb`**. El `LoopState` y su persistencia **están construidos** (Hito 3: enum
+  `StrEnum` + tabla `loop_state_log` append-only; estado actual = última fila); se exponen vía
+  `DuckDBBackend.loop_state()`/`set_loop_state()` (ver §4). El comando `b2g status` que lo presenta
+  llega en el Hito 6.
 
 ### 1.3 `Manifest` y `CorpusSnapshot`
 
@@ -269,11 +278,12 @@ class TabularBackend(Protocol):
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
 | `InMemoryBackend` | **v1** | **Núcleo puro, sin I/O.** *Working set* efímero y backend de los tests (el núcleo se testea sin DuckDB). Semántica de valor; hereda la lógica del Hito 1 (mutación en Python sobre listas de dicts, table-rebuild). No persiste. |
-| `DuckDBBackend` | **futuro (Hito 3, por defecto)** | La **biblioteca viva** (ADR 0009/0015): mutación por SQL `UPDATE`/`MERGE` por `id`, persiste entre corridas, aloja el `LoopState` (ADR 0016). Reusa la suite de contrato de backend (D1/D2/D3). Ver §4. |
+| `DuckDBBackend` | **v1, por defecto** | La **biblioteca viva** (ADR 0009/0015): **construido** (Hito 3). Mutación por SQL puro (`INSERT … ON CONFLICT (id) DO UPDATE` + merge D3 en SQL/UDF), persiste entre corridas (`.duckdb` o `:memory:`), aloja el `LoopState` (ADR 0016). Pasa la suite de contrato de backend (D1/D2/D3). Carga **perezosa** (PEP 562): no se importa con `import bib2graph`. Ver §4. |
 
 `TabularBackend` e `InMemoryBackend` son **símbolos públicos v1** (`from bib2graph import
 TabularBackend, InMemoryBackend`). El contrato D1/D2/D3 se verifica con una **suite parametrizada
-por backend** (`tests/unit/test_backends.py`), que `DuckDBBackend` reusará en el Hito 3.
+por backend** (`tests/unit/test_backends.py`), ahora parametrizada **también con `DuckDBBackend`**
+(Hito 3, construido): el backend SQL cumple los mismos invariantes que el InMemory.
 
 ---
 
@@ -374,16 +384,57 @@ class Store(Protocol):
 
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
-| `DuckDBBackend` | **v1, por defecto** | **Biblioteca viva** (ADR 0009/0015): backend del `Corpus`, stateful, acumula entre corridas, mutación por SQL `UPDATE`/`MERGE` por `id`, log de procedencia/curación + `LoopState`, query SQL. Es **núcleo**, no extra. (El `DuckDBStore` es su fachada de costura.) |
+| `DuckDBBackend` | **v1, por defecto** | **Biblioteca viva** (ADR 0009/0015): backend del `Corpus`, stateful, acumula entre corridas, **mutación por SQL puro** (`INSERT … ON CONFLICT (id) DO UPDATE` + merge D3 en SQL/UDF), log de procedencia/curación + `LoopState`, query SQL. Es **núcleo**, no extra. `:memory:` o archivo. (El `DuckDBStore` es su fachada de costura.) |
 | `InMemoryBackend` | **v1** | Backend puro (tests + working set efímero). Sin I/O. No persiste. |
-| `ParquetStore` | **v1** | Formato de **export/intercambio** del snapshot, no la persistencia viva. |
+| `ParquetStore` | **futuro (no implementado)** | Formato de **export/intercambio** del snapshot. Hoy lo cubre `Corpus.snapshot()` (parquet + `manifest.json`); un `Store` de export dedicado solo se construye si hace falta (lección 5: no se publica vacío). |
 | `ZoteroStore` | **futuro (V1.1, `[zotero]`)** | Sincroniza la biblioteca con una colección Zotero. Costura, no el corazón. |
 | `Neo4jStore` | **futuro (post-V1, `[neo4j]`)** | Adaptador tabla→grafo para Cypher. Ya no es sustrato (ADR 0002). |
 
 > **Concurrencia (ADR [0019](decisiones/0019-concurrencia-diferida.md)):** DuckDB es
-> single-writer. V1 asume **1 archivo `.duckdb` = 1 escritor** (lecturas concurrentes OK). El CLI
-> falla claro (exit code `5`) si el archivo está bloqueado por otro escritor. Multi-escritor
-> concurrente es post-v1.0.
+> single-writer. V1 asume **1 archivo `.duckdb` = 1 escritor** (lecturas concurrentes OK). Si el
+> archivo está bloqueado por otro escritor, `DuckDBBackend`/`DuckDBStore` lanzan `StoreLockedError`
+> (subclase de `OSError`); el CLI (Hito 6) lo mapea al exit code `5`. Multi-escritor concurrente es
+> post-v1.0.
+
+### 4.1 `DuckDBStore` — fachada de costura + extensiones del backend (Hito 3, construido)
+
+`DuckDBStore(path)` (en `bib2graph.stores.duckdb`, re-exportado perezosamente como
+`bib2graph.DuckDBStore`) implementa el Protocol `Store` (`persist`/`load`) delegando en un
+`DuckDBBackend` sobre el archivo. `load()` devuelve un `Corpus` respaldado por ese backend (las
+mutaciones subsiguientes tocan el archivo en disco).
+
+```python
+class DuckDBStore:
+    def __init__(self, path: str | Path) -> None: ...   # abre/crea el .duckdb; StoreLockedError si bloqueado
+    def persist(self, corpus: Corpus) -> None: ...       # merge idempotente por id en la biblioteca viva
+    def load(self) -> Corpus: ...                         # corpus acumulado, respaldado por el DuckDBBackend
+    @property
+    def backend(self) -> "DuckDBBackend": ...            # acceso al backend para las extensiones de abajo
+```
+
+**Extensiones del `DuckDBBackend`, FUERA del Protocol `Store`/`TabularBackend`** (se acceden vía
+`store.backend.…`): son específicas de DuckDB y no parte del contrato genérico:
+
+```python
+class DuckDBBackend:
+    # ... cumple TabularBackend (§1.4) ...
+    def loop_state(self) -> "LoopState | None": ...      # estado actual del lazo (None si no hubo transiciones)
+    def set_loop_state(self, state: "LoopState") -> None: ...  # registra una transición (log append-only, permisiva)
+    def query(self, sql: str) -> pa.Table: ...           # consulta SQL de SOLO lectura sobre el corpus
+
+class LoopState(StrEnum):   # ADR 0016 — vive en bib2graph.backends.duckdb
+    SEEDED = "SEEDED"; FORAGED = "FORAGED"; FILTERED = "FILTERED"; BUILT = "BUILT"
+```
+
+`LoopState` se persiste en la tabla `loop_state_log` (append-only; estado actual = última fila);
+las transiciones son **permisivas** (ADR 0016: no se bloquea ningún salto, p. ej. re-sembrar tras
+`BUILT`). El comando `b2g status` (Hito 6) consume `loop_state()`.
+
+> **Carga perezosa (PEP 562):** `DuckDBBackend` y `DuckDBStore` se exponen vía `__getattr__` en
+> `bib2graph/__init__.py`, de modo que **`import bib2graph` NO importa `duckdb`** (el núcleo
+> permanece puro y testeable sin DuckDB). Solo `bib2graph.DuckDBBackend` / `bib2graph.DuckDBStore`
+> cargan el módulo bajo demanda. `LoopState` y `StoreLockedError` se importan desde
+> `bib2graph.backends.duckdb` (o desde `bib2graph.stores.duckdb`).
 
 ---
 
@@ -589,12 +640,17 @@ def deduplicate_keywords(corpus: Corpus, *, threshold: float = 0.9) -> Corpus:
 
 ## 12. Ejemplo de uso (pipeline por defecto: ecuación → biblioteca viva → redes)
 
+> `DuckDBStore` se importa desde `bib2graph` (re-export **perezoso** vía PEP 562, §4.1):
+> `import bib2graph` no arrastra duckdb; el módulo se carga al tocar el símbolo. `OpenAlexSource`/
+> `Forager` son del Hito 4/5 (aún no construidos): el ejemplo es el pipeline objetivo.
+
 ```python
 from pathlib import Path
 from bib2graph import OpenAlexSource, Forager, Preprocessor, DuckDBStore, Networks, GraphMLExporter
 
 store = DuckDBStore(Path("biblioteca.duckdb"))          # biblioteca viva: DuckDBBackend del Corpus
                                                         # (1 archivo = 1 investigación, ADR 0015/0016)
+                                                        # DuckDBStore se carga perezosamente (PEP 562)
 
 # 1) Sembrar desde una ecuación consciente (query ejecutada + reporte de traducción visibles)
 seed = OpenAlexSource(email="luis@sostaina.com").seed(

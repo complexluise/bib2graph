@@ -125,3 +125,31 @@
 > [0013](0013-identidad-hash-merge-corpus.md), elevadas a **contrato del backend** por el ADR
 > [0015](0015-corpus-tabular-backend.md). Símbolos públicos nuevos del hito en `__init__.py`
 > (ver [`../API.md`](../API.md) §1.4): `TabularBackend`, `InMemoryBackend`.
+
+---
+
+## 2026-06-15 — Hito 3 (`DuckDBBackend`/`DuckDBStore`: biblioteca viva en DuckDB)
+
+> La **decisión de fondo es del Product Owner humano** y está en los ADR del 2º giro: la **mutación
+> por SQL puro** (en vez de read-all → rebuild) es lo que el ADR
+> [0015](0015-corpus-tabular-backend.md) ordena (`DuckDBBackend` muta por `UPDATE`/`MERGE` por `id`,
+> honrando D1/D2/D3 del ADR [0013](0013-identidad-hash-merge-corpus.md)), y el `LoopState` /
+> single-writer vienen de los ADR [0016](0016-maquina-estados-lazo.md) /
+> [0019](0019-concurrencia-diferida.md). Esas filas **NO** son "Decidido por IA". Lo de abajo, salvo
+> la fila marcada **(PO)**, son las decisiones **de implementación** que tomó la IA al construir el
+> hito. El verifier PASA (**98 tests** verdes; el núcleo sigue importando sin `duckdb`).
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| 3.0 **(PO)** | **Mutación por SQL puro** en `DuckDBBackend` (upsert `INSERT … ON CONFLICT (id) DO UPDATE` + merge campo a campo en SQL: `COALESCE` escalares, `list_sort(list_distinct(list_concat(...)))` listas preservando `NULL`, UDFs para `provenance`/`curation_status`), no read-all → rebuild. **Honra el ADR [0015](0015-corpus-tabular-backend.md)** | Es el mandato del ADR 0015 (escala sin copiar la tabla; las mutaciones viven en el backend, en SQL). Decisión arquitectónica **del PO**, no autónoma de la IA | Baja: revertir contradice el ADR 0015 | **Sí — decisión del PO** (ADR 0015) |
+| 3.b | **`LoopState` como log append-only** (tabla `loop_state_log` con `state` + `recorded_at`; estado actual = última fila por `recorded_at`), en vez de una columna de estado mutable única | El ADR [0016](0016-maquina-estados-lazo.md) pide **transiciones permisivas** y un mapa, no un guardia: un log preserva la historia de transiciones (auditable, consistente con `provenance` append-only D4) y "estado actual = última fila" lo deriva trivialmente | Alta: colapsar a una sola fila de estado es aditivo; el log es un superconjunto | Sí (PO proxy; verifier PASA) |
+| 3.c | **`:memory:` soportado** además de archivo (sin `path` → `:memory:`) | La suite de contrato de backend (Hito 1.5) parametriza `DuckDBBackend` sin tocar disco; `:memory:` permite correr esos casos rápido y sin I/O, igualando el rol de `InMemoryBackend` en los tests | Alta: quitar `:memory:` solo afectaría la ergonomía de los tests | Sí (PO proxy; verifier PASA) |
+| 3.d | **Columnas `LIST(VARCHAR)` nativas de DuckDB** para las 11 columnas de lista; **`provenance` como `VARCHAR`** (JSON serializado), no como estructura nativa | Las listas nativas permiten el merge D3 en SQL puro (`list_sort`/`list_distinct`/`list_concat`); `provenance` queda VARCHAR porque su merge (unión de eventos únicos, log) es lógica de dominio que ya vive verificada en `backends.memory` y se reusa por UDF (equivalencia byte a byte con InMemory) | Media: cambiar `provenance` a `STRUCT[]` nativo exigiría reescribir el merge y los helpers compartidos | Sí (PO proxy; verifier PASA) |
+| 3.e | **`DuckDBStore` como fachada delgada** (`persist`/`load` + `.backend`) y **export perezoso (PEP 562)** de `DuckDBBackend`/`DuckDBStore` desde `bib2graph/__init__.py` vía `__getattr__` | El núcleo **no debe importar `duckdb`** (ADR 0015 / lección de v0): el `__getattr__` perezoso mantiene `import bib2graph` libre de duckdb (smoke test del Hito 0 sigue verde) y el `DuckDBStore` separa el Protocol `Store` (persist/load) de las extensiones DuckDB-específicas (`loop_state`/`set_loop_state`/`query`), expuestas vía `.backend` | Alta: pasar a import directo solo rompería el smoke test del Hito 0; mover métodos al Protocol es aditivo | Sí (PO proxy; verifier PASA) |
+| 3.f | **Decisiones menores del coder:** `LoopState` como `StrEnum`; UDFs con `null_handling=FunctionNullHandling.SPECIAL` (para que reciban NULLs y no se cortocircuiten); `contextlib.suppress(duckdb.CatalogException)` al registrar las UDFs (catálogo compartido entre conexiones del mismo archivo); reordenamiento D3 (primera aparición) por `ORDER BY CASE id …` tras el upsert; `_clone()` de `:memory:` que exporta+recarga el estado (no se puede compartir una conexión in-memory) y copia el `loop_state_log`; lectura vía `to_arrow_table()` con `cast(CORPUS_SCHEMA)` | Detalles forzados por la semántica de DuckDB (UDF null-handling, catálogo compartido, in-memory no compartible) y por preservar D2/D3 exactos contra `InMemoryBackend`. Sin estos, el merge SQL o las UDFs divergirían del backend puro o fallarían al compartir archivo | Alta cada uno: son detalles locales del backend; ninguno cambia la superficie pública ni el contrato | Sí (PO proxy; verifier PASA) |
+| 3.g | **`StoreLockedError(OSError)`** mapea la `duckdb.IOException` de archivo bloqueado a un error accionable; el exit code `5` queda **a cablear en el CLI (Hito 6)** | ADR [0019](0019-concurrencia-diferida.md): single-writer es límite conocido; el backend traduce el error de bloqueo a uno accionable (no corrompe), pero el mapeo a exit code es responsabilidad del CLI, que aún no existe | Alta: el código y el cableado al CLI son aditivos | Sí (PO proxy; verifier PASA) |
+
+> Símbolos del hito (carga perezosa, ver [`../API.md`](../API.md) §4/§4.1): `DuckDBBackend`,
+> `DuckDBStore` (vía `bib2graph.__getattr__`); `LoopState`, `StoreLockedError` (desde
+> `bib2graph.backends.duckdb` / `bib2graph.stores.duckdb`). `DuckDBBackend` reusa la suite de
+> contrato de backend del Hito 1.5 (D1/D2/D3), ahora parametrizada también con él.

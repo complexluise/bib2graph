@@ -15,12 +15,14 @@
 > [0011](decisiones/0011-thesaurus-multilingue.md) (thesaurus). Diseño objetivo en
 > [`ARCHITECTURE.md`](ARCHITECTURE.md); contratos en [`API.md`](API.md) (ya reconciliado).
 >
-> **Estado de construcción (2026-06-15):** **Hitos 0, 1, 2 y 1.5 TERMINADOS.** Tras el **2º giro**
+> **Estado de construcción (2026-06-15):** **Hitos 0, 1, 2, 1.5 y 3 TERMINADOS.** Tras el **2º giro**
 > (acta del PO; ADR [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md))
 > se insertó un **Hito 1.5 — Rework de `Corpus` a `TabularBackend`** como el **paso inmediato
 > siguiente, secuenciado por delante del Hito 3** (instrucción explícita del PO: el rework va
 > antes del resto), **ya construido**. La parte del backend abstracto (`InMemoryBackend`) cayó en
-> el núcleo (Hito 1.5); el `DuckDBBackend` queda como la costura por defecto (Hito 3).
+> el núcleo (Hito 1.5); el `DuckDBBackend` quedó como la costura por defecto (Hito 3, **ya
+> construido**: mutación por SQL puro + UDFs, `LoopState` log append-only, `DuckDBStore` fachada,
+> single-writer, export perezoso).
 
 ## Principio de orden
 
@@ -297,7 +299,24 @@ el Hito 3 (`DuckDBBackend`) sin acoplar el núcleo a DuckDB.
 
 ---
 
-## Hito 3 — Costura por defecto (local): `DuckDBBackend`/`DuckDBStore` stateful (biblioteca viva)
+## Hito 3 — Costura por defecto (local): `DuckDBBackend`/`DuckDBStore` stateful (biblioteca viva) · ✅ TERMINADO
+
+> **Construido** así: `DuckDBBackend` (`src/bib2graph/backends/duckdb.py`) cumple el Protocol
+> `TabularBackend` con **mutación por SQL puro** —`INSERT … ON CONFLICT (id) DO UPDATE` (upsert por
+> `id`) + merge campo a campo en SQL (D3): `COALESCE` para escalares, `list_sort(list_distinct(
+> list_concat(...)))` para listas preservando `NULL`— y **UDFs Python** para `curation_status` y
+> `provenance`, que reusan los helpers de `InMemoryBackend` (`backends.memory`) para garantizar
+> equivalencia byte a byte. El `corpus_hash` (D2) se computa siempre sobre `to_arrow()` con la misma
+> función que InMemory. Soporta `:memory:` y archivo. El **`LoopState`** (enum + tabla
+> `loop_state_log` append-only; estado actual = última fila; transiciones permisivas) y el **query
+> SQL** son extensiones propias del backend (fuera del Protocol). El `DuckDBStore`
+> (`src/bib2graph/stores/duckdb.py`) es la **fachada delgada** `persist`/`load` y expone `.backend`.
+> **Single-writer** (ADR 0019): archivo bloqueado → `StoreLockedError` (subclase de `OSError`; exit
+> code `5` a cablear en el CLI, Hito 6). El **núcleo no importa `duckdb`**: `DuckDBBackend`/
+> `DuckDBStore` se exponen por **carga perezosa** (PEP 562, `__getattr__` en `__init__.py`), así
+> `import bib2graph` no arrastra duckdb. `DuckDBBackend` pasa la suite de contrato de backend del
+> Hito 1.5 (D1/D2/D3). Verifier PASA (98 tests). Decisiones de implementación de la IA en
+> [`decisiones/registro-ia.md`](decisiones/registro-ia.md) (Hito 3).
 
 **Alcance**
 
@@ -345,12 +364,17 @@ infraestructura. El estado deja de vivir en la sesión.
 
 **Alcance**
 
-- `OpenAlexSource` (ADR 0007, API.md §2 sobre `httpx`): traduce la **ecuación de búsqueda** a
-  query OpenAlex, expone la **query ejecutada + reporte de traducción** (`SeedResult`), y trae
-  metadatos + `references_id` + `cited_by_id` + afiliaciones **per-autor**. **Pool cortés** (email
-  inyectado; API key opcional desde feb-2026, ADR
-  [0012](decisiones/0012-openalex-credenciales.md)). Escape hatch: query nativa. Parser defensivo
-  del `abstract_inverted_index`.
+- `OpenAlexSource` (ADR 0007, API.md §2 sobre `httpx`): implementación de referencia del **contrato
+  `Source` agnóstico** (ADR [0018](decisiones/0018-source-agnostico-calidad.md)) — entrega el
+  **mínimo universal** (id/título/año/autores/keywords) **y** el **enriquecimiento completo**
+  (`references_id` + `cited_by_id` + afiliaciones **per-autor** + instituciones). Traduce la
+  **ecuación de búsqueda** a query OpenAlex, expone la **query ejecutada + reporte de traducción**
+  (`SeedResult`) y **puebla `Manifest.openalex_version`** al sembrar (ancla la foto, ADR
+  [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)). **Pool cortés** (email inyectado;
+  API key opcional desde feb-2026, ADR [0012](decisiones/0012-openalex-credenciales.md)). Escape
+  hatch: query nativa. Parser defensivo del `abstract_inverted_index`. Las fuentes regionales
+  (SciELO/Redalyc/La Referencia, solo mínimo universal) quedan declaradas, no implementadas (ADR
+  0018).
 - `BibtexSource` **secundaria** (sembrar desde *pearls*), con el pre-procesador que corrige el
   bug de `bibtexparser` (T1 del sandbox).
 
@@ -362,7 +386,10 @@ el `Manifest`).
 
 - `seed(ecuación)` devuelve un `SeedResult` con `executed_query` exacta y `translation_report`
   (qué mapeó, qué se aproximó, qué se descartó — p. ej. `NEAR` no soportado).
-- El corpus sembrado trae `references_id`, `cited_by_id` y afiliaciones per-autor.
+- El corpus sembrado trae el **mínimo universal** (id/título/año/autores/keywords) **+**
+  `references_id`, `cited_by_id` y afiliaciones per-autor (enriquecimiento; ADR 0018).
+- `seed()` **puebla `Manifest.openalex_version`** con la versión/fecha de OpenAlex usada (ancla de
+  reproducibilidad; ADR 0017).
 - El email del pool cortés y la API key se **inyectan** (nunca embebidos); sin credencial el
   source corre en polite pool, no rompe.
 - `BibtexSource` parsea entradas con campos opcionales ausentes **sin `KeyError`** (acceso
