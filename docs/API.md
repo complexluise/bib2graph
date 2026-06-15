@@ -310,6 +310,17 @@ class Projector(Protocol):
 El **acoplamiento** (barato, mira adelante) es ciudadano de primera y opera sobre el **corpus
 completo** (crítica #2). La **co-citación** es la más cara (segundo nivel de fetch).
 
+**Notas de contrato** (Hito 2, ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md)):
+
+- **Peso = conteo crudo** de ítems compartidos (D1); `min_weight` (default 1) descarta aristas
+  con `weight < min_weight`. Sin normalización (Salton/Jaccard) en v1.
+- **Tipo de nodo** (D2): co-autoría / instituciones / co-word → la **entidad** es el nodo
+  (`authors_id` / `institutions_id` / `keywords_id`); acoplamiento / co-citación → el **paper**
+  (`id`) es el nodo.
+- **Co-citación en Hito 2:** el `CoCitationProjector` proyecta desde `cited_by_id` con scope
+  `seeds_only`; es válido para los citantes ya presentes en el corpus, pero la co-citación
+  **completa** requiere el 2º nivel de fetch del `OpenAlexEnricher` (Hito 8, ADR 0007).
+
 ---
 
 ## 8. Núcleo — `Analyzer` (funciones puras, v1)
@@ -347,6 +358,15 @@ class QualityThresholds(BaseModel):
     min_recurrent_authors: int = 10
 ```
 
+**Notas de contrato** (Hito 2, ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md)):
+
+- **`assortativity` con `proxy`** añade una clave `proxy_disclaimer` al dict de salida (D4): el
+  atributo es un proxy del campo real, no el campo real ("fácil pero consciente").
+- **`cocitation_quality_report` devuelve `{criterio: {valor, umbral, pasa, ...}}` + `overall_pass`**
+  (sin score ponderado; D6). El criterio `min_countries` usa `institutions_id` como **proxy** de
+  países (cuenta ids de institución únicos) y lo marca con un disclaimer en su entrada; el lookup
+  ROR→país real llega en el Hito 8.
+
 ---
 
 ## 9. Núcleo — `Exporter` (v1)
@@ -358,6 +378,15 @@ class Exporter(Protocol):
 class GraphMLExporter: ...   # v1 — para Gephi / VOSviewer / Cytoscape
 class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
 ```
+
+**Notas de contrato** (Hito 2, ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md), D5):
+
+- **`CsvExporter`** escribe `aristas.csv` (`source,target,weight`) y `nodos.csv` (`id,label` +
+  atributos de nodo + métricas de `results` —degree/betweenness/community— unidas por id). Orden
+  de filas determinista.
+- **`GraphMLExporter`** escribe esos atributos como node attributes, **omite** los atributos con
+  valor `None` (Gephi / `nx.write_graphml` no los admiten) y **no muta** el grafo original (opera
+  sobre una copia).
 
 ---
 
@@ -394,6 +423,16 @@ class Networks:
 
 **Modo quick** (v1) cubre baja fricción; **modo spec** (v0.2, YAML) cubre el pipeline declarativo
 versionable.
+
+**Notas de contrato** (Hito 2, ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md)):
+
+- **`Networks.quick` arma 4 redes** (coupling `full`, co-autoría, institución, co-word) y **omite
+  la co-citación**, avisándolo por log (D3): la co-citación completa requiere el 2º nivel de fetch
+  del `OpenAlexEnricher` (Hito 8). El `CoCitationProjector` queda disponible vía
+  `Networks.build(corpus, NetworkSpec(kind="cocitation"))`.
+- **`NetworkSpec` es un hook mínimo en v1** (modelo Pydantic ya consumido por `build`/`quick`); la
+  carga desde YAML y la validación avanzada son del Hito 9. El símbolo público re-exportado desde
+  `bib2graph` es `NetworkArtifact` (no `NetworkSpec`, que se importa desde `bib2graph.networks`).
 
 ---
 

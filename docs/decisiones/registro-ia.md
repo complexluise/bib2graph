@@ -52,3 +52,29 @@
 > Las decisiones D1–D4 (arquitectónicas) están en el ADR
 > [0013](0013-identidad-hash-merge-corpus.md). El símbolo público `SchemaError` se exporta desde
 > `__init__.py` (ver `API.md` §1).
+
+---
+
+## 2026-06-15 — Hito 2 (proyectores + analizadores + exportadores + `Networks.quick`)
+
+> Las decisiones **arquitectónicas** de este hito (D1 peso = conteo crudo + `min_weight`, D2 tipo
+> de nodo por proyección, D3 `quick` sin co-citación, D4 asortatividad por atributo configurable
+> con proxy, y la nota del proxy de país en `min_countries`) van en el ADR
+> [0014](0014-proyeccion-redes-pesos-asortatividad.md), no como filas acá. Lo de abajo son las
+> decisiones **de implementación / proceso** del hito. El verifier PASA (56 tests verdes bajo 2
+> `PYTHONHASHSEED`).
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| 2.1 | **Estructura en paquetes `networks/`** (`projectors`, `analyzer`, `spec`, `facade`) **y `exporters/`** (`graphml`, `csv`), no módulos planos | Separa proyección, análisis, datos y fachada; cada archivo de API.md §7–10 mapea a un módulo. Los símbolos públicos se re-exportan desde `__init__.py` (`API.md` §1) | Alta: mover/fusionar módulos no cambia la superficie pública (los símbolos salen del `__init__`) | Sí (PO proxy; verifier PASA) |
+| 2.2 | **`NetworkSpec` MÍNIMO como hook** en `spec.py`: el modelo Pydantic existe y `Networks.build`/`quick` lo consumen, pero la carga desde YAML + validación avanzada se difieren | API.md §10 marca `NetworkSpec` como v0.2/hook desde v1; implementar el loader YAML ahora sería especular antes del Hito 9. Se expone `NetworkArtifact` (no `NetworkSpec`) en `__init__.__all__` por ahora | Alta: completar el modelo + loader es aditivo (Hito 9), no rompe `build`/`quick` | Sí (PO proxy; criterio del ROADMAP) |
+| 2.3 | **`types-networkx>=3.6.1.20260612` en dev-dependencies** (`[tool.uv]`); `nx.Graph` se usa genérico solo bajo `TYPE_CHECKING` (`_Graph` alias) y plano en runtime | Tipar las firmas públicas que devuelven/consumen grafos (convención API.md: tipado estático) sin que `nx.Graph[...]` rompa en runtime (los stubs hacen `Graph` genérico, el runtime no) | Alta: quitar el stub solo afecta el chequeo estático, no el runtime | Sí (uv-native; ADR 0.3 dev-deps) |
+| 2.4 | **`detect_communities(method="louvain")` y `Networks.build` fallan fuerte si falta `python-louvain`** (no degradan en silencio): `ImportError` explícito con el comando de instalación; en `_build_artifact`, la `ImportError` se re-lanza (otras excepciones de clustering sí se loguean y dejan `communities=None`) | Lección 7 de v0: la detección por defecto que falla en silencio fue un bug real. `python-louvain` está en el núcleo (ADR 0.2), así que su ausencia es un error de entorno, no un caso a degradar | Media: cambiar a degradación silenciosa exigiría re-tocar tests y contradice la lección 7 | Sí (PO proxy; verifier PASA) |
+| 2.5 | **D5 — formato de export** (`CsvExporter`/`GraphMLExporter`): `aristas.csv` = `source,target,weight`; `nodos.csv` = `id,label` + atributos de nodo + métricas (degree/betweenness/community) unidas por id; GraphML escribe esos atributos como node attributes, **omite** atributos con valor `None` (Gephi/`write_graphml` no los admiten) y **copia el grafo** para no mutar el original. Orden de filas determinista (aristas por `(source,target)`, nodos por `id`) | Da artefactos directamente abribles en pandas / Gephi-VOSviewer-Cytoscape sin post-proceso; omitir `None` evita contaminar tipos en Gephi; no mutar el grafo respeta la pureza del núcleo | Alta: agregar columnas o cambiar nombres de archivo es aditivo; revertir el copy-on-export es trivial | Sí (PO proxy; verifier PASA) |
+| 2.6 | **D6 — `cocitation_quality_report` devuelve `{criterio:{valor,umbral,pasa,...}}` + `overall_pass`, sin score ponderado**; mantiene los 4 umbrales de `QualityThresholds` (200 / 0.90 / 5 / 10). El criterio `min_countries` usa `institutions_id` como **proxy** de países, con un disclaimer en su entrada del dict | Un score ponderado escondería qué criterio falló e impondría pesos arbitrarios; el dict por criterio es transparente y accionable (metodología §4). El proxy de país es lo disponible en Hito 2 (sin lookup ROR→país, que llega en Hito 8 — ver ADR 0014) | Alta: agregar un score agregado o refinar el proxy es aditivo; los umbrales ya son configurables vía `QualityThresholds` | Sí (PO proxy; verifier PASA) |
+
+> Las decisiones D1–D4 (arquitectónicas) y la nota del proxy de país en `min_countries` están en
+> el ADR [0014](0014-proyeccion-redes-pesos-asortatividad.md). Símbolos públicos nuevos del hito
+> en `__init__.py` (ver `API.md` §1, §7–10): los 5 proyectores, `Networks`, `NetworkArtifact`,
+> `GraphMLExporter`, `CsvExporter`, `network_metrics`, `centrality`, `detect_communities`,
+> `assortativity`, `community_composition`, `cocitation_quality_report`, `QualityThresholds`.
