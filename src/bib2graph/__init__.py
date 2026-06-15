@@ -3,6 +3,7 @@
 Hito 1: núcleo de la tabla canónica ``Corpus``.
 Hito 1.5: costura ``TabularBackend`` + ``InMemoryBackend``.
 Hito 2: proyectores, analizadores, exportadores y ``Networks``.
+Hito 3: ``DuckDBBackend`` / ``DuckDBStore`` (biblioteca viva, carga perezosa).
 
 Símbolos públicos exportados:
   - Hito 1/1.5: ``Corpus``, ``Manifest``, ``CorpusSnapshot``, ``SchemaError``,
@@ -11,8 +12,13 @@ Símbolos públicos exportados:
     ``GraphMLExporter``, ``CsvExporter``, ``network_metrics``, ``centrality``,
     ``detect_communities``, ``assortativity``, ``community_composition``,
     ``cocitation_quality_report``, ``QualityThresholds``.
+  - Hito 3: ``DuckDBBackend``, ``DuckDBStore`` (carga perezosa — PEP 562).
 
-Ver ``docs/API.md`` §1, §7-10.
+``DuckDBBackend`` y ``DuckDBStore`` se exponen vía ``__getattr__`` perezoso
+(PEP 562) para que ``import bib2graph`` NO importe ``duckdb`` y el smoke test
+del Hito 0 siga verde (``'duckdb' not in sys.modules`` tras el import).
+
+Ver ``docs/API.md`` §1, §4, §7-10.
 """
 
 from __future__ import annotations
@@ -47,6 +53,8 @@ __all__ = [
     "Corpus",
     "CorpusSnapshot",
     "CsvExporter",
+    "DuckDBBackend",
+    "DuckDBStore",
     "GraphMLExporter",
     "InMemoryBackend",
     "InstitutionCollaborationProjector",
@@ -64,3 +72,25 @@ __all__ = [
     "detect_communities",
     "network_metrics",
 ]
+
+# ---------------------------------------------------------------------------
+# Carga perezosa de símbolos que importan duckdb (PEP 562)
+#
+# ``import bib2graph`` NO arrastra duckdb.  Solo ``bib2graph.DuckDBBackend``
+# o ``bib2graph.DuckDBStore`` lo cargan bajo demanda.
+# ---------------------------------------------------------------------------
+
+_LAZY = {
+    "DuckDBBackend": ("bib2graph.backends.duckdb", "DuckDBBackend"),
+    "DuckDBStore": ("bib2graph.stores.duckdb", "DuckDBStore"),
+}
+
+
+def __getattr__(name: str) -> object:
+    if name in _LAZY:
+        module_name, attr = _LAZY[name]
+        import importlib
+
+        mod = importlib.import_module(module_name)
+        return getattr(mod, attr)
+    raise AttributeError(f"module 'bib2graph' has no attribute {name!r}")

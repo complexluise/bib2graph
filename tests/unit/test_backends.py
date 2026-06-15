@@ -1,12 +1,15 @@
-"""Suite de contrato de ``TabularBackend`` — Hito 1.5.
+"""Suite de contrato de ``TabularBackend`` — Hitos 1.5 y 3.
 
 Tests parametrizados por backend que verifican los invariantes D1/D2/D3
 (ADR 0013) como **contrato del backend** (ADR 0015).
 
-Para agregar ``DuckDBBackend`` en el Hito 3, basta añadir una entrada en
-el fixture ``backend_factory`` manteniendo idénticos los casos de test.
+Marcadores:
+- ``unit``: parámetro ``memory`` (``InMemoryBackend``, sin red, sin I/O).
+- ``integration``: parámetro ``duckdb`` (``DuckDBBackend``, I/O en memoria).
 
-Marcador: ``unit`` (sin red, sin I/O).
+El gate ``uv run pytest -m unit`` ejecuta solo los tests con
+``InMemoryBackend``; el gate ``uv run pytest -m integration`` ejecuta los
+tests con ``DuckDBBackend``.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import pyarrow as pa
 import pytest
 
 from bib2graph.backends import InMemoryBackend, TabularBackend
+from bib2graph.backends.duckdb import DuckDBBackend
 from bib2graph.schemas import CORPUS_SCHEMA
 
 # ---------------------------------------------------------------------------
@@ -75,14 +79,9 @@ def _make_table(rows: list[dict[str, object]]) -> pa.Table:
 # ---------------------------------------------------------------------------
 # Fixture parametrizado por backend
 #
-# Cada entrada es una callable sin argumentos que recibe una ``pa.Table``
-# y devuelve una instancia del backend.  Para el Hito 3 añadir aquí:
-#
-#   pytest.param(
-#       lambda t: DuckDBBackend(t),
-#       id="duckdb",
-#       marks=pytest.mark.integration,
-#   ),
+# El marcador de cada test lo dicta el parámetro del fixture:
+#   - memory → pytest.mark.unit   (sin I/O)
+#   - duckdb → pytest.mark.integration  (I/O DuckDB)
 # ---------------------------------------------------------------------------
 
 BackendFactory = Callable[[pa.Table], TabularBackend]
@@ -90,8 +89,16 @@ BackendFactory = Callable[[pa.Table], TabularBackend]
 
 @pytest.fixture(
     params=[
-        pytest.param(lambda t: InMemoryBackend(t), id="memory"),
-        # Hito 3: agregar DuckDBBackend aquí con una línea.
+        pytest.param(
+            lambda t: InMemoryBackend(t),
+            id="memory",
+            marks=pytest.mark.unit,
+        ),
+        pytest.param(
+            lambda t: DuckDBBackend(t),
+            id="duckdb",
+            marks=pytest.mark.integration,
+        ),
     ]
 )
 def backend_factory(request: pytest.FixtureRequest) -> BackendFactory:
@@ -105,7 +112,6 @@ def backend_factory(request: pytest.FixtureRequest) -> BackendFactory:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_merge_idempotente(backend_factory: BackendFactory) -> None:
     """merge(self_table) es idempotente: mismos ids, mismo conteo (D3)."""
     rows = [
@@ -123,7 +129,6 @@ def test_merge_idempotente(backend_factory: BackendFactory) -> None:
     assert len(merged) == len(backend)
 
 
-@pytest.mark.unit
 def test_merge_idempotente_igualdad_contenido(backend_factory: BackendFactory) -> None:
     """merge(self_table) == self: igualdad de contenido completa (D3, D2)."""
     rows = [
@@ -147,7 +152,6 @@ def test_merge_idempotente_igualdad_contenido(backend_factory: BackendFactory) -
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_merge_dedup_por_id(backend_factory: BackendFactory) -> None:
     """merge deduplica: dos tablas con el mismo id producen una fila, no dos."""
     shared_id = "doi:cafecafecafecafe"
@@ -163,7 +167,6 @@ def test_merge_dedup_por_id(backend_factory: BackendFactory) -> None:
     assert len(merged) == 1
 
 
-@pytest.mark.unit
 def test_merge_union_listas(backend_factory: BackendFactory) -> None:
     """merge hace unión de sets en columnas list[string] (D3)."""
     shared_id = "oa:deadbeefdeadbeef"
@@ -182,7 +185,6 @@ def test_merge_union_listas(backend_factory: BackendFactory) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_merge_orden_primera_aparicion(backend_factory: BackendFactory) -> None:
     """Las filas de self van primero; las nuevas de other van al final (D3)."""
     id_a = "oa:aaaabbbb11112222"
@@ -217,7 +219,6 @@ def test_merge_orden_primera_aparicion(backend_factory: BackendFactory) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_corpus_hash_estable(backend_factory: BackendFactory) -> None:
     """El mismo contenido produce el mismo corpus_hash en dos llamadas (D2)."""
     rows = [_make_row(id="oa:aaaabbbb11112222", title="Paper A")]
@@ -228,7 +229,6 @@ def test_corpus_hash_estable(backend_factory: BackendFactory) -> None:
     assert h1 == h2
 
 
-@pytest.mark.unit
 def test_corpus_hash_order_independent(backend_factory: BackendFactory) -> None:
     """Mismo contenido en distinto orden de filas → mismo corpus_hash (D2)."""
     row_a = _make_row(id="oa:aaaabbbb11112222", title="Paper A")
@@ -240,7 +240,6 @@ def test_corpus_hash_order_independent(backend_factory: BackendFactory) -> None:
     assert backend_ab.corpus_hash() == backend_ba.corpus_hash()
 
 
-@pytest.mark.unit
 def test_corpus_hash_cambia_si_cambia_contenido(
     backend_factory: BackendFactory,
 ) -> None:
@@ -259,7 +258,6 @@ def test_corpus_hash_cambia_si_cambia_contenido(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_apply_curation_accepted_agrega_evento(backend_factory: BackendFactory) -> None:
     """apply_curation(action='accepted') agrega evento con action y decided_by (D4)."""
     paper_id = "oa:aaaabbbb11112222"
@@ -276,7 +274,6 @@ def test_apply_curation_accepted_agrega_evento(backend_factory: BackendFactory) 
     assert events[0]["decided_at"] is not None
 
 
-@pytest.mark.unit
 def test_apply_curation_rejected_agrega_evento(backend_factory: BackendFactory) -> None:
     """apply_curation(action='rejected') agrega evento con action y decided_by (D4)."""
     paper_id = "oa:aaaabbbb11112222"
@@ -290,7 +287,6 @@ def test_apply_curation_rejected_agrega_evento(backend_factory: BackendFactory) 
     assert events[0]["action"] == "rejected"
 
 
-@pytest.mark.unit
 def test_apply_curation_no_muta_original(backend_factory: BackendFactory) -> None:
     """La instancia original no muta tras apply_curation (semántica de valor)."""
     paper_id = "oa:aaaabbbb11112222"
@@ -302,7 +298,6 @@ def test_apply_curation_no_muta_original(backend_factory: BackendFactory) -> Non
     assert backend.to_arrow().to_pylist()[0]["curation_status"] == original_status
 
 
-@pytest.mark.unit
 def test_apply_curation_provenance_append_only(backend_factory: BackendFactory) -> None:
     """Dos curaciones consecutivas acumulan dos eventos (log append-only, D4)."""
     paper_id = "oa:aaaabbbb11112222"
@@ -324,7 +319,6 @@ def test_apply_curation_provenance_append_only(backend_factory: BackendFactory) 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_add_paper_aumenta_conteo(backend_factory: BackendFactory) -> None:
     """add_paper agrega una fila y el backend nuevo tiene len + 1."""
     backend = backend_factory(_make_table([_make_row(id="oa:aaaabbbb11112222")]))
@@ -334,7 +328,6 @@ def test_add_paper_aumenta_conteo(backend_factory: BackendFactory) -> None:
     assert len(nuevo) == len(backend) + 1
 
 
-@pytest.mark.unit
 def test_add_paper_no_muta_original(backend_factory: BackendFactory) -> None:
     """add_paper no muta la instancia original (semántica de valor)."""
     backend = backend_factory(_make_table([_make_row(id="oa:aaaabbbb11112222")]))
@@ -350,7 +343,6 @@ def test_add_paper_no_muta_original(backend_factory: BackendFactory) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_filter_view_seeds(backend_factory: BackendFactory) -> None:
     """filter_view('seeds') devuelve solo las filas con is_seed=True."""
     rows = [
@@ -365,7 +357,6 @@ def test_filter_view_seeds(backend_factory: BackendFactory) -> None:
     assert seeds.to_pylist()[0]["id"] == "oa:aaaabbbb11112222"
 
 
-@pytest.mark.unit
 def test_filter_view_candidates(backend_factory: BackendFactory) -> None:
     """filter_view('candidates') devuelve solo los papers con curation_status='candidate'."""
     rows = [
@@ -380,7 +371,6 @@ def test_filter_view_candidates(backend_factory: BackendFactory) -> None:
     assert candidates.to_pylist()[0]["id"] == "oa:aaaabbbb11112222"
 
 
-@pytest.mark.unit
 def test_filter_view_accepted(backend_factory: BackendFactory) -> None:
     """filter_view('accepted') devuelve solo los papers con curation_status='accepted'."""
     rows = [

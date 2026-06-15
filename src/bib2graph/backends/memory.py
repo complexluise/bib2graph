@@ -210,18 +210,42 @@ def _merge_rows(
                 str(row_b.get("provenance")) if row_b.get("provenance") else None,
             )
         elif key == "provenance":
-            events_a = _parse_provenance(str(val_a) if val_a else None)
-            events_b = _parse_provenance(str(val_b) if val_b else None)
-            merged_events = events_a + [e for e in events_b if e not in events_a]
-            if not merged_events and not val_a and not val_b:
-                result[key] = None
-            else:
-                result[key] = json.dumps(merged_events, ensure_ascii=False)
+            result[key] = _merge_provenance(
+                str(val_a) if val_a else None,
+                str(val_b) if val_b else None,
+            )
         elif key in _LIST_COLS:
             result[key] = _merge_list_field(val_a, val_b)
         else:
             result[key] = _merge_scalar(val_a, val_b)
     return result
+
+
+def _merge_provenance(
+    provenance_a: str | None,
+    provenance_b: str | None,
+) -> str | None:
+    """Fusiona dos strings de provenance JSON (D4 — log append-only).
+
+    Une los eventos únicos de ambas listas de eventos.  Si ambos son
+    ``None`` devuelve ``None`` (preserva la ausencia de dato).
+
+    Exportada para que ``DuckDBBackend`` la registre como UDF Python,
+    garantizando equivalencia byte a byte con ``InMemoryBackend``.
+
+    Args:
+        provenance_a: JSON de provenance de la fila original (o ``None``).
+        provenance_b: JSON de provenance de la fila entrante (o ``None``).
+
+    Returns:
+        JSON fusionado como string, o ``None`` si ambos eran ``None``.
+    """
+    events_a = _parse_provenance(provenance_a)
+    events_b = _parse_provenance(provenance_b)
+    merged_events = events_a + [e for e in events_b if e not in events_a]
+    if not merged_events and not provenance_a and not provenance_b:
+        return None
+    return json.dumps(merged_events, ensure_ascii=False)
 
 
 def _rows_to_table(rows: list[dict[str, object]]) -> pa.Table:
