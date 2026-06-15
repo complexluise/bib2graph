@@ -88,6 +88,7 @@ dev-dependencies = [
     "pre-commit>=3.6",
     "commitizen>=3.13",
     "types-tqdm",
+    "types-networkx>=3.6.1.20260612",
 ]
 
 # ----- Tooling ------------------------------------------------------------
