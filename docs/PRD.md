@@ -299,6 +299,7 @@ tarea del **architect** (ver §11).
    redactado: wedge = forrajeo (tensiones a v2); **biblioteca viva en DuckDB** (supersede la
    premisa de 0003 y 0006); agente-native como columna; **thesaurus multilingüe** (T6/T10 del
    sandbox: exhaustivo vs cobertura+fuzzy, formato JSON portable).
-2. **Reconciliar** `ARCHITECTURE.md`, `API.md` y `ROADMAP.md` con este PRD (§8).
+2. ✅ `ARCHITECTURE.md`, `API.md` y `ROADMAP.md` **reconciliados** con este PRD (§8) y con los
+   ADR 0007–0011.
 3. Recién entonces, implementación por hitos (coder), empezando por el núcleo del corpus
    stateful y el sembrado por ecuación → OpenAlex.

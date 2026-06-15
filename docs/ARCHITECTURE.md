@@ -277,8 +277,9 @@ core         pyarrow, pydantic, networkx, click, tqdm,
 7. **Driver Neo4j:** ✅ irrelevante al modelo; adaptador opt-in post-V1.
 8. **`NetworkSpec`:** hook `Networks.build` desde v0.1; API congelada en v0.2 (ADR 0006).
 
-## 10. Pendiente de reconciliar
+## 10. Estado de la documentación
 
-[`API.md`](API.md) §1 (modelo `Corpus`) y §§ de costuras todavía reflejan el diseño previo
-(BibTeX/S2, InMemoryStore). Reconciliarlo con este doc y los ADR 0007–0011 es el siguiente paso
-de documentación (ver [`ROADMAP.md`](ROADMAP.md) y [`PRD.md`](PRD.md) §11).
+Los canónicos — [`PRD.md`](PRD.md), este doc, [`API.md`](API.md), [`ROADMAP.md`](ROADMAP.md) y los
+[ADR 0007–0011](decisiones/) — están **reconciliados** con el giro. Las notas de proceso ya
+promovidas viven en [`_archivo/`](_archivo/). Próximo: implementación por hitos (ver
+[`ROADMAP.md`](ROADMAP.md)).
