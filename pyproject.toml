@@ -66,8 +66,8 @@ Documentation = "https://github.com/<org>/bib2graph/tree/main/docs"
 Issues = "https://github.com/<org>/bib2graph/issues"
 
 [project.scripts]
-# CLI entry point. Hito 6: la implementación real. Mientras tanto, un
-# placeholder honesto que falla con un mensaje útil.
+# CLI entry point. Hito 6: implementación real del CLI agente-native.
+# El paquete bib2graph.cli (antes cli.py) expone main() en __init__.py.
 b2g = "bib2graph.cli:main"
 
 # ----- Build (hatchling, src layout) --------------------------------------

@@ -1,0 +1,169 @@
+"""cli.commands.chain — Subcomando ``b2g chain``.
+
+Expande el corpus con candidatos rankeados por information scent.
+Transiciona el LoopState a FORAGED tras persistir con éxito.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Literal
+
+import click
+
+from bib2graph.cli._envelope import build_envelope, emit, emit_human
+from bib2graph.cli._errors import DependencyError, handle_errors
+from bib2graph.cli._store import open_store
+
+# ---------------------------------------------------------------------------
+# Función núcleo (testeable, sin Click)
+# ---------------------------------------------------------------------------
+
+
+def run_chain(
+    store_path: str | Path,
+    *,
+    direction: Literal["backward", "forward", "both"] = "both",
+    depth: int = 1,
+    max_candidates: int | None = None,
+    email: str | None = None,
+    transport: Any = None,
+) -> dict[str, Any]:
+    """Expande el corpus con candidatos rankeados por information scent.
+
+    Args:
+        store_path: Ruta al archivo ``.duckdb``.
+        direction: Dirección del chaining (``backward``, ``forward``, ``both``).
+        depth: Profundidad del chaining (solo 1 soportado; >1 → NotImplementedError).
+        max_candidates: Tope de candidatos (None = sin límite).
+        email: Email para el polite pool de OpenAlex.
+        transport: Transport inyectable para tests.
+
+    Returns:
+        Dict con ``candidates_found``, ``total_papers``, ``ranking_preview``.
+
+    Raises:
+        DependencyError: Si el source no soporta forward chaining.
+        NetworkError: Si falla la conexión a OpenAlex.
+        StoreError: Si el store está bloqueado.
+    """
+    from bib2graph.backends.duckdb import LoopState
+    from bib2graph.foraging import Forager
+    from bib2graph.sources.openalex import OpenAlexSource
+
+    store = open_store(store_path)
+    corpus = store.load()
+
+    source = OpenAlexSource(email=email, transport=transport)
+
+    try:
+        forager = Forager(source, depth=depth, max_candidates=max_candidates)
+        ranked = forager.chain(corpus, direction=direction)
+    except AttributeError as exc:
+        raise DependencyError(
+            f"El source no soporta forward chaining: {exc}. "
+            "Verificá que el source tenga el método ``fetch_citing``."
+        ) from exc
+    except NotImplementedError as exc:
+        raise DependencyError(
+            f"Profundidad {depth} no soportada aún: {exc}. Usá depth=1 (por defecto)."
+        ) from exc
+    # httpx.HTTPError y subclases (ConnectError, TimeoutException,
+    # RemoteProtocolError, TransportError, etc.) se dejan propagar: el
+    # decorador @handle_errors las captura por tipo y emite exit 4.
+
+    # Merge de candidatos en el corpus
+    merged = corpus.merge(ranked.corpus)
+    store.persist(merged)
+    store.backend.set_loop_state(LoopState.FORAGED)
+
+    candidates_found = len(ranked.corpus)
+    ranking_preview = [
+        {"id": id_, "scent": scent} for id_, scent in ranked.ranking[:10]
+    ]
+
+    return {
+        "candidates_found": candidates_found,
+        "total_papers": len(merged),
+        "direction": direction,
+        "depth": depth,
+        "ranking_preview": ranking_preview,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Comando Click
+# ---------------------------------------------------------------------------
+
+
+@click.command("chain")
+@click.option(
+    "--direction",
+    type=click.Choice(["backward", "forward", "both"]),
+    default="both",
+    show_default=True,
+    help="Dirección del chaining.",
+)
+@click.option(
+    "--depth",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Profundidad del chaining (solo 1 soportado).",
+)
+@click.option(
+    "--max-candidates",
+    type=int,
+    default=None,
+    help="Tope de candidatos (sin límite por defecto).",
+)
+@click.option(
+    "--email",
+    default=None,
+    help="Email para el polite pool de OpenAlex.",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    default=False,
+    help="Salida JSON estructurada.",
+)
+@click.pass_context
+@handle_errors("chain")
+def chain_cmd(
+    ctx: click.Context,
+    direction: str,
+    depth: int,
+    max_candidates: int | None,
+    email: str | None,
+    json_output: bool,
+) -> None:
+    """Expande el corpus con candidatos rankeados por information scent.
+
+    Tras el chain, el estado del lazo transiciona a FORAGED.
+    """
+    store_path = ctx.obj["store"]
+    data = run_chain(
+        store_path,
+        direction=direction,  # type: ignore[arg-type]
+        depth=depth,
+        max_candidates=max_candidates,
+        email=email,
+    )
+
+    if json_output:
+        envelope = build_envelope(
+            command="chain",
+            ok=True,
+            data=data,
+            exit_code=0,
+        )
+        emit(envelope)
+    else:
+        emit_human(f"Candidatos encontrados: {data['candidates_found']}")
+        emit_human(f"Total en corpus: {data['total_papers']}")
+        if data["ranking_preview"]:
+            emit_human("Top candidatos por scent:")
+            for item in data["ranking_preview"][:5]:
+                emit_human(f"  {item['id']}: {item['scent']:.3f}")

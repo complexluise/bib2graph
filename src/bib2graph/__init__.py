@@ -10,6 +10,9 @@ Hito 5: ``Forager``, ``RankedCandidates``, ``GrowthPreview``, ``Preprocessor``,
         ``apply_filters``, ``FilterCriterion`` (forrajeo + preprocessor + filtros
         PRISMA).  ``explain_candidate`` se importa desde ``bib2graph.foraging``
         (gateado en ``[llm]``, NO listo como capacidad de la raíz).
+Hito 6: CLI agente-native ``b2g`` (``bib2graph.cli``). 11 subcomandos:
+        ``seed``, ``chain``, ``filter``, ``build``, ``export``, ``snapshot``,
+        ``status``, ``inspect``, ``validate``, ``accept``, ``reject``.
 
 Símbolos públicos exportados:
   - Hito 1/1.5: ``Corpus``, ``Manifest``, ``CorpusSnapshot``, ``SchemaError``,
