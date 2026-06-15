@@ -6,49 +6,47 @@ adopta [Semantic Versioning](https://semver.org/lang/es/) (ver
 [`VERSIONING.md`](./VERSIONING.md)).
 
 El changelog se **auto-genera** desde Conventional Commits con
-[`release-please`](https://github.com/googleapis/release-please). El PR de
-release es revisable antes de mergear.
+[`release-please`](https://github.com/googleapis/release-please) cuando haya
+CI/GitHub. **Hasta entonces, la sección `[Unreleased]` se mantiene a mano** (la
+fuente de verdad es la historia de commits); al conectar `release-please` toma el
+control y la reconcilia.
 
 ## [Unreleased]
 
+> **v0.1 feature-complete** (Hitos 0–4 + 1.5) y **Hito 5** construidos: de una
+> ecuación de búsqueda a las redes bibliométricas, desde código Python, sobre una
+> biblioteca viva en DuckDB. Falta el CLI (Hito 6) para cerrar las capacidades de
+> v0.2. Resumen por capacidad (no commit a commit):
+
 ### Added
-- **El giro** (`docs/Notas/04`–`07`): IA in the loop, ciclo de investigación
-  humano, definición de producto V1, decisiones abiertas.
-- ADRs del giro: `0007` (OpenAlex backbone), `0008` (wedge = forrajeo),
-  `0009` (biblioteca viva en DuckDB), `0010` (agente-native como columna),
-  `0011` (thesaurus multilingüe), `0012` (credenciales de OpenAlex: email + API
-  key opcional, inyectados).
-- `docs/PRD.md` reescrito (V1): ecuación → biblioteca viva → redes; historias de
-  usuario (épicas A–E).
-- `docs/ROADMAP.md`: cada hito atado a las historias del PRD §7, con criterios de
-  aceptación (DoD), nota de tests TDD selectivos y tabla de trazabilidad
-  historias↔hitos.
-- `CHANGELOG.md` (este archivo), `CONTRIBUTING.md` (Conventional Commits),
-  `VERSIONING.md` (SemVer estricto).
-- `AGENTS.md` para agentes que operen en el repo (build/lint/test, convenciones
-  Python, punteros a docs).
+- **Núcleo `Corpus`** (tabla canónica Arrow + Pydantic v2): identidad estable
+  (`id`), `merge` idempotente, `accept`/`reject` con `provenance` (log de
+  eventos), `snapshot`/`CorpusSnapshot` con `corpus_hash` reproducible. ADR 0013.
+- **`TabularBackend` (Protocol) + `InMemoryBackend`** (núcleo puro) y
+  **`DuckDBBackend`** (biblioteca viva por defecto: mutación por SQL, `LoopState`,
+  single-writer); `DuckDBStore` como fachada de costura. El núcleo no importa
+  `duckdb` (carga perezosa). ADR 0015/0016/0019.
+- **Redes** (`networks/`): proyectores (acoplamiento, co-citación, co-autoría,
+  instituciones, co-word), analizadores (métricas, centralidad, comunidades,
+  asortatividad, calidad), exportadores GraphML/CSV, `Networks.quick`. ADR 0014.
+- **Costuras `Source`** (`OpenAlexSource` con traducción de ecuación + reporte de
+  límites; `BibtexSource`, extra `[bibtex]`). ADR 0007/0012/0017/0018.
+- **Forrajeo** (`Forager`: chaining backward/forward, ranking por *information
+  scent* = frecuencia de enlace, `preview` sin red, filtros PRISMA que marcan
+  `rejected`, `Preprocessor` + thesaurus multilingüe). ADR 0008/0011/0020.
+- **2º giro** (ADR 0015–0019): `Corpus` sobre `TabularBackend`, máquina de estados
+  del lazo (`LoopState`), reproducibilidad por snapshot sellado, `Source`
+  agnóstico (mínimo universal vs enriquecimiento), concurrencia single-writer.
+- **Migración a uv** como gestor del proyecto (lockfile, `.python-version`,
+  dev-dependencies); `docs/decisiones/registro-ia.md` (decisiones tomadas por la
+  IA); ADR 0012–0020; reescritura de PRD/ARCHITECTURE/API/ROADMAP/README.
 
 ### Changed
-- **OpenAlex pasa a ser el backbone de datos** (ADR 0007): BibTeX queda como
-  `Source` secundaria; el enricher Semantic Scholar deja de ser estructural.
-- **Persistencia por defecto: `DuckDBStore` stateful** (biblioteca viva, ADR
-  0009). El snapshot deja de ser el modelo de datos y pasa a ser un **export
-  sellado** derivable del estado vivo.
-- `docs/ARCHITECTURE.md` y `docs/API.md` reconciliados con el giro (OpenAlex,
-  DuckDB, `Forager`, `explain_candidate`, `QualityThresholds`).
-- `docs/ROADMAP.md`: 12 hitos (0–11), con `Networks.quick` en Hito 2, DuckDB en
-  Hito 3, OpenAlex en Hito 4, forrajeo/thesaurus/filtros en Hito 5, CLI como API
-  en Hito 6, NetworkSpec pública en Hito 9 (v0.2).
-- `pyproject.toml`: `duckdb`, `httpx` y `python-louvain` al núcleo; extras
-  `[zotero]`, `[s2]`, `[neo4j]`, `[dedup]`, `[viz]`, `[llm]`.
+- **OpenAlex** es el backbone de datos (ADR 0007); BibTeX pasa a `Source`
+  secundaria. **Persistencia por defecto: biblioteca viva DuckDB** como backend
+  del `Corpus` (ADR 0009/0015); el snapshot es un export sellado, no el modelo.
 
 ### Deprecated
 - **Snapshot inmutable / `InMemoryStore` / `ParquetStore` como persistencia por
   defecto** (premisa de ADR 0003 y de la versión previa de 0006): superados por
-  la biblioteca viva en DuckDB (ADR 0009). `ParquetStore` queda solo como formato
-  de export/intercambio.
-
-### Notes
-- **Casi no hay código todavía** (Hito 0 en andamiaje): `pyproject.toml`,
-  `src/bib2graph/__init__.py` y un placeholder de CLI. El núcleo arranca con el
-  Hito 1 (`Corpus`).
+  la biblioteca viva en DuckDB. `ParquetStore` queda declarado, no implementado.
