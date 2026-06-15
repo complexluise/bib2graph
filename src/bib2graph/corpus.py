@@ -326,6 +326,25 @@ class Corpus:
         new_backend = self._backend.add_paper(new_row)
         return Corpus(new_backend, self._manifest)
 
+    def with_manifest(self, manifest: Manifest) -> Corpus:
+        """Devuelve un ``Corpus`` nuevo con el mismo contenido y un Manifest distinto.
+
+        Semántica de valor: la instancia original no muta nunca.  El
+        ``corpus_hash`` del resultado es idéntico al del original porque el
+        hash es sobre el contenido (tabla), no sobre el manifest.
+
+        Uso típico: actualizar ``openalex_version``, ``equations``,
+        ``chaining``, ``filters`` o ``enrichers`` en el manifest sin tocar
+        los datos del backend.
+
+        Args:
+            manifest: Nuevo Manifest a asociar al corpus.
+
+        Returns:
+            Nuevo ``Corpus`` con el mismo backend y el manifest dado.
+        """
+        return Corpus(self._backend, manifest)
+
     def merge(self, other: Corpus) -> Corpus:
         """Combina dos Corpus deduplicando por ``id`` (idempotente).
 

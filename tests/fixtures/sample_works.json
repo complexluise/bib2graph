@@ -1,0 +1,137 @@
+[
+  {
+    "id": "https://openalex.org/W2741809807",
+    "doi": "https://doi.org/10.1016/j.ecolecon.2017.08.001",
+    "title": "Biophysical Trade Balance of Ecuador",
+    "display_name": "Biophysical Trade Balance of Ecuador",
+    "publication_year": 2018,
+    "language": "en",
+    "abstract_inverted_index": {
+      "We": [0],
+      "compute": [1],
+      "the": [2],
+      "physical": [3],
+      "trade": [4],
+      "balance": [5]
+    },
+    "authorships": [
+      {
+        "author": {
+          "id": "https://openalex.org/A1234567",
+          "display_name": "Aldas, C.",
+          "orcid": null
+        },
+        "institutions": [
+          {
+            "id": "https://openalex.org/I123",
+            "display_name": "Universidad Central del Ecuador",
+            "country_code": "EC",
+            "ror": "https://ror.org/abc123"
+          }
+        ]
+      },
+      {
+        "author": {
+          "id": "https://openalex.org/A2345678",
+          "display_name": "Álvarez, M.",
+          "orcid": "https://orcid.org/0000-0001-2345-6789"
+        },
+        "institutions": [
+          {
+            "id": "https://openalex.org/I456",
+            "display_name": "FLACSO Ecuador",
+            "country_code": "EC",
+            "ror": "https://ror.org/def456"
+          }
+        ]
+      }
+    ],
+    "keywords": [
+      {"id": "https://openalex.org/K1", "display_name": "biophysical trade"},
+      {"id": "https://openalex.org/K2", "display_name": "unequal exchange"}
+    ],
+    "referenced_works": [
+      "https://openalex.org/W1111111",
+      "https://openalex.org/W2222222"
+    ],
+    "primary_location": {
+      "source": {
+        "display_name": "Ecological Economics"
+      }
+    },
+    "type": "article"
+  },
+  {
+    "id": "https://openalex.org/W1234567890",
+    "doi": null,
+    "title": "Deuda ecológica del Perú",
+    "display_name": "Deuda ecológica del Perú",
+    "publication_year": 2020,
+    "language": "es",
+    "abstract_inverted_index": null,
+    "authorships": [
+      {
+        "author": {
+          "id": "https://openalex.org/A9876543",
+          "display_name": "Reyes, G.",
+          "orcid": null
+        },
+        "institutions": []
+      }
+    ],
+    "keywords": [
+      {"id": "https://openalex.org/K3", "display_name": "deuda ecológica"}
+    ],
+    "referenced_works": [],
+    "primary_location": {
+      "source": {
+        "display_name": "Ecología Política"
+      }
+    },
+    "type": "article"
+  },
+  {
+    "id": "https://openalex.org/W9999999999",
+    "doi": "https://doi.org/10.1073/pnas.1220362110",
+    "title": "The Material Footprint of Nations",
+    "display_name": "The Material Footprint of Nations",
+    "publication_year": 2015,
+    "language": "en",
+    "abstract_inverted_index": {
+      "We": [0],
+      "compute": [1],
+      "material": [2],
+      "footprints": [3]
+    },
+    "authorships": [
+      {
+        "author": {
+          "id": "https://openalex.org/A3333333",
+          "display_name": "Wiedmann, T. O.",
+          "orcid": null
+        },
+        "institutions": [
+          {
+            "id": "https://openalex.org/I789",
+            "display_name": "University of New South Wales",
+            "country_code": "AU",
+            "ror": null
+          }
+        ]
+      }
+    ],
+    "keywords": [
+      {"id": "https://openalex.org/K4", "display_name": "material footprint"},
+      {"id": "https://openalex.org/K5", "display_name": "MRIO"}
+    ],
+    "referenced_works": [
+      "https://openalex.org/W3333333"
+    ],
+    "primary_location": {
+      "source": {
+        "display_name": "Proceedings of the National Academy of Sciences"
+      }
+    },
+    "type": "article"
+  }
+]

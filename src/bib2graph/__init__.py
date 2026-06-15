@@ -4,6 +4,8 @@ Hito 1: núcleo de la tabla canónica ``Corpus``.
 Hito 1.5: costura ``TabularBackend`` + ``InMemoryBackend``.
 Hito 2: proyectores, analizadores, exportadores y ``Networks``.
 Hito 3: ``DuckDBBackend`` / ``DuckDBStore`` (biblioteca viva, carga perezosa).
+Hito 4: ``OpenAlexSource``, ``BibtexSource``, ``Source``, ``SeedResult``
+        (costura de siembra directa — httpx es núcleo, sin carga perezosa).
 
 Símbolos públicos exportados:
   - Hito 1/1.5: ``Corpus``, ``Manifest``, ``CorpusSnapshot``, ``SchemaError``,
@@ -13,12 +15,16 @@ Símbolos públicos exportados:
     ``detect_communities``, ``assortativity``, ``community_composition``,
     ``cocitation_quality_report``, ``QualityThresholds``.
   - Hito 3: ``DuckDBBackend``, ``DuckDBStore`` (carga perezosa — PEP 562).
+  - Hito 4: ``OpenAlexSource``, ``BibtexSource``, ``Source``, ``SeedResult``
+    (import directo; httpx es núcleo, sin efectos de import).
 
 ``DuckDBBackend`` y ``DuckDBStore`` se exponen vía ``__getattr__`` perezoso
 (PEP 562) para que ``import bib2graph`` NO importe ``duckdb`` y el smoke test
 del Hito 0 siga verde (``'duckdb' not in sys.modules`` tras el import).
+``OpenAlexSource`` y ``BibtexSource`` se importan directamente (httpx es
+núcleo — no hay efectos de import que deban diferirse).
 
-Ver ``docs/API.md`` §1, §4, §7-10.
+Ver ``docs/API.md`` §1-2, §4, §7-10.
 """
 
 from __future__ import annotations
@@ -45,10 +51,12 @@ from bib2graph.networks.projectors import (
 )
 from bib2graph.networks.spec import NetworkArtifact
 from bib2graph.schemas import SchemaError
+from bib2graph.sources import BibtexSource, OpenAlexSource, SeedResult, Source
 
 __all__ = [
     "AuthorCollaborationProjector",
     "BibliographicCouplingProjector",
+    "BibtexSource",
     "CoCitationProjector",
     "Corpus",
     "CorpusSnapshot",
@@ -62,8 +70,11 @@ __all__ = [
     "Manifest",
     "NetworkArtifact",
     "Networks",
+    "OpenAlexSource",
     "QualityThresholds",
     "SchemaError",
+    "SeedResult",
+    "Source",
     "TabularBackend",
     "assortativity",
     "centrality",

@@ -50,14 +50,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Extras opt-in (ADR 0005). El núcleo NO los requiere; cada capacidad importa su
-# extra de forma perezosa con un error claro si falta. Hitos según docs/ROADMAP.md.
-zotero = []    # Hito 11 (V1.1): pyzotero — sincronizar la biblioteca viva con Zotero
-s2 = []        # Hito 8: cliente Semantic Scholar — enricher opt-in (refs/2º nivel)
-neo4j = []     # Hito 11 (post-V1.2): neomodel o driver oficial — adaptador tabla→grafo
-dedup = []     # Hito 7: rapidfuzz / splink — dedup fuzzy
-viz = []       # Hito 10: matplotlib, seaborn
-llm = []       # Hito 5 (B4) y thesaurus fuzzy v0.2: cliente LLM
+zotero = []
+s2 = []
+neo4j = []
+dedup = []
+viz = []
+llm = []
+bibtex = [
+    "bibtexparser>=1.4.4",
+]
 
 [project.urls]
 Homepage = "https://github.com/<org>/bib2graph"
@@ -133,6 +134,10 @@ warn_redundant_casts = true
 plugins = ["pydantic.mypy"]
 # Cobertura gradual: el núcleo es estricto. Los overrides para extras con stubs
 # faltantes (enrichers, stores.neo4j) se agregan cuando esos módulos existan.
+
+[[tool.mypy.overrides]]
+module = "bibtexparser.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"

@@ -1,0 +1,229 @@
+"""bibtex — ``BibtexSource``: siembra un ``Corpus`` desde un archivo .bib.
+
+Import de ``bibtexparser`` es PEREZOSO: se hace dentro de ``load()`` para no
+acoplar el núcleo al extra ``[bibtex]``.  Si el extra falta, el error es claro
+y apunta al comando de instalación.
+
+Pre-procesador defensivo (bugfix T1 del sandbox): accede a todos los campos
+con ``.get()`` y nunca falla por campo ausente.
+
+BibTeX no soporta siembra por ecuación: ``seed()`` lanza ``NotImplementedError``
+con un mensaje claro.
+
+Mapeo de campos:
+- ``author`` → ``authors_raw`` (``"Apellido, Nombre and …"`` → lista)
+- ``title``, ``year``, ``journal``/``booktitle`` → ``title``, ``year``, ``source``
+- ``doi`` → ``doi``
+- ``keywords`` → ``keywords_raw``
+- ``abstract`` → ``abstract``
+- ``affiliation`` (campo no estándar) → ``authors_affiliations``
+- ``publisher`` → ``publisher``
+
+Ver ``docs/API.md`` §2, ADR 0018.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from bib2graph.corpus import Corpus
+from bib2graph.schemas import CORPUS_SCHEMA
+
+from .base import SeedResult
+
+
+def _parse_authors(raw: str) -> list[str]:
+    """Separa la cadena de autores BibTeX en una lista.
+
+    BibTeX usa ``"Apellido, Nombre and Apellido2, Nombre2"`` o
+    ``"Nombre Apellido and …"``.  Separa por `` and `` (case-insensitive),
+    quita espacios sobrantes y filtra vacíos.
+
+    Args:
+        raw: Cadena de autores del campo BibTeX.
+
+    Returns:
+        Lista de autores como strings.
+    """
+    if not raw:
+        return []
+    parts = [p.strip() for p in raw.split(" and ")]
+    return [p for p in parts if p]
+
+
+def _entry_to_row(
+    entry: dict[str, Any],
+    *,
+    fetched_at: str,
+) -> dict[str, Any]:
+    """Mapea una entrada bibtexparser al schema canónico.
+
+    Acceso defensivo con ``.get()`` en todos los campos (bugfix T1: nunca
+    ``entry["author"]`` → ``KeyError``).  Los campos opcionales ausentes
+    quedan en ``None`` o ``[]``.
+
+    Args:
+        entry: Entrada de bibtexparser (dict de campos + metadatos).
+        fetched_at: Timestamp ISO de la carga.
+
+    Returns:
+        Dict con todas las columnas del schema canónico (sin ``id``, que
+        calcula ``Corpus.add_paper``).
+    """
+    raw_authors = entry.get("author") or ""
+    authors_raw = _parse_authors(raw_authors) or None
+
+    # Afiliación: campo no estándar del .bib → authors_affiliations
+    affiliation = entry.get("affiliation") or ""
+    authors_affiliations: list[str] | None = [affiliation] if affiliation else None
+
+    # Keywords: separadas por comas o punto y coma
+    raw_kw = entry.get("keywords") or ""
+    if raw_kw:
+        kw_list = [k.strip() for k in raw_kw.replace(";", ",").split(",") if k.strip()]
+        keywords_raw: list[str] | None = kw_list or None
+    else:
+        keywords_raw = None
+
+    # Venue: preferir journal, luego booktitle
+    venue = entry.get("journal") or entry.get("booktitle") or None
+
+    # Año: convertir a int si es posible
+    raw_year = entry.get("year")
+    year: int | None = None
+    if raw_year:
+        try:
+            year = int(str(raw_year).strip())
+        except ValueError:
+            year = None
+
+    # DOI: normalizar quitando prefijo URL
+    raw_doi = entry.get("doi") or ""
+    doi: str | None = None
+    if raw_doi:
+        d = raw_doi.strip()
+        for prefix in ("https://doi.org/", "http://doi.org/"):
+            if d.startswith(prefix):
+                d = d[len(prefix) :]
+                break
+        doi = d.lower() or None
+
+    # Provenance
+    provenance_event = {
+        "action": "seeded",
+        "equation_id": None,
+        "chaining_hop": None,
+        "source": "bibtex",
+        "fetched_at": fetched_at,
+        "decided_by": None,
+        "decided_at": None,
+    }
+
+    return {
+        "openalex_id": None,
+        "doi": doi,
+        "title": (entry.get("title") or "").strip() or "",
+        "year": year,
+        "abstract": entry.get("abstract") or None,
+        "source": venue,
+        "language": None,
+        "publisher": entry.get("publisher") or None,
+        "research_areas": None,
+        "is_seed": True,
+        "curation_status": "candidate",
+        "provenance": json.dumps([provenance_event]),
+        "authors_raw": authors_raw,
+        "authors_id": None,
+        "authors_affiliations": authors_affiliations,
+        "keywords_raw": keywords_raw,
+        "keywords_id": None,
+        "institutions_raw": None,
+        "institutions_id": None,
+        "references_id": None,
+        "references_doi": None,
+        "cited_by_id": None,
+    }
+
+
+class BibtexSource:
+    """Siembra un ``Corpus`` desde un archivo BibTeX.
+
+    BibTeX es ``Source`` secundaria (ADR 0007): entrega el mínimo universal
+    (título, año, autores, keywords) pero típicamente no referencias ni
+    citantes.
+
+    El import de ``bibtexparser`` es perezoso: se instala con el extra
+    ``[bibtex]`` (``pip install "bib2graph[bibtex]"``).
+
+    Example::
+
+        source = BibtexSource()
+        corpus = source.load("semillas.bib")
+    """
+
+    def seed(self, query: str) -> SeedResult:
+        """No implementado: BibTeX no siembra por ecuación.
+
+        Raises:
+            NotImplementedError: Siempre. Usa ``load()`` en su lugar.
+        """
+        raise NotImplementedError(
+            "BibtexSource no soporta siembra por ecuación. "
+            "Usa load(path) para sembrar desde un archivo .bib. "
+            "Para siembra por ecuación usa OpenAlexSource."
+        )
+
+    def load(self, path: str) -> Corpus:
+        """Carga un archivo .bib como ``Corpus``.
+
+        Todos los papers se marcan con ``is_seed=True`` y
+        ``curation_status='candidate'``.  Campos faltantes quedan en ``None``
+        (sin ``KeyError``, bugfix T1).
+
+        Args:
+            path: Ruta al archivo ``.bib``.
+
+        Returns:
+            ``Corpus`` con los papers del archivo.
+
+        Raises:
+            ImportError: Si ``bibtexparser`` no está instalado.
+        """
+        try:
+            import bibtexparser
+            from bibtexparser.bparser import BibTexParser
+            from bibtexparser.customization import convert_to_unicode
+        except ImportError as exc:
+            raise ImportError(
+                "bibtexparser no está instalado. "
+                'Instalá el extra: pip install "bib2graph[bibtex]" '
+                "o uv sync --extra bibtex"
+            ) from exc
+
+        bib_text = Path(path).read_text(encoding="utf-8")
+
+        parser = BibTexParser(common_strings=True)
+        parser.customization = convert_to_unicode
+        bib_db = bibtexparser.loads(bib_text, parser=parser)
+
+        fetched_at = datetime.now(UTC).isoformat()
+
+        import pyarrow as pa
+
+        corpus = Corpus.from_arrow(
+            pa.table(
+                {col: [] for col in CORPUS_SCHEMA.names},
+                schema=CORPUS_SCHEMA,
+            )
+        )
+        for entry in bib_db.entries:
+            row = _entry_to_row(entry, fetched_at=fetched_at)
+            # Saltar entradas sin título (no pueden cumplir el schema)
+            if not row.get("title"):
+                continue
+            corpus = corpus.add_paper(row)
+
+        return corpus
