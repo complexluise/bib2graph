@@ -209,7 +209,9 @@ la biblioteca viva existe para que ese lazo no pierda lo acumulado (PRD §1–§
 - **Una sola fuente de configuración**, construida explícitamente y pasada a quien la necesita.
   **Sin efectos de import** (en v0, importar seteaba `config.DATABASE_URL`).
 - **Sin secretos embebidos** (en v0 había triple `DATABASE_URL` y clave S2 hardcodeada).
-- Credenciales y el **email del pool cortés de OpenAlex** se inyectan por config/CLI o entorno.
+- Credenciales y el **email del pool cortés de OpenAlex** (y la **API key opcional** desde
+  feb-2026) se inyectan por config/CLI o entorno, nunca embebidos (ADR
+  [0012](decisiones/0012-openalex-credenciales.md)). Sin key, el `Source` corre en polite pool.
 
 ### 6.2 Persistencia por defecto: biblioteca viva en DuckDB + snapshot exportable
 

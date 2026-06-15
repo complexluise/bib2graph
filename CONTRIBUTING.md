@@ -6,16 +6,35 @@
 
 ## Setup local
 
+El proyecto se gestiona con [**uv**](https://docs.astral.sh/uv/). uv crea el
+entorno, fija la versión de Python (`.python-version` → 3.12) y resuelve las
+dependencias contra el lockfile (`uv.lock`).
+
 ```bash
 git clone https://github.com/<org>/bib2graph.git
 cd bib2graph
-python -m venv .venv && source .venv/bin/activate   # o .venv\Scripts\activate en Windows
-pip install -e ".[dev]"                              # extras de desarrollo
-pre-commit install                                   # hooks de pre-commit
+uv sync                  # crea .venv, instala núcleo + dev-dependencies desde uv.lock
+uv run pre-commit install   # hooks de pre-commit
 ```
 
-`pip install -e ".[dev]"` instala: dependencias del núcleo, todos los extras
-de uso, `pytest`, `mypy`, `ruff` y las herramientas de release.
+`uv sync` instala el núcleo (incluye DuckDB y el cliente OpenAlex) y las
+`dev-dependencies` (`pytest`, `mypy`, `ruff`, `commitizen`, `pre-commit`). Para
+una capacidad opcional, agregá su extra: `uv sync --extra dedup` (ídem `zotero`,
+`s2`, `neo4j`, `viz`, `llm`). Para excluir las dev-deps: `uv sync --no-dev`.
+
+Comandos del día a día (siempre con `uv run`, sin activar el venv a mano):
+
+```bash
+uv run ruff check src tests      # lint
+uv run ruff format src tests     # formato
+uv run mypy src                  # tipos
+uv run pytest                    # tests
+```
+
+Para tocar dependencias, usá uv (NO edites `[project.dependencies]` a mano):
+`uv add <paquete>` (núcleo), `uv add --dev <paquete>` (desarrollo),
+`uv add --optional <extra> <paquete>` (capacidad opcional). uv actualiza
+`pyproject.toml` y `uv.lock` juntos.
 
 ## Commits: Conventional Commits
 
@@ -45,9 +64,9 @@ estricto. El formato:
 | `ci` | (no release) | `ci: cachear pip en Actions` |
 | `style` | (no release) | `style: aplicar ruff format` |
 
-**Alcance sugerido** (los paquetes del núcleo): `corpus`, `sources`,
-`enrichers`, `preprocessors`, `networks`, `exporters`, `stores`, `cli`, `arch`,
-`docs`, `release`.
+**Alcance sugerido** (los paquetes del núcleo): `corpus`, `sources`, `foraging`,
+`preprocessors`, `filters`, `enrichers`, `networks`, `exporters`, `stores`,
+`cli`, `arch`, `docs`, `release`.
 
 **Breaking changes:** en el footer, en una línea propia:
 
@@ -66,8 +85,8 @@ Esto fuerza un bump **MAJOR** (o MINOR si estamos en `0.y`) y una entrada
 Para evitar memorizar el formato, usá `cz commit`:
 
 ```bash
-cz commit          # interactivo, te pregunta tipo/alcance/descripción
-cz bump --dry-run  # ver qué versión resultaría de los commits acumulados
+uv run cz commit          # interactivo, te pregunta tipo/alcance/descripción
+uv run cz bump --dry-run  # ver qué versión resultaría de los commits acumulados
 ```
 
 ## Estilo de código
@@ -96,10 +115,10 @@ Todo en [`AGENTS.md`](./AGENTS.md) §Convenciones. Resumen ejecutivo:
 - Cada test corre en aislamiento. No fixtures compartidas con estado mutable.
 
 ```bash
-pytest                          # toda la suite
-pytest -m unit                  # solo unitarios
-pytest -m integration           # solo integración
-pytest tests/test_corpus.py::TestCorpus::test_merge_idempotent -xvs   # un test puntual
+uv run pytest                          # toda la suite
+uv run pytest -m unit                  # solo unitarios
+uv run pytest -m integration           # solo integración
+uv run pytest tests/unit/test_corpus.py -xvs   # un archivo puntual
 ```
 
 ## Estructura de un PR

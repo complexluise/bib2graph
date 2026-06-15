@@ -12,9 +12,11 @@
 > [`decisiones/`](decisiones/) — en particular [ADR 0007](decisiones/0007-openalex-backbone.md)
 > (OpenAlex backbone).
 >
-> ⚠️ **Nota de drift:** `ARCHITECTURE.md`, `API.md`, `ROADMAP.md` y los ADR 0001–0006 todavía
-> reflejan el **diseño previo** (BibTeX-first, snapshot inmutable, persistencia en memoria por
-> defecto). Reconciliarlos con este PRD es tarea pendiente del **architect** (ver §8 y §11).
+> ✅ **Reconciliación hecha:** `ARCHITECTURE.md`, `API.md` y `ROADMAP.md` ya están alineados con
+> este PRD y los ADR 0007–0011 (OpenAlex backbone, biblioteca viva en DuckDB, forrajeo,
+> agente-native, thesaurus). El `ROADMAP.md` ata cada hito a las historias del §7 con criterios
+> de aceptación. Los ADR 0001–0006 son **registro histórico** (inmutables): los puntos superados
+> quedan marcados como tales por los ADR 0007–0011, no se reescriben.
 
 ## 1. Qué es
 
