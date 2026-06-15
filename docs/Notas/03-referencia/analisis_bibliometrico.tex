@@ -1,0 +1,546 @@
+%------------------------------------------------------------
+%
+\documentclass[twoside, twocolumn]{article}
+%
+%%------------------------------------------------------------
+%% Preamble
+%%------------------------------------------------------------
+%% Packages
+% Language and font encodings
+    \usepackage[spanish]{babel}	        % spanish for default (tittles of tables, figures, etc).
+    \usepackage[utf8]{inputenc}	        % utf8 for write with accents directlty from the keyboard, e.g., ñ, á, è, etc.
+    \usepackage[T1]{fontenc}	        % allows the user to select font encodings (copy, paste or search text in the final PDF document)
+    \usepackage{lmodern}		        % to improvement of the special characters. E.g, to copy and paste correctly from the final PDF document.
+    \usepackage{calligra}               % to cursive fonts, e.g., R cursiva del Griffiths
+    \usepackage{soul}                   % h provides hyphenatable letterspacing ( s p a c i n g o u t ), underlining and some derivatives such as overstriking and highlighting. To write esthetic... more beaty.
+
+% Math writing
+    \usepackage{amsmath}		        % principal set of math characters of the American Mathematical Society (AMS)
+    \usepackage{amsfonts}		        % extended set of math characters of the AMS
+    \usepackage{amssymb}		        % symbols of the AMS
+    \usepackage{latexsym}               % few additional characters of the AMS
+    \usepackage{mathrsfs}		        % better appearance for math symbols; Lagrangian density, Hamiltonian density, measure in the path integral, Laplace and Fourier transforms, etc.
+    \usepackage{amsthm}			        % to use extended theorem environments (e.g. proof)
+    \usepackage{dsfont}			        % to use uppercase numbers (e.g., 1 for identity)
+
+% Useful packages
+    \usepackage[symbol]{footmisc}       % to use symbols dagger, doble dagger, etc. E.g. in authors
+    \usepackage[colorlinks=true, allcolors=blue]{hyperref}  %to use hyper references in the text; links to the bibliography cites and links to the equations, plots and tables references.
+    \usepackage{verbatim}
+        % verbatim to ignore all between begin{comment} and end{comment}. The environment "quote" for typesetting short quotations. The environment "quotation" for typesetting long quotations. The environment "verbatim" for fragments from a program code.
+    \usepackage{enumerate}		        % adds an optional argument to the enumerate environment
+    \usepackage{caption}		        % customize labels of floating environments (figures, tables, etc).
+    \usepackage{subcaption}             % the same that "caption" package, but for subfigures.
+    \usepackage{booktabs}				% to increase the quality of tables.
+    \usepackage{multirow}				% to multiples rows in tables.
+    \usepackage{appendix}				% to use the appendix.
+    \usepackage[usenames]{color}
+    \usepackage{cancel}                 % don't recommended because is aesthetic... is ugly.
+    %\usepackage{multicol}              % don't recomended if we are working at two or three columns by default
+    \usepackage{pgfplotstable}
+        % Pgfplotstable displays numerical tables rounded to desired precision in various display formats (for example scientific format, fixed point format or integer), using TEX’s mathematical facilities for pretty printing.
+
+% Graphics packages
+    \usepackage{stfloats}
+    \usepackage{graphics}		% to insert graphs in the document (rotation, scaled, etc).
+    \usepackage{graphicx}		% extends the optional arguments of the 'graphics' package.
+    \usepackage{float}          % improves the interface for defining floating objects such as figures and tables.
+    \usepackage{pgfplots}       % to draw high-quality function plots in normal or logarithmic scaling with a user-friendly interface directly in TEX
+
+% Sets page size and margins
+    %\usepackage{anysize}       % This package is obsolet, it is recommended to use "geometry" package
+    \usepackage[letterpaper, left=2cm, right=2cm, top=2cm, bottom=2cm,marginparwidth=1.75cm]{geometry}
+
+\usepackage{titlesec}
+\setlength{\columnsep}{0.7cm}       % Separacion de Columnas
+\parindent=0.5cm
+\setlength{\parskip}{0.2cm}         %Separación entre parrafos
+
+
+\DeclareMathAlphabet{\mathcalligra}{T1}{calligra}{m}{n}
+\DeclareFontShape{T1}{calligra}{m}{n}{<->s*[2.2]callig15}{}
+\pgfplotsset{compat=1.15}
+
+%------------------------------------------------------------
+%% New definitions
+%
+    \spanishdecimal{.}		% the decimal numbers is separated with a dot, not with a comma
+    \allowdisplaybreaks		% allow continue in multiple page the different lines of a equation
+
+    % New commands ------------------------------------------
+    \newcommand{\grad}{^{\circ}}                    % to ° of grade celsius
+    % to boldsymbols is \mathds{A}
+    \newcommand{\N}{\mathbb{N}} 					% N to natural numbers
+    \newcommand{\Z}{\mathbb{Z}} 					% Z to integer numbers
+    \newcommand{\Q}{\mathbb{Q}} 					% Q to rational numbers
+    \newcommand{\I}{\mathbb{I}} 					% I to irrational numbers
+    \newcommand{\R}{\mathbb{R}} 					% R to real numbers
+    \newcommand{\Cx}{\mathbb{C}}					% C to complex numbers
+    \newcommand{\La}{\mathscr{L}}					% L to Laplace's transform
+    \newcommand{\F}{\mathcal{F}}					% F to Fourier's transform
+    \newcommand{\1}{\mathds{1}}						% 1 to indentity matrix
+    \newcommand{\dbar}{\mathchar'26\mkern-12mu d}	% dbar (inexact differential)
+    \newcommand{\scriptr}{\mathcalligra{r}\,}       % script r
+    \newcommand{\boldscriptr}{\pmb{\mathcalligra{r}}\,} % bold script r
+
+    % New operators ------------------------------------------
+    \DeclareMathOperator{\sech}{sech}				    % hyperbolic secant
+    \newcommand{\abs}[1]{\left|#1\right|}	            % absolut value |x|
+    \newcommand{\norm}[1]{\left\|#1\right\|}            % norm of a vector ||x||
+    \newcommand{\re}{\operatorname{Re}}				    % real part (Re) of a complex number
+    \newcommand{\im}{\operatorname{Im}}				    % imaginary part (Im) of a complex number
+    \DeclareMathOperator{\Arg}{Arg}					    % principal value of the Argument (Arg z) of a complex number
+    \DeclareMathOperator*{\Res}{Res}				    % residue (Res(f,z)) over a complex function f(z)
+    \newcommand{\bra}[1]{\left\langle#1\right|}         % bra <x|
+    \newcommand{\ket}[1]{\left|#1\right\rangle}         % ket |x>
+    \newcommand{\bracket}[2]{\left\langle#1\right|\left.#2\right\rangle}    % braket <x|y>
+    \newcommand{\expval}[1]{\left\langle#1\right\rangle}   % expected value <x>
+
+    % New labels----------------------------------------------
+    %\renewcommand{\thesubfigure}{\Alph{subfigure}}		% The subfigures are referenced in majuscule letters, not minuscule letters
+    %\captionsetup[table]{name=Tabla}					% Change the labels of the tables to "Tabla"
+    %\captionsetup[appendix]{name=Anexos}				% change the labels of the appendix to "Anexos" (I still prefering the latin "Adenda")
+    %\renewcommand{\appendixname}{Anexos}
+    %\renewcommand{\appendixtocname}{Anexos}
+    %\renewcommand{\appendixpagename}{Anexos}
+%%------------------------------------------------------------
+%% End Preamble
+%%------------------------------------------------------------
+
+
+\usepackage[utf8]{inputenc}
+
+\begin{document}
+    \title{\textbf{Análisis bibliométrico sobre la cadena de suministro de semiconductores en el comercio internacional}}
+    \author{
+        L. E. Higuera Calderon\thanks{\href{mailto:lhiguerac@unal.edu.co}{lhiguerac@unal.edu.co}}\:  \\
+        \small{Seminario Fundamentos, Departamento de física, Universidad Nacional de Colombia, Bogotá.}
+    }
+    \date{Mayo 2025}
+
+    \maketitle
+
+
+
+%%------------------------------------------------------------
+\begin{abstract}
+Este estudio presenta un análisis bibliométrico de la literatura científica sobre la cadena de suministro de semiconductores en el contexto del comercio internacional. Utilizando datos sistemáticamente extraídos y enriquecidos de Web of Science y Semantic Scholar, se construyó y analizó una red de co-citación compuesta por 500 documentos publicados entre 2003 y 2025. Se aplicaron métricas de centralidad y el algoritmo de Louvain para identificar la estructura intelectual y las comunidades temáticas predominantes. Los resultados evidencian un crecimiento exponencial de la producción académica desde 2022, impulsada por crisis logísticas globales y tensiones geopolíticas. El análisis de red revela una estructura fragmentada con siete comunidades poco interconectadas, lideradas principalmente por instituciones académicas de Asia y Estados Unidos, mientras que temas de sostenibilidad y participación de regiones como América Latina y África resultan marginales. Estas dinámicas reflejan tanto la especialización industrial como la necesidad de enfoques interdisciplinarios e integración internacional en la investigación futura.
+\end{abstract}
+
+%%------------------------------------------------------------
+\textbf{Palabras clave:} Cadena de suministro, Semiconductores, Comercio internacional, Bibliometría, Redes de co-citación
+
+\section{Objetivo General}
+Analizar, mediante técnicas bibliométricas, la estructura intelectual en la literatura científica sobre la cadena de suministro de semiconductores en el comercio internacional, con énfasis en la construcción y análisis de redes de co-citación a partir de datos extraídos sistemáticamente de Web of Science.
+
+\section{Objetivos Específicos}
+\begin{enumerate}
+    \item Recuperar y organizar un corpus bibliográfico relevante mediante una búsqueda estructurada en Web of Science, y construir a partir de él la red de co-citación, modelando explícitamente las relaciones de citación entre documentos.
+    \item Analizar la red de co-citación para describir sus propiedades estructurales —centralidad de grado, centralidad de intermediación y centralidad de cercanía— y detectar clústeres temáticos mediante el algoritmo de Louvain.
+    \item Caracterizar el panorama institucional de la producción científica sobre la cadena de suministro de semiconductores, identificando las instituciones más productivas y su volumen de publicaciones en cada comunidad.
+\end{enumerate}
+
+\section{Introducción}
+La industria de los semiconductores desempeña un papel crítico e insustituible en la economía global \cite{Xiong2024}, siendo fundamental para una amplia gama de tecnologías y dispositivos modernos, desde teléfonos y computadoras hasta automóviles, equipos de salud e infraestructuras críticas como redes eléctricas y comunicaciones por satélite \cite{Xu2019}. Con un valor de más de 400 mil millones de dólares estadounidenses en 2017 \cite{, Frost2019}, los semiconductores son componentes fundacionales de la economía digital moderna, impulsando avances en la computación, las comunicaciones y la electrónica de consumo.
+
+
+Sin embargo, a pesar de su vital importancia, la cadena de suministro de semiconductores (SSC) es inherentemente compleja y global \cite{Chaudhuri2024}. Esta complejidad se debe a sus intrincados procedimientos, integraciones globales de la cadena, políticas y regulaciones gubernamentales, alta competitividad y sofisticación tecnológica. La naturaleza interdependiente, la dispersión geográfica y la coordinación compleja dentro de la industria la hacen susceptible a diversas vulnerabilidades y desafíos, como la dependencia de un número limitado de proveedores para componentes críticos y largos plazos de entrega en la fabricación.
+
+
+Los últimos años han puesto de manifiesto estas vulnerabilidades a través de interrupciones dramáticas, como la pandemia de COVID-19 y las tensiones geopolíticas \cite{Xiong2024}, en particular la guerra comercial entre Estados Unidos y China. Estos eventos han generado una escasez de chips global, con efectos en cascada en diversas industrias, y han forzado a la industria de semiconductores a un conflicto en el que no deseaba participar debido a su integración global. La seguridad en la cadena de suministro de productos electrónicos es igualmente importante, ya que el hardware producido a partir de una cadena de suministro no confiable no puede servir como raíz de confianza subyacente. La globalización de la industria de semiconductores requiere un esfuerzo conjunto para producir un sistema electrónico, pero las amenazas surgen de varias partes no confiables involucradas en el diseño, fabricación, desarrollo y distribución.
+
+A pesar de la creciente atención sobre la resiliencia y la gestión de interrupciones en la cadena de suministro de semiconductores, se observa una brecha notable en los estudios bibliométricos que analicen sistemáticamente la estructura intelectual y colaborativa del conocimiento científico en este campo particular del comercio internacional. Si bien existen revisiones de literatura sobre la gestión de la cadena de suministro verde (GSCM) en general y sus prácticas en la industria de semiconductores, así como revisiones sobre las interrupciones en la cadena de suministro, pocos estudios han aplicado un análisis bibliométrico riguroso para mapear explícitamente la evolución, los temas fundamentales y las redes de colaboración en la intersección de la cadena de suministro de semiconductores y el comercio internacional. Esta falta de una visión holística bibliométrica impide una comprensión profunda de cómo se organiza el conocimiento y quiénes son los actores clave en esta área de investigación vital.
+
+En este contexto, la pregunta central de este estudio es: ¿Cómo se ha organizado el conocimiento científico sobre las cadenas de suministro de semiconductores en el comercio internacional, y qué actores, instituciones y temas lideran su desarrollo y evolución?
+
+
+\section{Metodología}
+Este estudio emplea un enfoque bibliométrico cuantitativo centrado en la construcción y análisis de la red de co-citación, siguiendo las mejores prácticas recomendadas por \cite{Donthu2021}. La metodología se divide en las siguientes etapas:
+
+\begin{enumerate}
+    \item \textbf{Recolección y delimitación del corpus documental:} La búsqueda bibliográfica se realizó en la base de datos Web of Science a través del portal de bibliotecas de la Universidad Nacional de Colombia, utilizando la siguiente ecuación de búsqueda:
+    \\
+    (semiconductor OR ``integrated circuit'' OR microchip) AND (``supply chain'' OR ``value chain*'' OR logistics OR ``global value chain'').
+    \\
+    Esta búsqueda fue ejecutada el día 16 de mayo del 2025, empleando el navegador Microsoft Edge versión 136.0.3240.76. Se recuperaron un total de 621 artículos comprendidos en el periodo de 2003 a 2025. Estos registros constituyen la base para todos los análisis posteriores.
+
+    \item \textbf{Extracción y preprocesamiento de datos:} Los registros fueron exportados en formato BibTeX, incluyendo campos como título, autores, año de publicación, afiliación institucional, país, revista, citas, palabras clave, y detalles de afiliación cuando estuvieron disponibles. El preprocesamiento incluyó:
+    \begin{itemize}
+        \item Eliminación de duplicados y normalización de nombres de autores e instituciones para evitar duplicidades.
+        \item Verificación manual de la relevancia temática de los registros.
+        \item Estandarización de campos para análisis posteriores utilizando herramientas de procesamiento en Python/R.
+    \end{itemize}
+
+    \item \textbf{Enriquecimiento de datos:}  Para incrementar la completitud y calidad de la información, se implemento  un proceso de enriquecimiento automático mediante consultas a APIs externas, especificamente a Semantic Scholar.\cite{Kinney2023} Este procedimiento permite completar datos ausentes (por ejemplo, resúmenes, palabras clave, detalles de afiliación institucional y las referencias) y estandarizar la información proveniente de diferentes fuentes. De esta manera, se garantiza una base de datos robusta y homogénea que maximiza la cobertura y precisión del análisis bibliométrico.
+
+
+    \item \textbf{Construcción de la red de co-citación:}
+    A partir del corpus seleccionado, se realizó la extracción de todas las referencias bibliográficas de cada artículo, permitiendo identificar las relaciones de co-citación entre pares de documentos citados conjuntamente. El proceso de construcción y análisis de la red se desarrolló a través de dos enfoques complementarios:
+
+    \begin{itemize}
+        \item \textit{\textbf{Procesamiento y análisis con Python}:} Se utilizó el lenguaje Python para la manipulación, procesamiento, carga en la base de datos y análisis preliminar de la información bibliográfica. Las siguientes librerías fueron clave en este proceso:
+        \begin{itemize}
+            \item \textbf{bibtexparser:} Facilitó la lectura y el procesamiento de archivos en formato BibTeX, permitiendo extraer metadatos relevantes como títulos, autores y referencias citadas.
+            \item \textbf{pys2:} Librería utilizada para interactuar de manera eficiente con la API de Semantic Scholar, permitiendo la consulta automatizada y enriquecimiento de metadatos bibliográficos como autores, títulos, resúmenes y referencias, así como la obtención de identificadores normalizados y métricas adicionales de impacto académico.
+            \item \textbf{networkx:} Fundamental para la construcción y análisis de grafos, permitiendo modelar las relaciones de co-citación, calcular métricas de centralidad y explorar propiedades topológicas de la red.
+        \end{itemize}
+
+        \item \textit{Modelado avanzado en Neo4j:} Los datos procesados fueron posteriormente estructurados en una base de datos orientada a grafos utilizando Neo4j, con el objetivo de facilitar el análisis de redes complejas y consultas eficientes sobre relaciones entre documentos, autores, instituciones, temas y financiadores. El modelo de datos implementado en Neo4j incluyó los siguientes nodos y relaciones:
+
+        \begin{itemize}
+            \item \textbf{Nodos:}
+            \begin{itemize}
+                \item \texttt{:Paper} (DOI, título, año, citas, palabras clave, etc)
+                \item \texttt{:Author} (nombre, ORCID)
+                \item \texttt{:Institution} (nombre, país)
+                \item \texttt{:Funder} (nombre, país)
+                \item \texttt{:Keyword} (término, categoría temática)
+            \end{itemize}
+            \item \textbf{Relaciones:}
+            \begin{itemize}
+                \item (\texttt{:Author})\texttt{-[:AUTHORED]->}(\texttt{:Paper})
+                \item (\texttt{:Paper})\texttt{-[:Reference]->}(\texttt{:Paper}) \textit{(base para co-citación)}
+                \item (\texttt{:Paper})\texttt{-[:AFFILIATED\_WITH]->}(\texttt{:Institution})
+                \item (\texttt{:Paper})\texttt{-[:FUNDED\_BY]->}(\texttt{:Funder})
+                \item (\texttt{:Paper})\texttt{-[:HAS\_KEYWORD]->}(\texttt{:Keyword})
+                \item (\texttt{:Paper})\texttt{-[:CO\_CITED\_WITH]->}(\texttt{:Paper}) \textit{(relación derivada de la co-citación)}
+            \end{itemize}
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{Evaluación de Calidad de la Red:} La validez y representatividad de la red de cocitación y coautoria se evalúan aplicando criterios cuantitativos y estructurales recomendados en \cite{Donthu2021}, entre los cuales destacan:
+    \begin{itemize}
+        \item \textbf{Volumen documental:} Confirmación de que la red contiene al menos 200 documentos.
+        \item \textbf{Completitud de DOI y referencias:} Verificación de que al menos el 90\% de los documentos posee DOI y referencias citadas.
+        \item \textbf{Cobertura temporal:} Garantía de que el periodo analizado abarca un intervalo representativo.
+        \item \textbf{Diversidad geográfica:} Presencia de instituciones pertenecientes a un mínimo de cinco países diferentes.
+        \item \textbf{Participación de autores clave:} Identificación de al menos diez autores recurrentes en la red.
+    \end{itemize}
+
+\item \textbf{Análisis de redes y clústeres de co-citación}
+
+
+Para explorar la estructura y dinámica del campo de estudio, se aplicaron técnicas de análisis de redes a la matriz de co-citación. Las métricas utilizadas permiten identificar nodos (autores, documentos o revistas) clave en función de su posición estructural en la red. Además, se empleó un algoritmo de detección de comunidades para identificar clústeres temáticos. A continuación se describen las medidas utilizadas.
+
+\begin{itemize}
+    \item \textbf{Centralidad de grado.} Esta métrica cuantifica el número de conexiones directas que tiene un nodo con otros en la red. En el contexto de la co-citación, un nodo con alto grado puede representar un documento frecuentemente co-citado con otros, indicando su popularidad o relevancia directa en el campo.  \cite{Freeman1978}
+
+    La centralidad de grado se calcula mediante la siguiente fórmula:
+
+    \begin{equation}
+        C_D(v) = \sum_{u=1}^{n} a_{vu}
+    \end{equation}
+
+    donde $a_{vu} = 1$ si existe una conexión entre el nodo $v$ y el nodo $u$, y $n$ representa el número total de nodos en la red. Esta suma contabiliza todas las conexiones directas de un nodo, sin tener en cuenta su contexto dentro de la estructura global.
+
+    Un valor alto de $C_D$ indica una posición destacada a nivel local, lo cual puede interpretarse como una medida de visibilidad o popularidad inmediata del documento o autor en el conjunto analizado.
+
+    \item \textbf{Centralidad de intermediación (betweenness).} Esta medida evalúa hasta qué punto un nodo actúa como intermediario en los caminos más cortos que conectan a otros pares de nodos. Refleja la capacidad de un nodo para facilitar el flujo de información entre diferentes partes de la red \cite{Brandes2001}.
+
+    Se define formalmente como:
+
+    \begin{equation}
+        C_B(v) = \sum_{s \neq v \neq t} \frac{\sigma_{st}(v)}{\sigma_{st}}
+    \end{equation}
+
+    donde $\sigma_{st}$ representa el número total de caminos más cortos entre los nodos $s$ y $t$, y $\sigma_{st}(v)$ es el número de esos caminos que pasan por el nodo $v$.
+
+    Un valor elevado de $C_B$ señala a nodos que funcionan como puentes críticos entre comunidades o subredes. En bibliometría, este indicador permite identificar trabajos con un rol articulador o interdisciplinario, capaces de conectar áreas temáticas diferentes.
+
+    \item \textbf{Centralidad de cercanía.} Esta métrica estima cuán cerca está un nodo del resto de los nodos de la red, en términos de distancia geodésica. Cuanto menor es la distancia promedio de un nodo hacia los demás, mayor es su centralidad de cercanía \cite{Bavelas1950}.
+
+    La fórmula utilizada es:
+
+    \begin{equation}
+        C_C(v) = \frac{n - 1}{\sum_{u=1}^{n} d(v,u)}
+    \end{equation}
+
+    donde $d(v,u)$ es la distancia más corta entre el nodo $v$ y el nodo $u$, y $n$ es el número total de nodos en la red.
+
+    Esta métrica permite identificar nodos estructuralmente centrales, capaces de alcanzar rápidamente a otros nodos. En bibliometría, un nodo con alta cercanía puede representar un documento que resume o difunde eficientemente el conocimiento de distintas áreas.
+
+    \item \textbf{Algoritmo de Louvain (modularidad).} Para la detección automática de comunidades temáticas en la red de co-citación, se aplicó el algoritmo de Louvain, el cual busca particionar la red en subconjuntos densamente conectados, maximizando la métrica de modularidad $Q$ \cite{Blondel2008}.
+
+    La modularidad se expresa como:
+
+    \begin{equation}
+        Q = \frac{1}{2m} \sum_{i,j} \left[ A_{ij} - \frac{k_i k_j}{2m} \right] \delta(c_i, c_j)
+    \end{equation}
+
+    donde $A_{ij}$ es el peso de la conexión entre los nodos $i$ y $j$, $k_i$ y $k_j$ son las sumas de los pesos de las conexiones de cada nodo, $m$ es la suma total de los pesos en la red, y $\delta(c_i, c_j) = 1$ si ambos nodos pertenecen a la misma comunidad, y 0 en caso contrario.
+
+    Este algoritmo optimiza $Q$ de forma jerárquica, agrupando nodos en comunidades que maximizan la densidad interna de conexiones. Valores de $Q > 0.3$ indican una estructura comunitaria significativa. En el análisis bibliométrico, estas comunidades representan clústeres de documentos relacionados temáticamente.
+
+\end{itemize}
+
+\end{enumerate}
+
+\section{Resultados}
+
+\subsection{Descripción General del Corpus}
+
+El corpus bibliográfico inicial recuperado de \textit{Web of Science} comprendía 621 documentos, sin embargo, tras el proceso de validación y enriquecimiento de datos mediante \textit{Semantic Scholar}, se excluyeron 121 documentos de los cuales no se pudo obtener información complementaria o que presentaban datos incompletos para el análisis bibliométrico.
+
+El corpus bibliográfico analizado está compuesto por 500 documentos publicados entre los años 2003 y 2025, con un total de 1453 autores y 1082 instituciones afiliadas. La cobertura temática se distribuye en 1560 palabras clave únicas y 46 areas de investigación. El cuadro \ref{tab:resumen_corpus} resume los principales indicadores cuantitativos del conjunto de datos.
+
+\begin{table}[H]
+\centering
+\caption{Resumen general de la base de datos analizada}
+\begin{tabular}{ll}
+\toprule
+\textbf{Variable} & \textbf{Valor} \\
+\midrule
+Total de documentos       & 499 \\
+Total de autores          & 1453 \\
+Total de instituciones    & 1082 \\
+Total de palabras clave   & 1560 \\
+Total de areas de investigación   & 46 \\
+Total de publicadores   & 94 \\
+Año de inicio             & 2003 \\
+Año de finalización       & 2025 \\
+Cobertura temporal        & 2003--2025 \\
+\bottomrule
+\end{tabular}
+\label{tab:resumen_corpus}
+\end{table}
+
+
+
+La Figura~\ref{fig:pubs_por_anio} muestra un incremento significativo en la producción científica a partir del año 2022, con un pico significativo en 2024 (998 publicaciones). Este comportamiento refleja una creciente atención académica hacia los problemas asociados a la cadena de suministro de semiconductores, especialmente en los últimos años. Dicha atención es una respuesta directa a los "cambios dramáticos" que ha experimentado la cadena de suministro de semiconductores, en gran parte debido a tensiones geopolíticas y disrupciones logísticas globales \cite{Xiong2024}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=9cm]{Graficas/distribucion_por_año.png}
+\caption{Distribución de publicaciones por año.}
+\label{fig:pubs_por_anio}
+\end{figure}
+
+\subsection{Frecuencia de Palabras Clave}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=9cm]{Graficas/frecuencia_palabras_clave.png}
+\caption{Top 15 palabras clave más frecuentes en el corpus.}
+\label{fig:top_keywords}
+\end{figure}
+
+La Figura~\ref{fig:top_keywords} muestra las 15 palabras clave más frecuentes, encabezadas por \textit{“supply chain”} (119 ocurrencias), seguida de \textit{“semiconductor”} (80 ocurrencias) y \textit{“semiconductors history”} (42 ocurrencias). No resulta sorprendente que estos términos lideren la lista, ya que fueron utilizados como parte de la estrategia de búsqueda en la base de datos Web of Science, la cual combinó conceptos relacionados con semiconductores y cadenas de suministro. En consecuencia, las frecuencias observadas responden tanto a patrones existentes en la literatura como a los criterios de inclusión definidos para la recopilación del corpus.
+
+\subsection{Autores e Instituciones más Productivos}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=9cm]{Graficas/top_autores.png}
+\caption{Top 10 autores por número de publicaciones.}
+\label{fig:top_autores}
+\end{figure}
+
+En la Figura~\ref{fig:top_autores} se observa que \textit{M. Tehranipoor} lidera con 13 publicaciones, seguido por \textit{H. Ehm} y \textit{J. Donegan}, ambos con 10 publicaciones. Esta prominencia sugiere que estos autores han jugado un papel clave en la investigación reciente, probablemente abordando temas críticos como la resiliencia, trazabilidad y seguridad en la cadena de suministro de semiconductores.
+
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=9cm]{Graficas/top_instituciones.png}
+\caption{Top 10 instituciones por número de publicaciones.}
+\label{fig:top_instituciones}
+\end{figure}
+
+
+Por otro lado, la Figura~\ref{fig:top_instituciones} muestra la distribución institucional de las publicaciones, donde se observa un liderazgo claro de la National Tsing Hua University con 26 publicaciones, seguida por la Arizona State of Florida con 21 y en tercer lugar State University System of Florida con 19. La distribución geográfica revela una producción principalmente de instituciones académicas predominantes en Asia (National Tsing Hua University, National Yang Ming Chiao Tung University), Estados Unidos (University of Florida, Arizona State University, State University System of Florida) y Europa (Trinity College Dublin). Además, se destaca la participación de empresas tecnológicas como Intel USA e Infineon Technologies, lo que indica una vinculación entre la investigación académica y la industria de semiconductores.
+
+\subsection{Evaluación de Calidad de la Red}
+
+Siguiendo las recomendaciones propuestas por \cite{Donthu2021}, se evaluó la calidad y representatividad del corpus y la red bibliométrica construida según cinco criterios fundamentales, obteniendo los siguientes resultados:
+
+\begin{itemize}
+    \item \textbf{Volumen documental:}
+    El corpus final cuenta con 500 documentos válidos para el análisis, superando ampliamente el umbral mínimo recomendado de 200 documentos. \textbf{(Criterio cumplido)}.
+
+    \item \textbf{Completitud de DOI y referencias:}
+    El 100\% de los documentos cuenta con DOI, cumpliendo plenamente esta parte del criterio. Sin embargo, solo el 87\% tiene referencias citadas, ligeramente por debajo del umbral sugerido del 90\%. Esto implica una leve limitación en la calidad de la red de co-citación. \textbf{(Criterio parcialmente cumplido)}.
+
+    \item \textbf{Cobertura temporal:}
+    La cobertura temporal del corpus es desde 2003 hasta 2025, abarcando un intervalo representativo de 23 años y cubriendo tanto publicaciones tempranas como recientes, lo que garantiza un análisis adecuado sobre la evolución del campo. \textbf{(Criterio cumplido)}.
+
+    \item \textbf{Diversidad geográfica:}
+    Dada la falta de información explícita sobre el país de afiliación institucional en los documentos analizados, no se pudo evaluar la diversidad institucional por país. Consecuentemente, este criterio no se cumple. \textbf{(Criterio no cumplido)}.
+
+    \item \textbf{Participación de autores clave:}
+Se identificaron cuatro autores con al menos 10 publicaciones: M. Tehranipoor (13 publicaciones), H. Ehm (10 publicaciones), J. Donegan (10 publicaciones) y J. Fowler (10 publicaciones). Adicionalmente, se observan otros seis autores con contribuciones significativas entre 6 y 8 publicaciones. Aunque no se alcanza el mínimo sugerido de diez autores recurrentes con al menos 10 publicaciones cada uno, la presencia de múltiples investigadores activos sugiere un núcleo de especialistas consolidado en el área. \textbf{(Criterio parcialmente cumplido)}.
+\end{itemize}
+
+En resumen, aunque el corpus analizado cumple satisfactoriamente algunos criterios clave como el volumen documental y la cobertura temporal, presenta limitaciones importantes en completitud de referencias y diversidad geográfica institucional, aspectos que deben considerarse al interpretar los resultados.
+
+\subsection{Resultados del Análisis de la Red de Co-citación}
+
+\begin{table}[htbp]
+\centering
+\caption{Métricas estructurales de la red de co-citación}
+\label{tab:metricas_red}
+\begin{tabular}{@{}lc@{}}
+\toprule
+\textbf{Métrica} & \textbf{Valor} \\
+\midrule
+\multicolumn{2}{c}{\textit{Propiedades básicas}} \\
+\midrule
+Nodos & 384 \\
+Enlaces & 3908 \\
+Densidad & 0.053 \\
+Componentes conexas & 1 \\
+\midrule
+\multicolumn{2}{c}{\textit{Métricas de centralidad}} \\
+\midrule
+Centralidad de grado (promedio) & 0.0531 \\
+Centralidad de grado (máximo) & 0.2898 \\
+Centralidad de intermediación (promedio) & 0.0045 \\
+Centralidad de intermediación (máximo) & 0.1244 \\
+Centralidad de cercanía (promedio) & 0.3775 \\
+Centralidad de cercanía (máximo) & 0.5433 \\
+\midrule
+\multicolumn{2}{c}{\textit{Estructura comunitaria}} \\
+\midrule
+Coeficiente de agrupamiento & 0.4591 \\
+Número de comunidades & 384 \\
+Modularidad & 0.5132 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+El cuadro \ref{tab:metricas_red} recoge las métricas globales de la componente principal la red de co-citación y sirve de referencia para la descripción que sigue. La red está formada por 384 nodos y 3 908 enlaces, lo que se traduce en una densidad de 0,053. El coeficiente de agrupamiento medio alcanza 0,4591 dato que indica la presencia abundante de triadas de co-citación y, por tanto, de vecindades locales relativamente compactas.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=9cm]{Graficas/distribucion_centralidad_grado_cocitacion.png}
+\caption{Distribución de centralidad de grado.}
+\label{fig:centralidad_grado}
+\end{figure}
+
+Con respecto a la centralidad de grado, el cuadro \ref{tab:metricas_red} muestra un valor medio de 0,053 y un máximo de 0,2898. La distribución representada en la Figura \ref{fig:centralidad_grado} es marcadamente asimétrica, con una cola alargada hacia valores altos; la mayoría de los documentos mantiene pocos enlaces directos, mientras que un número reducido concentra gran parte de las co-citas.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=9cm]{Graficas/distribucion_centralidad_intermediacion_cocitacion.png}
+\caption{Distribución de centralidad de intermediación.}
+\label{fig:centralidad_intermediacion}
+\end{figure}
+
+La centralidad de intermediación aparece muy concentrada en torno a cero (media = 0,0045), tal como se aprecia en la Figura \ref{fig:centralidad_intermediacion}. Solo unos pocos nodos alcanzan valores notables, hasta un máximo de 0,1244 indicado en el cuadro \ref{tab:metricas_red}, lo que señala la existencia de documentos que actúan como puentes en los caminos más cortos de la red, frente a una gran mayoría sin capacidad de intermediación apreciable.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=9cm]{Graficas/distribucion_centralidad_cercania_cocitacion.png}
+\caption{Distribución de centralidad de cercanía.}
+\label{fig:centralidad_cercania}
+\end{figure}
+
+
+Para la centralidad de cercanía, el cuadro \ref{tab:metricas_red} reporta un promedio de 0,3775 y un máximo de 0,5433. La Figura \ref{fig:centralidad_cercania} muestra una distribución aproximadamente simétrica con ligera inclinación a la izquierda; la mayor parte de los nodos se sitúa dentro de un rango relativamente estrecho de cercanía, mientras unos pocos destacan por su proximidad estructural al resto de la red.
+
+La detección automática de comunidades mediante el algoritmo de Louvain produjo un valor de modularidad Q = 0,5132, lo que sugiere una partición bien definida. El procedimiento identificó siete de comunidades temáticas (Cuadro \ref{tab:metricas_red}), cada una formada por documentos más densamente conectados entre sí que con el resto de la red.
+
+\subsection{Comunidades detectadas}
+
+El cuadro \ref{tab:metricas_comunidades} presenta las métricas sintéticas de las seis comunidades identificadas mediante el algoritmo de Louvain. La Figura \ref{fig:tam_comun_centralidad} muestra la relación entre el número de nodos y la centralidad de grado media, mientras que la Figura \ref{fig:keywords_comunidad} recoge los diez términos clave más frecuentes en cada agrupación.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=9 cm]{Graficas/tamano_vs_centralidad_cocitacion.png}
+\caption{Relación entre el tamaño de la comunidad y la centralidad de grado promedio.}
+\label{fig:tam_comun_centralidad}
+\end{figure}
+
+\begin{figure*}[b]
+\centering
+\includegraphics[width=16cm]{Graficas/distribucion_instituciones_comunidades_cocitacion.png}
+\caption{Diez palabras clave más frecuentes en cada comunidad.}
+\label{fig:keywords_comunidad}
+\end{figure*}
+
+La Figura \ref{fig:tam_comun_centralidad} ilustra la relación entre el tamaño de cada comunidad, medido por el número de nodos, y la centralidad de grado promedio dentro de la red de co-citación. Se observa que las comunidades más grandes (como la comunidad 0 y la comunidad 1) tienden a exhibir valores más altos tanto en tamaño como en centralidad de grado promedio, destacándose especialmente la comunidad 1, que combina un número considerable de nodos con la centralidad de grado más elevada del conjunto. Este patrón sugiere que las comunidades más numerosas son también aquellas donde los documentos presentan más conexiones directas en promedio, lo que las posiciona como núcleos de interacción e intercambio dentro del campo de estudio. Por el contrario, las comunidades pequeñas muestran centralidades mucho menores, indicando que su integración estructural en la red es limitada y su influencia potencialmente marginal en la circulación del conocimiento científico.
+
+A continuación se describen, de manera resumida, las principales características de cada comunidad observadas en las fuentes citadas.
+
+\begin{itemize}
+    \item \textbf{Comunidad 0} (139 nodos). Presenta una centralidad de grado media de 0,0455 y valores máximos de centralidad de cercanía de 0,4811. Destaca por una fuerte presencia de universidades taiwanesas, incluyendo National Yang Ming Chiao Tung University, National Taiwan Ocean University y National Taipei University of Technology, sugiriendo un cluster geográfico de colaboración en Asia Oriental.
+
+    \item \textbf{Comunidad 1} (135 nodos). Registra la centralidad de grado media más alta del conjunto (0,0726) y el máximo absoluto de la red (0,2898). Exhibe una composición institucional diversa que incluye National Tsing Hua University, Arizona State University e Infineon Technologies, indicando colaboraciones entre academia e industria semiconductora.
+
+    \item \textbf{Comunidad 2} (62 nodos). Alcanza un valor máximo de intermediación de 0,0601. Predominan instituciones del sistema universitario estadounidense, particularmente de Florida y Texas, junto con universidades de prestigio como New York University y Jeonbuk National University.
+
+    \item \textbf{Comunidad 3} (38 nodos). Muestra centralidad de grado y de intermediación moderadas. Combina instituciones tecnológicas de élite como Intel USA, Indian Institute of Technology System y University of California System, reflejando colaboraciones en investigación tecnológica avanzada.
+
+    \item \textbf{Comunidad 4} (5 nodos). Aunque pequeña, exhibe valores de intermediación comparativamente altos (media 0,0042). Incluye instituciones financieras y tecnológicas europeas como European Central Bank y Technical University of Munich, junto con MIT, sugiriendo investigación en la intersección de finanzas y tecnología.
+
+    \item \textbf{Comunidad 5} (3 nodos). Se caracteriza por instituciones chinas especializadas, incluyendo Feng Chia University, Khalifa University of Science \& Technology y South China Agricultural University, indicando colaboraciones en investigación aplicada.
+
+    \item \textbf{Comunidad 6} (2 nodos). Dominada por universidades chinas y estadounidenses como Jeonbuk National University, Purdue University y Fudan University, representando colaboraciones bilaterales entre estos dos países.
+\end{itemize}
+
+\begin{table*}[t]
+\centering
+\caption{Indicadores estructurales por comunidad.}
+\label{tab:metricas_comunidades}
+\begin{tabular}{lrrrrrrr}
+\toprule
+Comunidad & Nodos & $\overline{C_D}$ & $C_D^{\text{max}}$ & $\overline{C_B}$ & $C_B^{\text{max}}$ & $\overline{C_C}$ & $C_C^{\text{max}}$\\
+\midrule
+0 & 139 & 0.0455 & 0.1749 & 0.0037 & 0.0258 & 0.3766 & 0.4812\\
+1 & 135 & 0.0726 & 0.2898 & 0.0062 & 0.1244 & 0.4084 & 0.5433\\
+2 &  62 & 0.0461 & 0.1097 & 0.0041 & 0.0601 & 0.3356 & 0.4517\\
+3 &  38 & 0.0358 & 0.1018 & 0.0018 & 0.0140 & 0.3642 & 0.4279\\
+4 &   5 & 0.0068 & 0.0235 & 0.0042 & 0.0211 & 0.2876 & 0.3658\\
+5 &   3 & 0.0070 & 0.0104 & 0.0036 & 0.0107 & 0.2714 & 0.3240\\
+6 &   2 & 0.0052 & 0.0078 & 0.0026 & 0.0052 & 0.2931 & 0.3351\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Los datos anteriores completan la descripción cuantitativa de la estructura por comunidades de la red de co-citación.
+
+\section{Discusión}
+
+\subsection{Evolución temporal y factores determinantes del campo}
+El crecimiento exponencial de publicaciones observado a partir de 2022 no es casualidad, sino una respuesta directa a la crisis global de semiconductores desencadenada por la pandemia de COVID-19 \cite{Xiong2024}. La escasez de chips impactó severamente a industrias como la automotriz y la electrónica, revelando la fragilidad de las cadenas de suministro globales. A esto se sumaron factores críticos: el aumento de la demanda por el trabajo remoto, los retrasos logísticos, la escasez de talento y las tensiones geopolíticas entre Estados Unidos y China \cite{Bown2020}. Estos eventos reconfiguraron las estrategias productivas y de distribución global. En consecuencia, la investigación académica intensificó su enfoque en la resiliencia de la cadena de suministro, con énfasis en diversificación, producción doméstica y tecnologías emergentes como inteligencia artificial, big data y blockchain \cite{Xu2019}. El pico de publicaciones en 2024 subraya la urgencia por abordar estos desafíos mediante enfoques bibliométricos y estratégicos \cite{Xiong2024}.
+
+\subsection{Estructura y propiedades de la red de co-citación}
+El análisis bibliométrico, cumpliendo con el primer y segundo objetivo específico, revela que la investigación sobre cadenas de suministro de semiconductores se encuentra en una fase de rápida expansión pero fragmentada. La red de co-citación presenta características estructurales reveladoras: una modularidad alta (0.5132) y siete comunidades poco interconectadas. La baja centralidad de intermediación indica escasos documentos puente entre áreas temáticas. Esta fragmentación es particularmente evidente en temas críticos como sostenibilidad y resiliencia, que permanecen aislados en clústeres específicos. La centralidad de cercanía promedio (0.3775) sugiere que el conocimiento fluye lentamente entre diferentes áreas de investigación, limitando el desarrollo de enfoques holísticos.
+
+\subsection{Análisis de comunidades desde las instituciones}
+
+Esta fragmentación del conocimiento refleja directamente la estructura geográfica y organizacional de la industria de semiconductores. En respuesta al tercer objetivo, el análisis institucional revela patrones significativos. La Comunidad 0, dominada por universidades taiwanesas, refleja el rol de Taiwán como centro manufacturero global. La Comunidad 1 muestra colaboraciones academia-industria con presencia de Infineon Technologies. Mientras tanto, la Comunidad 4 integra instituciones financieras europeas, sugiriendo investigación en la intersección de finanzas y tecnología.
+
+Estos patrones institucionales corresponden a la realidad industrial donde Estados Unidos mantiene el liderazgo en diseño con el 65\% de las ventas globales fabless, mientras Asia domina la manufactura. China, por ejemplo, representaba el 20\% de las exportaciones mundiales de semiconductores en 2019. La especialización institucional observada en las comunidades identificadas replica la fragmentación del modelo fabless-foundry de la industria \cite{Bown2020}.
+
+\subsection{Implicaciones teóricas y direcciones futuras}
+La alta modularidad y la baja interconexión entre comunidades sugieren oportunidades significativas para la investigación interdisciplinaria. Las comunidades más pequeñas (4, 5 y 6), aunque con pocos nodos, exhiben valores de intermediación comparativamente altos, indicando su potencial como puentes entre áreas de conocimiento. La marginal aparición de términos relacionados con sostenibilidad social y ambiental señala un área crítica que requiere mayor atención académica.
+
+\subsection{Limitaciones metodológicas y alcance del estudio}
+El análisis presenta limitaciones importantes que deben considerarse. Primero, el 13\% de documentos sin referencias completas puede haber subestimado conexiones relevantes en la red de co-citación. Segundo, la información institucional incompleta limita la comprensión de las redes de colaboración, especialmente en las comunidades más pequeñas que podrían estar subrepresentadas.
+
+Tercero, la ausencia de metadatos geográficos detallados impide analizar profundamente las colaboraciones transpacíficas entre instituciones asiáticas y estadounidenses. Esta limitación es particularmente relevante dado el contexto geopolítico actual. Finalmente, el uso de términos de búsqueda específicos puede haber excluido investigaciones desde perspectivas alternativas, potencialmente omitiendo enfoques innovadores al problema.
+
+A pesar de estas limitaciones, el análisis proporciona una caracterización robusta de la estructura intelectual actual en el campo, cumpliendo con los objetivos propuestos y estableciendo una base para futuras investigaciones más integradas e interdisciplinarias.
+
+\section{Conclusiones}
+
+Este estudio analizó 500 documentos sobre cadenas de suministro de semiconductores publicados entre 2003 y 2025. El campo muestra un crecimiento explosivo desde 2022, saltando de 50 a 998 publicaciones en solo dos años. Sin embargo, la investigación está fragmentada en siete comunidades aisladas que apenas se comunican entre sí.
+
+La red de conocimiento revela problemas estructurales graves. Los investigadores trabajan en grupos cerrados con poca colaboración. Solo el 0.45\% de los documentos conectan diferentes comunidades. La producción científica se concentra en instituciones de Asia y Estados Unidos, mientras que América Latina y África están completamente ausentes. Los temas ambientales y sociales aparecen marginados frente a los enfoques técnicos y económicos.
+
+Los resultados exigen cambios inmediatos en la forma de investigar. Los científicos deben colaborar más allá de sus especialidades. Las universidades necesitan promover proyectos que conecten seguridad, sostenibilidad y eficiencia operativa. Los gobiernos deben financiar investigación que integre diferentes perspectivas, no solo estudios aislados.
+
+El estudio tiene limitaciones importantes. Falta información geográfica en muchos documentos y el 13\% carece de referencias completas. Estos vacíos dificultan entender las colaboraciones reales entre países y el flujo de ideas entre investigadores.
+
+\section*{Declaración sobre el uso de Inteligencia Artificial}
+
+Este trabajo empleó inteligencia artificial como apoyo en el desarrollo de códigos para la extracción y análisis de datos bibliométricos, así como en la redacción preliminar de secciones como la metodología y los resultados. Todos los códigos generados con ayuda de IA fueron verificados manualmente, asegurando así la validez de los procedimientos.
+
+En el resto del documento, la IA se utilizó principalmente como corrector de estilo para mejorar la redacción y coherencia del texto especialmente en la metodología y los resultados. El uso de estas herramientas se concibió como una calculadora de texto: una asistencia técnica que nunca sustituyó el criterio ni la interpretación del autor, sino que complementó el trabajo académico bajo constante supervisión humana.
+
+%------------------------------------------------------------
+\bibliographystyle{unsrt}
+\bibliography{references.bib, networks.bib, analitical_references.bib}
+%------------------------------------------------------------
+
+\end{document}
