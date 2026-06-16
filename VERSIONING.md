@@ -61,17 +61,24 @@ CSV no documentado.
 
 ## Automatización
 
-Las releases las maneja [`release-please`](https://github.com/googleapis/release-please):
+Las releases las maneja [`release-please`](https://github.com/googleapis/release-please),
+**ya conectado** en `.github/workflows/release-please.yml` (config en
+`release-please-config.json` + `.release-please-manifest.json`):
 
-1. Vos mergeás PRs a `main` con Conventional Commits bien escritos.
-2. `release-please` abre un PR de release con:
+1. Vos mergeás PRs a `main` con Conventional Commits bien escritos (el gate de CI
+   —`.github/workflows/ci.yml`: ruff + mypy + pytest— debe estar verde).
+2. `release-please` abre/actualiza un PR de release con:
    - `CHANGELOG.md` actualizado (sección nueva con Added/Changed/Fixed/...).
    - Bump de versión en `pyproject.toml`.
 3. Revisás el PR de release. Si está bien, lo mergeás.
-4. Al mergear, se taggea `vX.Y.Z` y se publica a PyPI (configurar en CI).
+4. Al mergear, se taggea `vX.Y.Z` y se crea el **GitHub Release**.
+
+**PyPI todavía NO está conectado** (decisión del PO: por ahora solo GitHub Releases). El
+paso de publicación a PyPI se agrega cuando se configure *trusted publishing* (OIDC).
 
 `cz bump --dry-run` te muestra, localmente, qué versión resultaría de los
-commits acumulados sin necesidad de pushear.
+commits acumulados sin necesidad de pushear (ayuda de preview; el publicador es
+release-please, no commitizen).
 
 ## Versionado de snapshots y schemas
 

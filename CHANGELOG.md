@@ -5,12 +5,11 @@ Todos los cambios notables de `bib2graph` se documentan acá. El formato sigue
 adopta [Semantic Versioning](https://semver.org/lang/es/) (ver
 [`VERSIONING.md`](./VERSIONING.md)).
 
-Este changelog lo **gestionará `release-please`** (mecanismo de release diseñado; ver
-[`VERSIONING.md`](./VERSIONING.md) y ADR 0006): su PR de release actualizará esta sección
-desde los Conventional Commits. Como ese tooling **aún no está conectado** (no existe
-`.github/` ni CI), por ahora las secciones se **mantienen a mano** antes de cada tag —con
-`cz bump --dry-run` como ayuda de preview local— y la fuente de verdad es la historia de
-commits.
+Este changelog lo **gestiona `release-please`** (ya conectado; ver
+[`VERSIONING.md`](./VERSIONING.md) y ADR 0006): su PR de release actualiza esta sección
+desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se crea el tag
+`vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
+la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
 ## [Unreleased]
 
