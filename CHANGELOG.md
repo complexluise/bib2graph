@@ -11,6 +11,71 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.4.0](https://github.com/complexluise/bib2graph/compare/v0.3.3...v0.4.0) (2026-06-16)
+
+
+### Features
+
+* **cli:** CLI agente-native b2g con 11 subcomandos (Hito 6) ([b4f5054](https://github.com/complexluise/bib2graph/commit/b4f505470a1968c7889ac480fb1d2273c8b01496))
+* **cli:** comando b2g monitor + CycleState única + merge sin SQL interpolado ([32e89d8](https://github.com/complexluise/bib2graph/commit/32e89d85cca61864f1ed618277e1114616b6ac3c))
+* **corpus:** implementar la tabla canónica Corpus, schemas y snapshot (Hito 1) ([091f9fd](https://github.com/complexluise/bib2graph/commit/091f9fda7e3682e96603866449dda0dfb91a3e23))
+* esqueleto del paquete bib2graph (CLI + paquete) ([06197be](https://github.com/complexluise/bib2graph/commit/06197bec2473604abd9d4c9d0db897b872608194))
+* **exploracion:** sandbox IED con datos reales de OpenAlex ([0c34983](https://github.com/complexluise/bib2graph/commit/0c349836474882b954927871faff2691b35bc908))
+* **foraging:** forrajeo + Preprocessor + filtros PRISMA (Hito 5) ([89b385a](https://github.com/complexluise/bib2graph/commit/89b385a7d5612274558775c28214177f75438885))
+* **networks:** proyectores, analizadores, exportadores y Networks.quick (Hito 2) ([b6e8b77](https://github.com/complexluise/bib2graph/commit/b6e8b776eb0e53b10fb16f94963a098869ded3f7))
+* **remediation:** R3 — ciclo de dominio (cycle.py) fiel a la Nota 05 (ADR 0016) ([9fddb71](https://github.com/complexluise/bib2graph/commit/9fddb715cc3121f45bbe9e52cf893b07732e017e))
+* **remediation:** R4 — scent bibliométrico vía proyectores; sin IA generativa (ADR 0020/0022) ([869f1bd](https://github.com/complexluise/bib2graph/commit/869f1bd12e4b4c978482e409348f0973d0a7b059))
+* **remediation:** R5 — robustez/escala: bulk-load, UTF-8, retry, footguns (cierra RAÍZ 3) ([b7ff3ee](https://github.com/complexluise/bib2graph/commit/b7ff3eed0bb3e6dcb8fc9180727b0b34ab1686c4))
+* **sources:** OpenAlexSource y BibtexSource — cierra v0.1 (Hito 4) ([29ae360](https://github.com/complexluise/bib2graph/commit/29ae360e36a88a8deb6031974a7ebf34337cff5a))
+* **stores:** DuckDBBackend, DuckDBStore y LoopState con mutación SQL (Hito 3) ([97e9925](https://github.com/complexluise/bib2graph/commit/97e992555caaadd518133da2ff8771a33d391426))
+
+
+### Bug Fixes
+
+* **ci:** fijar release-please target-branch a main ([#16](https://github.com/complexluise/bib2graph/issues/16)) ([314774f](https://github.com/complexluise/bib2graph/commit/314774fd2bd534cece9a39cc24d4a46de0334f78))
+
+
+### Documentation
+
+* actualizar README al estado real (giro + 2o giro, v0.1 feature-complete) ([4538b6b](https://github.com/complexluise/bib2graph/commit/4538b6b099341400c8c68175dee4ece73fcbda7d))
+* ADR 0021 (contrato CLI), sync Hito 6 y auditoría de artefactos ([6865adf](https://github.com/complexluise/bib2graph/commit/6865adffb407eef2ffadd10472d0dd1d23457ffb))
+* **adr:** ADR 0013 (identidad, hash y merge) y sincronía de API.md (Hito 1) ([55e0bf4](https://github.com/complexluise/bib2graph/commit/55e0bf4c96401aaa52d312dc7d6e935284aa69eb))
+* **adr:** ADR 0014 (proyección de redes, pesos, asortatividad) y sincronía (Hito 2) ([119e9cf](https://github.com/complexluise/bib2graph/commit/119e9cfd72dc7630c67dd63d83c337f8a134e096))
+* **adr:** ADR 0020 (método de forrajeo: scent, filtros-reject) y sincronía (Hito 5) ([d1e24ae](https://github.com/complexluise/bib2graph/commit/d1e24aeb69fd7693c86e2ddcf09c472267f25591))
+* **adr:** añadir ADR 0012 (credenciales OpenAlex) y registro de decisiones IA ([67ec021](https://github.com/complexluise/bib2graph/commit/67ec02190503b8e7bfbe6dea51fa07098906990a))
+* **adr:** registro de decisiones 0001–0011 (OpenAlex, wedge, biblioteca viva, agente-native, thesaurus) ([f340e80](https://github.com/complexluise/bib2graph/commit/f340e80bcc7690e339c8fadbefbfe01c029d5038))
+* **adr:** segundo giro — ADR 0015–0019 y reconciliación (TabularBackend, lazo, reproducibilidad) ([541cbd9](https://github.com/complexluise/bib2graph/commit/541cbd974d52c064a8832dc8e31c3fa13009087f))
+* **api:** reconciliar API.md con el giro (OpenAlexSource, DuckDBStore stateful, forrajeo, thesaurus, asortatividad) ([dd8561c](https://github.com/complexluise/bib2graph/commit/dd8561c717b70f9a360bd1b340ea11584a90f6f7))
+* **arch:** ADR 0024 (orden D3 vía _seq) + saneamiento de coherencia ([e6f0e51](https://github.com/complexluise/bib2graph/commit/e6f0e5124bf3da8f1e900ed75128e06198e839d0))
+* **arch:** formalizar el modelo conceptual v2 (núcleo) — ARCH + ADRs + Nota 05 + metodología ([f9c52b3](https://github.com/complexluise/bib2graph/commit/f9c52b37166507e28f9a984dbc187c1609bef14f))
+* **archivo:** archivar notas 06/07 ya promovidas al PRD/ADR ([b728691](https://github.com/complexluise/bib2graph/commit/b728691df9a1fef554bfafec15e965e9581dfca8))
+* **arch:** steering R2 — sincronizar docs con identidad-vs-procedencia ([ed9e87a](https://github.com/complexluise/bib2graph/commit/ed9e87a15b6198ead27c30d127d9807d886d988e))
+* **arch:** steering R3 — sincronizar docs con el ciclo de dominio ([c62e375](https://github.com/complexluise/bib2graph/commit/c62e3752c978995ca72902539d4f606b05e3e5a1))
+* **arch:** steering R4 — scent bibliométrico, sin IA, forward = citación directa ([9002f65](https://github.com/complexluise/bib2graph/commit/9002f651128fe73da0400d5f6c57627a94dde4ea))
+* **arch:** steering R5 + cierre de la tanda de remediación R1–R5 ([2f007dc](https://github.com/complexluise/bib2graph/commit/2f007dc29ab13253f3cc698fc64fae9fe7c5a8cf))
+* arquitectura objetivo de la V1 reconciliada con el giro ([ab80808](https://github.com/complexluise/bib2graph/commit/ab808080912d959658921acf014a828a0e1d5fa5))
+* barrido total de coherencia + tanda de remediación R1–R5 en el ROADMAP ([6487d8f](https://github.com/complexluise/bib2graph/commit/6487d8fed8b2ab9248f25cc872435e7c68fa3c8e))
+* **contributing:** documentar el flujo GitFlow-lite (dev/main) + CI en dev ([665988c](https://github.com/complexluise/bib2graph/commit/665988cd6e84fd6523779c280d3245e5156ca43d))
+* **contributing:** flujo GitFlow-lite (dev/main) + CI en dev ([1e17869](https://github.com/complexluise/bib2graph/commit/1e17869e81e9d2ddf932d4baacdd542fe5051155))
+* ejemplo API §12 en dos bloques (v0.1 corre / v0.2 objetivo) y lista canónica de extras ([2e4bb4a](https://github.com/complexluise/bib2graph/commit/2e4bb4a402932546ce621ccd336db8b76d14ee62))
+* meta del proyecto (README, contribución, versionado, release) ([a926800](https://github.com/complexluise/bib2graph/commit/a926800ae02d50ece9e2d8a4dbd13123024e45af))
+* método bibliométrico y análisis de referentes/crítica base ([077046b](https://github.com/complexluise/bib2graph/commit/077046b300e7e4e182cd2bd632a95e918389ea78))
+* **notas:** notas de proceso del rediseño (giro IA-in-the-loop, ciclo humano, lecciones v0) ([588626a](https://github.com/complexluise/bib2graph/commit/588626a6a63786a98a1b37f6a99355ab44b63017))
+* poner el CHANGELOG Unreleased al día (v0.1 + Hito 5) ([a075c92](https://github.com/complexluise/bib2graph/commit/a075c92e69801c05bddbaaee2181f6334f26897f))
+* PRD de la V1 (giro a OpenAlex + biblioteca viva + forrajeo asistido) ([87c386c](https://github.com/complexluise/bib2graph/commit/87c386c725622beeeb4458a6f523a6c22d7394de))
+* reconciliar docs con el giro y atar el ROADMAP a las historias ([cbcbfbb](https://github.com/complexluise/bib2graph/commit/cbcbfbbab77d616ca1d3d0d0204fe362f4e94a44))
+* reconciliar PRD/ARCHITECTURE/ROADMAP con el 2o giro y sincronía del Hito 3 ([d87be9a](https://github.com/complexluise/bib2graph/commit/d87be9ae95dd395635d0f4b6e99796df107b2926))
+* red-team multiperspectiva del v0.2 as-built + correcciones de honestidad ([e09b56c](https://github.com/complexluise/bib2graph/commit/e09b56cd59908b1a8200988a29daa22e65b29d56))
+* ROADMAP a carpeta + saneamiento de coherencia y enlaces ([82e69c3](https://github.com/complexluise/bib2graph/commit/82e69c3206e8dfc0cd3cb724d9a709e0864d17d9))
+* ROADMAP a carpeta + saneamiento de coherencia y enlaces ([7aa0a4e](https://github.com/complexluise/bib2graph/commit/7aa0a4e15d253cb583f2ab213a3ed00f3e408721))
+* roadmap de construcción de la V1 reordenado ([1b0d3f6](https://github.com/complexluise/bib2graph/commit/1b0d3f664a2070b010781a01a508e1e96d9b2349))
+* **roadmap:** lockear decisiones del PO sobre la remediación ([382fca1](https://github.com/complexluise/bib2graph/commit/382fca125df51579e47868329303baa5d8bd5828))
+* **roadmap:** R1 terminado (capa constants/modelos/schema) ([336c4f0](https://github.com/complexluise/bib2graph/commit/336c4f047305a48dbcb61304b130d3697d9afceb))
+* sincronizar docs con el Hito 1.5 (TabularBackend) ([2b8a84b](https://github.com/complexluise/bib2graph/commit/2b8a84bb7879049d28de72a0bd7fbf171ab0df21))
+* sincronizar docs con el Hito 4 y marcar v0.1 feature-complete ([2a2fe76](https://github.com/complexluise/bib2graph/commit/2a2fe766b99ad05f0270df2388cb92df52d68cdc))
+* sincronizar estado as-built y encuadre de release ([fc59b04](https://github.com/complexluise/bib2graph/commit/fc59b04709930ed7341556bd6ff52154213fa381))
+* sync a v0.3 — monitor, CycleState única, merge; batching→Hito 8; AGENTS/README/PRD ([c1ff328](https://github.com/complexluise/bib2graph/commit/c1ff3288d8227737aedebf0087ecad9b9d7468a9))
+
 ## [0.3.3](https://github.com/complexluise/bib2graph/compare/v0.3.2...v0.3.3) (2026-06-16)
 
 
