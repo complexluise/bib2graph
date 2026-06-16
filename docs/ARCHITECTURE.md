@@ -163,7 +163,9 @@ citantes **ya vienen en el corpus**; el `Enricher` deja de ser estructural. El *
 (barato, mira hacia adelante, usa refs que las semillas ya traen) es **ciudadano de primera**
 (crítica #2). La **co-citación** sigue siendo la más cara: necesita los citantes *con sus
 propias citas* (segundo nivel de fetch). El acoplamiento opera sobre el **corpus completo**, no
-solo `is_seed` (rediseño validado en el sandbox IED).
+solo `is_seed` (rediseño validado en el sandbox IED). **AS-BUILT (Hito 8b ✅):** ese 2º nivel ya está
+cableado end-to-end — `b2g enrich` puebla `cited_by_id` (vía `OpenAlexSource.fetch_citing_batch`,
+§4.2) y `Networks.quick` incluye la co-citación cuando esa columna está poblada.
 
 ### 3.3 `Analyzer` — red → resultados
 
@@ -263,14 +265,17 @@ es la fuente y alimenta el juicio de cuándo cambiar de `Source`.
 ### 4.2 `Enricher` — señal extra (opt-in, núcleo sobre OpenAlex)
 
 Con OpenAlex como backbone, **deja de ser estructural** (ADR 0007). Vive en el **núcleo sobre
-OpenAlex** (no en `[s2]`; ADR [0025](decisiones/0025-enricher-cocitacion-openalex.md)). Queda opt-in
-para: **resolver `references_id` a DOI canónico** (OpenAlex las da como URLs internas — T8 del
-sandbox; **Ciclo 8a ✅ construido**, batching por OR, idempotente vía `EnricherRef` en el `Manifest`)
-y el **segundo nivel de fetch** (citantes con sus citas ≡ `cited_by_id` compartido) que habilita la
-co-citación (**Ciclo 8b pendiente**: puebla solo `cited_by_id`, sin crecer el corpus). El subcomando
-`b2g enrich` es propio y **no transiciona el `CycleState`**. S2/CrossRef/Scopus: futuras (`[s2]`
-reservado para señal adicional). Reglas: config inyectada (nunca embebida), sin ramas muertas, rate
-limit y reintentos sin perder papers.
+OpenAlex** (no en `[s2]`; ADR [0025](decisiones/0025-enricher-cocitacion-openalex.md)). El **Hito 8
+está completo** (Ciclos 8a + 8b): `OpenAlexEnricher.enrich` hace **2 pasadas**. **8a** — **resolver
+`references_id` a DOI canónico** (OpenAlex las da como URLs internas — T8 del sandbox; batching por
+OR, idempotente vía `EnricherRef` en el `Manifest`). **8b** — el **segundo nivel de fetch** habilita
+la **co-citación end-to-end**: trae los citantes de las **semillas aceptadas** (vía
+`OpenAlexSource.fetch_citing_batch`: batcheo OR ≤50 con presupuesto por semilla) y **mergea sus
+`openalex_id` en `cited_by_id`** (unión idempotente); **solo puebla `cited_by_id`**, no crece el
+corpus (decisión A). El tope `max_citing_per_paper` **acota el fetch por semilla**. El subcomando
+`b2g enrich` (flag `--max-citing`) es propio y **no transiciona el `CycleState`**. S2/CrossRef/Scopus:
+futuras (`[s2]` reservado para señal adicional). Reglas: config inyectada (nunca embebida), sin ramas
+muertas, rate limit y reintentos sin perder papers.
 
 ### 4.3 `Store` / backend de persistencia (biblioteca viva)
 
@@ -423,9 +428,9 @@ Son **13 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`
 `inspect`, `validate`, `accept`, `reject`, **`monitor`**, **`enrich`**); `build`/`export` están
 **separados** y el `CycleState` transiciona automáticamente por comando (ADR 0021). El 12°
 **`monitor`** (cleanup pre-v0.3) re-chequea citantes nuevos del corpus (forward chaining) y
-transiciona a `MONITORED`. El 13° **`enrich`** (Ciclo 8a, ADR
-[0025](decisiones/0025-enricher-cocitacion-openalex.md)) corre el `OpenAlexEnricher` (refs→DOI) y
-**no transiciona** el ciclo (ortogonal al lazo). El error de uso (p. ej. falta `--store`) sale **sin
+transiciona a `MONITORED`. El 13° **`enrich`** (Hito 8 = Ciclos 8a + 8b, ADR
+[0025](decisiones/0025-enricher-cocitacion-openalex.md)) corre el `OpenAlexEnricher` (refs→DOI +
+co-citación, flag `--max-citing`) y **no transiciona** el ciclo (ortogonal al lazo). El error de uso (p. ej. falta `--store`) sale **sin
 envelope** (Click aborta el parseo: stderr + exit 1).
 
 **AS-BUILT R5 — UTF-8 en la frontera (Nota 06 RAÍZ 3):** `main()` llama `_force_utf8()` (reconfigura

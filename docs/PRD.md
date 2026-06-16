@@ -397,5 +397,7 @@ Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.
    v0.2 alcanza las capacidades del **flujo** `seed → … → export`. **El red-team de la
    [Nota 06](Notas/06-critica-as-built-v0.2.md) corrige el claim "capacidades completas":** falta la
    **tanda de remediación R1–R5** (modelo sin IA, identidad-vs-procedencia reproducible, FSM cíclico,
-   scent bibliométrico, robustez) **antes** de los Hitos 7–11 (dedup fuzzy, `Enricher` co-citación,
-   `NetworkSpec` YAML, viz, Zotero/Neo4j). Estado vivo en el [`ROADMAP.md`](ROADMAP/README.md).
+   scent bibliométrico, robustez) **antes** de los Hitos 7–11. Tras R1–R5 se construyó el **Hito 8 ✅**
+   (`Enricher` OpenAlex: refs→DOI + co-citación end-to-end, `enrich --max-citing`); siguen pendientes
+   los Hitos 7 (dedup fuzzy), 9 (`NetworkSpec` YAML), 10 (viz) y 11 (Zotero/Neo4j). Estado vivo en el
+   [`ROADMAP.md`](ROADMAP/README.md).
