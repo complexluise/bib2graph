@@ -5,20 +5,30 @@
 > **Tras la remediación R1–R5.** Estos hitos son los opcionales/de cierre hacia v1.0, ya
 > reconciliados con el modelo nuevo (sin IA generativa, scent bibliométrico, FSM cíclico).
 
-## Hito 7 — Deduplicación fuzzy (extra `[dedup]`)
+## Hito 7 — Deduplicación fuzzy (extra `[dedup]`) — **COMPLETO ✅**
+
+> **Hito 7 COMPLETO ✅ (2026-06-16, ADR [0026](../decisiones/0026-dedup-fuzzy-determinista.md)):**
+> `deduplicate_authors`/`deduplicate_keywords` con **`rapidfuzz`** (determinista), **autores +
+> keywords** (instituciones **diferidas** — `institutions_id` no está normalizada
+> determinísticamente hoy). **Función de librería, sin subcomando CLI** (decisión del PO). `splink`
+> (probabilístico/pesado) **diferido a post-V1**.
 
 **Alcance**
 
-- `deduplicate_authors` / `deduplicate_keywords` (lo fuzzy; el determinístico ya está en el
-  `Preprocessor` del Hito 5; API.md §11).
+- `deduplicate_authors(corpus, *, threshold=0.92)` / `deduplicate_keywords(corpus, *,
+  threshold=0.90)` (lo fuzzy; el determinístico ya está en el `Preprocessor` del Hito 5; API.md §11).
+  Operan sobre `_id` (no `_raw`), después de normalize → thesaurus.
 
-**Historias:** refina **C1** (autores/instituciones limpios de duplicados aproximados) y **C2**
-(keywords fuera del thesaurus).
+**Historias:** refina **C1** (autores limpios de duplicados aproximados; instituciones diferidas) y
+**C2** (keywords fuera del thesaurus).
 
 **Criterios de aceptación (DoD)**
 
-- Combina variantes por similitud por encima de un `threshold` configurable; idempotente.
-- Importación **perezosa** del extra `[dedup]`: sin él, error claro que apunta al extra.
+- **✅** Combina variantes por similitud por encima de un `threshold` **por-campo** configurable;
+  **determinista** (`token_sort_ratio` + Union-Find + canónico más-frecuente/desempate-id) e
+  idempotente.
+- **✅** Importación **perezosa** del extra `[dedup]` (= `rapidfuzz`): sin él, `ImportError` claro que
+  apunta al extra (`uv sync --extra dedup`).
 
 **Tests (TDD — los justos)**
 
@@ -29,30 +39,49 @@
 
 ---
 
-## Hito 8 — `Enricher` opt-in: resolución de refs + co-citación (extra `[s2]`)
+## Hito 8 — `Enricher` opt-in: resolución de refs + co-citación (núcleo OpenAlex)
+
+> **Partición (ADR [0025](../decisiones/0025-enricher-cocitacion-openalex.md), 2026-06-16) — Hito 8
+> COMPLETO ✅:** el hito se hizo en **2 ciclos**. **8a ✅:** costura `Enricher` + refs→DOI + subcomando
+> `b2g enrich`. **8b ✅:** co-citación end-to-end (poblar `cited_by_id`), **solo seeds aceptadas + tope
+> configurable** (`--max-citing`). El Enricher vive en el **núcleo sobre OpenAlex**, **no** en el extra `[s2]`: ese
+> `[s2]` era residuo pre-giro (ADR [0007](../decisiones/0007-openalex-backbone.md): S2 ya no es
+> estructural) y queda **reservado** para un futuro `SemanticScholarEnricher` de señal adicional.
 
 **Alcance**
 
-- `Enricher` (ya **no estructural**; ADR 0007, API.md §3): **resolver `references_id` a DOI
-  canónico** (T8) y el **segundo nivel de fetch** (citantes con sus citas) que habilita la
-  **co-citación** completa.
+- `Enricher` (ya **no estructural**; ADR 0007/0025, API.md §3): **resolver `references_id` a DOI
+  canónico** (T8, **8a ✅**) y el **segundo nivel de fetch** (citantes ≡ `cited_by_id` compartido) que
+  habilita la **co-citación** completa (**8b ✅**). El 2º nivel **solo puebla `cited_by_id`**; los
+  citantes NO se materializan como filas del corpus (eso es del `Forager` + curación; decisión A).
 - **Batching-por-OR de `fetch_citing`** (seguimiento heredado de R5, encuadrado acá por el arquitecto
-  2026-06-16): R5 entregó **retry/backoff** pero **difirió** el batching (agrupar varios `cites:` en
-  una query `cites:W1|W2|...` para matar el N+1 de requests). El **2º nivel de fetch de este hito** es
-  exactamente donde se vuelve a forrajear citantes/citas a escala, así que el batching **se hace acá**
-  (mejora de performance, no de correctitud: el N+1 ya es resiliente al rate-limit). Ver registro-ia
-  R5.3 y "Cleanup pre-v0.3" C-seguimientos.
+  2026-06-16, **resuelto en 8b ✅**): R5 entregó **retry/backoff** pero **difirió** el batching. El
+  **2º nivel de fetch de este hito** lo materializa: **`OpenAlexSource.fetch_citing_batch`** agrupa
+  varios `cites:` en una query `cites:W1|W2|...` (lotes ≤50) con **presupuesto por semilla**, matando
+  el N+1 de requests (mejora de performance, no de correctitud: el N+1 ya era resiliente al
+  rate-limit). `fetch_citing` singular (Forager) no cambió. Ver registro-ia R5.3 y "Cleanup
+  pre-v0.3" C-seguimientos.
 
 **Historias:** completa **D1** para la red de **co-citación** end-to-end (la más cara) y la
 interoperabilidad de referencias cross-source (OpenAlex ↔ `.bib`).
 
 **Criterios de aceptación (DoD)**
 
-- `enrich` es **idempotente** y no pierde papers ante rate limit/reintentos.
-- Resuelve `references_id` → `references_doi`; el 2º nivel habilita `CoCitationProjector` completo.
-- **`fetch_citing` batchea por OR** (`cites:W1|W2|...`) en el 2º nivel de fetch: el N+1 de R5 deja de
-  hacer una request por paper (mejora de performance; el retry/backoff de R5 se conserva).
-- Config/keys **inyectadas**, sin ramas muertas. **Sin red en CI** (mock).
+- **8a ✅** `enrich` es **idempotente** (reemplaza el `EnricherRef` por nombre, no duplica) y no pierde
+  papers ante rate limit/reintentos. Subcomando `b2g enrich` propio; **NO** transiciona el `CycleState`
+  (ortogonal al lazo, decisión C). `build` sigue puro/sin red.
+- **8a ✅** Resuelve `references_id` → `references_doi` **batcheando por OR** (lotes ≤100,
+  `openalex_id:W1|W2|...`, `select=id,doi`).
+- **8b ✅** El 2º nivel habilita `CoCitationProjector` completo poblando `cited_by_id` (el projector
+  **no cambia**: cuenta `cited_by_id` compartido = citantes compartidos; decisión F). Solo seeds
+  aceptadas + tope configurable (`max_citing_per_paper` / `--max-citing`). `Networks.quick` devuelve
+  **4 o 5 redes** según haya `cited_by_id` (incluye co-citación si está poblado; la omite graceful si
+  no).
+- **8b ✅** **`fetch_citing_batch` batchea por OR** (`cites:W1|W2|...`, lotes ≤50) con presupuesto
+  por semilla: el N+1 de R5 deja de hacer una request por paper, sin starvation entre semillas
+  (mejora de performance; el retry/backoff de R5 se conserva).
+- Config/keys **inyectadas**, sin ramas muertas. **Sin red en CI** (mock). Núcleo sin importar
+  `duckdb`; sin red al importar.
 
 **Tests (TDD — los justos)**
 
@@ -151,7 +180,7 @@ No se prometen ni se cablean clientes que no se usan.
 > "inserción de IA nº2") **ya no son costuras futuras: se borran**. El producto **no usa IA
 > generativa**; el extra `[llm]` se elimina (Hito R4). El sensemaking de tensiones es **humano**,
 > asistido por las redes. El **dedup fuzzy del thesaurus** que sí queda (Hito 7) es **determinista**
-> (`rapidfuzz`/`splink`, extra `[dedup]`), no semántico/LLM. La única "inteligencia" que asiste es el
+> (`rapidfuzz`, extra `[dedup]`; Hito 7 ✅), no semántico/LLM. La única "inteligencia" que asiste es el
 > **scent bibliométrico** (Hito R4), que no es IA.
 
 ---

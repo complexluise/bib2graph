@@ -2,10 +2,12 @@
 
 > Guía para agentes que operen en este repositorio. El proyecto es una **reescritura
 > clean-room** construida de adentro hacia afuera (docs → núcleo puro y tests → costuras).
-> **Estado (v0.3): Hitos 0–6 + 1.5 construidos y tanda de remediación R1–R5 COMPLETA** tras el
-> red-team de la Nota 06 y el modelo nuevo (ADR 0022/0023; el producto **no usa IA generativa** —
-> el desarrollo SÍ es asistido por IA, pero el scent es bibliométrico determinista). **Próximo:
-> Hito 7 (dedup fuzzy).** Ver `docs/ROADMAP.md` y "Estado actual" abajo. El diseño objetivo vive en
+> **Estado (v0.3): Hitos 0–6 + 1.5 construidos, remediación R1–R5 COMPLETA, Hito 8 COMPLETO**
+> (Enricher OpenAlex: refs→DOI + co-citación end-to-end) **y Hito 7 COMPLETO** (dedup fuzzy
+> determinista `rapidfuzz`, extra `[dedup]`), tras el red-team de la Nota 06 y el modelo
+> nuevo (ADR 0022/0023; el producto **no usa IA generativa** — el desarrollo SÍ es asistido por IA,
+> pero el scent es bibliométrico determinista). **Próximo: Hito 9 (`NetworkSpec` YAML).** Ver
+> `docs/ROADMAP/` y "Estado actual" abajo. El diseño objetivo vive en
 > `docs/ARCHITECTURE.md`; los contratos
 > públicos en `docs/API.md`; el producto en `docs/PRD.md`; las reglas que motivan este código en
 > `docs/Notas/01-lecciones-v0.md`. Las decisiones vigentes tras **el giro** son los ADR
@@ -27,8 +29,14 @@
   (`DuckDBStore`), `sources/` (`OpenAlexSource`, `BibtexSource`), `foraging/` (`Forager`,
   scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/` con 12 subcomandos en `cli/commands/`, no un
-  placeholder—. **327 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+  El **CLI `b2g` es real** —paquete `cli/` con 13 subcomandos en `cli/commands/`, no un
+  placeholder—. **388 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+- **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
+  [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
+  núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
+  trayendo los citantes de las semillas aceptadas vía `OpenAlexSource.fetch_citing_batch` (batcheo OR
+  ≤50 con presupuesto por semilla) y los une (idempotente, sin crecer el corpus). `b2g enrich` con
+  `--max-citing` (tope por semilla); `Networks.quick` → 4 o 5 redes según haya `cited_by_id`.
 - **Tanda de remediación R1–R5 COMPLETA** (v0.3, 2026-06-16). Tras el red-team del AS-BUILT
   ([`docs/Notas/06-critica-as-built-v0.2.md`](docs/Notas/06-critica-as-built-v0.2.md)) el PO bloqueó
   un **modelo nuevo** (ADR [0022](docs/decisiones/0022-producto-sin-ia-generativa.md)/
@@ -40,10 +48,13 @@
   transversal en `status`; **R4** — **scent bibliométrico vía proyectores**, **el producto NO usa
   IA generativa** (se eliminaron `foraging/explain.py`, `explain_candidate`, el extra `[llm]` y la
   "máquina de tensiones"); **R5** — robustez (bulk-load, UTF-8 en la frontera, retry, footguns).
-  Ver `docs/ROADMAP.md` (Hitos R1–R5). **PRÓXIMO: Hito 7** (dedup fuzzy `[dedup]`). El entorno se
-  levanta con `uv sync`.
+  Ver `docs/ROADMAP/` (Hitos R1–R5). Tras la remediación se construyeron el **Hito 8** (Enricher
+  OpenAlex: refs→DOI + co-citación end-to-end) y el **Hito 7 ✅** (dedup fuzzy determinista
+  `rapidfuzz`, extra `[dedup]`: `deduplicate_authors`/`deduplicate_keywords`, función de librería sin
+  CLI; ADR [0026](docs/decisiones/0026-dedup-fuzzy-determinista.md)). **388 tests verdes. PRÓXIMO:
+  Hito 9** (`NetworkSpec` YAML). El entorno se levanta con `uv sync`.
 - Toda la información del producto, la arquitectura, los contratos y la secuencia de
-  construcción está en `docs/`. **Leer `docs/ROADMAP.md` antes de tocar nada**: cada hito declara
+  construcción está en `docs/`. **Leer `docs/ROADMAP/` antes de tocar nada**: cada hito declara
   qué historias del PRD §7 cumple, sus criterios de aceptación (DoD) y los tests TDD que se
   escriben. El orden es deliberado (núcleo puro → costura local DuckDB → costura red OpenAlex →
   forrajeo → CLI → opcionales).
@@ -59,6 +70,41 @@
   BibTeX es `Source` secundaria. El enricher S2 ya **no es estructural**.
 - **El CLI es la API para LLM/agentes** (Hito 6). Subprocess + JSON stdout, exit codes
   claros, sin estado entre invocaciones (el estado vive en DuckDB).
+
+## Flujo de trabajo (ramas dev/main) — LEER ANTES DE TOCAR GIT
+
+Modelo **GitFlow-lite** con dos ramas protegidas (PR + CI verde obligatorios; nunca
+pushear directo). Detalle en [`CONTRIBUTING.md`](CONTRIBUTING.md) §Modelo de ramas.
+
+- **`dev`** — rama de **integración** y **default del repo**. Acá se **acumula** el trabajo.
+  Protección no-estricta.
+- **`main`** — rama **estable / de release**. Solo recibe `dev` al liberar y el PR de release.
+  Protección **estricta** (la rama del PR debe estar actualizada con `main` antes de mergear).
+
+Flujo de un cambio (agente o humano):
+
+```
+git checkout dev && git pull
+git checkout -b feat/lo-que-sea        # ramear SIEMPRE desde dev
+# ...commits Conventional Commits...
+git push -u origin feat/lo-que-sea
+gh pr create --base dev                # PR a dev (NO a main)
+# CI verde (lint + test 3.11/3.12) → es el gate
+gh pr merge --squash --delete-branch   # 1 commit conventional limpio por idea
+```
+
+**Dos tipos de PR, no confundir:**
+1. **PR de trabajo** (`feat/...` → `dev`): lo abrís vos/el agente a mano. Squash al mergear.
+2. **PR de release** (`chore(main): release X.Y.Z`): lo crea **`release-please` solo**; no se
+   crea a mano. Ver §Comandos de release.
+
+**Liberar** (cuando hay varias cosas en `dev`, no por cada cambio): PR `dev → main` con
+**merge commit** (NO squash, para que release-please vea los `feat`/`fix`) → release-please
+abre su PR de release → mergearlo crea el tag + GitHub Release.
+
+**Reglas para agentes:** ramear desde `dev`; nunca commitear directo a `dev`/`main`; un PR =
+una idea; el commit/PR sigue Conventional Commits (abajo); no bumpear versión ni editar
+`CHANGELOG.md` a mano (lo hace release-please).
 
 ## Comandos de build / lint / test
 
@@ -79,34 +125,35 @@ El proyecto se gestiona con **uv** (entorno + lockfile + versión de Python). **
 - **Por marcador:** `uv run pytest -m unit` / `uv run pytest -m integration` (los tests que
   toquen red o Neo4j se marcan `integration` y usan Testcontainers o mocks; el núcleo va en
   `unit`).
-- **Lint:** `uv run ruff check src tests` y `uv run ruff format --check src tests`
+- **Lint:** `uv run ruff check .` y `uv run ruff format --check .` (así lo corre el CI; `exploracion/` excluido)
 - **Tipos:** `uv run mypy src`
-- **Todo en uno (gate de CI):** `uv run ruff check src tests && uv run mypy src && uv run pytest`
+- **Todo en uno (gate de CI):** `uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest`
 
 Regla de Hito 0: el **tooling LOCAL** —uv, linter (`ruff`), tipos (`mypy`), tests
 (`pytest`), hooks (`pre-commit`) y **commitizen** (linter de Conventional Commits +
 `cz bump --dry-run` para previsualizar el bump)— quedó configurado desde el día uno
-(ADR 0006/0010). El gate de calidad corre en local (`ruff` + `mypy` + `pytest`). En
-cambio, **la automatización de releases (release-please + CI/PyPI) está DISEÑADA pero
-AÚN NO conectada**: no existe `.github/` ni CI/GitHub Actions (ver §Comandos de release).
-La versión de Python la fija `.python-version` (3.12; `requires-python >=3.11`).
+(ADR 0006/0010). El mismo gate (`ruff` + `mypy` + `pytest`) corre **en CI** en cada push
+a `main`/`dev` y en cada PR (`.github/workflows/ci.yml`). La **automatización de releases
+(`release-please`) YA está conectada** (`.github/workflows/release-please.yml`); falta solo
+la publicación a PyPI (ver §Comandos de release). La versión de Python la fija
+`.python-version` (3.12; `requires-python >=3.11`).
 
 ## Comandos de release
 
-El **mecanismo de release DISEÑADO es `release-please`** (PR de release → bump +
-`CHANGELOG.md` → tag + publicación a PyPI; ver [`VERSIONING.md`](VERSIONING.md) y
-[ADR 0006](docs/decisiones/0006-tabla-canonica-y-networkspec.md)). **Pero AÚN NO está
-conectado**: no existe `.github/` ni CI. Hasta conectarlo, el versionado/tag se hace
-**manual/local**. `commitizen` **no** es el publicador de releases: es (a) el linter de
-Conventional Commits (hook de `pre-commit`) y (b) la herramienta para **previsualizar**
-el bump localmente con `cz bump --dry-run`.
+`release-please` **YA está conectado** (`.github/workflows/release-please.yml`): vigila
+`main` y, cuando llegan commits liberables (vía el merge `dev → main`), abre/actualiza
+**un** PR `chore(main): release X.Y.Z` con el `CHANGELOG.md` + bump de `pyproject.toml`;
+al mergearlo crea el tag `vX.Y.Z` y el **GitHub Release**. Pre-1.0: `feat`→minor,
+`fix`→patch, breaking→minor. **No publica a PyPI** (decisión del PO: solo GitHub Releases
+por ahora). `commitizen` **no** es el publicador: es (a) el linter de Conventional Commits
+(hook de `pre-commit`) y (b) preview del bump con `cz bump --dry-run`.
 
 - **Hacer un commit conventional:** `uv run cz commit` (interactivo, recomendado).
 - **Previsualizar qué versión saldría:** `uv run cz bump --dry-run` (solo preview, no publica).
-- **Tags actuales (locales, anotados, sin push):** `v0.1.0` (cierre Hitos 1–4) y `v0.2.0`
-  (Hitos 5–6), creados a mano. El **`v0.3.0`** (remediación R1–R5) está **por taguearse** sobre
-  HEAD. El **release publicado** (push de tags + artefactos a PyPI) queda **pendiente de conectar
-  `release-please` + CI**.
+- **No bumpear/taggear a mano:** lo hace release-please al mergear su PR de release.
+- **Tags publicados en `origin`:** `v0.1.0`, `v0.2.0`, `v0.3.0`, `v0.3.1` (GitHub Releases).
+- **Caveat:** el PR de release **no dispara CI** (los commits del `GITHUB_TOKEN` no disparan
+  workflows); se mergea con **bypass de admin** hasta que exista el secret `RELEASE_PLEASE_TOKEN`.
 
 Detalle en [`CONTRIBUTING.md`](CONTRIBUTING.md) y [`VERSIONING.md`](VERSIONING.md).
 
@@ -175,14 +222,15 @@ src/bib2graph/
   preprocessors/       # normalize + thesaurus multilingüe DETERMINISTA, sin fallback LLM (núcleo);
                        # dedup fuzzy DETERMINISTA en [dedup]
   filters/             # filtros de inclusión/exclusión con conteo PRISMA (núcleo)
-  enrichers/           # FUTURO (Hito 8): OpenAlexEnricher opt-in (refs→DOI, 2º nivel); S2 ([s2])
+  enrichers/           # OpenAlexEnricher opt-in, NÚCLEO (Hito 8 ✅: refs→DOI 8a + co-citación 8b → pobla cited_by_id);
+                       # Enricher Protocol; S2 ([s2]) reservado para señal adicional, NO el Enricher (ADR 0025)
   networks/            # Projector, Analyzer, NetworkSpec, NetworkArtifact, Networks
   exporters/           # GraphML, CSV
   stores/              # DuckDBStore (núcleo, por defecto: biblioteca viva);
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
-                       # cli/commands/ = 12 subcomandos (incl. monitor, FSM→MONITORED). CLI = API
+                       # cli/commands/ = 13 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación). CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
 tests/
   unit/                # tests puros, sin red ni I/O (default)
@@ -271,7 +319,7 @@ dominio** y los **contratos de `docs/API.md`**.
 > **TDD selectivo.** En el núcleo, el test va **antes** del código. Pero **no se testea cada
 > cosa**: se testea donde hay lógica, un contrato o riesgo de regresión; no wrappers finos,
 > plumbing de Click, ni el cliente HTTP de terceros. La disciplina completa (qué SÍ / qué NO) y
-> los tests concretos por hito están en `docs/ROADMAP.md` (§"Disciplina de tests" + cada hito).
+> los tests concretos por hito están en `docs/ROADMAP/` (§"Disciplina de tests" + cada hito).
 
 - **El núcleo se testea primero, sin red ni servidores** (Hitos 1 y 2). Tests sobre
   `Corpus`, proyectores y analizadores con datos sintéticos pequeños y **resultados
@@ -324,21 +372,20 @@ release), `ci` (no release), `style` (no release). Alcance sugerido:
 **SemVer estricto** (`MAJOR.MINOR.PATCH`). Mientras la mayor sea `0`, la API
 se considera inestable: cualquier cambio visible al usuario (no bugfix) bumpa
 MINOR. El congelamiento en `1.0.0` requiere API pública estable, cobertura de
-tests razonable y un caso real validado (estudio de semiconductores
-reproducido). Detalle y tabla de ejemplos en
-[`VERSIONING.md`](VERSIONING.md).
+tests razonable y un caso real validado (el caso **IED** reproducido; ver PRD §10).
+Detalle y tabla de ejemplos en [`VERSIONING.md`](VERSIONING.md).
 
 ## Changelog
 
-**Keep a Changelog**. Cuando se conecte `release-please` (mecanismo diseñado, ADR 0006 /
-[`VERSIONING.md`](VERSIONING.md)), el PR de release actualizará el `CHANGELOG.md` desde los
-Conventional Commits. Como ese tooling **aún no está conectado** (no hay `.github/`/CI), por
-ahora las secciones se mantienen **a mano** antes de cada tag (con `cz bump --dry-run` como
-ayuda de preview local). Plantilla en [`docs/RELEASE_TEMPLATE.md`](docs/RELEASE_TEMPLATE.md).
+**Keep a Changelog**. El `CHANGELOG.md` lo **gestiona `release-please`** (ya conectado): su
+PR de release agrega la sección nueva desde los Conventional Commits que llegan a `main`. Las
+secciones por debajo de `[0.3.0]` son el historial previo a la conexión (mantenido a mano); de
+ahí en adelante las gestiona el bot. `cz bump --dry-run` sigue sirviendo como preview local.
+Plantilla en [`docs/RELEASE_TEMPLATE.md`](docs/RELEASE_TEMPLATE.md).
 
 ## Dónde mirar primero según la tarea
 
-- Empezar cualquier hito → `docs/ROADMAP.md`: historias (PRD §7), criterios de
+- Empezar cualquier hito → `docs/ROADMAP/`: historias (PRD §7), criterios de
   aceptación (DoD) y los tests TDD a escribir.
 - Tocar el modelo de datos → `docs/API.md` §1, `docs/ARCHITECTURE.md` §3,
   [ADR 0006](docs/decisiones/0006-tabla-canonica-y-networkspec.md).

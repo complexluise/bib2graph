@@ -49,6 +49,14 @@
 > [0021](decisiones/0021-cli-agente-native-contrato.md)). **Con el Hito 6, las capacidades de v0.2
 > (Hitos 5–6) quedan completas** (ver [`ROADMAP.md`](ROADMAP/README.md)). *(El 12° subcomando `monitor`
 > —AS-BUILT del cleanup pre-v0.3— cierra el paso 8 del ciclo: `MONITORED` ahora es alcanzable.)*
+>
+> **Sincronizado con el Hito 8 — Ciclos 8a + 8b (2026-06-16):** la costura **`Enricher`** está
+> **construida** (§3) y suma el **13° subcomando `enrich`** (refs→DOI **+ co-citación** sobre
+> OpenAlex, núcleo; **NO** transiciona el `CycleState`). El Enricher vive en el **núcleo sobre
+> OpenAlex**, no en `[s2]` (ADR [0025](decisiones/0025-enricher-cocitacion-openalex.md)). La
+> **co-citación es end-to-end**: `enrich` puebla `cited_by_id` desde las semillas aceptadas (vía
+> `OpenAlexSource.fetch_citing_batch`, §2) y `Networks.quick` devuelve **4 o 5 redes** según haya
+> `cited_by_id` (§10). Flag `--max-citing`. **Hito 8 completo.**
 
 ## Convenciones
 
@@ -67,9 +75,10 @@ subcomando lleva `--json` (envelope estable/versionado) y exit codes (`0` éxito
 datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado). **Sin estado entre
 invocaciones:** el estado vive en el archivo `.duckdb` (opción global `--store`).
 
-**Set de 12 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+**Set de 13 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
 y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
-pre-v0.3):
+pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
+[0025](decisiones/0025-enricher-cocitacion-openalex.md)):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -90,6 +99,16 @@ pre-v0.3):
   fijo, que **siempre** tiene `fetch_citing` (asimetría deliberada con `chain`, que acepta
   `--direction` variable y sí pre-chequea). Errores accionables: sin corpus/estado previo →
   `DataError` (exit 2). Con `monitor`, **`MONITORED` deja de ser inalcanzable**.
+- **`enrich`** (Hito 8 = Ciclos 8a + 8b, ADR
+  [0025](decisiones/0025-enricher-cocitacion-openalex.md)): corre el `OpenAlexEnricher` (§3) sobre
+  la biblioteca viva en **2 pasadas**. **8a:** resuelve `references_id`→`references_doi` (batching
+  por OR) y registra el `EnricherRef` en el `Manifest` (idempotente). **8b:** la pasada de
+  **co-citación** trae los citantes de las **semillas aceptadas** y **mergea sus `openalex_id` en
+  `cited_by_id`** (unión idempotente; no crece el corpus). Flags: `--email` (polite pool),
+  `--api-key` (opcional), **`--max-citing INTEGER`** (tope de citantes **por semilla**, acota el
+  fetch), `--json`. `data` = `{enriched, references_resolved, ...}`. **NO transiciona el
+  `CycleState`** (ortogonal al lazo): se puede enriquecer en cualquier estado sin perturbar el FSM.
+  `build` sigue puro/sin red.
 
 **`--store` global (obligatoria).** Va en el grupo `b2g`, **antes** del subcomando:
 `b2g --store mi.duckdb seed --equation "..."`. Una investigación = un archivo `.duckdb` (ADR
@@ -102,7 +121,8 @@ transición).
 
 **Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`, `chain`→`FORAGED`,
 `filter`→`FILTERED`, `build`→`BUILT`, **`monitor`→`MONITORED`** (cleanup pre-v0.3);
-`accept`/`reject`/`export`/`snapshot`/`status`/`inspect`/`validate` **no transicionan**. El estado
+`accept`/`reject`/`export`/`snapshot`/`status`/`inspect`/`validate`/**`enrich`** **no transicionan**
+(`enrich` es ortogonal al lazo, ADR 0025). El estado
 destino lo dicta `bib2graph.cycle.apply_transition`
 (fuente única de verdad; los comandos no hardcodean el destino). `seed` con **estado previo** se trata
 como **`reseed`** (loop-back a `SEEDED`, ronda++, acumula sobre lo curado).
@@ -453,6 +473,21 @@ class SeedResult(BaseModel):
 | `ScieloSource` / `RedalycSource` / `LaReferenciaSource` | futuro | Fuentes regionales, mínimo universal. Declaradas, no implementadas (ADR 0018). |
 | `RisSource` / `CsvSource` | futuro | No implementados. |
 
+**Capacidades de `OpenAlexSource` fuera del Protocol `Source`** (específicas del backbone, no
+contrato universal; las consumen el `Forager` y el `Enricher`):
+
+- **`fetch_citing(openalex_id) -> list[dict]`** (singular, Forager forward chaining): `GET
+  works?filter=cites:`, con retry/backoff ante 429/5xx (R5). No cambió en el Hito 8.
+- **`fetch_citing_batch(ids, *, max_per_paper) -> dict[seed_id, list[citer_id]]`** (Hito 8b, ADR
+  [0025](decisiones/0025-enricher-cocitacion-openalex.md)): trae los citantes de un conjunto de
+  semillas **batcheando por OR** (`cites:W1|W2|...`, lotes ≤50), pagina por cursor y **atribuye
+  página a página** (cruza `referenced_works` del citante con el set objetivo, por short-id). Con
+  **presupuesto por semilla**: corta la paginación cuando **todas** las semillas del lote alcanzan
+  `max_per_paper` (acota el *fetch*, no solo la columna; **sin starvation** entre semillas; mata el
+  N+1 diferido de R5). Lo consume el `OpenAlexEnricher` (§3) para poblar `cited_by_id`.
+- **`fetch_dois_for(ids) -> dict`** (Hito 8a): resuelve `references_id`→DOI batcheando por OR (lotes
+  ≤100, `select=id,doi`).
+
 **Reporte de cobertura/calidad** (concepto declarado, concreto **v0.2+**; ADR 0018): por
 seed/source, mide % de refs resueltas, % con DOI, distribución idioma/región y completitud del
 enriquecimiento. Alimenta el juicio humano de **cuándo cambiar de Source** y acota la
@@ -464,20 +499,25 @@ en v0.1 (función pura sobre `pa.Table`), sin cablearse vacío (lección 5).
 ## 3. Costura `Enricher` — señal extra (opt-in, ya NO estructural)
 
 Con OpenAlex como backbone, refs y citantes **ya vienen en el corpus** (ADR 0007). El `Enricher`
-deja de ser el camino para co-citación; queda opt-in para **resolver `references` a DOI** y el
-**segundo nivel de fetch** (citantes con sus citas).
+queda opt-in para **resolver `references` a DOI** y el **segundo nivel de fetch** (poblar
+`cited_by_id` ≡ citantes compartidos — ver decisión F en ADR
+[0025](decisiones/0025-enricher-cocitacion-openalex.md)) que habilita la **co-citación
+end-to-end** (Hito 8 completo). El `Enricher` vive en el **núcleo,
+sobre OpenAlex** (ADR 0025, decisión B), **no** en el extra `[s2]` (ese DoD pre-giro queda superado;
+`[s2]` se reserva para un futuro `SemanticScholarEnricher` de señal adicional).
 
 ```python
+@runtime_checkable
 class Enricher(Protocol):
     """Config (API keys) INYECTADA, nunca embebida. Sin ramas muertas. Rate limit/reintentos
-    sin perder papers. Idempotente."""
+    sin perder papers. Idempotente. NO transiciona el CycleState (ortogonal al lazo, ADR 0025)."""
     def enrich(self, corpus: Corpus) -> Corpus: ...
 ```
 
 | Implementación | Estado | Aporta |
 |----------------|--------|--------|
-| `OpenAlexEnricher` | **v1, opt-in** | resuelve `references_id`→`references_doi`; 2º nivel de citantes → habilita co-citación completa |
-| `SemanticScholarEnricher` | futuro | señal de citas adicional |
+| `OpenAlexEnricher` | **v1, opt-in (Hito 8 = Ciclos 8a + 8b construidos)** | `enrich(corpus)` hace **2 pasadas**. **8a (refs→DOI):** reúne los `references_id` únicos, los resuelve **batcheando por OR** (lotes ≤100, `openalex_id:W1\|W2\|...`, `select=id,doi`) y rellena `references_doi` por lookup; registra `EnricherRef(name="openalex_references_doi", …)` en el `Manifest` (idempotente: reemplaza por nombre, no duplica). **8b (co-citación):** para las **semillas aceptadas** (`is_seed=True AND curation_status=accepted`) trae sus citantes vía `OpenAlexSource.fetch_citing_batch` (§2) y **mergea los `openalex_id` de los citantes en `cited_by_id`** (unión idempotente). **NO** materializa citantes como filas (no crece el corpus; decisión A). Constructor con **`max_citing_per_paper`** (tope **por semilla**, acota el fetch). Frontera: el Source hace I/O + atribución + acotamiento; el Enricher **solo une**. |
+| `SemanticScholarEnricher` | futuro | señal de citas adicional (reserva del `[s2]`, no estructural) |
 | `CrossRefEnricher` / `ScopusEnricher` | futuro | No implementados. |
 
 ---
@@ -758,9 +798,12 @@ completo** (crítica #2). La **co-citación** es la más cara (segundo nivel de 
 - **Tipo de nodo** (D2): co-autoría / instituciones / co-word → la **entidad** es el nodo
   (`authors_id` / `institutions_id` / `keywords_id`); acoplamiento / co-citación → el **paper**
   (`id`) es el nodo.
-- **Co-citación en Hito 2:** el `CoCitationProjector` proyecta desde `cited_by_id` con scope
-  `seeds_only`; es válido para los citantes ya presentes en el corpus, pero la co-citación
-  **completa** requiere el 2º nivel de fetch del `OpenAlexEnricher` (Hito 8, ADR 0007).
+- **Co-citación:** el `CoCitationProjector` **no cambia** (decisión F, ADR 0025): cuenta
+  **`cited_by_id` compartido** = los **citantes compartidos** de la metodología (la frase "citantes
+  con sus citas" ≡ `cited_by_id` compartido). Proyecta con scope `seeds_only`. La co-citación
+  **completa es end-to-end** (Hito 8 ✅): `b2g enrich` (8b) puebla `cited_by_id` con el 2º nivel de
+  fetch del `OpenAlexEnricher` (ADR 0007/0025), y `Networks.quick` la incluye cuando esa columna
+  está poblada (§10).
 
 ---
 
@@ -864,8 +907,10 @@ class Networks:
     def build(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact: ...
     @staticmethod
     def quick(corpus: Corpus) -> list[NetworkArtifact]:
-        """Arma las specs razonables (coupling full, co-autoría, institución, co-word) y
-        devuelve sus artefactos. Caso 'investigador, baja fricción'."""
+        """Arma las specs razonables y devuelve sus artefactos (caso 'investigador, baja
+        fricción'). Devuelve **4 o 5 redes**: coupling (full), co-autoría, institución, co-word
+        siempre; la **co-citación** se incluye (→5) cuando el corpus tiene `cited_by_id` poblado
+        (tras `b2g enrich`, Hito 8b) y se **omite graceful** (log) si está vacío (→4)."""
 ```
 
 **Modo quick** (v1) cubre baja fricción; **modo spec** (v0.2, YAML) cubre el pipeline declarativo
@@ -873,9 +918,11 @@ versionable.
 
 **Notas de contrato** (Hito 2, ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md)):
 
-- **`Networks.quick` arma 4 redes** (coupling `full`, co-autoría, institución, co-word) y **omite
-  la co-citación**, avisándolo por log (D3): la co-citación completa requiere el 2º nivel de fetch
-  del `OpenAlexEnricher` (Hito 8). El `CoCitationProjector` queda disponible vía
+- **`Networks.quick` arma 4 o 5 redes** (D3, AS-BUILT Hito 8b): coupling `full`, co-autoría,
+  institución y co-word **siempre** (4); suma la **co-citación** (→5) cuando el corpus tiene
+  `cited_by_id` poblado por `b2g enrich` (2º nivel de fetch del `OpenAlexEnricher`, ADR 0025), y la
+  **omite avisándolo por log** (→4) si esa columna está vacía (no se corrió `enrich`). El
+  `CoCitationProjector` también queda disponible vía
   `Networks.build(corpus, NetworkSpec(kind="cocitation"))`.
 - **`NetworkSpec` es un hook mínimo en v1** (modelo Pydantic ya consumido por `build`/`quick`); la
   carga desde YAML y la validación avanzada son del Hito 9. El símbolo público re-exportado desde
@@ -883,16 +930,41 @@ versionable.
 
 ---
 
-## 11. Deduplicación fuzzy (extra `[dedup]`, v1)
+## 11. Deduplicación fuzzy (extra `[dedup]`, v1 — construido, Hito 7)
+
+**Construido** (Hito 7, ADR [0026](decisiones/0026-dedup-fuzzy-determinista.md)). Dedup fuzzy
+**determinista** con `rapidfuzz` (extra `[dedup]`, import perezoso): el complemento aproximado de la
+normalización conservadora del `Preprocessor` (§6). **Funciones de librería**, exportadas desde
+`bib2graph.preprocessors` (no hay subcomando CLI — decisión del PO). Operan sobre la columna `_id`
+(`authors_id`/`keywords_id`), **nunca** sobre `_raw`, y corren **después** de `normalize` y
+`apply_thesaurus` (orden: normalize → thesaurus → dedup).
 
 ```python
-def deduplicate_authors(corpus: Corpus) -> Corpus:
-    """Combina autores por similitud de nombres (fuzzy). Lo determinístico ya lo hizo el
-    Preprocessor (§6); esto es el complemento aproximado."""
+def deduplicate_authors(corpus: Corpus, *, threshold: float = 0.92) -> Corpus:
+    """Colapsa variantes de `authors_id` por similitud de nombres (fuzzy DETERMINISTA). Lo trivial
+    ya lo hizo el Preprocessor (§6); esto es el complemento aproximado. Requiere extra [dedup]."""
 
-def deduplicate_keywords(corpus: Corpus, *, threshold: float = 0.9) -> Corpus:
-    """Similitud de cadenas para keywords fuera del thesaurus. Requiere extra [dedup]."""
+def deduplicate_keywords(corpus: Corpus, *, threshold: float = 0.90) -> Corpus:
+    """Colapsa variantes de `keywords_id` fuera del thesaurus por similitud de cadenas. Requiere
+    extra [dedup]."""
 ```
+
+**Notas de contrato** (Hito 7, ADR [0026](decisiones/0026-dedup-fuzzy-determinista.md)):
+
+- **`threshold` por-campo** (autores `0.92` / keywords `0.90`; **ambas** lo reciben): se compara con
+  `rapidfuzz.fuzz.token_sort_ratio` (0–100) contra `threshold * 100`.
+- **Determinista e idempotente:** los pares ≥ umbral forman **componentes conexas** vía Union-Find
+  (iteración ordenada); el **canónico** del cluster es la variante más frecuente (papers distintos)
+  con desempate por `id` ascendente; se preserva el **orden de primera aparición** y **nunca se toca
+  `_raw`**. Mismo corpus + threshold + versión de `rapidfuzz` → mismo resultado (verificado
+  cross-`PYTHONHASHSEED`); converge en una pasada. **NO usa IA** (similitud de cadenas, no
+  semántica/LLM; ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)).
+- **Extra `[dedup]` con import perezoso:** sin él, `ImportError` accionable → `uv sync --extra
+  dedup`. Registra un `PreprocRef` en el `Manifest` con `{library, rapidfuzz_version, scorer,
+  threshold, n_clusters_collapsed}` (reproducibilidad a igual versión del scorer, ADR 0017).
+- **Campos en V1:** autores + keywords. **Instituciones diferidas** (`institutions_id` no está
+  normalizada determinísticamente hoy). `splink` (record-linkage probabilístico) **diferido a
+  post-V1** (ADR 0026).
 
 ---
 

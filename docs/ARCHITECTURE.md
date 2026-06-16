@@ -163,7 +163,9 @@ citantes **ya vienen en el corpus**; el `Enricher` deja de ser estructural. El *
 (barato, mira hacia adelante, usa refs que las semillas ya traen) es **ciudadano de primera**
 (crítica #2). La **co-citación** sigue siendo la más cara: necesita los citantes *con sus
 propias citas* (segundo nivel de fetch). El acoplamiento opera sobre el **corpus completo**, no
-solo `is_seed` (rediseño validado en el sandbox IED).
+solo `is_seed` (rediseño validado en el sandbox IED). **AS-BUILT (Hito 8b ✅):** ese 2º nivel ya está
+cableado end-to-end — `b2g enrich` puebla `cited_by_id` (vía `OpenAlexSource.fetch_citing_batch`,
+§4.2) y `Networks.quick` incluye la co-citación cuando esa columna está poblada.
 
 ### 3.3 `Analyzer` — red → resultados
 
@@ -228,8 +230,10 @@ candidato lo explica la **estructura visible** (con qué del corpus se acopla/co
 Determinístico e idempotente: canonicalización **conservadora** de nombres de autor
 (`authors_id`: lowercase + acentos + espacios) y `language` (ISO 639-1 primario), y
 **normalización de keywords vía thesaurus multilingüe** (en/es/pt; dict `canónico → aliases` en
-JSON portable; ADR 0011). Lo *fuzzy* (dedup aproximado de autores) vive en el extra `[dedup]`
-(`rapidfuzz`/`splink`, determinista). **No hay fallback semántico/LLM del thesaurus** (ADR
+JSON portable; ADR 0011). Lo *fuzzy* (dedup aproximado de autores y keywords) vive en el extra
+`[dedup]` (`rapidfuzz`, determinista; Hito 7 ✅, ADR
+[0026](decisiones/0026-dedup-fuzzy-determinista.md); `splink` diferido a post-V1). **No hay fallback
+semántico/LLM del thesaurus** (ADR
 [0011](decisiones/0011-thesaurus-multilingue.md) enmendado / 0022): el thesaurus es **curado y
 determinista**; lo que no matchea queda fuera, sin inventar conceptos con un modelo.
 
@@ -260,13 +264,20 @@ exige un pre-procesador). SciELO/Redalyc/La Referencia, RIS/CSV: futuras, no pub
 **reporte de cobertura/calidad** por seed/source (concreto v0.2+, ADR 0018) mide qué tan completa
 es la fuente y alimenta el juicio de cuándo cambiar de `Source`.
 
-### 4.2 `Enricher` — señal extra (opt-in)
+### 4.2 `Enricher` — señal extra (opt-in, núcleo sobre OpenAlex)
 
-Con OpenAlex como backbone, **deja de ser estructural** (ADR 0007). Queda opt-in para:
-**resolver `references` a DOI canónico** (OpenAlex las da como URLs internas — T8 del sandbox) y
-el **segundo nivel de fetch** (citantes con sus citas) que habilita la co-citación. S2/CrossRef/
-Scopus: futuras. Reglas: config inyectada (nunca embebida), sin ramas muertas, rate limit y
-reintentos sin perder papers.
+Con OpenAlex como backbone, **deja de ser estructural** (ADR 0007). Vive en el **núcleo sobre
+OpenAlex** (no en `[s2]`; ADR [0025](decisiones/0025-enricher-cocitacion-openalex.md)). El **Hito 8
+está completo** (Ciclos 8a + 8b): `OpenAlexEnricher.enrich` hace **2 pasadas**. **8a** — **resolver
+`references_id` a DOI canónico** (OpenAlex las da como URLs internas — T8 del sandbox; batching por
+OR, idempotente vía `EnricherRef` en el `Manifest`). **8b** — el **segundo nivel de fetch** habilita
+la **co-citación end-to-end**: trae los citantes de las **semillas aceptadas** (vía
+`OpenAlexSource.fetch_citing_batch`: batcheo OR ≤50 con presupuesto por semilla) y **mergea sus
+`openalex_id` en `cited_by_id`** (unión idempotente); **solo puebla `cited_by_id`**, no crece el
+corpus (decisión A). El tope `max_citing_per_paper` **acota el fetch por semilla**. El subcomando
+`b2g enrich` (flag `--max-citing`) es propio y **no transiciona el `CycleState`**. S2/CrossRef/Scopus:
+futuras (`[s2]` reservado para señal adicional). Reglas: config inyectada (nunca embebida), sin ramas
+muertas, rate limit y reintentos sin perder papers.
 
 ### 4.3 `Store` / backend de persistencia (biblioteca viva)
 
@@ -415,11 +426,14 @@ trabajo posterior, pero la API se **diseña con estos principios desde el hito 1
    faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` mediante un
    **pre-check `hasattr` en el borde** (p. ej. `chain.py` antes del `Forager`). Ver ADR 0021 §D.
 
-Son **12 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
-`inspect`, `validate`, `accept`, `reject`, **`monitor`**); `build`/`export` están **separados** y el
-`CycleState` transiciona automáticamente por comando (ADR 0021). El 12° **`monitor`** (cleanup
-pre-v0.3) re-chequea citantes nuevos del corpus (forward chaining) y transiciona a `MONITORED`. El
-error de uso (p. ej. falta `--store`) sale **sin envelope** (Click aborta el parseo: stderr + exit 1).
+Son **13 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
+`inspect`, `validate`, `accept`, `reject`, **`monitor`**, **`enrich`**); `build`/`export` están
+**separados** y el `CycleState` transiciona automáticamente por comando (ADR 0021). El 12°
+**`monitor`** (cleanup pre-v0.3) re-chequea citantes nuevos del corpus (forward chaining) y
+transiciona a `MONITORED`. El 13° **`enrich`** (Hito 8 = Ciclos 8a + 8b, ADR
+[0025](decisiones/0025-enricher-cocitacion-openalex.md)) corre el `OpenAlexEnricher` (refs→DOI +
+co-citación, flag `--max-citing`) y **no transiciona** el ciclo (ortogonal al lazo). El error de uso (p. ej. falta `--store`) sale **sin
+envelope** (Click aborta el parseo: stderr + exit 1).
 
 **AS-BUILT R5 — UTF-8 en la frontera (Nota 06 RAÍZ 3):** `main()` llama `_force_utf8()` (reconfigura
 `sys.stdout`/`stderr` a UTF-8, con guarda por si la stream no es reconfigurable) **antes de que Click
@@ -435,10 +449,12 @@ el `.duckdb` ante un typo en `--store` (falla accionable); los comandos de escri
 core         pyarrow, pydantic, networkx, click, tqdm,
              duckdb, <cliente OpenAlex>                 (siempre; biblioteca viva + backbone)
 [zotero]     pyzotero                                   ─┐
-[s2]         (cliente Semantic Scholar)                  │ costuras / capacidades opcionales
+[s2]         (cliente Semantic Scholar; reservado para   │ costuras / capacidades opcionales
+              señal adicional, NO el Enricher —ADR 0025)  │
 [neo4j]      neomodel / driver oficial                   │ (futuras marcadas como no
 [viz]        matplotlib, seaborn                          │ implementadas)
-[dedup]      rapidfuzz / splink (fuzzy DETERMINISTA)    ─┘
+[dedup]      rapidfuzz (fuzzy DETERMINISTA; splink         │
+              diferido a post-V1 —ADR 0026)               ─┘
 ```
 
 El extra **`[llm]` se elimina** (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)): el

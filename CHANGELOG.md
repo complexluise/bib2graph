@@ -16,6 +16,7 @@ la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestio
 
 ### Documentation
 
+* **agents:** documentar el flujo GitFlow-lite en AGENTS.md + crear CLAUDE.md ([#8](https://github.com/complexluise/bib2graph/issues/8)) ([76254a7](https://github.com/complexluise/bib2graph/commit/76254a7bdd2678edb7f1e35e1e0a050622d3f811))
 * **arch:** ADR 0024 (orden D3 vía _seq) + saneamiento de coherencia ([e6f0e51](https://github.com/complexluise/bib2graph/commit/e6f0e5124bf3da8f1e900ed75128e06198e839d0))
 * **contributing:** documentar el flujo GitFlow-lite (dev/main) + CI en dev ([665988c](https://github.com/complexluise/bib2graph/commit/665988cd6e84fd6523779c280d3245e5156ca43d))
 * **contributing:** flujo GitFlow-lite (dev/main) + CI en dev ([1e17869](https://github.com/complexluise/bib2graph/commit/1e17869e81e9d2ddf932d4baacdd542fe5051155))

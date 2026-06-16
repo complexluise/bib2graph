@@ -57,7 +57,9 @@ dependencies = [
 zotero = []
 s2 = []
 neo4j = []
-dedup = []
+dedup = [
+    "rapidfuzz>=3,<4",
+]
 viz = []
 bibtex = [
     "bibtexparser>=1.4.4",
