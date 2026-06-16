@@ -126,3 +126,17 @@ La enmienda está **construida** (ROADMAP Hito R3 ✅). As-built:
 
 Verifier: **APRUEBA** (275 tests; mypy strict / ruff limpios). La reserva del verifier
 (chain/filter/build no pasaban por el dominio) quedó **cerrada** con el fix posterior.
+
+### Cleanup pre-v0.3 (2026-06-16) — `MONITORED` alcanzable; alias `LoopState` retirado
+
+Dos seguimientos abiertos de R3 (arriba) quedan **CERRADOS**:
+
+- **`MONITORED` ya NO es inalcanzable.** Se construyó el comando **`b2g monitor`** (12° subcomando):
+  re-chequea OpenAlex por **citantes nuevos** del corpus (forward chaining), mergea los candidatos
+  nuevos a la biblioteca viva y transiciona vía `apply_transition(state, "monitor", round)`. El paso 8
+  del ciclo (monitoreo, Ellis) deja de ser un estado del modelo sin compuerta: ahora es **reachable**.
+  La regla `monitor` se agregó a `_AVAILABLE_TRANSITIONS` desde `BUILT` y desde `MONITORED` (re-monitoreo
+  idempotente del estado). Contrato del comando: ADR [0021](0021-cli-agente-native-contrato.md).
+- **El alias `LoopState = CycleState` se RETIRÓ** (la recomendación "a retirar pre-1.0"): el código usa
+  **solo `CycleState`** (de `bib2graph.cycle`). Se eliminó de `backends/duckdb.py` y `stores/duckdb.py`;
+  los call-sites migraron. No queda una segunda clase para el mismo concepto.

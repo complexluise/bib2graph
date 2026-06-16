@@ -38,12 +38,15 @@ quedaban abiertas:
 
 ## Decisión
 
-### A. Set de 11 subcomandos, incluyendo `accept`/`reject` (decisión del PO)
+### A. Set de subcomandos, incluyendo `accept`/`reject` (decisión del PO)
 
-El CLI `b2g` expone **11 subcomandos**:
+> **Cleanup pre-v0.3 (2026-06-16):** el set creció a **12 subcomandos** con el alta de **`monitor`**
+> (ver enmienda al final). El texto original (11) queda como historia.
+
+El CLI `b2g` expone **11 subcomandos** (original; **12 con `monitor`** desde el cleanup pre-v0.3):
 
 `seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`, `inspect`, `validate`,
-**`accept`**, **`reject`**.
+**`accept`**, **`reject`** (+ **`monitor`**, cleanup pre-v0.3).
 
 Esto **amplía** el set provisional de `API.md` §convenciones (que listaba 9 y dejaba `accept`/
 `reject` como "sobrevive programáticamente"): el PO decidió que la curación programática
@@ -205,3 +208,33 @@ exploratorio). `status` lee y presenta el estado actual + las transiciones dispo
 - **Las transiciones automáticas** dan un `LoopState` siempre consistente con el último comando
   mutador, sin que el usuario lo gestione. Como las transiciones son **permisivas** (ADR 0016), no
   hay guardia: re-sembrar tras `BUILT` está permitido y solo re-apunta el estado a `SEEDED`.
+
+## Enmienda — Cleanup pre-v0.3 (2026-06-16): 12° subcomando `monitor`
+
+> Cierra dos seguimientos de R3/R5 (alias `LoopState` retirado; `MONITORED` alcanzable — ver ADR
+> [0016](0016-maquina-estados-lazo.md) §Cleanup pre-v0.3). Implementado + verificado (327 tests, mypy
+> strict, ruff+format OK).
+
+**El set pasa de 11 a 12 subcomandos** con el alta de **`monitor`** (paso 8 del ciclo, Ellis):
+
+- **§A (set):** se agrega `monitor` → **12 subcomandos**. Re-chequea OpenAlex por **citantes nuevos**
+  del corpus (forward chaining), mergea los candidatos nuevos a la biblioteca viva y transiciona a
+  `MONITORED`. `--email` (polite pool); sin corpus/estado previo → `DataError` (exit 2, accionable).
+- **§C (envelope):** el `data` de `monitor` es
+  `{"new_candidates": <int>, "total_papers": <int>, "loop_state": <str>, "round": <int>}`, dentro del
+  envelope común con **`schema="1"`** (sin bump; campo de payload nuevo, no cambia la forma del
+  envelope). `--json` emite el objeto único de siempre.
+- **§F (transiciones):** se agrega la fila **`monitor` → `MONITORED`**. La regla `monitor` está en
+  `cycle.apply_transition` desde `BUILT` y desde `MONITORED` (re-monitoreo). El destino lo dicta el
+  dominio (fuente única), como el resto de los comandos mutadores.
+- **§D (pre-check de capacidad) — asimetría deliberada `monitor` vs `chain`:** `monitor` **NO** hace
+  el pre-check `hasattr(source, "fetch_citing")` que sí hace `chain` (enmienda R5). El motivo es que
+  `monitor` instancia **`OpenAlexSource` fijo** —que **siempre** tiene `fetch_citing`—, mientras que
+  `chain` acepta una `--direction` variable y puede recibir una `Source` de solo-mínimo (ADR 0018)
+  que no soporte forward; por eso `chain` pre-chequea y lanza `DependencyError` (exit 3) accionable, y
+  `monitor` no necesita la guardia. La asimetría es **decisión documentada, no deuda**: el pre-check
+  es responsabilidad del borde **solo donde la capacidad puede faltar**.
+
+**Además, el alias `LoopState = CycleState` se RETIRÓ** del código (`backends/duckdb.py` y
+`stores/duckdb.py`): el contrato usa **solo `CycleState`** (de `bib2graph.cycle`). Donde este ADR
+dice "`LoopState`", léase `CycleState` (mismo concepto, una sola clase).

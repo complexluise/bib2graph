@@ -12,26 +12,27 @@ Kuhlthau): se siembra desde la ecuación, se forrajea (chaining rankeado por est
 cura, **la idea muta** y se vuelve a sembrar — acumulando sobre lo curado. La colección
 **vive y persiste** entre corridas en DuckDB.
 
-> **Estado: v0.2 construido (Hitos 0–6 + 1.5), en remediación hacia v0.3.** El flujo **de una
+> **Estado: v0.3 construido (Hitos 0–6 + 1.5 + tanda de remediación R1–R5).** El flujo **de una
 > ecuación a las redes** ya corre sobre la biblioteca viva, **desde código Python y desde el CLI
 > `b2g`** (que **ya no es un placeholder**). Construido: el `Corpus` canónico sobre `TabularBackend`,
 > los proyectores/analizadores/exportadores, el backend DuckDB (biblioteca viva), las fuentes
 > `OpenAlexSource`/`BibtexSource`, el **forrajeo** (`Forager`, chaining rankeado por *information
-> scent*) + `Preprocessor`/thesaurus + filtros PRISMA, y la **CLI agente-native `b2g`** (11
+> scent*) + `Preprocessor`/thesaurus + filtros PRISMA, y la **CLI agente-native `b2g`** (12
 > subcomandos, `--json` versionado, exit codes; ADR
-> [0021](docs/decisiones/0021-cli-agente-native-contrato.md)).
+> [0021](docs/decisiones/0021-cli-agente-native-contrato.md)). **327 tests** verdes.
 >
-> **En remediación (Hitos R1–R5, antes de los nuevos):** tras un red-team del código construido
+> **Remediación completa (Hitos R1–R5):** tras un red-team del código construido
 > ([Nota 06](docs/Notas/06-critica-as-built-v0.2.md)) el PO bloqueó un modelo nuevo (ADR
-> [0022](docs/decisiones/0022-producto-sin-ia-generativa.md)/[0023](docs/decisiones/0023-capa-constants-modelos-schema.md)):
-> el **producto no usa IA generativa**; el *information scent* pasa de una heurística de frecuencia de
-> enlace a **scent bibliométrico determinista vía proyectores** (acoplamiento/co-citación/
-> centralidad, **sin LLM**); la **reproducibilidad bit a bit** del snapshot se arregla
-> (identidad-vs-procedencia); el ciclo se vuelve un **FSM cíclico** con `reseed`/ronda y curación
-> visible; y se **elimina** `explain_candidate` + el extra `[llm]`. Ver el
-> [roadmap](docs/ROADMAP.md) (tanda R1–R5).
+> [0022](docs/decisiones/0022-producto-sin-ia-generativa.md)/[0023](docs/decisiones/0023-capa-constants-modelos-schema.md))
+> y la tanda **ya está construida**: el **producto no usa IA generativa**; el *information scent* pasó
+> de una heurística de frecuencia de enlace a **scent bibliométrico determinista vía proyectores**
+> (acoplamiento/co-citación/centralidad, **sin LLM**, R4); la **reproducibilidad bit a bit** del
+> snapshot se arregló con **content-hash determinista** identidad-vs-procedencia (R2); el ciclo es un
+> **FSM cíclico** de dominio (`cycle.py`) con `reseed`/ronda y curación visible (R3); se **eliminó**
+> `explain_candidate` + el extra `[llm]` (R4); y se endureció la robustez (bulk-load, UTF-8 en la
+> frontera, `except` acotados — R5). Ver el [roadmap](docs/ROADMAP.md) (tanda R1–R5, ✅ completa).
 >
-> **Todavía no** (tras la remediación, v0.4+ → v1.0): dedup fuzzy (Hito 7), `Enricher` de co-citación
+> **Todavía no** (v0.4+ → v1.0, ya con la remediación cerrada): dedup fuzzy (Hito 7), `Enricher` de co-citación
 > end-to-end (Hito 8), `NetworkSpec` YAML (Hito 9), visualización (Hito 10) y costuras Zotero/Neo4j
 > (Hito 11). La **co-citación end-to-end** requiere un 2º nivel de fetch (Hito 8) — hoy da pocas/cero
 > aristas hasta enriquecer.
@@ -57,8 +58,8 @@ está en [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md).
 > **estructura bibliométrica como *information scent*** —acoplamiento/co-citación/centralidad,
 > **determinista y reproducible, sin LLM ni embeddings**—, no IA. La **curación es 100% humana** y el
 > **sensemaking** (leer tensiones en las redes) también lo hace la persona, asistida por las redes —
-> no por un modelo. `explain_candidate` y el extra `[llm]` **se eliminan**; la antigua "máquina de
-> tensiones" **se retira del producto** (no se difiere). El diferenciador no es "más IA": es una
+> no por un modelo. `explain_candidate` y el extra `[llm]` **se eliminaron** (R4); la antigua "máquina
+> de tensiones" **se retiró del producto** (no se difirió). El diferenciador no es "más IA": es una
 > **biblioteca viva curada que el investigador posee**, abierta y reproducible.
 
 Como cualquier salida asistida por IA, **verificá los resultados** antes de usarlos en
@@ -101,7 +102,7 @@ Capacidades opcionales como extras (lección de v0: núcleo liviano): `uv sync -
 (sembrar desde un `.bib`, **ya construido**, Hito 4). Los extras `--extra dedup` (Hito 7) /
 `--extra s2` (Hito 8) / `--extra viz` (Hito 10) / `--extra zotero`·`--extra neo4j` (Hito 11) están
 **declarados pero aún vacíos**: se poblarán a medida que se construya cada hito. *(El extra `[llm]`
-**se elimina** en la remediación: el producto no usa IA generativa — ADR
+**se eliminó** en la remediación (R4): el producto no usa IA generativa — ADR
 [0022](docs/decisiones/0022-producto-sin-ia-generativa.md).)*
 
 ## Uso
@@ -121,8 +122,8 @@ b2g --store biblioteca.duckdb export --format graphml --out-dir redes/       # s
 b2g --store biblioteca.duckdb status --json                                  # estado del ciclo + ronda + curación + conteos
 ```
 
-Subcomandos: `seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`, `inspect`,
-`validate`, `accept`, `reject`. Exit codes `0` éxito · `1` uso · `2` datos · `3` dependencia ·
+Subcomandos (12): `seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`, `inspect`,
+`validate`, `accept`, `reject`, `monitor`. Exit codes `0` éxito · `1` uso · `2` datos · `3` dependencia ·
 `4` red · `5` store bloqueado/corrupto.
 
 ### Desde código Python

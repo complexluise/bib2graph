@@ -87,10 +87,11 @@ conectado** (no existe `.github/` ni CI). Mientras tanto, el versionado/tag se h
 - **v0.2 — forrajeo + CLI agente-native (Hitos 5–6) · ✅ CAPACIDADES COMPLETAS (2026-06-15):**
   chaining rankeado, `Preprocessor`, filtros PRISMA (comando **`filter`**), `b2g status`
   (`LoopState`) y el CLI `b2g` con `--json`. **El forrajeo, el `Preprocessor` y los filtros (Hito 5)
-  y el CLI agente-native (Hito 6) están construidos.** El CLI expone **11 subcomandos** (`seed`,
+  y el CLI agente-native (Hito 6) están construidos.** El CLI expone **12 subcomandos** (`seed`,
   `chain`, `filter`, `build`, `export`, `snapshot`, `status`, `inspect`, `validate`, `accept`,
-  `reject`) con envelope `--json` versionado y exit codes 0–5 (ADR
-  [0021](decisiones/0021-cli-agente-native-contrato.md)). El `accept`/`reject` programático
+  `reject`, **`monitor`**) con envelope `--json` versionado y exit codes 0–5 (ADR
+  [0021](decisiones/0021-cli-agente-native-contrato.md)). El 12° **`monitor`** (cleanup pre-v0.3)
+  re-chequea citantes nuevos del corpus y transiciona a `MONITORED`. El `accept`/`reject` programático
   sobrevive (ahora como subcomando CLI); la curación interactiva rica (`curate`) y la GUI son
   futuro. Acá se cumple el criterio "V1 hecha" del PRD §9 a nivel de *capacidades* (el número de
   versión sigue en 0.y). **Tag local `v0.2.0`** creado en HEAD el 2026-06-15 (anotado, sin push).
@@ -809,6 +810,11 @@ ser falsa. El forrajeo/curación/análisis son deterministas de punta a punta.
 > está en el modelo pero **sin comando que lo dispare** (futuro). **275 tests** verdes (R3 + 9
 > domain-tied del fix), mypy strict / ruff limpios. Decisiones de implementación de la IA en
 > [`decisiones/registro-ia.md`](decisiones/registro-ia.md) (Hito R3).
+>
+> ✅ **Seguimientos de R3 CERRADOS en el cleanup pre-v0.3 (2026-06-16):** (a) el **alias
+> `LoopState = CycleState` se RETIRÓ** (el código usa solo `CycleState`); (b) **`MONITORED` ya es
+> alcanzable**: el comando **`b2g monitor`** (12° subcomando) lo dispara (forward chaining → merge →
+> transición). Ver registro-ia "Cleanup pre-v0.3" y ADR 0016 §Cleanup.
 
 **Alcance**
 
@@ -819,7 +825,8 @@ ser falsa. El forrajeo/curación/análisis son deterministas de punta a punta.
   contador de RONDA** y **acumula** sobre lo curado (no es solo "transición permisiva"). Es lo que el
   ADR 0016 prometía y el AS-BUILT no cumplía.
 - **`MONITORED`** modela el paso 8 del ciclo (Nota 05 §3). *(El comando que lo dispara puede ser
-  futuro; el estado existe en el modelo.)*
+  futuro; el estado existe en el modelo.)* **✅ Cerrado:** el comando **`b2g monitor`** se construyó en
+  el cleanup pre-v0.3 (2026-06-16) — `MONITORED` ya no es solo modelo.
 - **Curación TRANSVERSAL:** `accept`/`reject` están disponibles **en cualquier estado**, **no
   transicionan**, pero `b2g status` **debe** mostrarlas como **acción siempre-disponible** (hoy las
   oculta) y exponer el **contador de ronda**. Humanos e IAs ven en el mapa lo único irreductiblemente
@@ -968,6 +975,8 @@ desarrollo es asistido por IA; el producto no.
 > `cites:` en una sola query para matar el N+1) **NO se implementó** — el spec lo pedía "si es
 > factible" y queda como **mejora de PERFORMANCE futura** (el N+1 persiste, pero ahora es resiliente).
 > Distinguir: el retry SÍ se hizo; el batching NO. (Ver registro-ia R5.3 y "Decisiones de seguimiento".)
+> **➡ Encuadrado por el arquitecto (cleanup pre-v0.3, 2026-06-16): el batching-por-OR pasa al Hito 8**
+> (`Enricher` de co-citación), que es donde se hace el **2º nivel de fetch** a escala — ver Hito 8 §Alcance.
 >
 > **Cierre de la tanda:** con R5 la **remediación R1–R5 queda COMPLETA** — la brecha AS-BUILT↔TARGET
 > del red-team (Nota 06: RAÍZ 1, 2, 3 + secundarios) está cerrada. Lo que sigue son los Hitos 7–11
@@ -1036,6 +1045,8 @@ el flujo a escala mediana.
   `filters/prisma.py:115` (filtro no-op); `networks/analyzer.py:277` (param muerto `g`);
   `networks/facade.py:39` vs `spec.py:42-48` (`_QUICK_KINDS` duplica `NetworkKind`);
   `backends/duckdb.py:417,423` (SQL por interpolación de strings en `merge` — hoy seguro, frágil).
+  **✅ RESUELTO en el cleanup pre-v0.3 (2026-06-16):** el `merge` ya no interpola ids (lee filas,
+  ordena en Python por orden de aparición, reinserta; D3 preservado; la alternativa CTE descartada).
 - `status`/`validate` auto-crean el store ante typo en `--store` → no auto-crear en solo-lectura.
 
 **Se vuelve posible:** bib2graph corre a escala mediana, el contrato agente-native funciona en
@@ -1079,6 +1090,12 @@ Windows, y desaparecen los no-ops silenciosos que esconden bugs.
 - `Enricher` (ya **no estructural**; ADR 0007, API.md §3): **resolver `references_id` a DOI
   canónico** (T8) y el **segundo nivel de fetch** (citantes con sus citas) que habilita la
   **co-citación** completa.
+- **Batching-por-OR de `fetch_citing`** (seguimiento heredado de R5, encuadrado acá por el arquitecto
+  2026-06-16): R5 entregó **retry/backoff** pero **difirió** el batching (agrupar varios `cites:` en
+  una query `cites:W1|W2|...` para matar el N+1 de requests). El **2º nivel de fetch de este hito** es
+  exactamente donde se vuelve a forrajear citantes/citas a escala, así que el batching **se hace acá**
+  (mejora de performance, no de correctitud: el N+1 ya es resiliente al rate-limit). Ver registro-ia
+  R5.3 y "Cleanup pre-v0.3" C-seguimientos.
 
 **Historias:** completa **D1** para la red de **co-citación** end-to-end (la más cara) y la
 interoperabilidad de referencias cross-source (OpenAlex ↔ `.bib`).
@@ -1087,6 +1104,8 @@ interoperabilidad de referencias cross-source (OpenAlex ↔ `.bib`).
 
 - `enrich` es **idempotente** y no pierde papers ante rate limit/reintentos.
 - Resuelve `references_id` → `references_doi`; el 2º nivel habilita `CoCitationProjector` completo.
+- **`fetch_citing` batchea por OR** (`cites:W1|W2|...`) en el 2º nivel de fetch: el N+1 de R5 deja de
+  hacer una request por paper (mejora de performance; el retry/backoff de R5 se conserva).
 - Config/keys **inyectadas**, sin ramas muertas. **Sin red en CI** (mock).
 
 **Tests (TDD — los justos)**
@@ -1213,4 +1232,4 @@ No se prometen ni se cablean clientes que no se usan.
 | D3 asortatividad + composición + proxy | 2 | |
 | D4 export GraphML/CSV | 2 | |
 | E1 snapshot reproducible | 1 + 6 ✅ | `Corpus.snapshot` + `b2g snapshot` |
-| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) | `b2g` 11 subcomandos, envelope `--json` versionado, exit 0–5 (ADR 0021) |
+| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) + cleanup pre-v0.3 ✅ (`monitor`) | `b2g` **12 subcomandos** (Hito 6 entregó 11; `monitor` se sumó en el cleanup pre-v0.3 → `MONITORED`), envelope `--json` versionado, exit 0–5 (ADR 0021) |

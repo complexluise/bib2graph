@@ -405,3 +405,37 @@
 > lanza, store read-only, `.bib` lanza, `lib_version` "unknown", forward `DependencyError`+retry),
 > CHANGELOG (R5 ✅ Fixed + Changed de comportamiento). La [Nota 06](../Notas/06-critica-as-built-v0.2.md)
 > recibió una nota corta de cierre (rastro histórico, sin reescribir hallazgos).
+
+---
+
+## 2026-06-16 — Cleanup pre-v0.3 (cerrar seguimientos abiertos de R3/R5)
+
+> Tanda de limpieza **antes de v0.3**: cierra tres seguimientos que R3/R5 dejaron abiertos
+> (alias `LoopState`, `MONITORED` sin comando, SQL del `merge` por interpolación). **No cambia el
+> modelo conceptual.** Implementado + verificado: **327 tests** verdes, mypy strict, ruff check+format
+> limpios.
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| C.1 | **Alias `LoopState = CycleState` RETIRADO** (de `backends/duckdb.py` y `stores/duckdb.py`); el código usa **solo `CycleState`** (de `bib2graph.cycle`) | Cierra la recomendación abierta de R3.2 ("retirar pre-1.0"). Una sola clase para el concepto del ciclo elimina la ambigüedad de imports y la doble verdad | Alta: re-introducir el alias es mecánico (una línea), pero no hay motivo | **Sí — steering** (cierra R3.2) |
+| C.2 | **Comando `b2g monitor` (12° subcomando)**: re-chequea OpenAlex por **citantes nuevos** del corpus (forward chaining), mergea los candidatos nuevos a la biblioteca viva y transiciona a **`MONITORED`** vía `apply_transition(state, "monitor", round)` (paso 8 del ciclo, Ellis). `data = {new_candidates, total_papers, loop_state, round}`, `schema="1"`; `--email`; sin corpus/estado previo → `DataError` (exit 2) | Cierra la recomendación abierta de R3/R5 ("`MONITORED` existe en el modelo, sin comando que lo dispare"). El estado deja de ser inalcanzable; el ciclo de Ellis queda completo en la CLI. Regla `monitor` añadida a `_AVAILABLE_TRANSITIONS` desde `BUILT` y `MONITORED` | Media: el comando es aditivo (módulo propio `cli/commands/monitor.py`); quitarlo vuelve `MONITORED` inalcanzable | **Sí — steering** (cierra R3/R5; ADR 0021 enmendado) |
+| C.3 | **`monitor` SIN pre-check de capacidad `fetch_citing`** (asimetría deliberada con `chain`): instancia `OpenAlexSource` fijo, que **siempre** soporta forward; `chain` sí pre-chequea porque acepta `--direction` variable y puede recibir una `Source` de solo-mínimo | El pre-check `hasattr` (enmienda R5.4) es responsabilidad del borde **solo donde la capacidad puede faltar**. En `monitor` no puede faltar → la guardia sería ruido. Es **decisión documentada, no deuda** (ADR 0021 §D enmendado) | Alta: agregar el pre-check sería trivial si en el futuro `monitor` aceptara sources variables | **Sí — steering** (ADR 0021 §D) |
+| C.4 | **`merge` de `DuckDBBackend` SIN interpolación de ids**: en vez de `... id IN ('<id>',...) ORDER BY CASE id WHEN ... END` con f-strings, lee todas las filas (`SELECT *`), **ordena en Python** por orden de aparición y reinserta. Orden determinista D3 preservado | Cierra el footgun catalogado en la Nota 06 (`backends/duckdb.py:417,423`): SQL construido con datos (hoy seguro porque los ids son hashes hex, pero frágil). La alternativa **CTE con `VALUES`** quedó **descartada** (ordenar en Python es más simple para el tamaño objetivo y no acopla a un dialecto SQL) | Media: cambio local al `merge`; revertir re-abre el footgun. D3 cubierto por regresión | **Sí — steering** (cierra footgun Nota 06; ADR 0013 AS-BUILT) |
+
+> **Cambios de contrato (importan para CHANGELOG/API/ADRs):** **12 subcomandos** (era 11; `monitor` es el
+> 12°); `monitor` transiciona `→ MONITORED` (tabla §F del ADR 0021); el alias `LoopState` ya no existe
+> (el contrato usa `CycleState`). **`schema="1"` no se bumpea** (el `data` de `monitor` es payload nuevo,
+> no cambia la forma del envelope).
+>
+> **Seguimientos restantes:** queda **uno** de código abierto — el **batching-por-OR de `fetch_citing`**
+> (mejora de performance: matar el N+1 agrupando `cites:` en una query; R5 entregó solo retry/backoff).
+> El arquitecto lo **encuadró en el Hito 8** (`Enricher` de co-citación), que es donde se hace el 2º nivel
+> de fetch. Ver ROADMAP Hito 8. **No es deuda de correctitud** (el N+1 ya es resiliente al rate-limit). La
+> asimetría del pre-check `monitor`/`chain` (C.3) **NO es seguimiento**: es decisión documentada (ADR 0021 §D).
+>
+> **Reconciliación de docs (arquitecto, 2026-06-16):** ADR 0016 (§Cleanup: `MONITORED` alcanzable, alias
+> retirado), ADR 0021 (§Enmienda cleanup: 12° subcomando `monitor`, envelope, asimetría del pre-check),
+> ADR 0013 (§AS-BUILT: merge sin interpolación, CTE descartado), ARCHITECTURE.md (`monitor`/`MONITORED`
+> alcanzable, `CycleState` única, merge sin interpolación), API.md (subcomando `monitor` 12°, conteo 11→12),
+> ROADMAP (seguimientos cerrados, batching → Hito 8, `monitor` ya no "futuro"), CHANGELOG (Added `monitor`,
+> Changed/Fixed alias + merge).

@@ -42,12 +42,13 @@
 > lanza `NotImplementedError`; `explain_candidate` (B4) es un stub gateado en `[llm]`.
 >
 > **Sincronizado con el Hito 6 (2026-06-15):** el **CLI agente-native `b2g`** está **construido**
-> (paquete `bib2graph.cli`, §convenciones): **11 subcomandos** (`seed`, `chain`, `filter`, `build`,
-> `export`, `snapshot`, `status`, `inspect`, `validate`, `accept`, `reject`), **envelope JSON común
-> versionado** (`schema="1"`), exit codes 0–5 mapeados **por tipo de error**, opción global
-> `--store` (obligatoria) y `LoopState` que transiciona automáticamente por comando (ADR
+> (paquete `bib2graph.cli`, §convenciones): **12 subcomandos** (`seed`, `chain`, `filter`, `build`,
+> `export`, `snapshot`, `status`, `inspect`, `validate`, `accept`, `reject`, **`monitor`**), **envelope
+> JSON común versionado** (`schema="1"`), exit codes 0–5 mapeados **por tipo de error**, opción global
+> `--store` (obligatoria) y `CycleState` que transiciona automáticamente por comando (ADR
 > [0021](decisiones/0021-cli-agente-native-contrato.md)). **Con el Hito 6, las capacidades de v0.2
-> (Hitos 5–6) quedan completas** (ver [`ROADMAP.md`](ROADMAP.md)).
+> (Hitos 5–6) quedan completas** (ver [`ROADMAP.md`](ROADMAP.md)). *(El 12° subcomando `monitor`
+> —AS-BUILT del cleanup pre-v0.3— cierra el paso 8 del ciclo: `MONITORED` ahora es alcanzable.)*
 
 ## Convenciones
 
@@ -66,8 +67,9 @@ subcomando lleva `--json` (envelope estable/versionado) y exit codes (`0` éxito
 datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado). **Sin estado entre
 invocaciones:** el estado vive en el archivo `.duckdb` (opción global `--store`).
 
-**Set de 11 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
-y dejaba `accept`/`reject` como "solo programático"):
+**Set de 12 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
+pre-v0.3):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -80,6 +82,14 @@ y dejaba `accept`/`reject` como "solo programático"):
   ahora **subcomandos CLI de primera clase** (no solo API de librería), para que un agente cure la
   biblioteca viva por subprocess (historia C4). La **curación interactiva rica (`curate`) y la GUI
   siguen siendo futuro** (no en v0.2). Ver [`ROADMAP.md`](ROADMAP.md) Hito 6.
+- **`monitor`** (cleanup pre-v0.3): re-chequea OpenAlex por **citantes nuevos** del corpus (forward
+  chaining), mergea los candidatos nuevos a la biblioteca viva y **transiciona a `MONITORED`** vía
+  `apply_transition(state, "monitor", round)` (paso 8 del ciclo, Ellis). `data` =
+  `{new_candidates, total_papers, loop_state, round}`; `--email` para el polite pool; `--json` con
+  `schema="1"`. **Sin pre-check de capacidad** (a diferencia de `chain`): instancia `OpenAlexSource`
+  fijo, que **siempre** tiene `fetch_citing` (asimetría deliberada con `chain`, que acepta
+  `--direction` variable y sí pre-chequea). Errores accionables: sin corpus/estado previo →
+  `DataError` (exit 2). Con `monitor`, **`MONITORED` deja de ser inalcanzable**.
 
 **`--store` global (obligatoria).** Va en el grupo `b2g`, **antes** del subcomando:
 `b2g --store mi.duckdb seed --equation "..."`. Una investigación = un archivo `.duckdb` (ADR
@@ -91,8 +101,9 @@ y dejaba `accept`/`reject` como "solo programático"):
 transición).
 
 **Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`, `chain`→`FORAGED`,
-`filter`→`FILTERED`, `build`→`BUILT`; `accept`/`reject`/`export`/`snapshot`/`status`/`inspect`/
-`validate` **no transicionan**. El estado destino lo dicta `bib2graph.cycle.apply_transition`
+`filter`→`FILTERED`, `build`→`BUILT`, **`monitor`→`MONITORED`** (cleanup pre-v0.3);
+`accept`/`reject`/`export`/`snapshot`/`status`/`inspect`/`validate` **no transicionan**. El estado
+destino lo dicta `bib2graph.cycle.apply_transition`
 (fuente única de verdad; los comandos no hardcodean el destino). `seed` con **estado previo** se trata
 como **`reseed`** (loop-back a `SEEDED`, ronda++, acumula sobre lo curado).
 
@@ -556,12 +567,14 @@ El estado + la **ronda** se persisten en `loop_state_log` (append-only; estado a
 columna `round`); las transiciones son **permisivas** (ADR 0016: no se bloquea ningún salto). `reseed`
 es de **primera clase** (loop-back a `SEEDED` + ronda++, acumula sobre lo curado); `seed.py` lo cablea
 cuando hay estado previo. **Fuente única de verdad:** `chain`/`filter`/`build` derivan su destino de
-`apply_transition`, no de un literal. **`MONITORED`** existe en el modelo pero **ningún comando lo
-dispara** todavía (futuro). El comando `b2g status` consume `loop_state()`/`loop_round()`/
-`available_transitions()` y expone `curation_available`/`round` (ver §convenciones CLI).
+`apply_transition`, no de un literal. **`MONITORED`** es **alcanzable** desde el cleanup pre-v0.3: el
+comando **`b2g monitor`** lo dispara (`apply_transition(state, "monitor", round)`, paso 8 del ciclo).
+El comando `b2g status` consume `loop_state()`/`loop_round()`/`available_transitions()` y expone
+`curation_available`/`round` (ver §convenciones CLI).
 
-> **Alias transicional:** `backends/duckdb.py` mantiene `LoopState = CycleState` por compatibilidad de
-> imports históricos. **A retirar pre-1.0** (los call-sites deben migrar a `CycleState`).
+> **Alias `LoopState` retirado (cleanup pre-v0.3):** el código usa **solo `CycleState`** (de
+> `bib2graph.cycle`). El alias transicional `LoopState = CycleState` de `backends/duckdb.py` **se
+> eliminó** (también de `stores/duckdb.py`); los call-sites migraron a `CycleState`.
 
 > **Carga perezosa (PEP 562):** `DuckDBBackend` y `DuckDBStore` se exponen vía `__getattr__` en
 > `bib2graph/__init__.py`, de modo que **`import bib2graph` NO importa `duckdb`** (el núcleo

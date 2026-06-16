@@ -83,6 +83,17 @@ El **orden de filas del resultado es determinista por primera aparición**: prim
 `self` en su orden original, luego las filas nuevas de `other` (las que no estaban en `self`) en
 el orden en que aparecen en `other`. `merge` es idempotente.
 
+> **AS-BUILT — Cleanup pre-v0.3 (2026-06-16):** en `DuckDBBackend`, el orden de primera aparición (D3)
+> ya **NO se materializa interpolando ids crudos en el SQL.** El AS-BUILT construía
+> `... WHERE id IN ('<id1>', ...) ORDER BY CASE id WHEN '<id>' THEN <pos> ... END` con f-strings sobre
+> los ids (seguro entonces porque los ids son hashes hex, pero **frágil** —SQL construido con datos—;
+> footgun catalogado en la Nota 06, `backends/duckdb.py:417,423`). El cleanup lo reemplazó por: **leer
+> todas las filas** (`SELECT * FROM corpus`), **ordenarlas en Python** por el orden de aparición
+> precomputado (`existing_ids + new_ids_in_order`) y **reinsertar**. Mismo orden determinista D3
+> (regresión verde), **sin** SQL parametrizado por ids. La **alternativa de un CTE con `VALUES`** (pasar
+> el orden como tabla de parámetros) quedó **descartada**: el ordenamiento en Python es más simple para
+> el tamaño de corpus objetivo y no acopla el orden a un dialecto SQL.
+
 ### D4 — `provenance` como log append-only
 
 `provenance` es una columna `string` cuyo JSON es una **lista de eventos** (log append-only), no

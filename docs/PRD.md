@@ -392,7 +392,7 @@ Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.
 3. ✅ Implementación por hitos en curso (coder): **Hitos 0–6 + 1.5 terminados** (núcleo del corpus
    stateful sobre `TabularBackend`, proyectores/analizadores/export, biblioteca viva en DuckDB,
    fuentes OpenAlex/BibTeX, forrajeo + `Preprocessor` + filtros PRISMA, y el **CLI agente-native
-   `b2g`** — 11 subcomandos, ADR [0021](decisiones/0021-cli-agente-native-contrato.md)). Con ello
+   `b2g`** — 12 subcomandos, ADR [0021](decisiones/0021-cli-agente-native-contrato.md)). Con ello
    v0.2 alcanza las capacidades del **flujo** `seed → … → export`. **El red-team de la
    [Nota 06](Notas/06-critica-as-built-v0.2.md) corrige el claim "capacidades completas":** falta la
    **tanda de remediación R1–R5** (modelo sin IA, identidad-vs-procedencia reproducible, FSM cíclico,

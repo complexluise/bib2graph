@@ -21,6 +21,24 @@ commits.
 > implementa **antes** de los Hitos 7–11. Esta sección documenta el diseño nuevo; el código se
 > entrega por hito R.
 
+### Added (cleanup pre-v0.3 — **2026-06-16**)
+- **Comando `b2g monitor`** (12° subcomando): re-chequea OpenAlex por **citantes nuevos** del corpus
+  (forward chaining), mergea los candidatos nuevos a la biblioteca viva y **transiciona a `MONITORED`**
+  (paso 8 del ciclo, Ellis). `data = {new_candidates, total_papers, loop_state, round}`, envelope
+  `schema="1"`; `--email` para el polite pool; sin corpus/estado previo → `DataError` (exit 2). Con esto
+  **`MONITORED` deja de ser inalcanzable** (cierra el seguimiento de R3/R5). ADR 0021 (enmienda) / 0016.
+
+### Changed (cleanup pre-v0.3 — **2026-06-16**)
+- **Alias `LoopState = CycleState` RETIRADO**: el código usa **solo `CycleState`** (de
+  `bib2graph.cycle`); se eliminó de `backends/duckdb.py` y `stores/duckdb.py` (cierra la recomendación
+  "a retirar pre-1.0" de R3). Una sola clase para el concepto del ciclo.
+
+### Fixed (cleanup pre-v0.3 — **2026-06-16**)
+- **`merge` de `DuckDBBackend` ya NO interpola ids crudos en el SQL** (footgun de la Nota 06,
+  `backends/duckdb.py:417,423`): se reemplazó el `... id IN ('<id>',...) ORDER BY CASE id WHEN ...` por
+  leer las filas y **ordenar en Python** por orden de aparición antes de reinsertar. Orden determinista
+  D3 preservado; sin SQL construido con datos. (La alternativa CTE quedó descartada.) ADR 0013 (AS-BUILT).
+
 ### Changed (modelo / docs — diseño objetivo)
 - **El producto NO usa IA generativa** (ADR 0022, **Hito R4 ✅ 2026-06-16**): el *information scent*
   del forrajeo deja de ser una heurística de frecuencia de enlace y pasa a **scent bibliométrico
