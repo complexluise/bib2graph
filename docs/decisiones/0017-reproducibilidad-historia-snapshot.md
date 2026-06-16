@@ -1,6 +1,7 @@
 # 0017 — Reproducibilidad por historia auditable + snapshot sellado, no por recómputo
 
-- **Estado:** Aceptada
+- **Estado:** Aceptada · **enmendada 2026-06-15** (identidad vs procedencia; Louvain seeded — ver
+  "Enmienda" al final)
 - **Fecha:** 2026-06-15
 - **Relacionada con:** [0007](0007-openalex-backbone.md) (OpenAlex backbone),
   [0009](0009-biblioteca-viva-duckdb.md) (biblioteca viva; snapshot = export),
@@ -58,3 +59,34 @@ en fechas distintas no son comparables.
   `snapshot()` ya sella `corpus_hash`); el **Hito 4** (`OpenAlexSource`) debe poblar
   `Manifest.openalex_version` al sembrar, y el reporte de calidad (Hito 5+, ADR 0018) debe marcar
   los snapshots sin ancla de versión.
+
+## Enmienda — 2026-06-15 (identidad vs procedencia; reloj en la frontera; Louvain seeded)
+
+> Motivada por el red-team del AS-BUILT v0.2
+> ([Nota 06](../Notas/06-critica-as-built-v0.2.md), RAÍZ 2): el **principio de este ADR es
+> correcto**, pero el **código no lo cumple** — el `corpus_hash` actual **incluye los timestamps de
+> curación**, así que dos corridas que aceptan los mismos ids producen hash distinto y el snapshot
+> **no** es reproducible bit a bit. El cuerpo del ADR (arriba) queda como historia; esta enmienda
+> precisa el contrato correcto.
+
+**Identidad (contenido) ≠ procedencia (auditoría).** Son dos ejes:
+
+1. **Identidad — el `corpus_hash` se computa SOLO sobre contenido bibliográfico**, **excluyendo**
+   `ProvenanceEvent`/timestamps. Dos corridas con el mismo contenido curado (mismos ids, mismo
+   `curation_status`) tienen el **mismo** hash, aunque hayan ocurrido en momentos distintos. La
+   identidad es del *qué*, no del *cuándo*.
+2. **Procedencia — log append-only FUERA de la identidad.** El `provenance` (ADR
+   [0013](0013-identidad-hash-merge-corpus.md) D4) sigue registrando cuándo/quién/por qué (para
+   auditar PRISMA / vom Brocke), pero **no entra al hash**. Es modelado por `ProvenanceEvent(BaseModel)`
+   (ADR [0023](0023-capa-constants-modelos-schema.md)).
+3. **El reloj se inyecta en la frontera (CLI), no en el núcleo.** `accept`/`reject` y los filtros
+   **reciben** el instante de decisión (o lo dejan que lo ponga la frontera), en vez de llamar
+   `datetime.now(UTC)` dentro del núcleo. El núcleo vuelve a ser **determinista**.
+4. **Análisis reproducible — Louvain con `random_state` derivado del content-hash.**
+   `detect_communities(method="louvain")` se siembra con un `random_state` derivado del
+   `corpus_hash` (y expone `resolution`), de modo que **mismo corpus → mismas comunidades**.
+
+**Consecuencia:** el snapshot vuelve a ser **reproducible bit a bit** (cumple la promesa original) y
+la pureza de `facade.py` ("mismo corpus + mismo spec → mismo `NetworkArtifact`") deja de estar rota.
+**Recomendación para el `coder`:** ver ROADMAP **Hito R3** (`backends/memory.py:50-75,281`,
+`corpus.py:386,403`, `networks/analyzer.py:120-129`).

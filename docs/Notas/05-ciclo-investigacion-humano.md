@@ -1,10 +1,18 @@
 # 05 — El ciclo de investigación humano (exploración bibliográfica)
 
 > Modelo del **ciclo humano de exploración bibliográfica** (el "ejercicio bibliotecario" +
-> exploración), fundamentado en tres tradiciones teóricas, con los **puntos de inserción de
-> IA** marcados. Es la base metodológica que va al paper y el ancla para decidir el wedge del
-> rediseño. Aplica la inversión "IA in the loop, NOT human in the loop" de
-> [`04-direccion-ia-in-the-loop.md`](04-direccion-ia-in-the-loop.md). Fecha: 2026-06-14.
+> exploración), fundamentado en tres tradiciones teóricas, con el **punto donde la herramienta
+> asiste** marcado. Es la base metodológica que va al paper y el ancla del diseño. Fecha original:
+> 2026-06-14.
+>
+> **Actualización 2026-06-15 (decisión del PO, tras la [Nota 06](06-critica-as-built-v0.2.md)):** el
+> producto **no usa IA generativa** (ADR [0022](../decisiones/0022-producto-sin-ia-generativa.md)).
+> Donde la versión original hablaba de **dos inserciones de IA** (forrajeo + máquina de tensiones),
+> ahora hay **una inserción algorítmica** —el forrajeo asistido por **estructura bibliométrica como
+> *information scent*** (acoplamiento/co-citación/centralidad, **determinista**, sin LLM)— y el
+> **sensemaking de tensiones vuelve a ser humano** (asistido por las redes, no por IA): la "máquina
+> de tensiones" **se retiró del producto**. Las §4 y §5 abajo ya están reescritas a esto; la §6
+> (próximos pasos) quedó saldada y se anota como histórica.
 
 ## 1. Por qué tres tradiciones (y no una)
 
@@ -70,38 +78,55 @@ la "biblioteca viva y curada".
 La no-linealidad (el lazo 2→3→4→1) es la propiedad central: cualquier diseño que asuma un
 pipeline lineal "query → resultados → fin" contradice a Bates, Ellis y Kuhlthau a la vez.
 
-## 4. Dónde entra la IA (los puntos puntuales) y dónde mapea bib2graph
+## 4. Dónde asiste la herramienta (el punto puntual) y dónde mapea bib2graph
 
-La disciplina "IA in the loop": **el humano hace todo el ciclo; la IA entra en 2 cuellos de
-botella**, no en todo.
+> **Reescrita 2026-06-15** — ver la nota de cabecera. El producto **no usa IA generativa** (ADR
+> [0022](../decisiones/0022-producto-sin-ia-generativa.md)).
 
-- **Inserción 1 — forrajeo/chaining (pasos 2-3).** El snowballing manual es mecánico y agota.
-  Aquí la **bibliometría ES el "information scent"**: las redes de citación/coupling le dan a
-  la IA mejor olfato que los embeddings planos. Mapea a los **proyectores** de bib2graph.
-- **Inserción 2 — sensemaking/tensiones (paso 6).** Donde el humano necesita ver *quién
-  discute con quién*. Es la **máquina de tensiones** ([`04-...`](04-direccion-ia-in-the-loop.md)).
-  Máximo valor, menos resuelto.
+La disciplina: **el humano hace todo el ciclo; la herramienta lo asiste en UN cuello de botella**,
+con un método **determinista y reproducible**, no con IA.
+
+- **Inserción algorítmica única — forrajeo/chaining (pasos 2-3).** El snowballing manual es mecánico
+  y agota. Aquí la **bibliometría ES el "information scent"**: el candidato se prioriza por cuánto se
+  **acopla / co-cita / es central** respecto del corpus curado (los **proyectores** de bib2graph),
+  no por un conteo plano ni por embeddings ni por un LLM. Es **estructura, no IA** — y por eso es
+  reproducible. *(Trade-off honesto: rankear por estructura ya presente sesga hacia lo central/
+  popular —efecto Mateo—; el scent **prioriza**, la exhaustividad la sostienen los filtros PRISMA.)*
+- **Sensemaking / tensiones (paso 6) — HUMANO, asistido por las redes.** Ver *quién discute con
+  quién* lo hace el investigador **leyendo las redes** (comunidades, centralidad, acoplamiento), no
+  un modelo. La "máquina de tensiones" asistida por IA **se retiró del producto** (ADR
+  [0008](../decisiones/0008-wedge-forrajeo.md) / [0022](../decisiones/0022-producto-sin-ia-generativa.md)):
+  no hay clasificación automática de apoya/refuta.
 
 **Irreductiblemente humanos:** pasos **0, 4, 7** (formular la idea, dejar que mute, decidir qué
-curar). Esto valida la inversión: no se automatiza el juicio, se asiste forrajeo y sensemaking.
+curar) **y 6** (interpretar las tensiones). La herramienta **no automatiza el juicio**: asiste el
+forrajeo con estructura y le da al humano el material para el sensemaking.
 
 ## 5. El argumento del paper
 
+> **Reescrita 2026-06-15.**
+
 Los modelos clásicos (Kuhlthau / Ellis / Bates / Pirolli) describían un ciclo de exploración
-bibliográfica **sin IA**. La contribución es **re-instrumentar ese ciclo** insertando IA en
-los dos puntos donde la **estructura bibliométrica funciona como information scent** (forrajeo
-y sensemaking de tensiones), **sin desplazar el juicio humano** (pasos 0/4/7). La metodología
-documenta el proceso con el rigor reproducible de vom Brocke / Wohlin / PRISMA — pero
-asistido, no manual.
+bibliográfica **manual**. La contribución es **re-instrumentar ese ciclo** con un método donde la
+**estructura bibliométrica funciona como *information scent*** (forrajeo asistido), **determinista y
+reproducible**, **sin desplazar el juicio humano** (pasos 0/4/6/7) **y sin IA generativa**. La
+metodología documenta el proceso con el rigor reproducible de vom Brocke / Wohlin / PRISMA — pero
+asistido por bibliometría, no manual ni por caja negra. El diferenciador frente a los asistentes con
+IA (Elicit, Scite, Undermind, ResearchRabbit) no es "más IA": es una **biblioteca viva curada que el
+investigador posee**, con la **estructura de citación de primera clase** y un flujo **abierto y
+auditable**.
 
-## 6. Próximos pasos (abiertos)
+## 6. Próximos pasos (saldados — histórico)
 
-- Decidir el **wedge**: ¿la primera versión ataca la Inserción 1 (forrajeo asistido) o la
-  Inserción 2 (tensiones)? La 2 es más valiosa y diferenciada; la 1 es prerequisito.
-- Granularidad del "ejercicio bibliotecario" en pasos 1-3 (criterios de inclusión, dedup,
-  normalización) — conecta con `Preprocessor`/`Source` del diseño actual.
-- Reconciliar con la tensión "biblioteca viva vs snapshot inmutable" (paso 7) de
-  [`04-...`](04-direccion-ia-in-the-loop.md) §6.
+> Esta sección era de exploración (2026-06-14) y ya quedó **resuelta**; se conserva como historia.
+
+- ~~Decidir el **wedge** (Inserción 1 forrajeo vs Inserción 2 tensiones).~~ **Saldado:** el wedge es
+  el **forrajeo asistido por estructura bibliométrica**; la máquina de tensiones se **retiró** del
+  producto (ADR 0008/0022), no es un wedge alternativo.
+- Granularidad del "ejercicio bibliotecario" en pasos 1-3 → realizada en `Preprocessor`/`Source`/
+  filtros PRISMA (ADR [0020](../decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)).
+- Tensión "biblioteca viva vs snapshot inmutable" (paso 7) → resuelta a favor de la **biblioteca
+  viva en DuckDB** (ADR [0009](../decisiones/0009-biblioteca-viva-duckdb.md)/[0015](../decisiones/0015-corpus-tabular-backend.md)).
 
 ## 7. Referencias (URLs)
 

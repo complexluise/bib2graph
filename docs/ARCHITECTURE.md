@@ -4,7 +4,7 @@
 > problemas) está en [`Notas/03-referencia/arquitectura-v0.md`](Notas/03-referencia/arquitectura-v0.md)
 > y NO debe tomarse como objetivo. Fecha: 2026-06-15.
 >
-> Reconcilia este doc con el **giro** (`Notas/04`–`07`) y el [`PRD.md`](PRD.md) reescrito.
+> Reconcilia este doc con el **giro** (`Notas/04`–`06`) y el [`PRD.md`](PRD.md) reescrito.
 > Decisiones que lo sustentan, en [`decisiones/`](decisiones/): tabla canónica Arrow
 > [0006](decisiones/0006-tabla-canonica-y-networkspec.md); **OpenAlex backbone**
 > [0007](decisiones/0007-openalex-backbone.md); **wedge = forrajeo**
@@ -14,23 +14,48 @@
 > [0011](decisiones/0011-thesaurus-multilingue.md). El método bibliométrico está en
 > [`metodología.md`](metodología.md).
 >
+> **AS-BUILT vs TARGET (importante):** este doc describe el diseño **objetivo** tras el red-team
+> de la [Nota 06](Notas/06-critica-as-built-v0.2.md). Donde el código v0.2 difiere del objetivo,
+> el bloque está marcado **`TARGET`** (lo que debe construirse) y/o **`AS-BUILT v0.2`** (lo que hay
+> hoy). La tanda de **remediación** que cierra esa brecha está secuenciada en el
+> [`ROADMAP.md`](ROADMAP.md) (Hitos R1–R8), antes de los hitos nuevos.
+>
+> **Decisión bloqueada por el PO (2026-06-15) — el producto NO usa IA generativa.** La
+> "inteligencia" que asiste el forrajeo es **estructura bibliométrica como *information scent***,
+> **determinista y reproducible** (acoplamiento / co-citación / centralidad sobre el corpus), **sin
+> LLM ni embeddings**. Se **elimina** `explain_candidate`, el módulo `foraging/explain.py` y el
+> extra `[llm]`; la **"máquina de tensiones" / sensemaking asistido por IA se quita del alcance por
+> completo** (no se difiere: se borra del producto). El sensemaking sigue siendo **humano**,
+> asistido por las redes — no por IA. Queda **un solo** sentido de "AI-in-the-loop": el *desarrollo*
+> es asistido por IA; el *producto* no usa IA. Ver ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)
+> (scent bibliométrico), [0008](decisiones/0008-wedge-forrajeo.md) (tensiones removidas) y
+> [0022](decisiones/0022-producto-sin-ia-generativa.md) (el producto no usa IA generativa).
+>
 > **Cambios mayores respecto a la versión previa de este doc:** la fuente de referencia pasó de
 > **BibTeX a OpenAlex** (ADR 0007); la persistencia por defecto pasó de **snapshot inmutable /
 > InMemoryStore** a un **`Store` stateful en DuckDB** (biblioteca viva; ADR 0009), con el
 > snapshot demotado a *export*; se agregaron al núcleo el **forrajeo/chaining** y el **thesaurus
-> multilingüe**.
+> multilingüe**; se incorporó una **capa base de vocabulario + modelos** (`constants` / `models` /
+> `schemas`, ADR [0023](decisiones/0023-capa-constants-modelos-schema.md)) y el **ciclo como
+> dominio puro** (`cycle.py` con FSM cíclico, ADR 0016 enmendado); y se **retiró la rama de IA**
+> generativa (ADR 0022).
 
 ## 1. Idea en un párrafo
 
-`bib2graph` es **un núcleo puro rodeado de costuras**. El **núcleo puro** opera sobre un
-`Corpus` en memoria (una **tabla canónica Arrow**) y nunca hace red ni servidores: proyecta el
-corpus a redes, las analiza y las exporta, y normaliza/cura la tabla. Alrededor hay costuras:
-**`Source`** (sembrar el corpus — *OpenAlex por defecto* desde una ecuación de búsqueda; BibTeX
-secundaria), el **forrajeo/chaining** (expandir el corpus rankeando candidatos por *information
-scent*), **`Store`** (persistir — *DuckDB stateful por defecto*: la **biblioteca viva**) y
-`Enricher` (señal extra, opt-in). El flujo **no es lineal**: es el **ciclo iterativo** de
-exploración (sembrar → forrajear → curar → la idea muta → re-sembrar), y la biblioteca viva en
-DuckDB es el sustrato que lo sostiene entre corridas.
+`bib2graph` es **un núcleo puro rodeado de costuras**, apoyado en una **capa base de vocabulario
+y modelos**. La **capa base** (`constants`, `models`, `schemas`; ADR
+[0023](decisiones/0023-capa-constants-modelos-schema.md)) es la **fuente única** de nombres de
+columna, estados de curación, tipos de red y del evento de procedencia — todo el resto depende de
+ella. El **núcleo puro** opera sobre un `Corpus` en memoria (una **tabla canónica Arrow**) y nunca
+hace red ni servidores: proyecta el corpus a redes, las analiza y las exporta, normaliza/cura la
+tabla, y **modela el ciclo** de investigación como una máquina de estados de dominio (`cycle.py`,
+ADR [0016](decisiones/0016-maquina-estados-lazo.md)). Alrededor hay costuras: **`Source`** (sembrar
+el corpus — *OpenAlex por defecto* desde una ecuación de búsqueda; BibTeX secundaria), el
+**forrajeo/chaining** (expandir el corpus rankeando candidatos por *information scent* — **estructura
+bibliométrica determinista, sin IA**), **`Store`** (persistir — *DuckDB stateful por defecto*: la
+**biblioteca viva**) y `Enricher` (señal extra, opt-in). El flujo **no es lineal**: es el **ciclo
+iterativo** de exploración (sembrar → forrajear → curar → la idea muta → re-sembrar), y la
+biblioteca viva en DuckDB es el sustrato que lo sostiene entre corridas.
 
 ## 2. Vista de alto nivel
 
@@ -69,7 +94,9 @@ El **`DuckDBBackend` es el backend por defecto del `Corpus`** (ADR
 [0016](decisiones/0016-maquina-estados-lazo.md)). El **`DuckDBStore` es su fachada** de costura
 (`persist`/`load`); la costura `Store` sigue siendo el punto de extensión externo
 (`ZoteroStore`/`Neo4jStore`, opt-in). Lo marcado `(BibTeX 2ª)`, `Zotero(1.1)`, `Neo4j` son costuras
-secundarias/futuras. La **máquina de tensiones** (inserción de IA nº2) es **v2** (ADR 0008). Solo
+secundarias/futuras. La **máquina de tensiones** (sensemaking asistido por IA) **se retiró del
+producto** (ADR [0008](decisiones/0008-wedge-forrajeo.md) / [0022](decisiones/0022-producto-sin-ia-generativa.md)):
+el sensemaking lo hace el **humano**, leyendo las redes — no hay IA generativa en el producto. Solo
 se publica lo que existe.
 
 ## 3. El núcleo (puro, sin red ni servidores)
@@ -148,29 +175,47 @@ Funciones puras sobre `networkx.Graph`:
 
 GraphML y CSV (nodos y aristas). I/O de salida puro y predecible, sin backend.
 
-### 3.5 Forrajeo / chaining (inserción de IA nº1)
+### 3.5 Forrajeo / chaining (asistido por estructura bibliométrica, SIN IA)
 
 Orquestación pura sobre la costura `Source`: dado el corpus actual, computa candidatos por
 **backward chaining** (referencias de las semillas) y **forward chaining** (citantes), y los
-**rankea por *information scent***. El *information scent* concreto (decidido en el Hito 5, ADR
-[0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)) es la **frecuencia de enlace de
-cita con el corpus** —backward: nº de papers del corpus que listan al candidato; forward: nº de
-papers del corpus a los que el candidato cita— una **función pura sobre conteos**, **no**
-acoplamiento bibliográfico, co-citación ni centralidad de red. Reglas (ADR 0008, nota 07):
-**profundidad 1 por defecto** (`depth>1` lanza `NotImplementedError`); **preview de crecimiento**
-("sumaría ~N papers") **sin red** —backward exacto local; forward no estimable sin fetch
-(`forward_requires_fetch`)— y **tope** (`max_candidates`) configurable antes de traer; **pool
-cortés** de OpenAlex. Forward exige `source.fetch_citing(...)` (capacidad de `OpenAlexSource`, **no**
-del Protocol `Source`). Un **paso opcional de IA** (`explain_candidate`, stub gateado en `[llm]`)
-explica *por qué* un candidato es relevante — **sin decidir** por el humano.
+**rankea por *information scent***. El *information scent* es **estructura bibliométrica
+determinista y reproducible**, **sin LLM ni embeddings** (ADR
+[0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) actualizado;
+[0022](decisiones/0022-producto-sin-ia-generativa.md)): el forrajeo **consume el núcleo de
+proyección** (§3.2) — un candidato rankea por cuánto se acopla / co-cita / es central respecto del
+corpus curado.
+
+- **`AS-BUILT v0.2`:** el scent es **frecuencia de enlace de cita** —backward: nº de papers del
+  corpus que listan al candidato; forward: nº de papers del corpus a los que el candidato cita— una
+  función pura sobre conteos, **sin** proyectores ni grafo.
+- **`TARGET`:** el scent pasa a usar los **proyectores** como olfato (lo que la
+  [Nota 05](Notas/05-ciclo-investigacion-humano.md) §4 promete): señal de **acoplamiento /
+  co-citación / centralidad** del candidato con el corpus. Sigue siendo **función pura y
+  determinista** (mismo corpus → mismo ranking); el forrajeo (costura) **depende del núcleo de
+  proyección** (puro), nunca al revés. Ver ROADMAP **Hito R1**.
+
+Reglas (ADR 0008, nota 07): **profundidad 1 por defecto** (`depth>1` lanza `NotImplementedError`);
+**preview de crecimiento** ("sumaría ~N papers") **sin red** —backward exacto local; forward no
+estimable sin fetch (`forward_requires_fetch`)— y **tope** (`max_candidates`) configurable antes de
+traer; **pool cortés** de OpenAlex. Forward exige `source.fetch_citing(...)` (capacidad de
+`OpenAlexSource`, **no** del Protocol `Source`). **No hay paso de IA:** `explain_candidate`, el
+módulo `foraging/explain.py` y el extra `[llm]` quedan **eliminados** (ADR 0022) — el "porqué" de un
+candidato lo explica la **estructura visible** (con qué del corpus se acopla/co-cita), no un LLM.
+
+> **Sesgo de confirmación (Nota 06, rigor):** rankear por estructura ya presente refuerza lo central
+> y popular (efecto Mateo). El scent es ayuda de **priorización**, no de **exhaustividad**: la
+> exhaustividad PRISMA la sostienen los filtros y el conteo de exclusiones, no el scent.
 
 ### 3.6 `Preprocessor` — normalización (núcleo)
 
 Determinístico e idempotente: canonicalización **conservadora** de nombres de autor
 (`authors_id`: lowercase + acentos + espacios) y `language` (ISO 639-1 primario), y
 **normalización de keywords vía thesaurus multilingüe** (en/es/pt; dict `canónico → aliases` en
-JSON portable; ADR 0011). Lo *fuzzy* (dedup aproximado de autores) vive en el extra `[dedup]`;
-el **fallback semántico/LLM del thesaurus** es v0.2.
+JSON portable; ADR 0011). Lo *fuzzy* (dedup aproximado de autores) vive en el extra `[dedup]`
+(`rapidfuzz`/`splink`, determinista). **No hay fallback semántico/LLM del thesaurus** (ADR
+[0011](decisiones/0011-thesaurus-multilingue.md) enmendado / 0022): el thesaurus es **curado y
+determinista**; lo que no matchea queda fuera, sin inventar conceptos con un modelo.
 
 ## 4. Las costuras (puntos de extensión)
 
@@ -242,11 +287,37 @@ post-V1 (`[neo4j]`): un destino más, **ya no el sustrato** (ADR 0002).
 El lazo **2→3→4→1** (la query y la idea mutan; Bates/Ellis/Kuhlthau) es la propiedad central:
 la biblioteca viva existe para que ese lazo no pierda lo acumulado (PRD §1–§2).
 
-La no-linealidad se modela como una **máquina de estados explícita** (`LoopState`:
-`SEEDED → FORAGED → FILTERED → BUILT`, con **transiciones permisivas** — re-sembrar desde casi
-cualquier estado; ADR [0016](decisiones/0016-maquina-estados-lazo.md)). El `LoopState` vive en el
-backend persistente (`DuckDBBackend`), no en el `Corpus` efímero, y se expone con `b2g status`:
-humanos e IAs comparten el mismo mapa del lazo.
+La no-linealidad se modela como una **máquina de estados explícita** (ADR
+[0016](decisiones/0016-maquina-estados-lazo.md) enmendado). Es un **concepto de dominio puro y
+testeable** (`cycle.py`): el modelo de estados + las reglas de transición viven en el núcleo; el
+**backend solo lo persiste**.
+
+- **`AS-BUILT v0.2`:** `LoopState = SEEDED → FORAGED → FILTERED → BUILT`, **lineal**, enterrado en
+  `backends/duckdb.py` (definición del enum dentro del backend). La curación (`accept`/`reject`) **no
+  transiciona** y **no aparece** en `transitions_available` de `status` — el humano no ve en el mapa
+  lo único irreductiblemente humano.
+- **`TARGET`:** FSM **cíclico** fiel a la [Nota 05](Notas/05-ciclo-investigacion-humano.md):
+
+  ```
+  SEEDED ──chain──► FORAGED ──filter──► FILTERED ──build──► BUILT ──monitor──► MONITORED
+     ▲                                                                              │
+     └──────────────────────── reseed (la idea muta) ◄──────────────────────────────┘
+                       (loop-back a SEEDED; incrementa el contador de RONDA;
+                        acumula sobre lo curado — la no-linealidad es del sistema)
+  ```
+
+  - **`reseed` es transición de primera clase** ("la idea muta"): vuelve a `SEEDED`, **incrementa el
+    contador de ronda** y acumula sobre lo curado. Es lo que el ADR 0016 prometía y el AS-BUILT no
+    cumplía (era solo "transición permisiva").
+  - **`MONITORED`** modela el paso 8 del ciclo (monitoreo). *(El comando que lo dispara puede ser
+    futuro; el estado existe en el modelo.)*
+  - **La curación es TRANSVERSAL:** `accept`/`reject` están disponibles **en cualquier estado**, **no
+    transicionan**, pero `status` **debe** mostrarlas como acción siempre-disponible (hoy las
+    oculta). Ver ROADMAP **Hito R2**.
+
+El estado del lazo vive en el backend persistente (`DuckDBBackend`), no en el `Corpus` efímero, y se
+expone con `b2g status`: humanos e IAs comparten el mismo mapa del lazo. El **reloj se inyecta en la
+frontera** (CLI), no en el núcleo (§6.2).
 
 ## 6. Configuración, persistencia y reproducibilidad
 
@@ -268,6 +339,20 @@ recómputo** (ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md))
 misma ecuación contra OpenAlex NO garantiza el mismo corpus (OpenAlex cambia en el tiempo). El
 artefacto reproducible es el **snapshot**; el `openalex_version` del Manifest lo ancla a la
 versión/fecha de OpenAlex usada.
+
+**Identidad (contenido) vs procedencia (auditoría)** (ADR
+[0017](decisiones/0017-reproducibilidad-historia-snapshot.md), enmienda 2026-06-15):
+
+- **`AS-BUILT v0.2` (roto):** `accept`/`reject` estampan `datetime.now(UTC)` en el evento de
+  procedencia (reloj en el núcleo), y `compute_corpus_hash` hashea **todos** los campos, incluido
+  `provenance` con sus timestamps → dos corridas que aceptan los mismos ids dan `corpus_hash`
+  distintos. El snapshot **no** es reproducible bit a bit, contra lo que prometen el ADR 0017 y
+  `facade.py`.
+- **`TARGET`:** el `corpus_hash` se computa **solo sobre contenido bibliográfico**, **excluyendo**
+  `ProvenanceEvent`/timestamps. La **procedencia es un log append-only fuera de la identidad** (sirve
+  para auditar, no para identificar). El **reloj se inyecta en la frontera** (CLI), no en el núcleo
+  (`accept`/`reject` reciben el instante, no llaman `datetime.now()`). **Louvain** corre con un
+  `random_state` **derivado del content-hash** → comunidades reproducibles. Ver ROADMAP **Hito R3**.
 
 El **snapshot** es un **export sellado** del estado vivo en un instante: `corpus.parquet` + un
 `manifest.json` con `schema_version`, `corpus_hash`, `lib_version`, `openalex_version`/fecha,
@@ -312,12 +397,25 @@ core         pyarrow, pydantic, networkx, click, tqdm,
 [s2]         (cliente Semantic Scholar)                  │ costuras / capacidades opcionales
 [neo4j]      neomodel / driver oficial                   │ (futuras marcadas como no
 [viz]        matplotlib, seaborn                          │ implementadas)
-[dedup]      rapidfuzz / splink                          │
-[llm]        (cliente LLM para B4 y thesaurus fuzzy v0.2)─┘
+[dedup]      rapidfuzz / splink (fuzzy DETERMINISTA)    ─┘
 ```
+
+El extra **`[llm]` se elimina** (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)): el
+producto no usa IA generativa, así que no hay cliente LLM ni para forrajeo ni para thesaurus.
 
 `python-louvain` se **declara** (núcleo o extra de análisis), nunca usado sin declarar (lección
 7). `notebook`/Jupyter es **solo dev**, jamás runtime (ADR 0005).
+
+**Capa base de vocabulario + modelos** (ADR [0023](decisiones/0023-capa-constants-modelos-schema.md),
+`TARGET`): por debajo de todo, `bib2graph.constants` (`Col(StrEnum)`, `CurationStatus(StrEnum)`,
+`NetworkKind`) es la **fuente única** de nombres de columna/estados/tipos de red (mata los ~62
+string-literals dispersos en 14 archivos, Nota 06 CONSTANTS); `ProvenanceEvent(BaseModel)` es la
+fuente única del evento de procedencia (Nota 06 MODELS); `schemas.py` aloja la **única** definición
+de fila (`PaperRow` ⇄ `CORPUS_SCHEMA` derivado/verificado, no duplicado a mano). Se **mantiene** la
+decisión "`Paper`/`Author`/`Keyword`/`Institution` = vistas derivadas, no tipos". El grafo de
+dependencias va **de abajo hacia arriba**: `constants/models` → núcleo puro (`corpus`, `cycle`,
+`projectors`, `analyzer`) → costuras (`sources`, `foraging` [consume el núcleo de proyección],
+`stores`) → `cli`. El núcleo nunca depende de una costura. Ver ROADMAP **Hito R4**.
 
 ## 8. Por qué este diseño (mapa a las lecciones de v0)
 
@@ -342,7 +440,8 @@ core         pyarrow, pydantic, networkx, click, tqdm,
    el **`DuckDBBackend` del `Corpus`** (backend por defecto, no un `Store` aparte; ADR 0015) y
    reproducir = re-leer el snapshot, no re-correr la ecuación (ADR 0017). Resuelta a nivel modelo de
    datos.
-4. **Wedge** (abierto en Nota 05 §6): ✅ **forrajeo asistido**; tensiones a **v2** (ADR 0008).
+4. **Wedge** (abierto en Nota 05 §6): ✅ **forrajeo asistido** por estructura bibliométrica
+   determinista; la **máquina de tensiones se retira del producto** (ADR 0008/0022), no se difiere.
 5. **Agente-native:** ✅ **columna primaria** desde el hito 1 (ADR 0010), ya no extra futuro.
 6. **Normalización multilingüe de keywords:** ✅ **thesaurus curado determinista** en V1; fuzzy a
    v0.2 (ADR 0011).
@@ -357,6 +456,10 @@ Los canónicos — [`PRD.md`](PRD.md), este doc, [`API.md`](API.md), [`ROADMAP.m
 `Corpus` sobre `TabularBackend` con `DuckDBBackend` por defecto, `LoopState`, reproducibilidad por
 snapshot, `Source` agnóstico, single-writer). El contrato del CLI agente-native está en el ADR
 [0021](decisiones/0021-cli-agente-native-contrato.md). Las notas de proceso ya promovidas viven en
-[`_archivo/`](_archivo/). Implementación por hitos en curso (**Hitos 0–6 + 1.5 terminados**: núcleo,
-biblioteca viva, fuentes, forrajeo y el CLI `b2g`; v0.2 con capacidades completas); ver
-[`ROADMAP.md`](ROADMAP.md).
+[`_archivo/`](_archivo/). Implementación por hitos: **Hitos 0–6 + 1.5 construidos** (núcleo,
+biblioteca viva, fuentes, forrajeo y el CLI `b2g`). Tras el **red-team de la
+[Nota 06](Notas/06-critica-as-built-v0.2.md)** y el **nuevo modelo conceptual bloqueado por el PO**
+(scent bibliométrico sin IA, FSM cíclico, identidad-vs-procedencia, capa constants/models), este doc
+describe el **TARGET**; la brecha con el AS-BUILT se cierra con la **tanda de remediación R1–R8** del
+[`ROADMAP.md`](ROADMAP.md), **antes** de los Hitos 7–11. (Ya no se afirma "v0.2 con capacidades
+completas": ese claim era parte de la sobre-venta que la Nota 06 corrigió.)

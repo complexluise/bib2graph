@@ -15,20 +15,25 @@
 > [0011](decisiones/0011-thesaurus-multilingue.md) (thesaurus). Diseño objetivo en
 > [`ARCHITECTURE.md`](ARCHITECTURE.md); contratos en [`API.md`](API.md) (ya reconciliado).
 >
-> **Estado de construcción (2026-06-15):** **Hitos 0, 1, 2, 1.5, 3, 4, 5 y 6 TERMINADOS.** Con el
-> Hito 4, el alcance de **v0.1 (Hitos 1–4 + 1.5) quedó feature-complete** ("ecuación → redes desde
-> código Python", end-to-end). Con los **Hitos 5 (forrajeo + `Preprocessor` + filtros PRISMA) y 6
-> (CLI agente-native `b2g`)** construidos, **v0.2 tiene capacidades completas**: el flujo
+> **Estado de construcción (2026-06-15):** **Hitos 0, 1, 2, 1.5, 3, 4, 5 y 6 CONSTRUIDOS**: el flujo
 > `seed → chain → filter → build → export` corre de una **ecuación** a un **GraphML** **sin escribir
-> código** (criterio "V1 hecha" del PRD §9, a nivel de capacidades; el número de versión sigue en
-> 0.y). El Hito 6 (`b2g`, 11 subcomandos, envelope `--json` versionado, exit codes 0–5, `--store`
-> global, `LoopState` automático) está en el ADR
-> [0021](decisiones/0021-cli-agente-native-contrato.md); el forrajeo (`Forager`, scent = frecuencia
-> de enlace, `preview` sin red, filtros que marcan `rejected`) en el ADR
-> [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md). **Lo que falta** (v0.3+ → v1.0):
-> Hitos 7 (dedup fuzzy), 8 (`Enricher` co-citación), 9 (`NetworkSpec` YAML), 10 (viz) y 11
-> (Zotero/Neo4j), más la deuda declarada-no-construida (reporte de calidad concreto, traductor
-> WoS→OpenAlex, `explain_candidate` con LLM). Tras el **2º giro**
+> código**, sobre la biblioteca viva. El Hito 6 (`b2g`, 11 subcomandos, envelope `--json` versionado,
+> exit codes 0–5, `--store` global, `LoopState` automático) está en el ADR
+> [0021](decisiones/0021-cli-agente-native-contrato.md); el forrajeo (`Forager`, `preview` sin red,
+> filtros que marcan `rejected`) en el ADR
+> [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md).
+>
+> ⚠️ **Ya NO se afirma "v0.2 con capacidades completas".** El **red-team de la
+> [Nota 06](Notas/06-critica-as-built-v0.2.md)** encontró tres grietas en el corazón de la propuesta
+> (forrajeo lineal con vocabulario de ciclo; "IA del producto" casi vapor; reproducibilidad rota),
+> y el PO bloqueó un **nuevo modelo conceptual** (scent bibliométrico **sin IA**, FSM cíclico,
+> identidad-vs-procedencia, capa constants/models; ADR
+> [0022](decisiones/0022-producto-sin-ia-generativa.md)/[0023](decisiones/0023-capa-constants-modelos-schema.md)
+> y enmiendas a 0008/0011/0016/0017/0020/0021). Por eso el roadmap ahora tiene **dos partes**: **(a)
+> una tanda de REMEDIACIÓN (Hitos R1–R8)** que cierra la brecha del AS-BUILT con el modelo nuevo,
+> **antes** de los hitos nuevos; **(b) LO QUE VIENE** (Hitos 7–11, actualizados a la nueva realidad).
+> **Lo que falta** (tras la remediación, v0.3+ → v1.0): Hitos 7 (dedup fuzzy), 8 (`Enricher`
+> co-citación), 9 (`NetworkSpec` YAML), 10 (viz) y 11 (Zotero/Neo4j). Tras el **2º giro**
 > (acta del PO; ADR [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md))
 > se insertó un **Hito 1.5 — Rework de `Corpus` a `TabularBackend`** como el **paso inmediato
 > siguiente, secuenciado por delante del Hito 3** (instrucción explícita del PO: el rework va

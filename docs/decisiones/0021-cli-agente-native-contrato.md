@@ -133,6 +133,16 @@ persistir con éxito:
 `accept`/`reject` mutan curación pero **no** mueven el lazo (curar no es una fase del flujo
 exploratorio). `status` lee y presenta el estado actual + las transiciones disponibles.
 
+> **Enmienda 2026-06-15 (curación transversal en `status`):** que `accept`/`reject` **no
+> transicionen** es correcto, pero el AS-BUILT también las **oculta** de `transitions_available`
+> (`cli/commands/status.py:19-34`), dejando invisible lo único irreductiblemente humano. Tras la
+> enmienda del ADR [0016](0016-maquina-estados-lazo.md) (curación transversal), **`b2g status` debe
+> mostrar `accept`/`reject` como acción SIEMPRE-disponible** (en cualquier estado), separada de las
+> transiciones del lazo. Además, el FSM gana `reseed` (loop-back a `SEEDED` con contador de ronda) y
+> el estado `MONITORED`: `status` debe reflejarlos. Ver ROADMAP **Hito R2**. El bug **UTF-8 en
+> Windows** (`cli/_envelope.py:67`: `ensure_ascii=False` sin forzar UTF-8 en stdout → acentos
+> corruptos, rompe el contrato agente-native) se corrige en ROADMAP **Hito R6**.
+
 ## Consecuencias
 
 - **Un agente orquesta todo el flujo de 10 minutos por subprocess + JSON** sin escribir Python:

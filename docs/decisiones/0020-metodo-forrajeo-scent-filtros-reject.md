@@ -1,6 +1,7 @@
-# 0020 — Método de forrajeo: scent = frecuencia de enlace, backward puro / forward red, y filtros que marcan `rejected`
+# 0020 — Método de forrajeo: scent bibliométrico determinista, backward puro / forward red, y filtros que marcan `rejected`
 
-- **Estado:** Aceptada
+- **Estado:** Aceptada · **enmendada 2026-06-15** (scent pasa de frecuencia de enlace a estructura
+  bibliométrica; `explain_candidate` y `[llm]` eliminados — ver "Enmienda" al final)
 - **Fecha:** 2026-06-15
 - **Decidido por:** mixto — el **scent como frecuencia de enlace** y los **filtros que marcan
   `rejected` (no borran)** son **decisiones del Product Owner humano**; el resto (backward puro
@@ -118,3 +119,32 @@ decía que `keywords_id` son los "canónicos (post-thesaurus)": antes de aplicar
   `keywords_id` puede estar vacía o cruda.
 - **`explain_candidate` (B4) queda como stub gateado en `[llm]`**: la firma existe y el error es
   accionable, pero la integración LLM es v0.2. El forrajeo y el ranking funcionan sin él.
+  *(Superado por la enmienda de abajo: `explain_candidate` y `[llm]` se eliminan.)*
+
+## Enmienda — 2026-06-15 (scent bibliométrico determinista; sin LLM)
+
+> Motivada por el red-team del AS-BUILT v0.2
+> ([Nota 06](../Notas/06-critica-as-built-v0.2.md), RAÍZ 1) y la decisión del PO de que **el producto
+> no usa IA generativa** (ADR [0022](0022-producto-sin-ia-generativa.md)). El cuerpo del ADR (arriba)
+> queda como historia; esta enmienda revierte la decisión **A** (scent = frecuencia de enlace) y
+> elimina el stub LLM.
+
+1. **El scent pasa de "frecuencia de enlace" a estructura bibliométrica.** El *information scent*
+   usa los **PROYECTORES** —**acoplamiento / co-citación / centralidad** del candidato respecto del
+   corpus curado— en vez del conteo aritmético de citas directas. Es lo que la
+   [Nota 05](../Notas/05-ciclo-investigacion-humano.md) §4 siempre prometió ("la bibliometría ES el
+   information scent… mapea a los proyectores"). Sigue siendo una **función pura y determinista**
+   (mismo corpus → mismo ranking, mismo desempate por `id`), **sin LLM ni embeddings**. El forrajeo
+   (costura) **depende del núcleo de proyección** (puro); el núcleo nunca de la costura.
+2. **Se elimina `explain_candidate`, el módulo `foraging/explain.py` y el extra `[llm]`** (ADR 0022).
+   El "porqué" de un candidato lo da la **estructura visible** (con qué del corpus se acopla/co-cita),
+   no un modelo generativo. La historia B4 del PRD se reescribe a "explicación **estructural**, no de
+   IA".
+3. **Lo que NO cambia:** backward puro / forward red (decisión B), filtros que marcan `rejected`
+   (decisión C), `apply_thesaurus` sobrescribe `keywords_id` (decisión D), `depth=1`, desempate por
+   `id`. El **trade-off de sesgo de selección aguas arriba** del propio scent (efecto Mateo) se
+   reconoce explícitamente: el scent prioriza, no garantiza exhaustividad — eso lo sostienen los
+   filtros PRISMA.
+
+**Recomendación para el `coder`:** ver ROADMAP **Hito R1** (`foraging/scent.py` consume proyectores;
+borrar `foraging/explain.py`; quitar `[llm]` de `pyproject.toml`).

@@ -1,71 +1,144 @@
-# Documento Metodológico: Análisis de Redes de Cocitación en Investigación Bibliométrica
+# Documento Metodológico: análisis de redes bibliométricas en bib2graph
 
-> ⚠️ **Documento desincronizado con el AS-BUILT (v0.2).** Describe la **arquitectura previa al
-> giro** (Neo4j/Cypher, Semantic Scholar/Scopus, BibTeX como entrada). El AS-BUILT usa
-> **OpenAlex** como backbone y **DuckDB** (biblioteca viva) como sustrato, no Neo4j. Además, el
-> **algoritmo de co-citación de la §3 (el Cypher) está mal**: cuenta *referencias compartidas*
-> (= **acoplamiento bibliográfico**), no *citantes compartidos* (= **co-citación**). El **código
-> sí implementa co-citación correctamente** (`networks/projectors.py`, vía `cited_by_id`). Una
-> reescritura completa de este documento al stack actual queda pendiente de decisión del PO; ver
-> [`Notas/06-critica-as-built-v0.2.md`](Notas/06-critica-as-built-v0.2.md).
+> Autoridad de dominio sobre el **método bibliométrico** del AS-BUILT (v0.2). Reescrito al stack
+> real (**OpenAlex** como backbone, **DuckDB** biblioteca viva, **Arrow** como tabla canónica,
+> **networkx** para las redes) tras el red-team de la
+> [`Notas/06-critica-as-built-v0.2.md`](Notas/06-critica-as-built-v0.2.md). El material previo
+> (Neo4j/Cypher, Semantic Scholar/Scopus, BibTeX como entrada, estudio de semiconductores) se
+> conserva como **anexo histórico** al final (§A), **sin** reescribirlo. Fecha: 2026-06-15.
 
-## Introducción
+## 1. Qué calcula bib2graph
 
-El presente documento describe la metodología utilizada para la construcción, análisis y visualización de redes de cocitación en el contexto de un estudio bibliométrico sobre la cadena de semiconductores. La metodología implementada se basa en técnicas avanzadas de análisis de redes sociales aplicadas a datos bibliográficos, utilizando una arquitectura de base de datos orientada a grafos para representar las relaciones entre documentos científicos.
+bib2graph proyecta un **corpus** (tabla canónica Arrow, una fila por paper) a **cinco redes
+bibliométricas**, las analiza (métricas, centralidad, comunidades, asortatividad) y las exporta a
+GraphML/CSV. El método es **determinista y reproducible**: mismas entradas → mismas redes (ADR
+[0017](decisiones/0017-reproducibilidad-historia-snapshot.md), Louvain seeded). **No hay IA
+generativa** en el método (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)).
 
-## Fundamento Teórico
+## 2. Fundamento teórico de las redes
 
-Las redes de cocitación son una herramienta fundamental en los estudios bibliométricos que permiten identificar la estructura intelectual de un campo de investigación. Dos documentos se consideran cocitados cuando ambos son referenciados por un tercer documento. La frecuencia con la que dos documentos son cocitados se interpreta como una medida de similitud temática o conceptual entre ellos, bajo la premisa de que los documentos frecuentemente cocitados abordan temas relacionados o complementarios.
+Cada proyección revela una estructura distinta del campo. Las definiciones importan (la §3 corrige
+un error histórico que confundía dos de ellas):
 
-## Arquitectura del Sistema
+| Red | Definición | Qué revela |
+|---|---|---|
+| **Acoplamiento bibliográfico** | Dos papers están **acoplados** si **comparten referencias** (citan a los mismos trabajos). | Cercanía temática *desde la perspectiva de los autores citantes*; es estable en el tiempo (las referencias de un paper no cambian). |
+| **Co-citación** | Dos papers están **co-citados** si **un tercero los cita a ambos** (comparten **citantes**). | Estructura intelectual *según la comunidad que cita*; evoluciona con el tiempo (acumula citantes nuevos). |
+| **Colaboración de autores** | Autores que **co-firman** un paper. | Comunidades de coautoría. |
+| **Colaboración de instituciones** | Instituciones vinculadas por co-firmas. | Geografía/estructura institucional (insumo de la asortatividad Norte–Sur). |
+| **Co-ocurrencia de keywords** | Keywords que aparecen **juntas** en un paper (normalizadas por el thesaurus multilingüe). | Estructura conceptual/temática del campo. |
 
-El sistema implementado sigue una arquitectura modular que consta de los siguientes componentes principales:
+**Acoplamiento ≠ co-citación.** Acoplamiento = **referencias** compartidas (mira *hacia atrás*, hacia
+lo que el paper cita). Co-citación = **citantes** compartidos (mira *hacia adelante*, hacia quién
+cita al paper). Confundirlos es el error que la §3 corrige.
 
-1. **Modelo de Datos**: Implementado en Neo4j, una base de datos orientada a grafos, que permite representar de manera natural las relaciones entre entidades bibliográficas.
-2. **Cargador de Datos Bibliométricos**: Responsable de la ingesta de datos desde fuentes bibliográficas como archivos BibTeX.
-3. **Enriquecedor de Datos**: Amplía la información de los documentos mediante consultas a APIs externas como Semantic Scholar y Scopus.
-4. **Analizador de Redes**: Construye y analiza las redes de cocitación, calculando métricas y detectando comunidades.
+## 3. Cómo se construyen las redes (stack real)
 
-## Metodología
+El insumo viene de **OpenAlex** ya en el corpus: `references_id` (lo que el paper cita) llega
+**inline** con el seed; `cited_by_id` (quién cita al paper) queda **vacío tras el seed** y requiere
+un **segundo nivel de fetch** (forward chaining / `Enricher`, Hito 8). Las proyecciones son
+**funciones puras sobre la tabla Arrow** (`networks/projectors.py`), no consultas a un servidor de
+grafos.
 
-### 1. Recolección y Preparación de Datos
+- **Acoplamiento bibliográfico** (`BibliographicCouplingProjector`): para cada par de papers cuenta
+  las referencias compartidas (`references_id`). Es **barato** (las refs ya están en el corpus) y
+  opera sobre el **corpus completo**, no solo las semillas → es **ciudadano de primera**
+  (`critica-base.md` §2, ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md)).
+- **Co-citación** (`CoCitationProjector`): para cada par de papers cuenta los **citantes
+  compartidos** (`cited_by_id`). Es la red **más cara** (depende del 2º nivel de fetch); sobre un
+  corpus recién sembrado da pocas o cero aristas hasta enriquecer.
+- El **peso** de cada arista es el **conteo crudo** de ítems compartidos; `min_weight` (default 1)
+  descarta aristas débiles. Sin normalización (Salton/Jaccard) en v1.
 
-El proceso comienza con la recolección de datos bibliográficos de fuentes como Web of Science, Scopus o bases de datos especializadas. Los datos se obtienen en formato BibTeX y se procesan para su ingesta en la base de datos Neo4j. Durante esta fase:
+> **Corrección histórica (Nota 06, rigor):** el Cypher de ejemplo del anexo §A computaba
+> *referencias compartidas* (= **acoplamiento**) bajo la etiqueta `CO_CITED_WITH`, contradiciendo su
+> propio fundamento teórico. El **código del AS-BUILT está bien**: la co-citación usa
+> `cited_by_id` = citantes compartidos. Esta §3 es la definición autoritativa; el Cypher del anexo
+> queda solo como historia (erróneo, no reusar).
 
-- Se extraen metadatos básicos como título, autores, año de publicación, DOI, etc.
-- Se normalizan los nombres de autores e instituciones para evitar duplicidades.
-- Se identifican y extraen las referencias bibliográficas de cada documento.
+## 4. Evaluación de calidad de la red
 
-### 2. Enriquecimiento de Datos
+`cocitation_quality_report` (`networks/analyzer.py`) declara criterios con **umbrales configurables**
+(`QualityThresholds`), reportando por criterio `{valor, umbral, pasa}` + `overall_pass` (sin score
+ponderado que oculte qué falló):
 
-Para mejorar la calidad y completitud de los datos, se implementa un proceso de enriquecimiento que:
+- **Volumen documental** (nº de documentos).
+- **Completitud de DOI y referencias** (% con DOI / referencias).
+- **Cobertura temporal** (rango de años).
+- **Diversidad geográfica.** ⚠️ *AS-BUILT:* el proxy cuenta **instituciones únicas**
+  (`institutions_id`), **no países** (no hay lookup ROR→país hasta el Hito 8), así que la métrica
+  Norte–Sur que el caso IED necesita **casi siempre da verde**. El report incluye un campo `proxy`
+  honesto, pero el criterio es **teatro de calidad** hasta resolver el lookup. Recomendación al
+  `coder`: ROR→país en el Enricher (Hito 8).
+- **Participación de autores recurrentes.**
 
-- Consulta APIs externas como Semantic Scholar y Scopus para obtener información adicional.
-- Completa datos faltantes como abstracts, keywords, y afiliaciones institucionales.
-- Normaliza y estandariza la información obtenida de diferentes fuentes.
+## 5. Análisis de la red
 
-### 3. Construcción de la Red de Cocitación
+Funciones puras sobre `networkx.Graph` (`networks/analyzer.py`):
 
-La red de cocitación se construye mediante el siguiente algoritmo:
+- **Métricas básicas:** tamaño (nodos/aristas), densidad, componentes conexos, clustering promedio.
+- **Centralidad:** grado e intermediación (puentes entre áreas).
+- **Comunidades:** **Louvain** (por defecto), propagación de etiquetas, modularidad voraz. Louvain
+  requiere `python-louvain` **declarado**; si falta, **falla explícito** (lección 7). Corre con
+  `random_state` derivado del content-hash → **comunidades reproducibles** (ADR 0017 enmendado).
+- **Asortatividad** (validada en el sandbox IED): por un **atributo categórico configurable** (p.
+  ej. región) y por grado, más la **composición de cada comunidad** por ese atributo. Las métricas
+  que dependen de un **proxy** se reportan **con el disclaimer del proxy** ("fácil pero consciente").
 
-1. Se identifican todos los documentos semilla (is_seed=True) en la base de datos.
-2. Para cada par de documentos (p1, p2), se cuentan las referencias compartidas.
-3. Se crea una relación CO_CITED_WITH entre p1 y p2 con un peso igual al número de referencias compartidas.
-4. Se filtran las relaciones con un peso mínimo definido por el usuario (por defecto, 1).
+## 6. Desambiguación de autores (alcance honesto)
 
-> ⚠️ **CORRECCIÓN:** el algoritmo descrito arriba (referencias compartidas) y el Cypher de abajo
-> **NO son co-citación**: son **acoplamiento bibliográfico** (dos documentos acoplados si
-> *comparten referencias*). La **co-citación** correcta es: dos documentos co-citados si *un
-> tercero los cita a ambos* — es decir, **citantes compartidos**, no referencias compartidas (esto
-> coincide con la definición de la §"Fundamento Teórico"). El **código construido implementa la
-> co-citación correcta** sobre `cited_by_id` (`networks/projectors.py`); este Cypher quedó del
-> diseño previo (Neo4j) y es erróneo. Pendiente de reescritura (decisión del PO).
+⚠️ *AS-BUILT:* la desambiguación es **parcial**. Con ORCID/ROR de OpenAlex se apoya en IDs; **sin
+ORCID**, la identidad de autor cae al **display name normalizado** (lowercase/trim/acentos,
+`preprocessors/normalize.py`), lo que puede producir **falsos merges/splits** en la red de
+co-autoría. **No es** una resolución de identidad robusta — no debe presentarse como tal. El dedup
+fuzzy **determinista** (`rapidfuzz`, extra `[dedup]`, Hito 7) refina, pero sigue sin ser identidad
+canónica.
 
-La implementación en Cypher (lenguaje de consulta de Neo4j) es la siguiente:
+## 7. Visualización y exportación
+
+GraphML (para Gephi/VOSviewer/Cytoscape) y CSV (nodos + aristas, para pandas). Salida pura y
+determinista (orden de filas estable), sin servidores.
+
+## 8. Limitaciones y consideraciones
+
+1. **Calidad de la fuente:** la precisión de `references_id`/`cited_by_id` de OpenAlex condiciona las
+   redes; OpenAlex **cambia en el tiempo** (de ahí la reproducibilidad por snapshot, no por
+   recómputo, ADR 0017).
+2. **Sesgo temporal:** los papers recientes acumulan menos co-citaciones.
+3. **Sesgo de selección del forrajeo:** rankear candidatos por estructura ya presente refuerza lo
+   central/popular (efecto Mateo). El scent **prioriza**; la exhaustividad la sostienen los filtros
+   PRISMA, no el scent.
+4. **Co-citación parcial sin enriquecer:** sin el 2º nivel de fetch, la co-citación es un artefacto
+   de qué citantes se trajeron, no un subset fiel; debe marcarse como parcial.
+
+---
+
+## §A. Anexo histórico — diseño previo (Neo4j / Cypher / semiconductores)
+
+> **Material histórico, NO reescrito y NO vigente.** Describe la **arquitectura previa al giro**
+> (Neo4j como modelo de datos, enriquecimiento por Semantic Scholar/Scopus, BibTeX como entrada,
+> estudio de la cadena de **semiconductores**) y un **Cypher de co-citación ERRÓNEO** (computa
+> acoplamiento). Se conserva para trazar de dónde viene el proyecto y como caso documentado; **el
+> método vigente es el de las §1–§8**. El giro a OpenAlex/DuckDB está en el ADR
+> [0007](decisiones/0007-openalex-backbone.md) y la arquitectura objetivo en
+> [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+### A.1 Arquitectura previa
+
+1. **Modelo de datos en Neo4j** (base orientada a grafos). → *Hoy:* tabla Arrow + DuckDB; Neo4j es
+   un adaptador `Store` opt-in post-V1, ya **no** el modelo (ADR
+   [0002](decisiones/0002-modelo-agnostico-backend.md)).
+2. **Cargador desde BibTeX.** → *Hoy:* OpenAlex backbone; BibTeX es `Source` secundaria.
+3. **Enriquecedor por Semantic Scholar/Scopus.** → *Hoy:* refs/citantes vienen de OpenAlex; el
+   Enricher deja de ser estructural (ADR [0007](decisiones/0007-openalex-backbone.md)).
+4. **Analizador de redes** sobre el grafo Neo4j. → *Hoy:* funciones puras sobre networkx.
+
+### A.2 Cypher de co-citación (ERRÓNEO — computa acoplamiento, no reusar)
 
 ```cypher
-// ⚠️ Esto computa ACOPLAMIENTO BIBLIOGRÁFICO (refs compartidas), no co-citación.
-// Co-citación = citantes compartidos: (p1)<-[:REFERENCES]-(citer)-[:REFERENCES]->(p2)
+// ⚠️ HISTÓRICO Y ERRÓNEO. Esto computa ACOPLAMIENTO BIBLIOGRÁFICO (refs compartidas), NO co-citación.
+// Co-citación correcta = citantes compartidos: (p1)<-[:REFERENCES]-(citer)-[:REFERENCES]->(p2)
+// El AS-BUILT lo implementa bien sobre cited_by_id (ver §3). Este bloque NO debe usarse.
 MATCH (p1:Paper {is_seed: True})-[:REFERENCES]->(ref:Paper)<-[:REFERENCES]-(p2:Paper {is_seed: True})
 WHERE p1 <> p2
 WITH p1, p2, COUNT(ref) AS shared_refs
@@ -74,70 +147,16 @@ MERGE (p1)-[r:CO_CITED_WITH]-(p2)
 ON CREATE SET r.weight = shared_refs
 ```
 
-### 4. Evaluación de Calidad de la Red
+### A.3 Umbrales hardcodeados previos
 
-Para garantizar la validez y representatividad de la red de cocitación, se evalúan los siguientes criterios de calidad:
+El diseño previo usaba umbrales fijos (volumen ≥200, DOI/refs ≥90%, ≥5 países, ≥10 autores,
+2000–2024). → *Hoy:* los umbrales son **configurables** (`QualityThresholds`, crítica #5); no se
+hardcodean conceptos de un estudio concreto.
 
-- **Volumen documental**: Se verifica que la red contenga un número mínimo de documentos (≥200).
-- **Completitud de DOI y referencias**: Se calcula el porcentaje de documentos con DOI y referencias (umbral ≥90%).
-- **Cobertura temporal**: Se evalúa si la red abarca un período significativo (2000-2024).
-- **Diversidad geográfica**: Se verifica la presencia de instituciones de al menos 5 países diferentes.
-- **Participación de autores clave**: Se identifica la presencia de autores recurrentes (≥10).
+### A.4 Caso de semiconductores
 
-Estos criterios se combinan en una puntuación global de calidad que permite evaluar la robustez de la red construida.
-
-### 5. Análisis de la Red
-
-Una vez construida la red, se realizan diversos análisis:
-
-#### 5.1 Métricas Básicas
-- **Tamaño de la red**: Número de nodos (documentos) y aristas (relaciones de cocitación).
-- **Densidad**: Proporción de conexiones existentes respecto al total posible.
-- **Componentes conectados**: Identificación del componente principal y fragmentos aislados.
-
-#### 5.2 Análisis de Centralidad
-- **Centralidad de grado**: Identifica documentos con mayor número de conexiones.
-- **Centralidad de intermediación**: Identifica documentos que actúan como puentes entre diferentes áreas temáticas.
-- **Coeficiente de agrupamiento**: Mide la tendencia de los nodos a formar grupos cohesivos.
-
-#### 5.3 Detección de Comunidades
-Se implementan tres algoritmos de detección de comunidades:
-
-- **Louvain**: Optimiza la modularidad mediante un enfoque jerárquico.
-- **Propagación de etiquetas**: Asigna comunidades basándose en las etiquetas predominantes de los vecinos.
-- **Modularidad voraz**: Fusiona comunidades para maximizar la modularidad global.
-
-La elección del algoritmo depende de las características específicas de la red y los objetivos del análisis.
-
-### 6. Visualización y Exportación
-
-Los resultados del análisis se exportan en formatos estándar:
-
-- **GraphML**: Para su visualización en herramientas especializadas como Gephi.
-- **CSV**: Archivos separados para nodos y aristas, facilitando análisis adicionales en herramientas estadísticas.
-
-## Validación Metodológica
-
-La metodología implementada se basa en principios establecidos en la literatura bibliométrica y cienciométrica, incorporando mejores prácticas de:
-
-1. **Normalización de datos**: Reducción de ambigüedades en nombres de autores e instituciones.
-   ⚠️ *AS-BUILT:* la desambiguación de autores es **parcial**: sin ORCID, la identidad cae al
-   *display name* normalizado (lowercase/trim/acentos), lo que puede producir falsos merges/splits
-   en la red de co-autoría. No es una resolución de identidad robusta.
-2. **Filtrado de ruido**: Eliminación de relaciones débiles mediante umbrales de peso mínimo.
-3. **Evaluación de calidad**: Aplicación de criterios objetivos para evaluar la representatividad de la red.
-4. **Análisis multidimensional**: Combinación de diferentes métricas y técnicas de análisis.
-
-## Limitaciones y Consideraciones
-
-Es importante reconocer las siguientes limitaciones:
-
-1. **Dependencia de la calidad de los datos de origen**: La precisión de las referencias bibliográficas afecta directamente la estructura de la red.
-2. **Sesgo temporal**: Los documentos más recientes tienen menos probabilidad de ser cocitados debido a su menor tiempo de exposición.
-3. **Complejidad computacional**: El análisis de redes grandes puede requerir recursos computacionales significativos.
-
-## Conclusiones
-
-La metodología presentada proporciona un marco robusto para el análisis de redes de cocitación, permitiendo identificar la estructura intelectual del campo de investigación sobre semiconductores. El enfoque basado en grafos facilita la representación natural de las relaciones bibliográficas, mientras que las técnicas de análisis de redes sociales permiten descubrir patrones y estructuras no evidentes mediante métodos bibliométricos tradicionales.
-
-Esta metodología puede adaptarse a otros campos de investigación, ajustando los parámetros y criterios de calidad según las características específicas de cada dominio.
+El estudio de la cadena de semiconductores fue el caso original sobre Neo4j/Cypher. Queda como
+**caso documentado histórico**; el **caso validador vigente** es el de **intercambio ecológico
+desigual (IED)**, corrido end-to-end sobre OpenAlex (ver
+[`exploracion/informe_ied_lectura_2.md`](../exploracion/informe_ied_lectura_2.md)). Ninguno es el
+producto.
