@@ -93,6 +93,13 @@ el orden en que aparecen en `other`. `merge` es idempotente.
 > (regresión verde), **sin** SQL parametrizado por ids. La **alternativa de un CTE con `VALUES`** (pasar
 > el orden como tabla de parámetros) quedó **descartada**: el ordenamiento en Python es más simple para
 > el tamaño de corpus objetivo y no acopla el orden a un dialecto SQL.
+>
+> **AS-BUILT — actualizado por [ADR 0024](0024-orden-d3-columna-secuencia-duckdb.md) (2026-06-16):**
+> tanto el SQL interpolado como el "leer todo / ordenar en Python / reinsertar" descritos arriba
+> **reescribían la tabla entera por cada `merge`**. El ADR 0024 los reemplaza por una **columna interna
+> `_seq BIGINT`** (no parte de `CORPUS_SCHEMA`): el orden de primera aparición se persiste y las lecturas
+> usan `SELECT * EXCLUDE (_seq) FROM corpus ORDER BY _seq`. `merge` deja de reescribir la tabla; D1/D2
+> quedan intactos.
 
 ### D4 — `provenance` como log append-only
 

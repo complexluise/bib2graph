@@ -17,6 +17,9 @@ Detalles de diseño (ADR 0015):
   La columna ``round`` registra el número de ronda; ``reseed`` incrementa la ronda.
 - Single-writer (ADR 0019): archivo bloqueado → ``StoreLockedError``.
 - ``:memory:`` cuando no se pasa ``path``.
+- ADR 0024: orden D3 garantizado por columna interna ``_seq BIGINT``
+  (primera aparición = menor ``_seq``); ``to_arrow()`` excluye ``_seq`` y
+  ordena por él. Elimina el DELETE+reinserción de ``merge``.
 
 Este módulo importa ``duckdb`` a nivel de módulo (es correcto aquí; el
 núcleo nunca importa este módulo directamente).
@@ -58,6 +61,10 @@ class StoreLockedError(OSError):
 # SQL DDL
 # ---------------------------------------------------------------------------
 
+# ADR 0024: ``_seq BIGINT`` es una columna interna (no parte de CORPUS_SCHEMA)
+# que fija el orden de primera aparición para garantizar D3 sin DELETE+reinsert.
+# La columna es nullable (sin DEFAULT) para que el UPSERT la controle
+# explícitamente; filas existentes conservan su ``_seq`` original.
 _DDL_CORPUS = """
 CREATE TABLE IF NOT EXISTS corpus (
     id                   VARCHAR NOT NULL PRIMARY KEY,
@@ -82,7 +89,8 @@ CREATE TABLE IF NOT EXISTS corpus (
     institutions_id      VARCHAR[],
     references_id        VARCHAR[],
     references_doi       VARCHAR[],
-    cited_by_id          VARCHAR[]
+    cited_by_id          VARCHAR[],
+    _seq                 BIGINT
 )
 """
 
@@ -102,17 +110,36 @@ _DDL_LOOP_STATE_MIGRATE = """
 ALTER TABLE loop_state_log ADD COLUMN round INTEGER DEFAULT 0
 """
 
+# ADR 0024: migración liviana para bases pre-existentes sin columna ``_seq``.
+# Se suprime el error si la columna ya existe (CatalogException o BinderException).
+# El backfill usa ``rowid`` como proxy de orden de inserción original; es inocuo
+# cuando no hay NULLs (UPDATE … WHERE _seq IS NULL no toca nada).
+_DDL_CORPUS_MIGRATE_SEQ = """
+ALTER TABLE corpus ADD COLUMN _seq BIGINT
+"""
+
+_DDL_CORPUS_BACKFILL_SEQ = """
+UPDATE corpus SET _seq = rowid WHERE _seq IS NULL
+"""
+
 # ---------------------------------------------------------------------------
 # SQL de UPSERT
 # El merge campo a campo (D3) se expresa en SQL:
 #   - Escalares: COALESCE(excluded.col, corpus.col)
 #   - Listas: CASE WHEN … list_sort(list_distinct(list_concat(…))) END
 #   - provenance / curation_status: delegados a UDFs Python
+# ADR 0024: ``_seq`` se incluye en el INSERT pero NO en el DO UPDATE SET,
+# de modo que filas existentes conservan su ``_seq`` original (primera aparición).
 # ---------------------------------------------------------------------------
 
 
 def _build_upsert_sql() -> str:
-    """Construye el SQL de UPSERT con merge D3 para todos los campos."""
+    """Construye el SQL de UPSERT con merge D3 para todos los campos.
+
+    ADR 0024: incluye ``_seq`` como última columna del INSERT (placeholder extra)
+    pero la excluye del ``ON CONFLICT DO UPDATE SET`` para preservar el orden
+    de primera aparición de filas ya existentes.
+    """
     scalar_cols = [
         "openalex_id",
         "doi",
@@ -154,9 +181,11 @@ def _build_upsert_sql() -> str:
     all_updates = scalar_updates + list_updates + special_updates
     updates_sql = ",\n".join(all_updates)
 
-    # Columnas en el INSERT (orden del schema canónico)
-    insert_cols = ", ".join(f.name for f in CORPUS_SCHEMA)
-    placeholders = ", ".join(f"${i + 1}" for i in range(len(CORPUS_SCHEMA)))
+    # ADR 0024: columnas del INSERT = CORPUS_SCHEMA + _seq (columna interna de orden)
+    schema_cols = ", ".join(f.name for f in CORPUS_SCHEMA)
+    insert_cols = f"{schema_cols}, _seq"
+    # Un placeholder extra para _seq al final
+    placeholders = ", ".join(f"${i + 1}" for i in range(len(CORPUS_SCHEMA) + 1))
 
     return (
         f"INSERT INTO corpus ({insert_cols})\n"
@@ -177,13 +206,22 @@ def _row_to_params(row: dict[str, object]) -> list[object]:
     """Convierte un dict de fila a lista de parámetros posicionales para DuckDB.
 
     Respeta el orden de columnas de ``CORPUS_SCHEMA``.
+    Solo incluye las columnas del schema canónico (no ``_seq``); el llamador
+    es responsable de agregar el valor de ``_seq`` al final de la lista.
     """
     return [row.get(f.name) for f in CORPUS_SCHEMA]
 
 
 def _arrow_table_from_con(con: duckdb.DuckDBPyConnection) -> pa.Table:
-    """Lee la tabla ``corpus`` y la convierte al schema Arrow canónico."""
-    result: pa.Table = con.execute("SELECT * FROM corpus").to_arrow_table()
+    """Lee la tabla ``corpus``, excluye ``_seq`` y ordena por él.
+
+    ADR 0024: ``SELECT * EXCLUDE (_seq) … ORDER BY _seq`` garantiza que
+    ``to_arrow()`` devuelva exactamente ``CORPUS_SCHEMA`` en orden de primera
+    aparición (D3), sin necesidad de DELETE+reinsert.
+    """
+    result: pa.Table = con.execute(
+        "SELECT * EXCLUDE (_seq) FROM corpus ORDER BY _seq"
+    ).to_arrow_table()
     if len(result) == 0:
         return pa.table(
             {f.name: pa.array([], type=f.type) for f in CORPUS_SCHEMA},
@@ -212,6 +250,10 @@ class DuckDBBackend:
 
     ``CycleState`` (ADR 0016): extensión propia con ``loop_state()`` y
     ``set_loop_state()``.
+
+    ADR 0024: el orden D3 se garantiza mediante la columna interna ``_seq``
+    (número de secuencia de primera aparición). ``to_arrow()`` devuelve
+    exactamente ``CORPUS_SCHEMA`` (sin ``_seq``) ordenado por ``_seq``.
 
     Args:
         table: Tabla Arrow inicial.  Si se pasa, se hace upsert de sus filas
@@ -245,12 +287,19 @@ class DuckDBBackend:
     # ------------------------------------------------------------------
 
     def _setup(self) -> None:
-        """Crea las tablas DDL y registra las UDFs Python."""
+        """Crea las tablas DDL, aplica migraciones y registra las UDFs Python."""
         self._con.execute(_DDL_CORPUS)
         self._con.execute(_DDL_LOOP_STATE)
         # R3: migración liviana — agrega columna round si falta (bases pre-R3).
         with contextlib.suppress(duckdb.CatalogException):
             self._con.execute(_DDL_LOOP_STATE_MIGRATE)
+        # ADR 0024: migración liviana — agrega columna _seq si falta (bases pre-ADR 0024).
+        # CatalogException: columna ya existe. BinderException: variante alternativa DuckDB.
+        with contextlib.suppress(duckdb.CatalogException, duckdb.BinderException):
+            self._con.execute(_DDL_CORPUS_MIGRATE_SEQ)
+        # Backfill: asigna _seq = rowid a filas legacy sin _seq asignado.
+        # Es inocuo cuando no hay NULLs (WHERE _seq IS NULL no toca nada).
+        self._con.execute(_DDL_CORPUS_BACKFILL_SEQ)
         self._register_udfs()
 
     def _register_udfs(self) -> None:
@@ -299,10 +348,25 @@ class DuckDBBackend:
             )
 
     def _upsert_table(self, table: pa.Table) -> None:
-        """Hace upsert de todas las filas de ``table`` en la base de datos."""
+        """Hace upsert de todas las filas de ``table`` en la base de datos.
+
+        ADR 0024: calcula ``start = COALESCE(MAX(_seq), 0)`` una sola vez y
+        asigna ``_seq = start + 1 + i`` (0-based) a cada fila. Filas ya
+        existentes (ON CONFLICT) ignoran el ``_seq`` provisto porque el
+        DO UPDATE no lo actualiza, preservando así el orden de primera
+        aparición (D3).
+        """
         rows = table.to_pylist()
-        for row in rows:
-            params = _row_to_params(row)
+        if not rows:
+            return
+        # ADR 0024: base para el _seq monótono de esta inserción por lote
+        result = self._con.execute(
+            "SELECT COALESCE(MAX(_seq), 0) FROM corpus"
+        ).fetchone()
+        start: int = int(result[0]) if result else 0
+        for i, row in enumerate(rows):
+            # _seq = start + 1 + i garantiza valores únicos y crecientes en este lote
+            params = [*_row_to_params(row), start + 1 + i]
             self._con.execute(_UPSERT_SQL, params)
 
     def _clone(self) -> DuckDBBackend:
@@ -310,6 +374,10 @@ class DuckDBBackend:
 
         Para ``:memory:`` exporta el estado actual y lo carga en una nueva
         conexión in-memory (no se puede compartir una conexión :memory:).
+
+        ADR 0024: ``_arrow_table_from_con`` ya lee ordenado por ``_seq``;
+        al hacer ``_upsert_table`` en la nueva instancia se reasigna ``_seq``
+        fresco en ese mismo orden, preservando el orden D3.
         """
         if self._path == ":memory:":
             current_table = _arrow_table_from_con(self._con)
@@ -348,7 +416,7 @@ class DuckDBBackend:
         Valida con ``validate_table`` antes de devolver.
 
         Returns:
-            Tabla Arrow con el schema canónico del Corpus.
+            Tabla Arrow con el schema canónico del Corpus (sin ``_seq``).
         """
         table = _arrow_table_from_con(self._con)
         validate_table(table)
@@ -357,6 +425,9 @@ class DuckDBBackend:
     def add_paper(self, row: dict[str, object]) -> DuckDBBackend:
         """Agrega (upsert) una fila al backend y devuelve una nueva instancia.
 
+        ADR 0024: asigna ``_seq = COALESCE(MAX(_seq), 0) + 1`` para que la
+        fila nueva quede al final del orden de primera aparición (D3).
+
         Args:
             row: Fila ya validada con todos los campos del schema.
 
@@ -364,63 +435,36 @@ class DuckDBBackend:
             Nueva instancia con el paper agregado.
         """
         new_backend = self._clone()
-        params = _row_to_params(row)
+        # ADR 0024: _seq para la fila nueva = MAX actual + 1
+        result = new_backend._con.execute(
+            "SELECT COALESCE(MAX(_seq), 0) FROM corpus"
+        ).fetchone()
+        seq: int = int(result[0]) + 1 if result else 1
+        params = [*_row_to_params(row), seq]
         new_backend._con.execute(_UPSERT_SQL, params)
         return new_backend
 
     def merge(self, other_table: pa.Table) -> DuckDBBackend:
         """Fusiona ``other_table`` respetando D3 y devuelve una nueva instancia.
 
-        El orden de filas resultante respeta la primera aparición (D3):
-        filas de ``self`` primero (en su orden original), luego las filas
-        nuevas de ``other_table``.  Se logra capturando los ids existentes
-        antes del upsert y reconstruyendo el orden después.
+        ADR 0024: el orden D3 (filas de ``self`` primero en su orden original,
+        luego las nuevas filas de ``other_table`` en su orden de aparición) se
+        garantiza por la columna interna ``_seq``:
+        - Filas de ``self`` ya tienen ``_seq`` asignado (se preservan en el
+          ON CONFLICT DO UPDATE, que no actualiza ``_seq``).
+        - Filas nuevas de ``other_table`` reciben ``_seq`` mayor (calculado
+          como ``MAX(_seq) + 1 + i`` en ``_upsert_table``).
+        - ``_arrow_table_from_con`` lee con ``ORDER BY _seq``.
+        No se requiere DELETE+reinsert.
 
         Args:
             other_table: Tabla Arrow a fusionar.
 
         Returns:
-            Nueva instancia con las filas fusionadas.
+            Nueva instancia con las filas fusionadas, en orden D3.
         """
-        # Capturar ids de self (en orden)
-        existing_ids: list[str] = [
-            str(r)
-            for r in self._con.execute(
-                "SELECT id FROM corpus ORDER BY rowid"
-            ).fetchnumpy()["id"]
-        ]
-        existing_id_set = set(existing_ids)
-
         new_backend = self._clone()
         new_backend._upsert_table(other_table)
-
-        # Reordenar: filas de self primero (en su orden original),
-        # luego las filas nuevas de other_table en el orden en que aparecen
-        other_rows = other_table.to_pylist()
-        new_ids_in_order = [
-            str(r["id"]) for r in other_rows if str(r["id"]) not in existing_id_set
-        ]
-        ordered_ids = existing_ids + new_ids_in_order
-
-        if ordered_ids:
-            # Leer todas las filas, ordenar en Python por orden de aparición
-            # (seeds primero, luego nuevos en el orden de other_table) y reinsertar.
-            all_rows_by_id: dict[str, dict[str, object]] = {
-                str(r["id"]): r
-                for r in new_backend._con.execute("SELECT * FROM corpus")
-                .to_arrow_table()
-                .cast(CORPUS_SCHEMA)
-                .to_pylist()
-            }
-            rows_ordered = [
-                all_rows_by_id[id_] for id_ in ordered_ids if id_ in all_rows_by_id
-            ]
-            # Re-insertar en el orden correcto: limpiar y reinsertar
-            new_backend._con.execute("DELETE FROM corpus")
-            for row in rows_ordered:
-                params = _row_to_params(row)
-                new_backend._con.execute(_UPSERT_SQL, params)
-
         return new_backend
 
     def apply_curation(
@@ -462,12 +506,17 @@ class DuckDBBackend:
         id_set = set(ids)
         for row in updated_rows:
             if str(row.get("id")) in id_set:
-                params = _row_to_params(row)
+                # ADR 0024: las filas actualizadas ya existen → ON CONFLICT preserva _seq.
+                # Se pasa _seq=0 como placeholder; el DO UPDATE no lo sobrescribe.
+                params = [*_row_to_params(row), 0]
                 new_backend._con.execute(_UPSERT_SQL, params)
         return new_backend
 
     def filter_view(self, view: Literal["seeds", "candidates", "accepted"]) -> pa.Table:
         """Devuelve la tabla filtrada según la vista pedida.
+
+        ADR 0024: usa ``SELECT * EXCLUDE (_seq) … ORDER BY _seq`` para
+        mantener el orden D3 y excluir la columna interna del resultado.
 
         Args:
             view: ``'seeds'``, ``'candidates'`` o ``'accepted'``.
@@ -480,17 +529,17 @@ class DuckDBBackend:
         """
         if view == "seeds":
             result = self._con.execute(
-                "SELECT * FROM corpus WHERE is_seed = TRUE"
+                "SELECT * EXCLUDE (_seq) FROM corpus WHERE is_seed = TRUE ORDER BY _seq"
             ).to_arrow_table()
         elif view == "candidates":
             result = self._con.execute(
-                "SELECT * FROM corpus WHERE curation_status = "
-                f"'{CurationStatus.CANDIDATE.value}'"
+                "SELECT * EXCLUDE (_seq) FROM corpus WHERE curation_status = "
+                f"'{CurationStatus.CANDIDATE.value}' ORDER BY _seq"
             ).to_arrow_table()
         elif view == "accepted":
             result = self._con.execute(
-                "SELECT * FROM corpus WHERE curation_status = "
-                f"'{CurationStatus.ACCEPTED.value}'"
+                "SELECT * EXCLUDE (_seq) FROM corpus WHERE curation_status = "
+                f"'{CurationStatus.ACCEPTED.value}' ORDER BY _seq"
             ).to_arrow_table()
         else:
             raise ValueError(

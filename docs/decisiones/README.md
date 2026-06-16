@@ -51,7 +51,7 @@ Qué se vuelve posible/fácil y qué se vuelve costoso/imposible. Trade-offs hon
 | [0010](0010-agente-native-columna.md) | CLI agente-native como columna primaria | Aceptada |
 | [0011](0011-thesaurus-multilingue.md) | Thesaurus multilingüe determinista para keywords | Aceptada · **enmendada** (2026-06-15): se retira el fallback semántico/LLM ([0022](0022-producto-sin-ia-generativa.md)) |
 | [0012](0012-openalex-credenciales.md) | Credenciales de OpenAlex: email + API key opcional, inyectados | Aceptada |
-| [0013](0013-identidad-hash-merge-corpus.md) | Identidad estable de papers, hash de corpus order-independent y reglas de merge | Aceptada · reencuadrada por [0015](0015-corpus-tabular-backend.md) (D1/D2/D3 = contrato del backend) |
+| [0013](0013-identidad-hash-merge-corpus.md) | Identidad estable de papers, hash de corpus order-independent y reglas de merge | Aceptada · reencuadrada por [0015](0015-corpus-tabular-backend.md) (D1/D2/D3 = contrato del backend) · AS-BUILT de D3 en DuckDB actualizado por [0024](0024-orden-d3-columna-secuencia-duckdb.md) (`_seq`) |
 | [0014](0014-proyeccion-redes-pesos-asortatividad.md) | Semántica de proyección de redes: tipo de nodo, peso, scope y asortatividad por proxy | Aceptada |
 | [0015](0015-corpus-tabular-backend.md) | `Corpus` sobre `TabularBackend`; DuckDB backend por defecto | Aceptada |
 | [0016](0016-maquina-estados-lazo.md) | Máquina de estados del lazo; no-linealidad de primera clase; una investigación por archivo | Aceptada · **enmendada** (2026-06-15): FSM **cíclico** de dominio (`cycle.py`), `reseed` de primera clase + contador de ronda, `MONITORED`, **curación transversal** |
@@ -62,3 +62,4 @@ Qué se vuelve posible/fácil y qué se vuelve costoso/imposible. Trade-offs hon
 | [0021](0021-cli-agente-native-contrato.md) | Contrato del CLI agente-native `b2g`: set de 12 subcomandos (incl. `accept`/`reject`/`monitor`), envelope JSON versionado, exit codes por tipo, `--store` global | Aceptada · **enmendada** (2026-06-15): `status` muestra curación como acción siempre-disponible; refleja `reseed`/`MONITORED`; fix UTF-8 · **cleanup pre-v0.3** (2026-06-16): 12° subcomando `monitor` (→ `MONITORED`), asimetría del pre-check `monitor`/`chain`; alias `LoopState` retirado |
 | [0022](0022-producto-sin-ia-generativa.md) | El producto no usa IA generativa; la "inteligencia" del forrajeo es estructura bibliométrica | Aceptada |
 | [0023](0023-capa-constants-modelos-schema.md) | Capa base de vocabulario + modelos: `constants`, `ProvenanceEvent`, schema única (`PaperRow` ⇄ `CORPUS_SCHEMA`) | Aceptada |
+| [0024](0024-orden-d3-columna-secuencia-duckdb.md) | Orden D3 en DuckDB vía columna de secuencia interna (`_seq`) | Aceptada · AS-BUILT (2026-06-16) |
