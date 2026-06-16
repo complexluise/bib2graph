@@ -60,21 +60,21 @@ costura.
 ## Mapa de releases (cortes de versión)
 
 SemVer 0.y: la API es inestable hasta `1.0.0` (que requiere API estable + caso real
-reproducido, ver [`VERSIONING.md`](../../VERSIONING.md)). El **mecanismo de release DISEÑADO es
-`release-please`** (ver [`VERSIONING.md`](../../VERSIONING.md) / ADR 0006), pero **aún no está
-conectado** (no existe `.github/` ni CI). Mientras tanto, el versionado/tag se hace
-**manual/local** y `commitizen` solo sirve para lintear commits y **previsualizar** el bump
-(`cz bump --dry-run`); no es el publicador. Al 2026-06-15 existen los tags **anotados locales
-`v0.1.0` y `v0.2.0`** (sin push); el **release publicado** (push de tags + artefactos) queda
-**pendiente de conectar `release-please` + CI**. Cortes acordados:
+reproducido, ver [`VERSIONING.md`](../../VERSIONING.md)). El **mecanismo de release es
+`release-please`** (ver [`VERSIONING.md`](../../VERSIONING.md) / ADR 0006), **ya conectado**
+(`.github/workflows/` + CI). `commitizen` queda para lintear commits y **previsualizar** el bump
+(`cz bump --dry-run`); no es el publicador. Los tags **`v0.1.0`, `v0.2.0` y `v0.3.0` ya están
+publicados en `origin`** (con su GitHub Release); lo que sigue **pendiente es la publicación a
+PyPI** (decisión del PO: por ahora solo GitHub Releases, hasta configurar *trusted publishing*
+OIDC), no el push de tags. Cortes acordados:
 
 - **v0.1 — pipeline mínimo end-to-end (Hitos 1–4, incl. el rework 1.5) · ✅ FEATURE-COMPLETE
   (2026-06-15):** de una **ecuación de búsqueda a las redes desde código Python**, sobre una
   **biblioteca viva en DuckDB**. Incluye `Corpus` (sobre `TabularBackend`),
   proyectores/analizadores/export, `DuckDBBackend`/`DuckDBStore` y `OpenAlexSource`/`BibtexSource`.
   Con el **Hito 4 terminado**, todas las piezas existen y se componen en código (ver el ejemplo de
-  `API.md` §12). **Sin CLI ni forrajeo todavía** (eso es v0.2). **Tag local `v0.1.0`** creado el
-  2026-06-15 (anotado, sin push).
+  `API.md` §12). **Sin CLI ni forrajeo todavía** (eso es v0.2). **Tag `v0.1.0`** creado el
+  2026-06-15, **publicado en `origin`**.
 > ⚠️ **Honestidad sobre "capacidades completas" (v0.2):** se refiere al *flujo* `seed → chain →
 > filter → build → export`, NO a la totalidad del producto. Falta la **co-citación end-to-end**
 > (Hito 8: `cited_by_id` está vacío tras el seed → 0 aristas hasta el 2º nivel de fetch), y el
@@ -94,7 +94,7 @@ conectado** (no existe `.github/` ni CI). Mientras tanto, el versionado/tag se h
   re-chequea citantes nuevos del corpus y transiciona a `MONITORED`. El `accept`/`reject` programático
   sobrevive (ahora como subcomando CLI); la curación interactiva rica (`curate`) y la GUI son
   futuro. Acá se cumple el criterio "V1 hecha" del PRD §9 a nivel de *capacidades* (el número de
-  versión sigue en 0.y). **Tag local `v0.2.0`** creado en HEAD el 2026-06-15 (anotado, sin push).
+  versión sigue en 0.y). **Tag `v0.2.0`** creado el 2026-06-15, **publicado en `origin`**.
 - **v0.3 — remediación (Hitos R1–R5) · ✅ COMPLETA (2026-06-16):** cierra la brecha AS-BUILT↔TARGET del red-team (Nota 06) y
   del modelo nuevo (ADR 0022/0023 + enmiendas): capa `constants`/`schemas` (con `ProvenanceEvent`) única,
   identidad-vs-procedencia con reproducibilidad bit a bit, FSM cíclico de dominio (`cycle.py`) con
@@ -121,6 +121,13 @@ Cada hito declara cuatro cosas, en este orden:
    código. Ver la disciplina abajo.
 
 ## Disciplina de tests (TDD selectivo)
+
+> **Sobre los conteos "N tests verdes" por hito.** Las cifras que aparecen en los
+> archivos de hito (`73`/`98`/`133`/`192`/`214`/`247`/`275`/`291`/`319`/…) son
+> **snapshots históricos** del momento en que se cerró cada hito; **no** se
+> actualizan retroactivamente (son historia). La **cuenta autoritativa actual** la
+> da el CI (`uv run pytest`, en `.github/workflows/ci.yml`), que es la **fuente de
+> verdad del gate** — no estos números.
 
 **TDD es la regla**: en el núcleo puro se escribe el test antes que el código (rojo → verde →
 refactor). Pero **no se testea cada cosa** — un test de bajo valor es deuda, no seguro. Criterio

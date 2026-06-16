@@ -34,9 +34,13 @@ cambies sí bumpan MAJOR.
 
 - La API pública de `docs/API.md` se considera estable y revisada.
 - Hay cobertura de tests razonable sobre el núcleo y las costuras por
-  defecto (BibtexSource, InMemoryStore/ParquetStore, los 4 proyectores).
-- Hay al menos un caso real validado (estudio de semiconductores
-  reproducido con la lib).
+  defecto (`BibtexSource`/`OpenAlexSource`, `InMemoryBackend`/`DuckDBBackend`
+  + `DuckDBStore`, los proyectores).
+- Hay al menos un caso real validado: el caso **IED** (intercambio ecológico
+  desigual) reproducido end-to-end desde la ecuación con la lib (ver
+  `docs/PRD.md` §10 y `exploracion/informe_ied_lectura_2.md`). El estudio de
+  semiconductores queda como caso **documentado** adicional en metodología, no
+  como el reproducido.
 - Hay documentación de usuario completa (README + ejemplo end-to-end).
 
 Hasta entonces, los breaking changes están permitidos y son **bienvenidos
@@ -52,8 +56,9 @@ Lo declarado en `docs/API.md`:
 - Los formatos de archivos de I/O: schema de la tabla Arrow, schema del
   `manifest.json`, formatos de export (GraphML, CSV).
 - Los nombres de subcomandos del CLI y la forma del JSON de `--json`.
-- Los nombres de extras de instalación (`[s2]`, `[neo4j]`, `[duckdb]`,
-  `[dedup]`, `[viz]`).
+- Los nombres de extras de instalación (`[zotero]`, `[s2]`, `[neo4j]`,
+  `[dedup]`, `[viz]`, `[bibtex]`). Nota: `duckdb` **no** es un extra — es
+  dependencia del núcleo (biblioteca viva, ADR 0009).
 
 Lo que **no** cuenta: funciones y clases privadas (prefijo `_`), módulos
 internos, mensajes de error exactos, orden de columnas en exportaciones
@@ -72,6 +77,14 @@ Las releases las maneja [`release-please`](https://github.com/googleapis/release
    - Bump de versión en `pyproject.toml`.
 3. Revisás el PR de release. Si está bien, lo mergeás.
 4. Al mergear, se taggea `vX.Y.Z` y se crea el **GitHub Release**.
+
+> **Sobre el token del PR de release.** El workflow usa
+> `token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}`. Si se
+> configura el secret **`RELEASE_PLEASE_TOKEN`** (un PAT), el PR de release lo
+> crea ese token y **sí dispara el CI** sobre el PR — los commits hechos con el
+> `GITHUB_TOKEN` por defecto **no** disparan workflows (límite de GitHub Actions
+> contra recursión). Sin ese secret, el PR de release queda sin CI propio y se
+> mergea con bypass de admin.
 
 **PyPI todavía NO está conectado** (decisión del PO: por ahora solo GitHub Releases). El
 paso de publicación a PyPI se agrega cuando se configure *trusted publishing* (OIDC).
