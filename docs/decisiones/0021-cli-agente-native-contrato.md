@@ -99,9 +99,29 @@ El decorador `@handle_errors(command)` captura excepciones por tipo y las traduc
 | `0` | éxito | — |
 | `1` | uso (opción faltante/inválida) | `UsageError` / errores de parseo de Click |
 | `2` | datos (schema inválido, ids inexistentes, criterio de filtro vacío) | `DataError` |
-| `3` | dependencia/capacidad faltante | `ImportError` (extra ausente) · `AttributeError` (p. ej. source sin `fetch_citing`) · `NotImplementedError` (p. ej. `depth>1`) |
+| `3` | dependencia/capacidad faltante | `ImportError` (extra ausente) · `DependencyError` (capacidad de source faltante, p. ej. sin `fetch_citing` — ver enmienda R5) · `NotImplementedError` (p. ej. `depth>1`) |
 | `4` | red no disponible | `httpx.HTTPError` y subclases (captura **por tipo**, toda la jerarquía) |
 | `5` | store/snapshot bloqueado o corrupto | `StoreLockedError` / `OSError` (single-writer, ADR 0019) |
+
+> **Enmienda R5 (2026-06-16) — `AttributeError` ya NO se mapea a exit 3 en el decorador.** El AS-BUILT
+> capturaba `AttributeError` en `@handle_errors` y lo emitía como "Capacidad no disponible" (exit 3).
+> Eso **disfrazaba bugs reales** (un `AttributeError` genuino dentro de `chain`/`merge`/`_fetch_forward`
+> se reportaba como "el source no soporta forward"). R5 separa las dos cosas (Nota 06, catálogo de
+> secundarios):
+> - La conversión **capacidad-de-source-faltante → `DependencyError` (exit 3)** es responsabilidad del
+>   **borde CLI**: el comando hace un **pre-check explícito** (`chain.py` verifica
+>   `hasattr(source, "fetch_citing")` antes de instanciar el `Forager`) y lanza `DependencyError` con
+>   un mensaje accionable. El **forager queda agnóstico de `_errors`** (núcleo puro; no importa la capa
+>   CLI).
+> - Un **`AttributeError` inesperado se propaga limpio** (falla accionable/visible), ya no se traga.
+> - **Rama muerta colapsada:** el `if isinstance(exc, StoreLockedError)` / `else` de la rama `OSError`
+>   hacía lo mismo en ambas ramas (exit 5); R5 lo simplificó a un único `except OSError → exit 5`.
+>
+> **Enmienda R5 — comandos de solo lectura no auto-crean el store.** `status`/`validate` usaban
+> `open_store`, que **crea un `.duckdb` vacío** ante un typo en `--store` (footgun verificado, Nota 06).
+> R5 agrega `open_store_readonly` (`cli/_store.py`): verifica que el archivo exista y, si no, lanza
+> `StoreError` accionable ("el store no existe… iniciá con `b2g seed`"). `status`/`validate` la usan;
+> los comandos de **escritura** conservan `open_store` (crear-si-falta es su comportamiento correcto).
 
 ### E. `--store` global + sin estado entre invocaciones (tensión núcleo-valor)
 

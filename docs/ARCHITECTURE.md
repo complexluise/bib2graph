@@ -126,6 +126,11 @@ análisis. Las reglas de identidad/hash/merge (ADR
 [0013](decisiones/0013-identidad-hash-merge-corpus.md), D1/D2/D3) son contrato que cada backend
 cumple a su manera.
 
+**AS-BUILT R5 — bulk-load (Nota 06 RAÍZ 3):** los loaders (seed/load OpenAlex, BibTeX, Forager)
+construyen la tabla Arrow **de una vez** con `Corpus.from_arrow` (precomputando los `id` con el helper
+`corpus._rows_with_ids`), en vez del loop `add_paper`/`_clone` que **re-upserteaba la tabla entera por
+fila** (O(n²)). Cargar un corpus mediano deja de ser cuadrático.
+
 **Columnas** (esquema completo en [`API.md`](API.md) §1 — *pendiente de reconciliar*):
 
 - Identidad/metadatos: `id` (interno estable), `openalex_id`, `doi`, `title`, `year`,
@@ -398,13 +403,24 @@ trabajo posterior, pero la API se **diseña con estos principios desde el hito 1
    el parser de Click.
 3. **Capa de envelope/errores** (`cli/_envelope.py`, `cli/_errors.py`, `cli/_store.py`): el
    envelope JSON versionado (`schema="1"`) compartido y el decorador `@handle_errors` que **mapea
-   errores a exit codes por tipo de excepción** (`DataError`→2, `ImportError`/`AttributeError`/
-   `NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5).
+   errores a exit codes por tipo de excepción** (`DataError`→2, `ImportError`/`DependencyError`/
+   `NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5). **AS-BUILT R5:**
+   `AttributeError` ya **no** se captura en el decorador (no se disfraza un bug de "capacidad
+   faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` mediante un
+   **pre-check `hasattr` en el borde** (p. ej. `chain.py` antes del `Forager`). Ver ADR 0021 §D.
 
 Son **11 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
 `inspect`, `validate`, `accept`, `reject`); `build`/`export` están **separados** y el `LoopState`
 transiciona automáticamente por comando (ADR 0021). El error de uso (p. ej. falta `--store`) sale
 **sin envelope** (Click aborta el parseo: stderr + exit 1).
+
+**AS-BUILT R5 — UTF-8 en la frontera (Nota 06 RAÍZ 3):** `main()` llama `_force_utf8()` (reconfigura
+`sys.stdout`/`stderr` a UTF-8, con guarda por si la stream no es reconfigurable) **antes de que Click
+lea nada**. Sin esto, el envelope `--json` (`ensure_ascii=False`) y `--help` corrompen acentos en la
+consola cp1252 de Windows (`ecuaci�n`), rompiendo el contrato agente-native. **AS-BUILT R5 — store de
+solo lectura:** `status`/`validate` usan `open_store_readonly` (`cli/_store.py`), que **no auto-crea**
+el `.duckdb` ante un typo en `--store` (falla accionable); los comandos de escritura conservan
+`open_store`.
 
 ## 7. Layout de dependencias (extras)
 
@@ -447,6 +463,17 @@ dependencias va **de abajo hacia arriba**: `constants/models` → núcleo puro (
 | Solo publicar lo real | Clientes CrossRef/Scopus inicializados y nunca consultados |
 | Config inyectada, sin side-effects | Triple `DATABASE_URL`, clave S2 embebida |
 | Declarar lo que se importa | `python-louvain` usado pero ausente de `pyproject.toml` |
+| Fallar/avisar accionable, nunca no-op silencioso (R5) | `except` anchos que tragan bugs; ramas/params muertos; versión inventada en el Manifest |
+
+> **AS-BUILT R5 — footguns cerrados (Nota 06, catálogo de secundarios).** R5 eliminó los anti-patrones
+> que **enmascaran fallos**: el `except Exception` de `detect_communities` (`facade.py`) que tragaba el
+> error (ahora solo `ImportError` se re-lanza, lo demás se propaga); el `AttributeError`→exit-3
+> "engañoso" (→ pre-check en el borde, §6.3); la **rama muerta** de `_errors.py` (`OSError` con `if/else`
+> que hacía lo mismo); el **filtro PRISMA / `.bib` con campo-op/parseo desconocido = no-op silencioso**
+> (ahora `ValueError`/warning accionable); el **param muerto `g`** de `cocitation_quality_report`; el
+> fallback `_lib_version` `"0.0.0"` (versión inventada en el `Manifest` → `"unknown"`, honesto); y el
+> `Literal` duplicado de `NetworkSpec.kind` (→ `NetworkKind`, fuente única). Principio: **sin no-ops
+> silenciosos** — el comportamiento silencioso pasa a fallar/avisar accionable o se elimina la rama muerta.
 
 ## 9. Tensiones resueltas
 

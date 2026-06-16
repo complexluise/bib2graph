@@ -113,7 +113,11 @@ objeto JSON** con `schema="1"`:
 
 En error conocido: `ok=false`, `data={}`, `error={"code": <CODE>, "message": <accionable>}`. Los
 exit codes se mapean **por tipo de error** (ADR 0021 §D): `DataError`→2, `ImportError`/
-`AttributeError`/`NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5.
+`DependencyError`/`NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5.
+**R5:** `AttributeError` ya **no** se mapea en el decorador (un bug real no se disfraza de "capacidad
+faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` con un **pre-check
+`hasattr` en el comando** (p. ej. `chain` antes del `Forager`). Un `AttributeError` inesperado se
+propaga limpio.
 
 **Borde: el error de uso sale SIN envelope.** Si falta `--store` (u otra opción requerida), Click
 aborta el parseo **antes** de entrar al comando: se emite el mensaje de uso de Click en **stderr** y
@@ -342,6 +346,10 @@ class CorpusSnapshot:
 - **Obligatorios vs default** (D5): `schema_version`, `corpus_hash`, `lib_version`, `created_at`
   no tienen default; el resto sí (`equations=[]`, `chaining=None`, `preprocessors=[]`,
   `filters=[]`, `enrichers=[]`, `openalex_version=None`).
+- **R5 — `lib_version` desconocida = `"unknown"`** (cambio de comportamiento): si
+  `importlib.metadata` no resuelve la versión instalada de `bib2graph`, el fallback es **`"unknown"`**,
+  no `"0.0.0"`. Una versión inventada entraba al `Manifest` y mentía sobre la reproducibilidad; `"unknown"`
+  es honesto.
 - **`schema_version`** (D6): en Hito 1 solo se escribe y se round-tripea (sin lógica de rechazo
   por incompatibilidad; queda para un hito posterior con migraciones sobre el store vivo).
 
@@ -430,7 +438,7 @@ class SeedResult(BaseModel):
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
 | `OpenAlexSource` | **v1 (construido, Hito 4)** | **Referencia/backbone**, sobre `httpx`. Entrega mínimo + enriquecimiento: refs inline + afiliaciones per-autor + instituciones; `cited_by_id` queda **diferido** al chaining/`Enricher` (no se trae en el seed). Traducción **passthrough** —envuelve la ecuación en `title_and_abstract.search:(...)` y **reporta** los límites WoS (NEAR/comodín/tags) sin traducirlos; el traductor WoS→OpenAlex es v0.2. Flag `native=True` (query cruda). Credenciales inyectadas (arg → `OPENALEX_API_KEY` → `~/.openalex/credentials` → polite pool; ADR 0012). Cursor paging con tope `max_results=200`. Puebla `Manifest.openalex_version` (header o fecha del fetch; ADR 0017). `transport` inyectable (tests con `MockTransport`, sin red en CI). |
-| `BibtexSource` | **v1, secundaria (construido, Hito 4)** | Sembrar desde *pearls* vía `load()`. Extra **`[bibtex]`** (import perezoso de `bibtexparser`, ADR 0005); acceso defensivo (fix del bug T1: campos faltantes sin `KeyError`). Mínimo universal. `seed()` lanza `NotImplementedError` (BibTeX no siembra por ecuación). |
+| `BibtexSource` | **v1, secundaria (construido, Hito 4)** | Sembrar desde *pearls* vía `load()`. Extra **`[bibtex]`** (import perezoso de `bibtexparser`, ADR 0005); acceso defensivo (fix del bug T1: campos faltantes sin `KeyError`). Mínimo universal. `seed()` lanza `NotImplementedError` (BibTeX no siembra por ecuación). **R5:** un `.bib` con error de parseo grave → `ValueError` accionable (antes lo tragaba en silencio); un `.bib` sin entradas válidas / con entradas omitidas por falta de título → `UserWarning` (no no-op silencioso). Carga bulk con `from_arrow`. |
 | `ScieloSource` / `RedalycSource` / `LaReferenciaSource` | futuro | Fuentes regionales, mínimo universal. Declaradas, no implementadas (ADR 0018). |
 | `RisSource` / `CsvSource` | futuro | No implementados. |
 
@@ -636,10 +644,16 @@ class RankedCandidates(BaseModel):
 **Notas de contrato** (Hito 5, ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)):
 
 - **Forward chaining requiere `source.fetch_citing(openalex_id) -> list[dict]`** (`GET
-  works?filter=cites:`). El `Forager` **exige ese método al source** y lanza `AttributeError`
-  accionable si no lo tiene; **no se amplió el Protocol `Source`** (§2) — `fetch_citing` es
-  capacidad de `OpenAlexSource`, no contrato universal. Una `Source` de solo-mínimo (ADR 0018) no
+  works?filter=cites:`). **R5:** el **comando `chain` hace un pre-check `hasattr(source,
+  "fetch_citing")`** y lanza `DependencyError` accionable (exit 3) si el source no lo soporta —el
+  forager queda agnóstico de la capa CLI/`_errors`; un `AttributeError` genuino dentro del chaining ya
+  no se disfraza de "source sin forward". **No se amplió el Protocol `Source`** (§2) — `fetch_citing`
+  es capacidad de `OpenAlexSource`, no contrato universal. Una `Source` de solo-mínimo (ADR 0018) no
   habilita forward chaining.
+- **R5 — `fetch_citing` con retry/backoff** ante 429/5xx (`_fetch_all_with_retry`: exponential
+  backoff, 3 intentos). Sin esto, un rate-limit de OpenAlex hacía fallar el forward de un corpus
+  mediano. *(El **batching por OR** queda diferido —mejora de performance—: el N+1 de requests
+  persiste, pero ahora es resiliente al rate-limit. Ver ROADMAP Hito R5.)*
 - **Candidatos backward = stubs id-only**: título placeholder `[candidate:{id}]`, `openalex_id`
   poblado, resto nulo, `is_seed=False`, `curation_status='candidate'`, `provenance` con
   `chaining_hop=1`. No contaminan las redes; son curables/enriquecibles después (gap conocido).
@@ -693,6 +707,11 @@ def apply_filters(corpus: Corpus, criteria: list[FilterCriterion]) -> tuple[Corp
 - **`keywords_id` es post-thesaurus**: hasta que se corre `apply_thesaurus`, `keywords_id` no es
   autoritativa (puede estar cruda o vacía); los proyectores de co-ocurrencia de keywords (§7)
   deben correr **después** del thesaurus.
+- **R5 — campo/operador desconocido LANZA** (cambio de comportamiento): un `FilterCriterion` con un
+  `field` no soportado, o un `op` inválido para ese campo, ahora lanza `ValueError` accionable (lista
+  los campos/operadores válidos). **Antes era un no-op silencioso** (`return True` → el criterio no
+  filtraba nada, escondiendo el error). Esto endurece el flujo PRISMA (sin exclusiones perdidas en
+  silencio).
 - **Símbolos públicos del Hito 5** (`from bib2graph import ...`): `Forager`, `GrowthPreview`,
   `RankedCandidates`, `Preprocessor`, `FilterCriterion`, `apply_filters`. `apply_filter` (singular)
   se importa desde `bib2graph.filters`. *(`explain_candidate` **se elimina** en la remediación —
@@ -807,8 +826,8 @@ class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
 
 ```python
 class NetworkSpec(BaseModel):
-    kind: Literal["bibliographic_coupling", "cocitation", "author_collab",
-                  "institution_collab", "keyword_cooccurrence"]
+    kind: NetworkKind        # R5: enum de constants.py (fuente única, ADR 0023);
+                             # antes era un Literal[...] duplicado (eliminado)
     min_weight: int = 1
     min_year: int | None = None
     max_year: int | None = None

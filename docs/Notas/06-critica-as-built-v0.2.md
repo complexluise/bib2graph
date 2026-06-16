@@ -115,6 +115,11 @@ roturas concretas:
 3. (coder) Forzar `sys.stdout`/`stderr` a UTF-8 (o `encoding="utf-8"` explícito) en el entry
    point del CLI. Es el arreglo de mayor impacto/menor costo de toda la lista.
 
+> **RESUELTO en R5 (2026-06-16):** bulk-load (`Corpus.from_arrow` en los cuatro loaders) y UTF-8 en la
+> frontera (`_force_utf8`) implementados; el N+1 de red ganó **retry/backoff** (el batching-por-OR quedó
+> diferido como mejora de performance). Ver ROADMAP Hito R5 y registro-ia R5.1–R5.3. *(Hallazgos arriba
+> = rastro histórico, sin reescribir.)*
+
 ### CONSTANTS — no hay módulo de constantes
 
 No existe un módulo de constantes: ~62 nombres de columna viven como **string-literal**
@@ -231,6 +236,15 @@ usuario o resolverse.
   (los ids son hashes) pero frágil.
 - **Docstrings de scent mienten sobre la dirección** (`foraging/scent.py:11,80` vs la impl en
   `:114`).
+
+> **RESUELTO en R5 (2026-06-16), salvo lo indicado:** rama muerta de `_errors.py`, `AttributeError`
+> engañoso (→ `DependencyError` por pre-check en el borde CLI), `except Exception` de
+> `detect_communities`, `_lib_version` `"0.0.0"`→`"unknown"`, auto-creación del store
+> (`open_store_readonly`), `.bib`/filtros PRISMA silenciosos (→ raise/warning), param muerto `g`, y
+> `_QUICK_KINDS`/`Literal` duplicado (→ `NetworkKind` fuente única) están **cerrados**. Los docstrings
+> de scent ya se corrigieron en **R4**. **No resueltos (decisión consciente):** el **SQL por
+> interpolación en `merge`** (hoy seguro porque los ids son hashes; queda como mejora de robustez
+> futura). Ver registro-ia R5.4–R5.6. *(Hallazgos arriba = rastro histórico, sin reescribir.)*
 
 ---
 

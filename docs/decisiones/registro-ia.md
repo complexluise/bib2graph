@@ -359,3 +359,49 @@
 > CHANGELOG (R4 marcado). README/AI_DISCLOSURE/AGENTS ya describían el retiro de `[llm]`/IA en pasado y
 > **no requirieron limpieza adicional**. La [Nota 05](../Notas/05-ciclo-investigacion-humano.md) §4 ya
 > prometía "la bibliometría ES el information scent" y **no requirió cambios** (R4 la **implementa**).
+
+---
+
+## 2026-06-16 — Hito R5 (Robustez / escala: bulk-load, UTF-8 en la frontera, footguns de la Nota 06)
+
+> Último hito de la tanda de remediación. **No cambia el modelo conceptual; endurece lo construido.**
+> Cierra la RAÍZ 3 (no corre a escala + bug del contrato agente-native) y el catálogo de secundarios de
+> la [Nota 06](../Notas/06-critica-as-built-v0.2.md). **319 tests** verdes
+> (`tests/unit/test_r5_robustness.py` + ajustes), mypy strict / ruff check+format limpios.
+> **Verifier: APRUEBA** (reservas cerradas). Con R5 la **tanda R1–R5 queda COMPLETA**.
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| R5.1 | **Bulk-load en los cuatro loaders** (seed/load OpenAlex, BibTeX, Forager): construir la tabla Arrow de una vez con `Corpus.from_arrow` + helper `corpus._rows_with_ids` (precomputa el `id` D1 por fila), en vez del loop `add_paper`/`_clone` | Cada `add_paper`→`_clone` re-upserteaba la tabla entera (O(n²), Nota 06 RAÍZ 3). El bulk `from_arrow` ya existía y no se usaba en los loaders; mismo resultado, carga lineal | Media: el helper es local a `corpus.py`; los loaders vuelven al loop trivialmente | Sí (PO proxy / Nota 06; verifier PASA) |
+| R5.2 | **UTF-8 en la frontera CLI** (`cli/__init__.py:main` → `_force_utf8()`: reconfigura `sys.stdout`/`stderr` a UTF-8 con guarda `hasattr(..., "reconfigure")` + `suppress(Exception)`, **antes** de que Click lea argumentos) | El envelope `--json` usa `ensure_ascii=False`; en la consola cp1252 de Windows los acentos salían corruptos (`ecuaci�n`), rompiendo el contrato agente-native (BUG VERIFICADO, Nota 06 RAÍZ 3). Es el arreglo de mayor impacto/menor costo | Alta: `_force_utf8` es una función aislada, quitable | Sí (PO proxy / Nota 06; verifier PASA) |
+| R5.3 | **Retry/backoff en `fetch_citing`** (`_fetch_all_with_retry`: 429/5xx → exponential backoff, 3 intentos); **batching-por-OR NO implementado** | El forward chaining hace N+1 requests; sin retry, un rate-limit de OpenAlex (429) hacía fallar un corpus mediano (falla de **correctitud/robustez**). El batching-por-OR (agrupar `cites:` en una query) lo pedía el spec **"si es factible"** → se evaluó **mejora de PERFORMANCE**, no de correctitud, y **quedó diferido** (el N+1 persiste, pero ahora resiliente). Decisión consciente: priorizar robustez sobre throughput en R5 | Media (retry: local a `OpenAlexSource`). **El batching diferido queda como recomendación de seguimiento** | **Sí — steering** (DoD reconciliado: retry sí, batching diferido) |
+| R5.4 | **`AttributeError`→`DependencyError` es responsabilidad del BORDE CLI, no del forager.** `@handle_errors` deja de capturar `AttributeError`; el comando `chain` hace un **pre-check `hasattr(source, "fetch_citing")`** y lanza `DependencyError` (exit 3) accionable; un `AttributeError` inesperado se propaga limpio | El AS-BUILT capturaba `AttributeError` en el decorador como "Capacidad no disponible", **disfrazando bugs reales** de "dependencia faltante" (Nota 06, footgun gemelo). Mover la conversión al borde mantiene el **forager agnóstico de `_errors`** (núcleo puro) y hace visible cualquier bug genuino. Toca el contrato del ADR 0021 §D (exit 3) — reconciliado | Media: el pre-check es local a `chain.py`; revertir re-abre el footgun | **Sí — steering** (ADR 0021 §D enmendado) |
+| R5.5 | **`open_store_readonly` para comandos de solo lectura** (`status`/`validate`): falla con `StoreError` accionable si el `.duckdb` no existe, en vez de auto-crear uno vacío. Los comandos de escritura conservan `open_store` | Footgun verificado (Nota 06): `b2g status --store typo.duckdb` creaba un store vacío en silencio, ocultando el typo. Crear-si-falta es correcto en escritura, peligroso en lectura | Alta: `open_store_readonly` es aditivo; los dos comandos eligen la variante | Sí (PO proxy / Nota 06; verifier PASA) |
+| R5.6 | **Los 6 footguns restantes cerrados sin enmascarar:** (a) rama muerta `OSError` de `_errors.py` (`if/else` que hacía lo mismo → un único `except OSError → 5`); (b) `except Exception` de `detect_communities` (`facade.py`) eliminado (solo `ImportError` se re-lanza, lo demás propaga); (c) PRISMA campo/op desconocido → `ValueError` accionable (antes `return True` no-op); (d) `.bib` parseo grave → `ValueError`, vacío/sin-título → `UserWarning`; (e) param muerto `g` de `cocitation_quality_report` quitado; (f) `_lib_version` fallback `"0.0.0"`→`"unknown"`; (g) `NetworkSpec.kind: NetworkKind` (sin `Literal` duplicado) | Todos son **no-ops silenciosos / ramas-params muertos / versión inventada** que esconden bugs (Nota 06, catálogo de secundarios). Principio: **fallar/avisar accionable, nunca tragar** (lección 7, AGENTS.md) | Alta cada uno (cambios locales y aditivos) | Sí (PO proxy / Nota 06; verifier PASA) |
+
+> **Cambios de comportamiento (importan para CHANGELOG/API):** PRISMA **lanza** ante campo/op
+> desconocido (antes no-op); `status`/`validate` **ya no auto-crean** el store ante typo en `--store`;
+> `.bib` roto **lanza**; `_lib_version` desconocida = `"unknown"` (antes `"0.0.0"`); `AttributeError`
+> deja de mapearse a exit 3 en el decorador (la capacidad-faltante se detecta en el borde). **Ninguno
+> toca `schema="1"` ni los exit codes externos del contrato** (exit 3 sigue siendo "dependencia/capacidad
+> faltante", ahora vía `DependencyError` en vez de `AttributeError`).
+>
+> **Reservas del verifier:** cerradas (el verifier APRUEBA). **No hay reservas de código abiertas.**
+>
+> **Decisiones de seguimiento (no son de R5 — quedan al PO):** (a) **batching-por-OR de `fetch_citing`**
+> (mejora de performance: matar el N+1 agrupando `cites:` en una query; R5 entregó solo retry) — candidato
+> a un hito de performance o al Hito 8 (`Enricher` de co-citación); (b) sigue abierta la de R3: **retirar
+> el alias `LoopState = CycleState` pre-1.0** y, si se construye el paso 8 del ciclo, agregar **`b2g
+> monitor`** (el estado `MONITORED` existe en el modelo, sin comando que lo dispare).
+>
+> **Veredicto del arquitecto:** **R5 ✅ TERMINADO** — endurece sin cambiar el modelo conceptual; los
+> cambios de comportamiento son consistentes con el contrato (la Nota 06 los pidió). R5 no deja
+> seguimiento de **código** abierto (solo el batching diferido, que es mejora futura).
+>
+> **Reconciliación de docs (arquitecto, 2026-06-16):** ADR 0021 (§D enmendado: `AttributeError`→`DependencyError`
+> en el borde, `open_store_readonly`), ADR 0023 (AS-BUILT: `NetworkSpec.kind: NetworkKind`, fuente única
+> completada), ROADMAP (Hito R5 ✅ + banner as-built + DoD reconciliado: batching diferido; tanda R1–R5
+> COMPLETA), ARCHITECTURE.md (§3.1 bulk-load, §6.3 UTF-8/store-readonly, §8 footguns), API.md (PRISMA
+> lanza, store read-only, `.bib` lanza, `lib_version` "unknown", forward `DependencyError`+retry),
+> CHANGELOG (R5 ✅ Fixed + Changed de comportamiento). La [Nota 06](../Notas/06-critica-as-built-v0.2.md)
+> recibió una nota corta de cierre (rastro histórico, sin reescribir hallazgos).

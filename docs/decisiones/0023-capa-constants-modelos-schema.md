@@ -56,3 +56,13 @@ Se **mantiene** "`Paper`/`Author`/… = vistas derivadas, no tipos del modelo".
   (`constants/models` → núcleo puro → costuras → CLI); nada de abajo importa hacia arriba.
 - **Recomendación para el `coder`:** ver ROADMAP **Hito R1** (`archivo:símbolo` de los literales a
   reemplazar y de `_parse_provenance`).
+
+> **AS-BUILT R1 (2026-06-16):** la capa `constants`/`ProvenanceEvent`/`schemas` única se construyó
+> (ver [registro-ia](registro-ia.md) Hito R1).
+>
+> **Completado en R5 (2026-06-16) — `NetworkSpec.kind` usa `NetworkKind` directo.** El AS-BUILT inicial
+> dejaba `NetworkSpec.kind` como un `Literal[...]` con los cinco tipos de red **duplicado** del
+> `NetworkKind` de `constants.py` (la paridad se sostenía con un test). R5 cerró ese último resabio de
+> doble verdad: `kind: NetworkKind` (`spec.py`), y `facade._projector_for_kind` compara contra los
+> miembros del enum (`NetworkKind.BIBLIOGRAPHIC_COUPLING`, …) en vez de string-literals. **`NetworkKind`
+> es ahora la fuente única real** (no validada por test de paridad: validada por el type-checker).

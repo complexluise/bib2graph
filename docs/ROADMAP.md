@@ -30,8 +30,9 @@
 > identidad-vs-procedencia, capa constants/models; ADR
 > [0022](decisiones/0022-producto-sin-ia-generativa.md)/[0023](decisiones/0023-capa-constants-modelos-schema.md)
 > y enmiendas a 0008/0011/0016/0017/0020/0021). Por eso el roadmap ahora tiene **dos partes**: **(a)
-> una tanda de REMEDIACIÓN (Hitos R1–R5)** que cierra la brecha del AS-BUILT con el modelo nuevo,
-> **antes** de los hitos nuevos; **(b) LO QUE VIENE** (Hitos 7–11, actualizados a la nueva realidad).
+> una tanda de REMEDIACIÓN (Hitos R1–R5) · ✅ COMPLETA (2026-06-16)** que cierra la brecha del
+> AS-BUILT con el modelo nuevo, **antes** de los hitos nuevos; **(b) LO QUE VIENE** (Hitos 7–11,
+> actualizados a la nueva realidad).
 > La tanda R está secuenciada por **dependencia**, no por gravedad: **cimientos** (R1: capa
 > constants/modelos/schema, ADR 0023, de la que todo depende) → **reproducibilidad/identidad** (R2:
 > content-hash vs procedencia, reloj en la frontera, Louvain seeded, ADR 0017) → **ciclo** (R3: FSM
@@ -93,7 +94,7 @@ conectado** (no existe `.github/` ni CI). Mientras tanto, el versionado/tag se h
   sobrevive (ahora como subcomando CLI); la curación interactiva rica (`curate`) y la GUI son
   futuro. Acá se cumple el criterio "V1 hecha" del PRD §9 a nivel de *capacidades* (el número de
   versión sigue en 0.y). **Tag local `v0.2.0`** creado en HEAD el 2026-06-15 (anotado, sin push).
-- **v0.3 — remediación (Hitos R1–R5):** cierra la brecha AS-BUILT↔TARGET del red-team (Nota 06) y
+- **v0.3 — remediación (Hitos R1–R5) · ✅ COMPLETA (2026-06-16):** cierra la brecha AS-BUILT↔TARGET del red-team (Nota 06) y
   del modelo nuevo (ADR 0022/0023 + enmiendas): capa `constants`/`models`/`schemas` única,
   identidad-vs-procedencia con reproducibilidad bit a bit, FSM cíclico de dominio (`cycle.py`) con
   curación transversal visible, scent bibliométrico vía proyectores (sin IA), y robustez (bulk-load,
@@ -569,7 +570,8 @@ keywords multilingües y curar con trazabilidad PRISMA.
 > `snapshot`, `status`, `inspect`, `validate`, **`accept`**, **`reject`**; los dos últimos y la
 > separación `build`/`export` son **decisiones del PO**). **Envelope JSON común versionado** por
 > comando; **exit codes 0–5 mapeados por tipo de excepción** (`DataError`→2, `ImportError`/
-> `AttributeError`/`NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5);
+> `AttributeError`/`NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5;
+> *R5 cambió `AttributeError`→3 por `DependencyError`→3 con pre-check en el borde — ver Hito R5*);
 > `--store` global (sin estado entre invocaciones, el estado vive en el `.duckdb`). El **`LoopState`
 > transiciona automáticamente** por comando (`seed`→SEEDED, `chain`→FORAGED, `filter`→FILTERED,
 > `build`→BUILT; el resto no transiciona). `build` computa `Networks.quick` + escribe artefactos a
@@ -946,11 +948,30 @@ desarrollo es asistido por IA; el producto no.
 
 ---
 
-## Hito R5 — Robustez / escala: bulk-load, UTF-8 en la frontera, footguns de la Nota 06 · ⏳ PENDIENTE
+## Hito R5 — Robustez / escala: bulk-load, UTF-8 en la frontera, footguns de la Nota 06 · ✅ TERMINADO (2026-06-16)
 
 > Último de la tanda: no cambia el modelo conceptual, **endurece** lo construido. Cierra la RAÍZ 3 y
 > el catálogo de secundarios de la [Nota 06](Notas/06-critica-as-built-v0.2.md). Independiente de
 > R1–R4 en su mayoría; se ubica al final para no mezclar refactor de modelo con hardening.
+>
+> **AS-BUILT (2026-06-16):** R5 reemplazó el loop `add_paper`/`_clone` por **bulk-load**
+> (`Corpus.from_arrow` + helper `corpus._rows_with_ids`) en los cuatro loaders (seed/load OpenAlex,
+> BibTeX, Forager), forzó **UTF-8 en la frontera** (`cli/__init__.py:main` → `_force_utf8()` antes de
+> que Click lea nada) y agregó **retry/backoff** ante 429/5xx en `fetch_citing`
+> (`_fetch_all_with_retry`, exp backoff, 3 intentos). Cerró los **8 footguns** del catálogo de
+> secundarios. **319 tests** verdes (`test_r5_robustness.py` + ajustes), mypy strict / ruff
+> check+format limpios. **Verifier: APRUEBA** (reservas cerradas).
+>
+> **DoD reconciliado honestamente — el batching-por-OR quedó DIFERIDO.** El DoD pedía que
+> `fetch_citing` *"batchee y reintente 429/5xx"*; el AS-BUILT entrega **solo retry/backoff** (la pata
+> de correctitud/robustez: un rate-limit ya no pierde papers). El **batching por OR** (agrupar varios
+> `cites:` en una sola query para matar el N+1) **NO se implementó** — el spec lo pedía "si es
+> factible" y queda como **mejora de PERFORMANCE futura** (el N+1 persiste, pero ahora es resiliente).
+> Distinguir: el retry SÍ se hizo; el batching NO. (Ver registro-ia R5.3 y "Decisiones de seguimiento".)
+>
+> **Cierre de la tanda:** con R5 la **remediación R1–R5 queda COMPLETA** — la brecha AS-BUILT↔TARGET
+> del red-team (Nota 06: RAÍZ 1, 2, 3 + secundarios) está cerrada. Lo que sigue son los Hitos 7–11
+> (capacidades nuevas hacia v1.0), no remediación.
 
 **Alcance**
 
@@ -987,7 +1008,10 @@ el flujo a escala mediana.
   regresión razonable.
 - En Windows, `b2g ... --json` y `--help` devuelven acentos correctos (UTF-8 forzado) — regresión del
   bug verificado de la Nota 06.
-- `fetch_citing` batchea y reintenta 429/5xx sin perder papers (sobre cliente mock).
+- ~~`fetch_citing` batchea y~~ **reintenta 429/5xx sin perder papers** (sobre cliente mock).
+  **AS-BUILT:** la pata de **retry/backoff** se cumple (`_fetch_all_with_retry`, exp backoff, 3
+  intentos); el **batching por OR queda DIFERIDO** (mejora de performance — el spec lo pedía "si es
+  factible"; el N+1 persiste pero ahora es resiliente al rate-limit, que era la falla de correctitud).
 - Cada footgun del catálogo: el comportamiento silencioso pasa a **fallar/avisar accionable** o se
   elimina la rama muerta/param muerto/versión falsa. Sin no-ops silenciosos.
 
@@ -1004,7 +1028,8 @@ el flujo a escala mediana.
 
 - Loaders → bulk `Corpus.from_arrow` en vez de `add_paper`/`_clone` (`backends/duckdb.py:319,368`).
 - UTF-8 en el entry point del CLI (`cli/_envelope.py:67` usa `ensure_ascii=False` sin forzar stdout).
-- `foraging/forager.py:307` → `sources/openalex.py:394-425`: batch + retry/backoff para `fetch_citing`.
+- `foraging/forager.py:307` → `sources/openalex.py:394-425`: ~~batch +~~ retry/backoff para
+  `fetch_citing`. **AS-BUILT:** retry/backoff implementado (`_fetch_all_with_retry`); batch-por-OR diferido.
 - `cli/_errors.py:139-147` (rama muerta `OSError`), `:155-159` (`AttributeError` engañoso);
   `corpus.py:46-53` (`_lib_version` fallback `"0.0.0"`); `networks/facade.py:104` (`except Exception`
   en `detect_communities`); `sources/bibtex.py:206,210` (`.bib` silencioso);

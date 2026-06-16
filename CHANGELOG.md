@@ -56,14 +56,36 @@ commits.
   difiere a v2, se borra (ADR 0008 enmendado). El **fallback semántico/LLM del thesaurus** también se
   retira (ADR 0011 enmendado): el thesaurus es curado y determinista.
 
-### Fixed (objetivo — Hito R5)
-- **UTF-8 en la frontera CLI** (envelope `--json` con acentos corruptos en Windows cp1252, Nota 06
-  RAÍZ 3); **fin del O(n²) en carga** (bulk `Corpus.from_arrow` en los loaders); retry/backoff en
-  `fetch_citing`; y los `except` anchos/footguns de la Nota 06 (rama muerta de `_errors.py`,
-  auto-creación del store, `.bib`/filtros silenciosos, param muerto `g`, fallback `_lib_version`
-  `"0.0.0"`).
+### Fixed (**Hito R5 ✅ 2026-06-16**)
+- **UTF-8 en la frontera CLI** (`cli/__init__.py:main` → `_force_utf8()`): el envelope `--json`
+  (`ensure_ascii=False`) y `--help` dejan de corromper acentos en Windows cp1252 (Nota 06 RAÍZ 3).
+- **Fin del O(n²) en carga**: los cuatro loaders (seed/load OpenAlex, BibTeX, Forager) usan el bulk
+  `Corpus.from_arrow` (+ helper `_rows_with_ids`) en vez del loop `add_paper`/`_clone` que re-upserteaba
+  la tabla entera por fila.
+- **`fetch_citing` con retry/backoff** ante 429/5xx (exponential backoff, 3 intentos). *(El **batching
+  por OR** queda diferido —mejora de performance, el N+1 persiste pero ahora es resiliente al
+  rate-limit—; ver ROADMAP Hito R5.)*
+- **Footguns de la Nota 06** colapsados/eliminados: rama muerta de `OSError` en `_errors.py`;
+  `except Exception` de `detect_communities` (`facade.py`) que enmascaraba fallos; param muerto `g` de
+  `cocitation_quality_report`; `Literal` duplicado de `NetworkSpec.kind` → `NetworkKind` (fuente única).
 
-> Próximo (tras R1–R5): **Hito 7** (deduplicación fuzzy, extra `[dedup]`).
+### Changed (cambios de comportamiento — **Hito R5 ✅ 2026-06-16**)
+> Endurecen el contrato (la Nota 06 los pidió: "sin no-ops silenciosos"). No tocan `schema="1"` ni los
+> exit codes externos; sí cambian qué pasa ante entradas inválidas.
+- **Filtros PRISMA LANZAN ante campo/operador desconocido** (`ValueError` accionable). Antes era un
+  no-op silencioso (`return True` → no filtraba, escondiendo el error).
+- **`status`/`validate` ya NO auto-crean el store** ante un typo en `--store` (`open_store_readonly` →
+  `StoreError` si el archivo no existe). Antes creaban un `.duckdb` vacío en silencio.
+- **`.bib` con error de parseo grave LANZA** `ValueError`; un `.bib` vacío / con entradas sin título
+  → `UserWarning`. Antes se tragaba en silencio.
+- **`AttributeError` ya no se mapea a exit 3 en `@handle_errors`**: la capacidad-de-source-faltante se
+  convierte en `DependencyError` (exit 3) con un pre-check `hasattr` en el comando `chain`; un
+  `AttributeError` genuino se propaga limpio (no se disfraza de "capacidad no disponible").
+- **`Manifest.lib_version` desconocida = `"unknown"`** (antes `"0.0.0"`): no se inventa una versión
+  falsa que mienta sobre la reproducibilidad.
+
+> **Tanda de remediación R1–R5 COMPLETA** (2026-06-16). Próximo: **Hito 7** (deduplicación fuzzy,
+> extra `[dedup]`).
 
 ## [0.2.0] - 2026-06-15
 
