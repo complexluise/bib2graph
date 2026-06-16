@@ -1,0 +1,24 @@
+name: release-please
+
+# Automatiza el versionado/release a partir de Conventional Commits (VERSIONING.md):
+# abre/actualiza un PR de release con el bump de versión en pyproject.toml y la
+# sección nueva del CHANGELOG; al mergearlo, crea el tag vX.Y.Z y el GitHub Release.
+# NO publica a PyPI (decisión del PO: solo GitHub Releases por ahora; el paso de
+# publicación se agrega cuando se conecte trusted publishing).
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

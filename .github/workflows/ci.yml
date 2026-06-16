@@ -1,0 +1,53 @@
+name: CI
+
+# Gate de calidad: ruff (lint + formato), mypy strict y pytest sobre uv.
+# Replica el gate local (pre-commit + pytest) en cada push a main y cada PR.
+# Hito 0 cierra acá su pendiente "el gate corre en local; CI pendiente".
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - name: Sync (dev + extras)
+        run: uv sync --all-extras --dev
+      - name: Ruff check
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Mypy (strict, src)
+        run: uv run mypy src
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - name: Sync (dev + extras)
+        run: uv sync --all-extras --dev
+      - name: Pytest
+        run: uv run pytest -q
