@@ -15,6 +15,7 @@ import click
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, StoreError, handle_errors
 from bib2graph.cli._store import open_store
+from bib2graph.constants import Col, CurationStatus
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -69,20 +70,25 @@ def run_validate(store_path: str | Path) -> dict[str, Any]:
     issues = []
     rows = table.to_pylist()
 
-    null_ids = [i for i, r in enumerate(rows) if not r.get("id")]
+    null_ids = [i for i, r in enumerate(rows) if not r.get(Col.ID)]
     if null_ids:
         issues.append(f"{len(null_ids)} papers con id nulo (filas: {null_ids[:5]}...)")
 
-    null_titles = [i for i, r in enumerate(rows) if not r.get("title")]
+    null_titles = [i for i, r in enumerate(rows) if not r.get(Col.TITLE)]
     if null_titles:
         issues.append(
             f"{len(null_titles)} papers sin título (filas: {null_titles[:5]}...)"
         )
 
+    _valid_statuses = {
+        CurationStatus.CANDIDATE,
+        CurationStatus.ACCEPTED,
+        CurationStatus.REJECTED,
+    }
     invalid_status = [
-        r.get("id")
+        r.get(Col.ID)
         for r in rows
-        if r.get("curation_status") not in ("candidate", "accepted", "rejected")
+        if r.get(Col.CURATION_STATUS) not in _valid_statuses
     ]
     if invalid_status:
         issues.append(f"{len(invalid_status)} papers con curation_status inválido")

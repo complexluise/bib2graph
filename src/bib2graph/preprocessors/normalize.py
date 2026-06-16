@@ -85,11 +85,13 @@ def normalize_row(row: dict[str, object]) -> dict[str, object]:
     Returns:
         Nueva fila con los campos normalizados.
     """
+    from bib2graph.constants import Col
+
     new_row = dict(row)
-    authors_id = row.get("authors_id")
+    authors_id = row.get(Col.AUTHORS_ID)
     if isinstance(authors_id, list):
-        new_row["authors_id"] = normalize_authors_id(authors_id)
-    language = row.get("language")
+        new_row[Col.AUTHORS_ID] = normalize_authors_id(authors_id)
+    language = row.get(Col.LANGUAGE)
     if isinstance(language, str):
-        new_row["language"] = normalize_language(language)
+        new_row[Col.LANGUAGE] = normalize_language(language)
     return new_row

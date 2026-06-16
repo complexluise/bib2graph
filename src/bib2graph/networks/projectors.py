@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 import networkx as nx
 import pyarrow as pa
 
+from bib2graph.constants import Col
+
 if TYPE_CHECKING:
     # nx.Graph es genérico solo en los stubs de types-networkx, no en runtime.
     _Graph = nx.Graph[Any, Any, Any]
@@ -62,7 +64,7 @@ def _filter_scope(table: pa.Table, scope: Literal["full", "seeds_only"]) -> pa.T
         Tabla (posiblemente filtrada).
     """
     if scope == "seeds_only":
-        mask = table.column("is_seed")
+        mask = table.column(Col.IS_SEED)
         return table.filter(mask)
     return table
 
@@ -187,7 +189,7 @@ class BibliographicCouplingProjector:
         filtered = _filter_scope(table, scope)
         rows = filtered.to_pylist()
         return _build_shared_refs_graph(
-            rows, "id", "references_id", min_weight=min_weight
+            rows, Col.ID, Col.REFERENCES_ID, min_weight=min_weight
         )
 
 
@@ -218,7 +220,7 @@ class AuthorCollaborationProjector:
         filtered = _filter_scope(table, scope)
         rows = filtered.to_pylist()
         return _build_cooccurrence_graph(
-            rows, "id", "authors_id", min_weight=min_weight
+            rows, Col.ID, Col.AUTHORS_ID, min_weight=min_weight
         )
 
 
@@ -249,7 +251,7 @@ class InstitutionCollaborationProjector:
         filtered = _filter_scope(table, scope)
         rows = filtered.to_pylist()
         return _build_cooccurrence_graph(
-            rows, "id", "institutions_id", min_weight=min_weight
+            rows, Col.ID, Col.INSTITUTIONS_ID, min_weight=min_weight
         )
 
 
@@ -280,7 +282,7 @@ class KeywordCoOccurrenceProjector:
         filtered = _filter_scope(table, scope)
         rows = filtered.to_pylist()
         return _build_cooccurrence_graph(
-            rows, "id", "keywords_id", min_weight=min_weight
+            rows, Col.ID, Col.KEYWORDS_ID, min_weight=min_weight
         )
 
 
@@ -323,5 +325,5 @@ class CoCitationProjector:
         filtered = _filter_scope(table, scope)
         rows = filtered.to_pylist()
         return _build_shared_refs_graph(
-            rows, "id", "cited_by_id", min_weight=min_weight
+            rows, Col.ID, Col.CITED_BY_ID, min_weight=min_weight
         )

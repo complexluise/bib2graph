@@ -23,6 +23,8 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any
 
+from bib2graph.constants import Col
+
 
 def compute_backward_scent(
     corpus_rows: list[dict[str, Any]],
@@ -43,8 +45,8 @@ def compute_backward_scent(
     # ids ya presentes en el corpus (para excluir)
     corpus_ids: set[str] = set()
     for row in corpus_rows:
-        id_val = row.get("id")
-        openalex_id_val = row.get("openalex_id")
+        id_val = row.get(Col.ID)
+        openalex_id_val = row.get(Col.OPENALEX_ID)
         if id_val:
             corpus_ids.add(str(id_val))
         if openalex_id_val:
@@ -53,7 +55,7 @@ def compute_backward_scent(
     # Conteo: cuántos papers del corpus listan a cada ref
     ref_count: Counter[str] = Counter()
     for row in corpus_rows:
-        refs = row.get("references_id")
+        refs = row.get(Col.REFERENCES_ID)
         if not refs or not isinstance(refs, list):
             continue
         # Usamos un set para no contar el mismo ref dos veces en el mismo paper
@@ -92,8 +94,8 @@ def compute_forward_scent(
     # ids y openalex_ids del corpus
     corpus_ids: set[str] = set()
     for row in corpus_rows:
-        id_val = row.get("id")
-        openalex_id_val = row.get("openalex_id")
+        id_val = row.get(Col.ID)
+        openalex_id_val = row.get(Col.OPENALEX_ID)
         if id_val:
             corpus_ids.add(str(id_val))
         if openalex_id_val:
@@ -104,14 +106,14 @@ def compute_forward_scent(
 
     scent: defaultdict[str, float] = defaultdict(float)
     for row in citing_rows:
-        citing_id = row.get("id")
+        citing_id = row.get(Col.ID)
         if not citing_id:
             continue
         citing_id_str = str(citing_id)
         if citing_id_str in citing_ids_already:
             continue  # ya en el corpus, no es candidato nuevo
 
-        refs = row.get("references_id")
+        refs = row.get(Col.REFERENCES_ID)
         if not refs or not isinstance(refs, list):
             continue
 

@@ -29,7 +29,8 @@ class NetworkSpec(BaseModel):
     La carga desde YAML y la validación avanzada se implementan en el Hito 9.
 
     Args:
-        kind: Tipo de red a proyectar.
+        kind: Tipo de red a proyectar (debe coincidir con ``NetworkKind``;
+            verificado por test de paridad).
         min_weight: Peso mínimo de arista (D1). Default 1 = sin filtro.
         min_year: Filtro de año mínimo (futuro).
         max_year: Filtro de año máximo (futuro).

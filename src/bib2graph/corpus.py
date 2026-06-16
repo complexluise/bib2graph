@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from bib2graph.backends import InMemoryBackend, TabularBackend
 from bib2graph.backends.memory import compute_corpus_hash
+from bib2graph.constants import Col, CurationStatus
 from bib2graph.schemas import (
     CORPUS_SCHEMA,
     SCHEMA_VERSION,
@@ -307,14 +308,14 @@ class Corpus:
             SchemaError: Si los datos no pasan la validación de ``PaperRow``.
         """
         row_copy = dict(row)
-        if not row_copy.get("id"):
-            raw_year = row_copy.get("year")
-            row_copy["id"] = _compute_id(
-                openalex_id=str(row_copy["openalex_id"])
-                if row_copy.get("openalex_id")
+        if not row_copy.get(Col.ID):
+            raw_year = row_copy.get(Col.YEAR)
+            row_copy[Col.ID] = _compute_id(
+                openalex_id=str(row_copy[Col.OPENALEX_ID])
+                if row_copy.get(Col.OPENALEX_ID)
                 else None,
-                doi=str(row_copy["doi"]) if row_copy.get("doi") else None,
-                title=str(row_copy.get("title", "")),
+                doi=str(row_copy[Col.DOI]) if row_copy.get(Col.DOI) else None,
+                title=str(row_copy.get(Col.TITLE, "")),
                 year=int(str(raw_year)) if raw_year is not None else None,
             )
         try:
@@ -383,7 +384,9 @@ class Corpus:
         Returns:
             Nuevo ``Corpus`` con los papers aceptados.
         """
-        new_backend = self._backend.apply_curation(ids, action="accepted", by=by)
+        new_backend = self._backend.apply_curation(
+            ids, action=CurationStatus.ACCEPTED, by=by
+        )
         return Corpus(new_backend, self._manifest)
 
     def reject(self, ids: list[str], *, by: str = "human") -> Corpus:
@@ -400,7 +403,9 @@ class Corpus:
         Returns:
             Nuevo ``Corpus`` con los papers rechazados.
         """
-        new_backend = self._backend.apply_curation(ids, action="rejected", by=by)
+        new_backend = self._backend.apply_curation(
+            ids, action=CurationStatus.REJECTED, by=by
+        )
         return Corpus(new_backend, self._manifest)
 
     def materialize(
@@ -421,9 +426,9 @@ class Corpus:
             ValueError: Si el nombre de vista no es reconocido.
         """
         col_map = {
-            "author": "authors_id",
-            "keyword": "keywords_id",
-            "institution": "institutions_id",
+            "author": Col.AUTHORS_ID,
+            "keyword": Col.KEYWORDS_ID,
+            "institution": Col.INSTITUTIONS_ID,
         }
         if view not in col_map:
             raise ValueError(f"Vista '{view}' no reconocida. Use: {list(col_map)}.")
@@ -433,7 +438,7 @@ class Corpus:
         for row in rows:
             items = row.get(col) or []
             for item in items:
-                result.append({"paper_id": row["id"], view: item})
+                result.append({"paper_id": row[Col.ID], view: item})
         return pa.table(
             {
                 "paper_id": [r["paper_id"] for r in result],
@@ -459,17 +464,11 @@ class Corpus:
 
         table = self._backend.to_arrow()
         corpus_hash = self._backend.corpus_hash()
-        manifest = Manifest(
-            schema_version=self._manifest.schema_version,
-            corpus_hash=corpus_hash,
-            lib_version=self._manifest.lib_version,
-            openalex_version=self._manifest.openalex_version,
-            equations=self._manifest.equations,
-            chaining=self._manifest.chaining,
-            preprocessors=self._manifest.preprocessors,
-            filters=self._manifest.filters,
-            enrichers=self._manifest.enrichers,
-            created_at=datetime.now(UTC),
+        manifest = self._manifest.model_copy(
+            update={
+                "corpus_hash": corpus_hash,
+                "created_at": datetime.now(UTC),
+            }
         )
 
         pq.write_table(table, path / "corpus.parquet")  # type: ignore[no-untyped-call]

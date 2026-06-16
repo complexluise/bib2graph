@@ -22,7 +22,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from bib2graph.corpus import Corpus, FilterStep, Manifest
+from bib2graph.constants import Col, CurationStatus
+from bib2graph.corpus import Corpus, FilterStep
 
 # Campos soportados y operadores válidos por campo
 _FIELD_OPS: dict[str, set[str]] = {
@@ -63,7 +64,7 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
     value = criterion.value
 
     if field == "year":
-        year_raw = row.get("year")
+        year_raw = row.get(Col.YEAR)
         if year_raw is None:
             return False  # sin año → no pasa
         y = int(str(year_raw))
@@ -75,7 +76,7 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
         return True
 
     if field == "type":
-        areas = row.get("research_areas")
+        areas = row.get(Col.RESEARCH_AREAS)
         area_list: list[str] = (
             [str(a) for a in areas] if isinstance(areas, list) else []
         )
@@ -89,7 +90,7 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
         return True
 
     if field == "language":
-        lang = row.get("language")
+        lang = row.get(Col.LANGUAGE)
         lang_str = str(lang).lower() if lang is not None else ""
         vals_lang: list[str] = (
             [str(value).lower()]
@@ -105,7 +106,7 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
         return True
 
     if field == "min_citations":
-        cited = row.get("cited_by_id")
+        cited = row.get(Col.CITED_BY_ID)
         n = len(cited) if isinstance(cited, list) else 0
         min_val = int(str(value))
         if op == "gte":
@@ -125,7 +126,9 @@ def _count_not_rejected(corpus: Corpus) -> int:
         Número de papers no rechazados.
     """
     rows = corpus.to_arrow().to_pylist()
-    return sum(1 for r in rows if r.get("curation_status") != "rejected")
+    return sum(
+        1 for r in rows if r.get(Col.CURATION_STATUS) != CurationStatus.REJECTED
+    )
 
 
 def apply_filter(
@@ -150,9 +153,10 @@ def apply_filter(
 
     rows = corpus.to_arrow().to_pylist()
     ids_to_reject = [
-        str(row["id"])
+        str(row[Col.ID])
         for row in rows
-        if row.get("curation_status") != "rejected" and not _passes(row, criterion)
+        if row.get(Col.CURATION_STATUS) != CurationStatus.REJECTED
+        and not _passes(row, criterion)
     ]
 
     label = f"filter:{criterion.field}{criterion.op}{criterion.value}"
@@ -194,18 +198,6 @@ def apply_filters(
         steps.append(step)
 
     # Sellar el Manifest.filters con todos los pasos
-    old = current.manifest
-    new_manifest = Manifest(
-        schema_version=old.schema_version,
-        corpus_hash=old.corpus_hash,
-        lib_version=old.lib_version,
-        created_at=old.created_at,
-        openalex_version=old.openalex_version,
-        equations=old.equations,
-        chaining=old.chaining,
-        preprocessors=old.preprocessors,
-        filters=steps,
-        enrichers=old.enrichers,
-    )
+    new_manifest = current.manifest.model_copy(update={"filters": steps})
     final_corpus = current.with_manifest(new_manifest)
     return final_corpus, steps

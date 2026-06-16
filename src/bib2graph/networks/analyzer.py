@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 from pydantic import BaseModel
 
+from bib2graph.constants import Col
+
 if TYPE_CHECKING:
     from bib2graph.corpus import Corpus
 
@@ -293,7 +295,7 @@ def cocitation_quality_report(
     vol_pasa = total >= thresholds.min_volume
 
     # Criterio 2: fracción con DOI
-    con_doi = sum(1 for r in rows if r.get("doi"))
+    con_doi = sum(1 for r in rows if r.get(Col.DOI))
     doi_pct = con_doi / total if total > 0 else 0.0
     doi_pasa = doi_pct >= thresholds.min_doi_refs_pct
 
@@ -313,7 +315,7 @@ def cocitation_quality_report(
     # Para tests, el caller puede usar institution ids con prefijo de país.
     unique_insts: set[str] = set()
     for r in rows:
-        insts = r.get("institutions_id")
+        insts = r.get(Col.INSTITUTIONS_ID)
         if isinstance(insts, list):
             for inst in insts:
                 if inst is not None:
@@ -323,7 +325,7 @@ def cocitation_quality_report(
     # Criterio 4: autores recurrentes (aparecen en ≥2 papers)
     author_count: dict[str, int] = {}
     for r in rows:
-        authors = r.get("authors_id")
+        authors = r.get(Col.AUTHORS_ID)
         if isinstance(authors, list):
             for a in authors:
                 if a is not None:

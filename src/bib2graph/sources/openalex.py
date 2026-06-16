@@ -31,8 +31,9 @@ from typing import Any
 import httpx
 import pyarrow as pa
 
-from bib2graph.corpus import Corpus, EquationRef, Manifest
-from bib2graph.schemas import CORPUS_SCHEMA
+from bib2graph.constants import Col, CurationStatus
+from bib2graph.corpus import Corpus, EquationRef
+from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
 
 from .base import SeedResult
 
@@ -254,40 +255,40 @@ def _work_to_row(
     venue = loc_source.get("display_name")
 
     # --- Provenance (evento inicial) ---
-    provenance_event = {
-        "action": "fetched",
-        "equation_id": equation_id,
-        "chaining_hop": None,
-        "source": "openalex",
-        "fetched_at": fetched_at,
-        "decided_by": None,
-        "decided_at": None,
-    }
+    provenance_event = ProvenanceEvent(
+        action="fetched",
+        equation_id=equation_id,
+        chaining_hop=None,
+        source="openalex",
+        fetched_at=fetched_at,
+        decided_by=None,
+        decided_at=None,
+    )
 
     return {
         # id se calcula en Corpus.add_paper (D1)
-        "openalex_id": openalex_id,
-        "doi": doi,
-        "title": work.get("title") or work.get("display_name") or "",
-        "year": work.get("publication_year"),
-        "abstract": _reconstruct_abstract(work.get("abstract_inverted_index")),
-        "source": venue,
-        "language": work.get("language"),
-        "publisher": None,
-        "research_areas": None,
-        "is_seed": True,
-        "curation_status": "candidate",
-        "provenance": json.dumps([provenance_event]),
-        "authors_raw": authors_raw or None,
-        "authors_id": authors_id or None,
-        "authors_affiliations": authors_affiliations or None,
-        "keywords_raw": keywords_raw or None,
-        "keywords_id": keywords_id or None,
-        "institutions_raw": institutions_raw or None,
-        "institutions_id": institutions_id or None,
-        "references_id": references_id_clean or None,
-        "references_doi": None,
-        "cited_by_id": [],
+        Col.OPENALEX_ID: openalex_id,
+        Col.DOI: doi,
+        Col.TITLE: work.get("title") or work.get("display_name") or "",
+        Col.YEAR: work.get("publication_year"),
+        Col.ABSTRACT: _reconstruct_abstract(work.get("abstract_inverted_index")),
+        Col.SOURCE: venue,
+        Col.LANGUAGE: work.get("language"),
+        Col.PUBLISHER: None,
+        Col.RESEARCH_AREAS: None,
+        Col.IS_SEED: True,
+        Col.CURATION_STATUS: CurationStatus.CANDIDATE,
+        Col.PROVENANCE: ProvenanceEvent.dump_list([provenance_event]),
+        Col.AUTHORS_RAW: authors_raw or None,
+        Col.AUTHORS_ID: authors_id or None,
+        Col.AUTHORS_AFFILIATIONS: authors_affiliations or None,
+        Col.KEYWORDS_RAW: keywords_raw or None,
+        Col.KEYWORDS_ID: keywords_id or None,
+        Col.INSTITUTIONS_RAW: institutions_raw or None,
+        Col.INSTITUTIONS_ID: institutions_id or None,
+        Col.REFERENCES_ID: references_id_clean or None,
+        Col.REFERENCES_DOI: None,
+        Col.CITED_BY_ID: [],
     }
 
 
@@ -459,19 +460,17 @@ class OpenAlexSource:
             corpus = corpus.add_paper(row)
 
         # Actualizar Manifest con openalex_version y ecuación (ADR 0017)
-        updated_manifest = Manifest(
-            schema_version=corpus.manifest.schema_version,
-            corpus_hash=corpus.manifest.corpus_hash,
-            lib_version=corpus.manifest.lib_version,
-            created_at=corpus.manifest.created_at,
-            openalex_version=openalex_version,
-            equations=[
-                EquationRef(
-                    equation_id=equation_id,
-                    query=executed_query,
-                    translation_report=translation_report,
-                )
-            ],
+        updated_manifest = corpus.manifest.model_copy(
+            update={
+                "openalex_version": openalex_version,
+                "equations": [
+                    EquationRef(
+                        equation_id=equation_id,
+                        query=executed_query,
+                        translation_report=translation_report,
+                    )
+                ],
+            }
         )
         # Sustituir el manifest en el corpus usando la API pública
         result_corpus = corpus.with_manifest(updated_manifest)
@@ -512,17 +511,17 @@ class OpenAlexSource:
         for work in works:
             row = _work_to_row(work, equation_id=equation_id, fetched_at=fetched_at)
             # Sobrescribir is_seed y provenance para forward chaining
-            row["is_seed"] = False
-            provenance_event = {
-                "action": "fetched",
-                "equation_id": None,
-                "chaining_hop": 1,
-                "source": "openalex",
-                "fetched_at": fetched_at,
-                "decided_by": None,
-                "decided_at": None,
-            }
-            row["provenance"] = json.dumps([provenance_event])
+            row[Col.IS_SEED] = False
+            provenance_event = ProvenanceEvent(
+                action="fetched",
+                equation_id=None,
+                chaining_hop=1,
+                source="openalex",
+                fetched_at=fetched_at,
+                decided_by=None,
+                decided_at=None,
+            )
+            row[Col.PROVENANCE] = ProvenanceEvent.dump_list([provenance_event])
             # Calcular id canónico (D1) para que Forager y compute_forward_scent
             # puedan identificar el candidato
             row["id"] = _compute_id(

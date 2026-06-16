@@ -6,6 +6,12 @@ por defecto del ``Corpus`` y el que usan los tests del núcleo (sin DuckDB).
 
 Las reglas D1/D2/D3 del ADR 0013 se cumplen aquí en Python puro;
 ``DuckDBBackend`` (Hito 3) las expresará en SQL.
+
+R1 (ADR 0023):
+- ``_LIST_COLS`` → ``LIST_COLUMNS`` de ``constants.py`` (fuente única).
+- ``_parse_provenance``: falla ruidoso ante JSON corrupto (usa
+  ``ProvenanceEvent.parse_list``); ya no traga silencioso.
+- Construcción del evento de curación usa ``ProvenanceEvent``.
 """
 
 from __future__ import annotations
@@ -18,29 +24,26 @@ from typing import Literal
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from bib2graph.schemas import CORPUS_SCHEMA
+from bib2graph.constants import LIST_COLUMNS, Col, CurationStatus
+from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
+
+# ---------------------------------------------------------------------------
+# Re-exportar LIST_COLUMNS con el alias histórico (_LIST_COLS) para que
+# backends/duckdb.py y cualquier otro importador de la constante antigua
+# no rompa en la transición (se puede retirar en R2).
+# ---------------------------------------------------------------------------
+
+_LIST_COLS: frozenset[str] = LIST_COLUMNS
 
 # ---------------------------------------------------------------------------
 # Constantes internas (D3)
 # ---------------------------------------------------------------------------
 
-_CURATION_PRIORITY: dict[str, int] = {"accepted": 2, "rejected": 1, "candidate": 0}
-
-_LIST_COLS: frozenset[str] = frozenset(
-    {
-        "research_areas",
-        "authors_raw",
-        "authors_id",
-        "authors_affiliations",
-        "keywords_raw",
-        "keywords_id",
-        "institutions_raw",
-        "institutions_id",
-        "references_id",
-        "references_doi",
-        "cited_by_id",
-    }
-)
+_CURATION_PRIORITY: dict[str, int] = {
+    CurationStatus.ACCEPTED: 2,
+    CurationStatus.REJECTED: 1,
+    CurationStatus.CANDIDATE: 0,
+}
 
 # ---------------------------------------------------------------------------
 # Helpers internos — lógica pura movida desde corpus.py
@@ -76,23 +79,23 @@ def compute_corpus_hash(table: pa.Table) -> str:
 
 
 def _parse_provenance(provenance_json: str | None) -> list[dict[str, object]]:
-    """Parsea el JSON de provenance como lista de eventos.
+    """Parsea el JSON de provenance como lista de eventos (dicts).
+
+    Delega a ``ProvenanceEvent.parse_list`` que falla ruidoso ante JSON
+    corrupto.  Devuelve dicts (no modelos) para mantener compatibilidad con
+    el resto de la lógica interna que los manipula como dicts.
 
     Args:
         provenance_json: String JSON o None.
 
     Returns:
-        Lista de eventos (puede ser vacía).
+        Lista de dicts de eventos (puede ser vacía si JSON es None o ``[]``).
+
+    Raises:
+        ValueError: Si el JSON es corrupto o no es una lista de objetos válidos.
     """
-    if not provenance_json:
-        return []
-    try:
-        result = json.loads(provenance_json)
-        if isinstance(result, list):
-            return [e for e in result if isinstance(e, dict)]
-        return []
-    except (json.JSONDecodeError, TypeError):
-        return []
+    events = ProvenanceEvent.parse_list(provenance_json)
+    return [e.to_dict() for e in events]
 
 
 def _latest_human_decided_at(events: list[dict[str, object]]) -> str | None:
@@ -104,7 +107,7 @@ def _latest_human_decided_at(events: list[dict[str, object]]) -> str | None:
     Returns:
         ISO8601 string o None si no hay decisiones humanas.
     """
-    human_actions = {"accepted", "rejected"}
+    human_actions = {CurationStatus.ACCEPTED, CurationStatus.REJECTED}
     timestamps = [
         str(e["decided_at"])
         for e in events
@@ -202,19 +205,19 @@ def _merge_rows(
     for key in all_keys:
         val_a = row_a.get(key)
         val_b = row_b.get(key)
-        if key == "curation_status":
+        if key == Col.CURATION_STATUS:
             result[key] = _merge_curation_status(
-                str(val_a or "candidate"),
-                str(row_a.get("provenance")) if row_a.get("provenance") else None,
-                str(val_b or "candidate"),
-                str(row_b.get("provenance")) if row_b.get("provenance") else None,
+                str(val_a or CurationStatus.CANDIDATE),
+                str(row_a.get(Col.PROVENANCE)) if row_a.get(Col.PROVENANCE) else None,
+                str(val_b or CurationStatus.CANDIDATE),
+                str(row_b.get(Col.PROVENANCE)) if row_b.get(Col.PROVENANCE) else None,
             )
-        elif key == "provenance":
+        elif key == Col.PROVENANCE:
             result[key] = _merge_provenance(
                 str(val_a) if val_a else None,
                 str(val_b) if val_b else None,
             )
-        elif key in _LIST_COLS:
+        elif key in LIST_COLUMNS:
             result[key] = _merge_list_field(val_a, val_b)
         else:
             result[key] = _merge_scalar(val_a, val_b)
@@ -279,25 +282,25 @@ def _apply_curation_to_rows(
     """
     id_set = set(ids)
     decided_at = datetime.now(UTC).isoformat()
-    evento: dict[str, object] = {
-        "action": action,
-        "equation_id": None,
-        "chaining_hop": None,
-        "source": None,
-        "fetched_at": None,
-        "decided_by": by,
-        "decided_at": decided_at,
-    }
+    evento = ProvenanceEvent(
+        action=action,
+        equation_id=None,
+        chaining_hop=None,
+        source=None,
+        fetched_at=None,
+        decided_by=by,
+        decided_at=decided_at,
+    )
     updated: list[dict[str, object]] = []
     for row in rows:
-        if row.get("id") in id_set:
+        if row.get(Col.ID) in id_set:
             new_row = dict(row)
-            new_row["curation_status"] = action
+            new_row[Col.CURATION_STATUS] = action
             events = _parse_provenance(
-                str(row.get("provenance")) if row.get("provenance") else None
+                str(row.get(Col.PROVENANCE)) if row.get(Col.PROVENANCE) else None
             )
-            events.append(evento)
-            new_row["provenance"] = json.dumps(events, ensure_ascii=False)
+            events.append(evento.to_dict())
+            new_row[Col.PROVENANCE] = json.dumps(events, ensure_ascii=False)
             updated.append(new_row)
         else:
             updated.append(row)
@@ -422,15 +425,15 @@ class InMemoryBackend:
             ValueError: Si el nombre de vista no es reconocido.
         """
         if view == "seeds":
-            mask = self._table.column("is_seed")
+            mask = self._table.column(Col.IS_SEED)
             return self._table.filter(mask)
         elif view == "candidates":
-            col = self._table.column("curation_status")
-            mask = pc.equal(col, "candidate")  # type: ignore[attr-defined]
+            col = self._table.column(Col.CURATION_STATUS)
+            mask = pc.equal(col, CurationStatus.CANDIDATE)  # type: ignore[attr-defined]
             return self._table.filter(mask)
         elif view == "accepted":
-            col = self._table.column("curation_status")
-            mask = pc.equal(col, "accepted")  # type: ignore[attr-defined]
+            col = self._table.column(Col.CURATION_STATUS)
+            mask = pc.equal(col, CurationStatus.ACCEPTED)  # type: ignore[attr-defined]
             return self._table.filter(mask)
         else:
             raise ValueError(

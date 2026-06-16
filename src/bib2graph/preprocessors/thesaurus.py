@@ -129,7 +129,9 @@ def apply_thesaurus_to_rows(
                 new_ids.append(canonical)
 
         new_row = dict(row)
-        new_row["keywords_id"] = new_ids if new_ids else None
+        from bib2graph.constants import Col
+
+        new_row[Col.KEYWORDS_ID] = new_ids if new_ids else None
         result.append(new_row)
 
     return result

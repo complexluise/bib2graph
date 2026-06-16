@@ -15,20 +15,20 @@ Ver docs/API.md §5.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from typing import Any
 
 import pyarrow as pa
 
-from bib2graph.corpus import Corpus, Manifest
+from bib2graph.constants import Col, CurationStatus
+from bib2graph.corpus import Corpus
 from bib2graph.foraging.base import Direction, GrowthPreview, RankedCandidates
 from bib2graph.foraging.scent import (
     compute_backward_scent,
     compute_forward_scent,
     rank_candidates,
 )
-from bib2graph.schemas import CORPUS_SCHEMA
+from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
 
 
 def _make_empty_corpus() -> Corpus:
@@ -59,38 +59,38 @@ def _build_backward_candidate_row(
     Returns:
         Dict con las columnas mínimas del schema canónico.
     """
-    provenance_event = {
-        "action": "fetched",
-        "equation_id": None,
-        "chaining_hop": 1,
-        "source": "chaining:backward",
-        "fetched_at": fetched_at,
-        "decided_by": None,
-        "decided_at": None,
-    }
+    provenance_event = ProvenanceEvent(
+        action="fetched",
+        equation_id=None,
+        chaining_hop=1,
+        source="chaining:backward",
+        fetched_at=fetched_at,
+        decided_by=None,
+        decided_at=None,
+    )
     return {
-        "openalex_id": ref_id,
-        "doi": None,
-        "title": f"[candidate:{ref_id}]",
-        "year": None,
-        "abstract": None,
-        "source": None,
-        "language": None,
-        "publisher": None,
-        "research_areas": None,
-        "is_seed": False,
-        "curation_status": "candidate",
-        "provenance": json.dumps([provenance_event]),
-        "authors_raw": None,
-        "authors_id": None,
-        "authors_affiliations": None,
-        "keywords_raw": None,
-        "keywords_id": None,
-        "institutions_raw": None,
-        "institutions_id": None,
-        "references_id": None,
-        "references_doi": None,
-        "cited_by_id": None,
+        Col.OPENALEX_ID: ref_id,
+        Col.DOI: None,
+        Col.TITLE: f"[candidate:{ref_id}]",
+        Col.YEAR: None,
+        Col.ABSTRACT: None,
+        Col.SOURCE: None,
+        Col.LANGUAGE: None,
+        Col.PUBLISHER: None,
+        Col.RESEARCH_AREAS: None,
+        Col.IS_SEED: False,
+        Col.CURATION_STATUS: CurationStatus.CANDIDATE,
+        Col.PROVENANCE: ProvenanceEvent.dump_list([provenance_event]),
+        Col.AUTHORS_RAW: None,
+        Col.AUTHORS_ID: None,
+        Col.AUTHORS_AFFILIATIONS: None,
+        Col.KEYWORDS_RAW: None,
+        Col.KEYWORDS_ID: None,
+        Col.INSTITUTIONS_RAW: None,
+        Col.INSTITUTIONS_ID: None,
+        Col.REFERENCES_ID: None,
+        Col.REFERENCES_DOI: None,
+        Col.CITED_BY_ID: None,
     }
 
 
@@ -256,16 +256,14 @@ class Forager:
         # Poblar el manifest con chaining params
         from bib2graph.corpus import ChainingParams
 
-        new_manifest = Manifest(
-            schema_version=candidates_corpus.manifest.schema_version,
-            corpus_hash=candidates_corpus.manifest.corpus_hash,
-            lib_version=candidates_corpus.manifest.lib_version,
-            created_at=candidates_corpus.manifest.created_at,
-            chaining=ChainingParams(
-                depth=self._depth,
-                max_candidates=self._max_candidates,
-                direction=direction,
-            ),
+        new_manifest = candidates_corpus.manifest.model_copy(
+            update={
+                "chaining": ChainingParams(
+                    depth=self._depth,
+                    max_candidates=self._max_candidates,
+                    direction=direction,
+                )
+            }
         )
         candidates_corpus = candidates_corpus.with_manifest(new_manifest)
 
@@ -306,7 +304,7 @@ class Forager:
 
         all_citing_rows: list[dict[str, Any]] = []
         for row in corpus_rows:
-            oa_id = row.get("openalex_id")
+            oa_id = row.get(Col.OPENALEX_ID)
             if not oa_id:
                 continue
             citing = self._source.fetch_citing(str(oa_id))

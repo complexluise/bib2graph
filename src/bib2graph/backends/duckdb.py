@@ -33,19 +33,13 @@ import pyarrow as pa
 from duckdb.func import FunctionNullHandling
 
 from bib2graph.backends.memory import (
-    _LIST_COLS,
     _apply_curation_to_rows,
     _merge_curation_status,
     _merge_provenance,
     compute_corpus_hash,
 )
+from bib2graph.constants import LIST_COLUMNS, CurationStatus
 from bib2graph.schemas import CORPUS_SCHEMA, validate_table
-
-# ---------------------------------------------------------------------------
-# Constante: columnas de lista (11) que reciben tratamiento especial en SQL
-# ---------------------------------------------------------------------------
-
-_LIST_COL_NAMES: tuple[str, ...] = tuple(sorted(_LIST_COLS))
 
 # ---------------------------------------------------------------------------
 # Error de bloqueo de archivo (ADR 0019)
@@ -138,7 +132,7 @@ def _build_upsert_sql() -> str:
         "publisher",
         "is_seed",
     ]
-    list_cols = list(_LIST_COLS)
+    list_cols = list(LIST_COLUMNS)
 
     scalar_updates = [
         f"    {c} = COALESCE(excluded.{c}, corpus.{c})" for c in scalar_cols
@@ -274,9 +268,9 @@ class DuckDBBackend:
             prov_b: str | None,
         ) -> str:
             return _merge_curation_status(
-                str(status_a or "candidate"),
+                str(status_a or CurationStatus.CANDIDATE),
                 prov_a,
-                str(status_b or "candidate"),
+                str(status_b or CurationStatus.CANDIDATE),
                 prov_b,
             )
 

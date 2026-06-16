@@ -24,13 +24,13 @@ Ver ``docs/API.md`` §2, ADR 0018.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from bib2graph.constants import Col, CurationStatus
 from bib2graph.corpus import Corpus
-from bib2graph.schemas import CORPUS_SCHEMA
+from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
 
 from .base import SeedResult
 
@@ -112,39 +112,39 @@ def _entry_to_row(
         doi = d.lower() or None
 
     # Provenance
-    provenance_event = {
-        "action": "seeded",
-        "equation_id": None,
-        "chaining_hop": None,
-        "source": "bibtex",
-        "fetched_at": fetched_at,
-        "decided_by": None,
-        "decided_at": None,
-    }
+    provenance_event = ProvenanceEvent(
+        action="seeded",
+        equation_id=None,
+        chaining_hop=None,
+        source="bibtex",
+        fetched_at=fetched_at,
+        decided_by=None,
+        decided_at=None,
+    )
 
     return {
-        "openalex_id": None,
-        "doi": doi,
-        "title": (entry.get("title") or "").strip() or "",
-        "year": year,
-        "abstract": entry.get("abstract") or None,
-        "source": venue,
-        "language": None,
-        "publisher": entry.get("publisher") or None,
-        "research_areas": None,
-        "is_seed": True,
-        "curation_status": "candidate",
-        "provenance": json.dumps([provenance_event]),
-        "authors_raw": authors_raw,
-        "authors_id": None,
-        "authors_affiliations": authors_affiliations,
-        "keywords_raw": keywords_raw,
-        "keywords_id": None,
-        "institutions_raw": None,
-        "institutions_id": None,
-        "references_id": None,
-        "references_doi": None,
-        "cited_by_id": None,
+        Col.OPENALEX_ID: None,
+        Col.DOI: doi,
+        Col.TITLE: (entry.get("title") or "").strip() or "",
+        Col.YEAR: year,
+        Col.ABSTRACT: entry.get("abstract") or None,
+        Col.SOURCE: venue,
+        Col.LANGUAGE: None,
+        Col.PUBLISHER: entry.get("publisher") or None,
+        Col.RESEARCH_AREAS: None,
+        Col.IS_SEED: True,
+        Col.CURATION_STATUS: CurationStatus.CANDIDATE,
+        Col.PROVENANCE: ProvenanceEvent.dump_list([provenance_event]),
+        Col.AUTHORS_RAW: authors_raw,
+        Col.AUTHORS_ID: None,
+        Col.AUTHORS_AFFILIATIONS: authors_affiliations,
+        Col.KEYWORDS_RAW: keywords_raw,
+        Col.KEYWORDS_ID: None,
+        Col.INSTITUTIONS_RAW: None,
+        Col.INSTITUTIONS_ID: None,
+        Col.REFERENCES_ID: None,
+        Col.REFERENCES_DOI: None,
+        Col.CITED_BY_ID: None,
     }
 
 

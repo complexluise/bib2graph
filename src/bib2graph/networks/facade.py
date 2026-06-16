@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 
+from bib2graph.constants import NetworkKind
 from bib2graph.networks.analyzer import detect_communities, network_metrics
 from bib2graph.networks.projectors import (
     AuthorCollaborationProjector,
@@ -36,11 +37,12 @@ else:
 logger = logging.getLogger(__name__)
 
 # Tipos de red disponibles en Networks.quick (D3: sin co-citación)
+# Derivado de NetworkKind — fuente única (R1, ADR 0023)
 _QUICK_KINDS: list[str] = [
-    "bibliographic_coupling",
-    "author_collab",
-    "institution_collab",
-    "keyword_cooccurrence",
+    NetworkKind.BIBLIOGRAPHIC_COUPLING,
+    NetworkKind.AUTHOR_COLLAB,
+    NetworkKind.INSTITUTION_COLLAB,
+    NetworkKind.KEYWORD_COOCCURRENCE,
 ]
 
 

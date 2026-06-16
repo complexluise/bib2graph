@@ -61,13 +61,15 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
     state_str = loop_state.value if loop_state is not None else None
 
     # Conteos por curation_status via query SQL
+    from bib2graph.constants import Col
+
     counts_table = store.backend.query(
-        "SELECT curation_status, COUNT(*) as cnt FROM corpus GROUP BY 1"
+        f"SELECT {Col.CURATION_STATUS.value}, COUNT(*) as cnt FROM corpus GROUP BY 1"
     )
     counts: dict[str, int] = {}
     if len(counts_table) > 0:
         for row in counts_table.to_pylist():
-            status = str(row["curation_status"])
+            status = str(row[Col.CURATION_STATUS])
             counts[status] = int(row["cnt"])
 
     total = sum(counts.values())
