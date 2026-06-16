@@ -311,7 +311,9 @@ def _apply_curation_to_rows(
         Nueva lista de filas con la curación aplicada.
     """
     id_set = set(ids)
-    resolved_at: str = decided_at if decided_at is not None else datetime.now(UTC).isoformat()
+    resolved_at: str = (
+        decided_at if decided_at is not None else datetime.now(UTC).isoformat()
+    )
     evento = ProvenanceEvent(
         action=action,
         equation_id=None,

@@ -25,7 +25,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
-from bib2graph.cli._store import open_store
+from bib2graph.cli._store import open_store_readonly
 from bib2graph.cycle import CURATION_ACTIONS, available_transitions
 
 # ---------------------------------------------------------------------------
@@ -57,7 +57,8 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
     Raises:
         StoreError: Si el store está bloqueado.
     """
-    store = open_store(store_path)
+    # R5: open_store_readonly falla si el archivo no existe (no auto-crea).
+    store = open_store_readonly(store_path)
 
     loop_state = store.backend.loop_state()
     state_str = loop_state.value if loop_state is not None else None

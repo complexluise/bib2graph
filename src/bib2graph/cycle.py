@@ -151,9 +151,33 @@ CURATION_ACTIONS: list[str] = ["accept", "reject"]
 # pero no se bloquean desde otros).  El mapa refleja el ciclo real de la Nota 05.
 _AVAILABLE_TRANSITIONS: dict[str | None, list[str]] = {
     None: ["seed"],
-    CycleState.SEEDED: ["chain", "filter", "build", "snapshot", "inspect", "validate", "reseed"],
-    CycleState.FORAGED: ["filter", "build", "chain", "snapshot", "inspect", "validate", "reseed"],
-    CycleState.FILTERED: ["build", "filter", "chain", "snapshot", "inspect", "validate", "reseed"],
+    CycleState.SEEDED: [
+        "chain",
+        "filter",
+        "build",
+        "snapshot",
+        "inspect",
+        "validate",
+        "reseed",
+    ],
+    CycleState.FORAGED: [
+        "filter",
+        "build",
+        "chain",
+        "snapshot",
+        "inspect",
+        "validate",
+        "reseed",
+    ],
+    CycleState.FILTERED: [
+        "build",
+        "filter",
+        "chain",
+        "snapshot",
+        "inspect",
+        "validate",
+        "reseed",
+    ],
     CycleState.BUILT: [
         "export",
         "build",

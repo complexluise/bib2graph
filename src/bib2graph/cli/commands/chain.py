@@ -62,14 +62,21 @@ def run_chain(
 
     source = OpenAlexSource(email=email, transport=transport)
 
+    # Pre-check explícito: si la dirección requiere forward y el source no
+    # tiene ``fetch_citing``, fallamos antes de entrar al Forager — así un
+    # ``AttributeError`` genuino que surja dentro de chain/merge/_fetch_forward
+    # no queda disfrazado de "source no soporta forward" (exit 3).
+    if direction in ("forward", "both") and not hasattr(source, "fetch_citing"):
+        raise DependencyError(
+            f"El source {type(source).__name__!r} no soporta forward chaining: "
+            "no tiene el método ``fetch_citing``. "
+            "Usá un source compatible (p. ej. OpenAlexSource) o cambiá "
+            "--direction a 'backward'."
+        )
+
     try:
         forager = Forager(source, depth=depth, max_candidates=max_candidates)
         ranked = forager.chain(corpus, direction=direction)
-    except AttributeError as exc:
-        raise DependencyError(
-            f"El source no soporta forward chaining: {exc}. "
-            "Verificá que el source tenga el método ``fetch_citing``."
-        ) from exc
     except NotImplementedError as exc:
         raise DependencyError(
             f"Profundidad {depth} no soportada aún: {exc}. Usá depth=1 (por defecto)."
@@ -77,6 +84,7 @@ def run_chain(
     # httpx.HTTPError y subclases (ConnectError, TimeoutException,
     # RemoteProtocolError, TransportError, etc.) se dejan propagar: el
     # decorador @handle_errors las captura por tipo y emite exit 4.
+    # AttributeError genuino se propaga limpio (no se disfraza de exit 3).
 
     # Merge de candidatos en el corpus
     merged = corpus.merge(ranked.corpus)

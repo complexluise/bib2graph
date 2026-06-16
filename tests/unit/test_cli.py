@@ -404,29 +404,60 @@ def test_exit_code_3_build_louvain_faltante(tmp_path: Path) -> None:
 def test_exit_code_3_chain_forward_source_sin_fetch_citing(tmp_path: Path) -> None:
     """chain forward con source que no tiene fetch_citing → DependencyError → exit 3.
 
-    Simula el AttributeError que lanza Forager._fetch_forward cuando el
-    source no implementa fetch_citing (por ejemplo, BibtexSource).
+    El pre-check en run_chain detecta la ausencia de ``fetch_citing`` ANTES de
+    llamar a Forager.chain, evitando que un AttributeError genuino dentro de
+    chain/merge/_fetch_forward quede disfrazado como "source no soporta forward".
     """
+    from unittest.mock import MagicMock
+
     from bib2graph.cli._errors import DependencyError
     from bib2graph.cli.commands.chain import run_chain
 
     store_path = tmp_path / "test.duckdb"
     _seed_store(store_path)
 
-    # Patchear Forager.chain para que lance AttributeError (simula source sin fetch_citing)
+    # Reemplazar OpenAlexSource con un mock sin ``fetch_citing`` para activar
+    # el pre-check de run_chain (la conversión ocurre en el borde CLI, no en
+    # Forager._fetch_forward).
+    # OpenAlexSource se importa dentro de run_chain (lazy import), así que el
+    # patch apunta al módulo de origen donde la función lo resuelve.
+    source_sin_fetch_citing = MagicMock(spec=[])  # spec vacío → sin fetch_citing
     with (
         patch(
-            "bib2graph.foraging.forager.Forager.chain",
-            side_effect=AttributeError(
-                "El source 'BibtexSource' no implementa 'fetch_citing': "
-                "el forward chaining requiere OpenAlexSource o un source con ese método."
-            ),
+            "bib2graph.sources.openalex.OpenAlexSource",
+            return_value=source_sin_fetch_citing,
         ),
         pytest.raises(DependencyError) as exc_info,
     ):
         run_chain(store_path, direction="forward", transport=_make_mock_transport([]))
 
     assert exc_info.value.exit_code == 3
+    assert "fetch_citing" in str(exc_info.value.message)
+
+
+@pytest.mark.unit
+def test_attribute_error_genuino_en_chain_no_disfrazado(tmp_path: Path) -> None:
+    """AttributeError genuino dentro de Forager.chain NO se disfraza como exit 3.
+
+    Cierra el footgun gemelo de R5: antes, el ``except AttributeError`` amplio
+    de chain.py convertía cualquier bug real en "source no soporta forward"
+    (DependencyError, exit 3).  Ahora el AttributeError genuino se propaga limpio.
+    """
+    from bib2graph.cli.commands.chain import run_chain
+
+    store_path = tmp_path / "test.duckdb"
+    _seed_store(store_path)
+
+    # Inyectar un AttributeError genuino dentro de Forager.chain (bug real, no
+    # ausencia de fetch_citing — OpenAlexSource sí tiene fetch_citing).
+    with (
+        patch(
+            "bib2graph.foraging.forager.Forager.chain",
+            side_effect=AttributeError("bug_real: atributo inexistente en corpus"),
+        ),
+        pytest.raises(AttributeError, match="bug_real"),
+    ):
+        run_chain(store_path, direction="forward", transport=_make_mock_transport([]))
 
 
 @pytest.mark.unit

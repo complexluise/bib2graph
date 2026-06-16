@@ -73,6 +73,9 @@ def _louvain_seed_from_hash(corpus_hash: str) -> int:
 def _projector_for_kind(spec: NetworkSpec) -> Projector:
     """Devuelve la instancia del proyector correspondiente al ``spec.kind``.
 
+    R5: compara con ``NetworkKind`` (fuente única, ADR 0023) en vez de
+    string-literals.
+
     Args:
         spec: Especificación de la red.
 
@@ -83,15 +86,15 @@ def _projector_for_kind(spec: NetworkSpec) -> Projector:
         ValueError: Si el kind no es reconocido.
     """
     kind = spec.kind
-    if kind == "bibliographic_coupling":
+    if kind == NetworkKind.BIBLIOGRAPHIC_COUPLING:
         return BibliographicCouplingProjector()
-    elif kind == "author_collab":
+    elif kind == NetworkKind.AUTHOR_COLLAB:
         return AuthorCollaborationProjector()
-    elif kind == "institution_collab":
+    elif kind == NetworkKind.INSTITUTION_COLLAB:
         return InstitutionCollaborationProjector()
-    elif kind == "keyword_cooccurrence":
+    elif kind == NetworkKind.KEYWORD_COOCCURRENCE:
         return KeywordCoOccurrenceProjector()
-    elif kind == "cocitation":
+    elif kind == NetworkKind.COCITATION:
         return CoCitationProjector()
     else:
         raise ValueError(f"Kind de red no reconocido: '{kind}'")
@@ -126,6 +129,10 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
 
     communities: dict[Any, int] | None = None
     if spec.clustering is not None and g.number_of_nodes() > 0:
+        # R5: el ``except Exception`` que enmascaraba fallos reales fue eliminado.
+        # Solo se captura ``ImportError`` (dependencia faltante → fallar fuerte,
+        # lección 7, AGENTS.md).  Cualquier otro error se propaga limpio.
+        # ``ValueError`` (método desconocido) y errores de graph también se propagan.
         try:
             # R2: derivar random_state del content-hash para Louvain reproducible
             random_state: int | None = None
@@ -137,13 +144,6 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
             )
         except ImportError:
             raise  # dep faltante: fallar fuerte (lección 7, AGENTS.md)
-        except Exception as exc:
-            logger.warning(
-                "No se pudo detectar comunidades con método '%s': %s",
-                spec.clustering,
-                exc,
-            )
-            communities = None
 
     return NetworkArtifact(
         graph=g,

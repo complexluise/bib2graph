@@ -332,6 +332,4 @@ def assert_schema_parity() -> None:
             f"Campos en PaperRow pero NO en CORPUS_SCHEMA: {sorted(only_in_model)}"
         )
     if errors:
-        raise AssertionError(
-            "PaperRow y CORPUS_SCHEMA divergen:\n" + "\n".join(errors)
-        )
+        raise AssertionError("PaperRow y CORPUS_SCHEMA divergen:\n" + "\n".join(errors))

@@ -350,13 +350,15 @@ def _make_corpus_that_fails_volume() -> Any:
 
 @pytest.mark.unit
 def test_cocitation_quality_report_pasa_todos_umbrales() -> None:
-    """cocitation_quality_report devuelve overall_pass=True cuando se cumplen umbrales."""
+    """cocitation_quality_report devuelve overall_pass=True cuando se cumplen umbrales.
 
+    R5: el param muerto 'g' fue eliminado (Nota 06, catálogo de secundarios).
+    La firma ahora es cocitation_quality_report(corpus, *, thresholds=None).
+    """
     corpus = _make_corpus_that_passes()
-    # Grafo mínimo: no importa para el reporte de calidad del corpus
-    g = nx.Graph()
 
-    report = cocitation_quality_report(corpus, g)
+    # R5: ya no se pasa 'g' (param muerto eliminado)
+    report = cocitation_quality_report(corpus)
 
     assert "overall_pass" in report
     assert report["overall_pass"] is True, f"Esperaba pass. Reporte: {report}"
@@ -375,12 +377,15 @@ def test_cocitation_quality_report_pasa_todos_umbrales() -> None:
 
 @pytest.mark.unit
 def test_cocitation_quality_report_falla_volumen() -> None:
-    """cocitation_quality_report devuelve overall_pass=False y min_volume.pasa=False."""
+    """cocitation_quality_report devuelve overall_pass=False y min_volume.pasa=False.
+
+    R5: 'g' eliminado de la firma.
+    """
     corpus = _make_corpus_that_fails_volume()
-    g = nx.Graph()
     thresholds = QualityThresholds(min_volume=200)
 
-    report = cocitation_quality_report(corpus, g, thresholds=thresholds)
+    # R5: ya no se pasa 'g'
+    report = cocitation_quality_report(corpus, thresholds=thresholds)
 
     assert report["overall_pass"] is False
     assert report["min_volume"]["pasa"] is False
@@ -393,11 +398,12 @@ def test_cocitation_quality_report_min_countries_tiene_proxy_disclaimer() -> Non
     """min_countries incluye campo 'proxy' que advierte que institutions_id es un proxy.
 
     Consistente con el patrón proxy_disclaimer de assortativity (principio D4).
+    R5: 'g' eliminado de la firma.
     """
     corpus = _make_corpus_that_passes()
-    g = nx.Graph()
 
-    report = cocitation_quality_report(corpus, g)
+    # R5: ya no se pasa 'g'
+    report = cocitation_quality_report(corpus)
 
     min_countries_entry = report["min_countries"]
     assert isinstance(min_countries_entry, dict)

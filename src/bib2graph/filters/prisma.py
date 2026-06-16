@@ -13,6 +13,8 @@ Criterios soportados:
 - ``language`` + ``eq``/``in``/``not_in``: idioma igual / en lista / no en lista.
 - ``min_citations`` + ``gte``: ``len(cited_by_id)`` >= valor.
 
+R5: campo o operador desconocido → ``ValueError`` accionable (antes era no-op silencioso).
+
 Ver docs/API.md §convenciones (CLI ``filter``).
 """
 
@@ -74,7 +76,11 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
             return y >= int_value
         if op == "lte":
             return y <= int_value
-        return True
+        # R5: operador no válido para este campo → error accionable.
+        raise ValueError(
+            f"Operador '{op}' no soportado para el campo 'year'. "
+            f"Operadores válidos: {_FIELD_OPS['year']}."
+        )
 
     if field == "type":
         areas = row.get(Col.RESEARCH_AREAS)
@@ -88,7 +94,11 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
             return any(v in area_list for v in vals)
         if op == "not_in":
             return not any(v in area_list for v in vals)
-        return True
+        # R5: operador no válido para este campo → error accionable.
+        raise ValueError(
+            f"Operador '{op}' no soportado para el campo 'type'. "
+            f"Operadores válidos: {_FIELD_OPS['type']}."
+        )
 
     if field == "language":
         lang = row.get(Col.LANGUAGE)
@@ -104,7 +114,11 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
             return lang_str in vals_lang
         if op == "not_in":
             return lang_str not in vals_lang
-        return True
+        # R5: operador no válido para este campo → error accionable.
+        raise ValueError(
+            f"Operador '{op}' no soportado para el campo 'language'. "
+            f"Operadores válidos: {_FIELD_OPS['language']}."
+        )
 
     if field == "min_citations":
         cited = row.get(Col.CITED_BY_ID)
@@ -112,9 +126,17 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
         min_val = int(str(value))
         if op == "gte":
             return n >= min_val
-        return True
+        # R5: operador desconocido para el campo → error accionable.
+        raise ValueError(
+            f"Operador '{op}' no soportado para el campo 'min_citations'. "
+            f"Operadores válidos: {_FIELD_OPS.get(field, set())}."
+        )
 
-    return True  # campo desconocido: pasar sin filtrar
+    # R5: campo desconocido → error accionable (antes era no-op silencioso).
+    raise ValueError(
+        f"Campo de filtro desconocido: '{field}'. "
+        f"Campos soportados: {list(_FIELD_OPS.keys())}."
+    )
 
 
 def _count_not_rejected(corpus: Corpus) -> int:
@@ -127,9 +149,7 @@ def _count_not_rejected(corpus: Corpus) -> int:
         Número de papers no rechazados.
     """
     rows = corpus.to_arrow().to_pylist()
-    return sum(
-        1 for r in rows if r.get(Col.CURATION_STATUS) != CurationStatus.REJECTED
-    )
+    return sum(1 for r in rows if r.get(Col.CURATION_STATUS) != CurationStatus.REJECTED)
 
 
 def apply_filter(

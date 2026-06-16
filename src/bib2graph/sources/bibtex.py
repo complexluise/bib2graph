@@ -24,15 +24,19 @@ Ver ``docs/API.md`` §2, ADR 0018.
 
 from __future__ import annotations
 
+import logging
+import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from bib2graph.constants import Col, CurationStatus
-from bib2graph.corpus import Corpus
+from bib2graph.corpus import Corpus, _rows_with_ids
 from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
 
 from .base import SeedResult
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_authors(raw: str) -> list[str]:
@@ -207,23 +211,63 @@ class BibtexSource:
 
         parser = BibTexParser(common_strings=True)
         parser.customization = convert_to_unicode
-        bib_db = bibtexparser.loads(bib_text, parser=parser)
+        try:
+            bib_db = bibtexparser.loads(bib_text, parser=parser)
+        except Exception as exc:
+            # R5: archivo .bib con error de parseo → warning accionable (no no-op silencioso).
+            # bibtexparser puede emitir advertencias internas pero raramente lanza excepciones;
+            # este try/except captura errores graves del parser (p.ej. encoding inesperado).
+            raise ValueError(
+                f"Error al parsear el archivo BibTeX '{path}': {exc}. "
+                "Verificá que el archivo esté bien formado (codificación UTF-8, llaves balanceadas)."
+            ) from exc
+
+        # R5: detectar si el parser encontró errores/warnings internos y avisar.
+        # bibtexparser no lanza excepciones en entradas mal formadas; las ignora silenciosamente.
+        # Verificamos si hay entradas nulas o completamente vacías como proxy de parsing roto.
+        if not bib_db.entries:
+            warnings.warn(
+                f"El archivo BibTeX '{path}' no contiene entradas válidas o está vacío. "
+                "Si el archivo tiene entradas, puede estar mal formado.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         fetched_at = datetime.now(UTC).isoformat()
 
         import pyarrow as pa
 
-        corpus = Corpus.from_arrow(
-            pa.table(
-                {col: [] for col in CORPUS_SCHEMA.names},
-                schema=CORPUS_SCHEMA,
-            )
-        )
+        rows: list[dict[str, Any]] = []
+        skipped_no_title = 0
         for entry in bib_db.entries:
             row = _entry_to_row(entry, fetched_at=fetched_at)
             # Saltar entradas sin título (no pueden cumplir el schema)
             if not row.get("title"):
+                skipped_no_title += 1
                 continue
-            corpus = corpus.add_paper(row)
+            rows.append(row)
+
+        if skipped_no_title > 0:
+            warnings.warn(
+                f"{skipped_no_title} entrada(s) del archivo BibTeX '{path}' se omitieron "
+                "por no tener título (campo 'title' ausente o vacío).",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # R5: bulk load — construir la tabla Arrow de una vez y usar from_arrow
+        # en vez del loop add_paper/clone que era O(n²).
+        # Pre-computar ids (D1) antes de armar la tabla.
+        rows_complete = _rows_with_ids(rows) if rows else []
+        if rows_complete:
+            table = pa.Table.from_pylist(rows_complete, schema=CORPUS_SCHEMA)
+            corpus = Corpus.from_arrow(table)
+        else:
+            corpus = Corpus.from_arrow(
+                pa.table(
+                    {col: [] for col in CORPUS_SCHEMA.names},
+                    schema=CORPUS_SCHEMA,
+                )
+            )
 
         return corpus

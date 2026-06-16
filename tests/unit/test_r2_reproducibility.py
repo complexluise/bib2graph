@@ -194,9 +194,9 @@ def test_decided_at_inyectado_aparece_en_evento() -> None:
     assert event["action"] == "accepted"
     assert event["decided_by"] == "agente"
     # El decided_at debe ser el timestamp inyectado, serializado como ISO8601
-    assert fixed_at.isoformat() in event["decided_at"] or event["decided_at"].startswith(
-        "2026-03-15T12:30:00"
-    ), (
+    assert fixed_at.isoformat() in event["decided_at"] or event[
+        "decided_at"
+    ].startswith("2026-03-15T12:30:00"), (
         f"decided_at esperado '2026-03-15T12:30:00+00:00', "
         f"se obtuvo '{event['decided_at']}'"
     )

@@ -463,7 +463,9 @@ class DuckDBBackend:
         # y hacer upsert de vuelta
         current_table = _arrow_table_from_con(self._con)
         current_rows = current_table.to_pylist()
-        updated_rows = _apply_curation_to_rows(current_rows, ids, action, by, decided_at)
+        updated_rows = _apply_curation_to_rows(
+            current_rows, ids, action, by, decided_at
+        )
 
         new_backend = self._clone()
         # Sólo actualizar las filas que cambiaron

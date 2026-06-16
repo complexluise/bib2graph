@@ -30,7 +30,7 @@ from typing import Any
 import pyarrow as pa
 
 from bib2graph.constants import Col, CurationStatus
-from bib2graph.corpus import Corpus
+from bib2graph.corpus import Corpus, _rows_with_ids
 from bib2graph.foraging.base import Direction, GrowthPreview, RankedCandidates
 from bib2graph.foraging.scent import (
     compute_backward_scent,
@@ -256,12 +256,19 @@ class Forager:
         # Ranking estable (desc scent, asc id)
         ranking = rank_candidates(combined_scent, max_candidates=self._max_candidates)
 
-        # Construir el Corpus de candidatos en orden del ranking
-        # (los que entran tras el corte de max_candidates no se incluyen)
-        candidates_corpus = _make_empty_corpus()
-        for cand_id, _ in ranking:
-            row = candidate_rows[cand_id]
-            candidates_corpus = candidates_corpus.add_paper(row)
+        # R5: bulk-load — construir la tabla Arrow de una vez en vez de N add_paper/clone.
+        # El orden del ranking se preserva construyendo la lista en ese orden.
+        candidate_rows_ordered = [
+            candidate_rows[cand_id]
+            for cand_id, _ in ranking
+            if cand_id in candidate_rows
+        ]
+        rows_with_ids = _rows_with_ids(candidate_rows_ordered)
+        if rows_with_ids:
+            table = pa.Table.from_pylist(rows_with_ids, schema=CORPUS_SCHEMA)
+            candidates_corpus = Corpus.from_arrow(table)
+        else:
+            candidates_corpus = _make_empty_corpus()
 
         # Poblar el manifest con chaining params
         from bib2graph.corpus import ChainingParams

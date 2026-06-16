@@ -45,13 +45,18 @@ _compute_corpus_hash = compute_corpus_hash
 
 
 def _lib_version() -> str:
-    """Devuelve la versión instalada de bib2graph, con fallback a '0.0.0'."""
-    try:
-        from importlib.metadata import version
+    """Devuelve la versión instalada de bib2graph.
 
-        return version("bib2graph")
+    R5: fallback a ``'unknown'`` (no a ``'0.0.0'``).  Una versión inventada
+    entra al ``Manifest`` y engaña sobre la reproducibilidad (Nota 06,
+    catálogo de secundarios).  ``'unknown'`` es honesto.
+    """
+    try:
+        import importlib.metadata as _meta
+
+        return _meta.version("bib2graph")
     except Exception:
-        return "0.0.0"
+        return "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +97,38 @@ def _compute_id(
         prefix = "tt"
     digest = hashlib.sha256(valor.encode()).hexdigest()[:16]
     return f"{prefix}:{digest}"
+
+
+def _rows_with_ids(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Pre-computa el ``id`` canónico (D1) para cada fila que no lo tenga.
+
+    Función helper para el bulk-load (R5): los loaders construyen listas de
+    filas sin ``id``; esta función las completa antes de armar la tabla Arrow
+    de una vez con ``Corpus.from_arrow``.
+
+    Args:
+        rows: Lista de dicts con los datos de los papers.  Cada dict debe
+            incluir al menos ``title``, ``is_seed`` y ``curation_status``.
+            Si ya tiene ``id`` no se recalcula.
+
+    Returns:
+        Lista de dicts con ``id`` garantizado (calculado con D1 si ausente).
+    """
+    result = []
+    for row in rows:
+        row_copy = dict(row)
+        if not row_copy.get(Col.ID):
+            raw_year = row_copy.get(Col.YEAR)
+            row_copy[Col.ID] = _compute_id(
+                openalex_id=str(row_copy[Col.OPENALEX_ID])
+                if row_copy.get(Col.OPENALEX_ID)
+                else None,
+                doi=str(row_copy[Col.DOI]) if row_copy.get(Col.DOI) else None,
+                title=str(row_copy.get(Col.TITLE, "")),
+                year=int(str(raw_year)) if raw_year is not None else None,
+            )
+        result.append(row_copy)
+    return result
 
 
 # ---------------------------------------------------------------------------

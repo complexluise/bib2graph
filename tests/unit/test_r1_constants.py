@@ -71,19 +71,27 @@ class TestColCoversSchema:
         assert {k.value for k in NetworkKind} == expected
 
     def test_network_kind_matches_spec_literal(self) -> None:
-        """El ``Literal`` de ``NetworkSpec.kind`` no debe divergir de ``NetworkKind``.
+        """``NetworkSpec.kind`` es de tipo ``NetworkKind`` (fuente única, R5).
 
-        ``NetworkKind`` es la fuente única; el ``Literal`` se mantiene a mano por
-        compatibilidad con mypy/Pydantic. Este test falla si se agrega un kind a
-        uno y no al otro.
+        R5 (ADR 0023): el ``Literal[...]`` duplicado en ``spec.py`` fue
+        eliminado; ``NetworkSpec.kind`` ahora es de tipo ``NetworkKind``
+        directamente.  Este test verifica que el tipo del campo es ``NetworkKind``
+        (o aceptable como tal via Pydantic), garantizando la fuente única.
         """
-        from typing import get_args
-
         from bib2graph.networks.spec import NetworkSpec
 
-        literal_values = set(get_args(NetworkSpec.model_fields["kind"].annotation))
-        assert literal_values == {k.value for k in NetworkKind}, (
-            "NetworkSpec.kind (Literal) divergió de NetworkKind"
+        kind_annotation = NetworkSpec.model_fields["kind"].annotation
+        # R5: con fuente única, el tipo del campo ES NetworkKind (no un Literal).
+        # Verificamos que todos los valores de NetworkKind son válidos como `kind`.
+        for nk in NetworkKind:
+            spec = NetworkSpec(kind=nk)
+            assert spec.kind == nk, f"NetworkSpec.kind no aceptó NetworkKind.{nk.name}"
+
+        # Verificar que el tipo del campo es NetworkKind (la fuente única)
+        assert kind_annotation is NetworkKind, (
+            f"NetworkSpec.kind debería ser tipo NetworkKind (fuente única), "
+            f"pero es {kind_annotation!r}. "
+            "Si volviste a un Literal, asegurate de que sea derivado de NetworkKind."
         )
 
     def test_list_columns_subset_of_col(self) -> None:
@@ -234,9 +242,7 @@ class TestSchemaParidad:
         schema_names = {f.name for f in CORPUS_SCHEMA}
         model_names = set(PaperRow.model_fields.keys())
         extra = model_names - schema_names
-        assert not extra, (
-            f"Campos de PaperRow sin CORPUS_SCHEMA: {sorted(extra)}"
-        )
+        assert not extra, f"Campos de PaperRow sin CORPUS_SCHEMA: {sorted(extra)}"
 
     def test_col_enum_covers_corpus_schema(self) -> None:
         """Col enumera exactamente los mismos nombres que CORPUS_SCHEMA."""

@@ -279,7 +279,6 @@ def community_composition(
 
 def cocitation_quality_report(
     corpus: Corpus,
-    g: _Graph,
     *,
     thresholds: QualityThresholds | None = None,
 ) -> dict[str, object]:
@@ -289,10 +288,12 @@ def cocitation_quality_report(
     ``{criterio: {valor, umbral, pasa}}`` + ``"overall_pass": bool``.
     Sin score ponderado.
 
+    R5: param muerto ``g`` eliminado (Nota 06, catálogo de secundarios).
+    El grafo no se usaba en ningún criterio; pasarlo era un anti-patrón
+    que ARCHITECTURE §8 dice evitar.
+
     Args:
         corpus: Corpus a evaluar.
-        g: Grafo de co-citación (actualmente no se usa en los criterios; se
-            pasa por contrato para extensibilidad futura).
         thresholds: Umbrales configurables. Si None, usa ``QualityThresholds()``
             con los defaults de metodología §4.
 

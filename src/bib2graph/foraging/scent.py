@@ -97,9 +97,7 @@ def compute_backward_scent(
 
     # Primitivo del proyector: {ref_id → [paper_ids del corpus que lo citan]}
     # Usamos Col.ID como id_col para registrar qué corpus-paper hace la cita.
-    ref_to_papers = collect_item_to_papers(
-        corpus_rows, Col.ID, Col.REFERENCES_ID
-    )
+    ref_to_papers = collect_item_to_papers(corpus_rows, Col.ID, Col.REFERENCES_ID)
 
     # Score = número de corpus-papers distintos que citan el candidato
     return {
@@ -173,9 +171,7 @@ def compute_forward_scent(
 
         # Citación directa: cuántos corpus-papers aparecen en Y.references_id
         direct = sum(
-            1
-            for ref in refs
-            if ref and isinstance(ref, str) and str(ref) in corpus_ids
+            1 for ref in refs if ref and isinstance(ref, str) and str(ref) in corpus_ids
         )
 
         if direct > 0:
