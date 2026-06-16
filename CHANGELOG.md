@@ -14,6 +14,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-16
+
+> **Remediación R1–R5 + cleanup.** Cierra la brecha AS-BUILT↔TARGET del red-team (Nota 06):
+> identidad≠procedencia (hash determinista), ciclo de dominio `cycle.py`, scent bibliométrico
+> sin IA generativa, robustez/hardening, comando `monitor`. El `corpus_hash` cambia a propósito
+> (breaking interno) — de ahí el corte v0.3.
+
 > **Modelo nuevo bloqueado por el PO (2026-06-15)** tras el red-team del AS-BUILT v0.2
 > ([Nota 06](docs/Notas/06-critica-as-built-v0.2.md)): el **producto no usa IA generativa** (ADR
 > 0022); **capa base** `constants`/`models`/`schemas` única (ADR 0023); enmiendas a
