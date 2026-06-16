@@ -38,12 +38,15 @@ quedaban abiertas:
 
 ## Decisión
 
-### A. Set de 11 subcomandos, incluyendo `accept`/`reject` (decisión del PO)
+### A. Set de subcomandos, incluyendo `accept`/`reject` (decisión del PO)
 
-El CLI `b2g` expone **11 subcomandos**:
+> **Cleanup pre-v0.3 (2026-06-16):** el set creció a **12 subcomandos** con el alta de **`monitor`**
+> (ver enmienda al final). El texto original (11) queda como historia.
+
+El CLI `b2g` expone **11 subcomandos** (original; **12 con `monitor`** desde el cleanup pre-v0.3):
 
 `seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`, `inspect`, `validate`,
-**`accept`**, **`reject`**.
+**`accept`**, **`reject`** (+ **`monitor`**, cleanup pre-v0.3).
 
 Esto **amplía** el set provisional de `API.md` §convenciones (que listaba 9 y dejaba `accept`/
 `reject` como "sobrevive programáticamente"): el PO decidió que la curación programática
@@ -99,9 +102,29 @@ El decorador `@handle_errors(command)` captura excepciones por tipo y las traduc
 | `0` | éxito | — |
 | `1` | uso (opción faltante/inválida) | `UsageError` / errores de parseo de Click |
 | `2` | datos (schema inválido, ids inexistentes, criterio de filtro vacío) | `DataError` |
-| `3` | dependencia/capacidad faltante | `ImportError` (extra ausente) · `AttributeError` (p. ej. source sin `fetch_citing`) · `NotImplementedError` (p. ej. `depth>1`) |
+| `3` | dependencia/capacidad faltante | `ImportError` (extra ausente) · `DependencyError` (capacidad de source faltante, p. ej. sin `fetch_citing` — ver enmienda R5) · `NotImplementedError` (p. ej. `depth>1`) |
 | `4` | red no disponible | `httpx.HTTPError` y subclases (captura **por tipo**, toda la jerarquía) |
 | `5` | store/snapshot bloqueado o corrupto | `StoreLockedError` / `OSError` (single-writer, ADR 0019) |
+
+> **Enmienda R5 (2026-06-16) — `AttributeError` ya NO se mapea a exit 3 en el decorador.** El AS-BUILT
+> capturaba `AttributeError` en `@handle_errors` y lo emitía como "Capacidad no disponible" (exit 3).
+> Eso **disfrazaba bugs reales** (un `AttributeError` genuino dentro de `chain`/`merge`/`_fetch_forward`
+> se reportaba como "el source no soporta forward"). R5 separa las dos cosas (Nota 06, catálogo de
+> secundarios):
+> - La conversión **capacidad-de-source-faltante → `DependencyError` (exit 3)** es responsabilidad del
+>   **borde CLI**: el comando hace un **pre-check explícito** (`chain.py` verifica
+>   `hasattr(source, "fetch_citing")` antes de instanciar el `Forager`) y lanza `DependencyError` con
+>   un mensaje accionable. El **forager queda agnóstico de `_errors`** (núcleo puro; no importa la capa
+>   CLI).
+> - Un **`AttributeError` inesperado se propaga limpio** (falla accionable/visible), ya no se traga.
+> - **Rama muerta colapsada:** el `if isinstance(exc, StoreLockedError)` / `else` de la rama `OSError`
+>   hacía lo mismo en ambas ramas (exit 5); R5 lo simplificó a un único `except OSError → exit 5`.
+>
+> **Enmienda R5 — comandos de solo lectura no auto-crean el store.** `status`/`validate` usaban
+> `open_store`, que **crea un `.duckdb` vacío** ante un typo en `--store` (footgun verificado, Nota 06).
+> R5 agrega `open_store_readonly` (`cli/_store.py`): verifica que el archivo exista y, si no, lanza
+> `StoreError` accionable ("el store no existe… iniciá con `b2g seed`"). `status`/`validate` la usan;
+> los comandos de **escritura** conservan `open_store` (crear-si-falta es su comportamiento correcto).
 
 ### E. `--store` global + sin estado entre invocaciones (tensión núcleo-valor)
 
@@ -133,6 +156,30 @@ persistir con éxito:
 `accept`/`reject` mutan curación pero **no** mueven el lazo (curar no es una fase del flujo
 exploratorio). `status` lee y presenta el estado actual + las transiciones disponibles.
 
+> **Enmienda 2026-06-15 (curación transversal en `status`):** que `accept`/`reject` **no
+> transicionen** es correcto, pero el AS-BUILT también las **oculta** de `transitions_available`
+> (`cli/commands/status.py:19-34`), dejando invisible lo único irreductiblemente humano. Tras la
+> enmienda del ADR [0016](0016-maquina-estados-lazo.md) (curación transversal), **`b2g status` debe
+> mostrar `accept`/`reject` como acción SIEMPRE-disponible** (en cualquier estado), separada de las
+> transiciones del lazo. Además, el FSM gana `reseed` (loop-back a `SEEDED` con contador de ronda) y
+> el estado `MONITORED`: `status` debe reflejarlos. Ver ROADMAP **Hito R3**. El bug **UTF-8 en
+> Windows** (`cli/_envelope.py:67`: `ensure_ascii=False` sin forzar UTF-8 en stdout → acentos
+> corruptos, rompe el contrato agente-native) se corrige en ROADMAP **Hito R5**.
+
+> **Implementado en R3 (2026-06-16):** el envelope `--json` de `status` (sección C) suma dos campos
+> en `data`, **aditivos** y que **mantienen `schema="1"`** (decisión del PO 2026-06-16: campos nuevos
+> no rompen a los agentes, no se bumpea la versión del contrato):
+> - **`curation_available`**: `["accept", "reject"]` **siempre** (curación transversal — disponible en
+>   cualquier estado, no transiciona). Antes de R3 `transitions_available` nunca las listaba (bug
+>   cerrado); ahora viven en un campo propio, separado de las transiciones del lazo.
+> - **`round`**: contador de ronda (`0` sin estado · `1` primera ronda · `2+` re-sembrados).
+>
+> Además, `transitions_available` ahora se deriva de `bib2graph.cycle.available_transitions` (no de la
+> tabla `_TRANSITIONS` local, retirada) y **refleja el ciclo**: incluye `reseed` cuando hay estado
+> previo. La tabla F (transiciones automáticas por comando) **sigue vigente**; `seed` agrega la
+> semántica `reseed` (estado previo → ronda++) cablada en `seed.py`. `MONITORED` está en el modelo
+> pero **ningún comando lo dispara** aún. El bug UTF-8 sigue pendiente (Hito R5).
+
 ## Consecuencias
 
 - **Un agente orquesta todo el flujo de 10 minutos por subprocess + JSON** sin escribir Python:
@@ -161,3 +208,33 @@ exploratorio). `status` lee y presenta el estado actual + las transiciones dispo
 - **Las transiciones automáticas** dan un `LoopState` siempre consistente con el último comando
   mutador, sin que el usuario lo gestione. Como las transiciones son **permisivas** (ADR 0016), no
   hay guardia: re-sembrar tras `BUILT` está permitido y solo re-apunta el estado a `SEEDED`.
+
+## Enmienda — Cleanup pre-v0.3 (2026-06-16): 12° subcomando `monitor`
+
+> Cierra dos seguimientos de R3/R5 (alias `LoopState` retirado; `MONITORED` alcanzable — ver ADR
+> [0016](0016-maquina-estados-lazo.md) §Cleanup pre-v0.3). Implementado + verificado (327 tests, mypy
+> strict, ruff+format OK).
+
+**El set pasa de 11 a 12 subcomandos** con el alta de **`monitor`** (paso 8 del ciclo, Ellis):
+
+- **§A (set):** se agrega `monitor` → **12 subcomandos**. Re-chequea OpenAlex por **citantes nuevos**
+  del corpus (forward chaining), mergea los candidatos nuevos a la biblioteca viva y transiciona a
+  `MONITORED`. `--email` (polite pool); sin corpus/estado previo → `DataError` (exit 2, accionable).
+- **§C (envelope):** el `data` de `monitor` es
+  `{"new_candidates": <int>, "total_papers": <int>, "loop_state": <str>, "round": <int>}`, dentro del
+  envelope común con **`schema="1"`** (sin bump; campo de payload nuevo, no cambia la forma del
+  envelope). `--json` emite el objeto único de siempre.
+- **§F (transiciones):** se agrega la fila **`monitor` → `MONITORED`**. La regla `monitor` está en
+  `cycle.apply_transition` desde `BUILT` y desde `MONITORED` (re-monitoreo). El destino lo dicta el
+  dominio (fuente única), como el resto de los comandos mutadores.
+- **§D (pre-check de capacidad) — asimetría deliberada `monitor` vs `chain`:** `monitor` **NO** hace
+  el pre-check `hasattr(source, "fetch_citing")` que sí hace `chain` (enmienda R5). El motivo es que
+  `monitor` instancia **`OpenAlexSource` fijo** —que **siempre** tiene `fetch_citing`—, mientras que
+  `chain` acepta una `--direction` variable y puede recibir una `Source` de solo-mínimo (ADR 0018)
+  que no soporte forward; por eso `chain` pre-chequea y lanza `DependencyError` (exit 3) accionable, y
+  `monitor` no necesita la guardia. La asimetría es **decisión documentada, no deuda**: el pre-check
+  es responsabilidad del borde **solo donde la capacidad puede faltar**.
+
+**Además, el alias `LoopState = CycleState` se RETIRÓ** del código (`backends/duckdb.py` y
+`stores/duckdb.py`): el contrato usa **solo `CycleState`** (de `bib2graph.cycle`). Donde este ADR
+dice "`LoopState`", léase `CycleState` (mismo concepto, una sola clase).

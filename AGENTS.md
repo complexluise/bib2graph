@@ -2,8 +2,10 @@
 
 > Guía para agentes que operen en este repositorio. El proyecto es una **reescritura
 > clean-room** construida de adentro hacia afuera (docs → núcleo puro y tests → costuras).
-> **Estado: Hitos 0–6 + 1.5 terminados** (v0.1 feature-complete + v0.2 con capacidades
-> completas; ver `docs/ROADMAP.md` y "Estado actual" abajo). El diseño objetivo vive en
+> **Estado (v0.3): Hitos 0–6 + 1.5 construidos y tanda de remediación R1–R5 COMPLETA** tras el
+> red-team de la Nota 06 y el modelo nuevo (ADR 0022/0023; el producto **no usa IA generativa** —
+> el desarrollo SÍ es asistido por IA, pero el scent es bibliométrico determinista). **Próximo:
+> Hito 7 (dedup fuzzy).** Ver `docs/ROADMAP.md` y "Estado actual" abajo. El diseño objetivo vive en
 > `docs/ARCHITECTURE.md`; los contratos
 > públicos en `docs/API.md`; el producto en `docs/PRD.md`; las reglas que motivan este código en
 > `docs/Notas/01-lecciones-v0.md`. Las decisiones vigentes tras **el giro** son los ADR
@@ -16,17 +18,28 @@
 
 ## Estado actual
 
-- **Hitos 0–6 + 1.5 CONSTRUIDOS** (2026-06-15): de una ecuación de búsqueda a las redes
-  bibliométricas, desde código Python **o** desde el CLI `b2g`, sobre una biblioteca viva
-  en DuckDB. El árbol `src/bib2graph/` tiene ~30 módulos: `corpus.py`, `schemas.py`,
+- **Hitos 0–6 + 1.5 CONSTRUIDOS y remediación R1–R5 COMPLETA** (v0.3, 2026-06-16): de una
+  ecuación de búsqueda a las redes bibliométricas, desde código Python **o** desde el CLI `b2g`,
+  sobre una biblioteca viva en DuckDB. El árbol `src/bib2graph/` tiene ~30 módulos: `constants.py`
+  y `models.py` (capa base, R1), `corpus.py`, `schemas.py`, `cycle.py` (FSM cíclico de dominio, R3),
   `backends/` (`TabularBackend` + `InMemoryBackend` + `DuckDBBackend`), `stores/`
   (`DuckDBStore`), `sources/` (`OpenAlexSource`, `BibtexSource`), `foraging/` (`Forager`,
-  scent, `explain` stub), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
+  scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/` con 11 subcomandos en `cli/commands/`, no un
-  placeholder—. **214 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
-  El **próximo hito es el 7** (deduplicación fuzzy, extra `[dedup]`). El entorno se levanta
-  con `uv sync`.
+  El **CLI `b2g` es real** —paquete `cli/` con 12 subcomandos en `cli/commands/`, no un
+  placeholder—. **327 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+- **Tanda de remediación R1–R5 COMPLETA** (v0.3, 2026-06-16). Tras el red-team del AS-BUILT
+  ([`docs/Notas/06-critica-as-built-v0.2.md`](docs/Notas/06-critica-as-built-v0.2.md)) el PO bloqueó
+  un **modelo nuevo** (ADR [0022](docs/decisiones/0022-producto-sin-ia-generativa.md)/
+  [0023](docs/decisiones/0023-capa-constants-modelos-schema.md) + enmiendas), ya construido:
+  **R1** — **capa base** `constants.py`/`models.py`/`schemas.py` única; **R2** — **identidad ≠
+  procedencia** (el `corpus_hash` excluye timestamps, reloj en la frontera, Louvain seeded);
+  **R3** — **FSM cíclico de dominio** `cycle.py` (sale del backend) con `reseed`/ronda + curación
+  transversal en `status`; **R4** — **scent bibliométrico vía proyectores**, **el producto NO usa
+  IA generativa** (se eliminaron `foraging/explain.py`, `explain_candidate`, el extra `[llm]` y la
+  "máquina de tensiones"); **R5** — robustez (bulk-load, UTF-8 en la frontera, retry, footguns).
+  Ver `docs/ROADMAP.md` (Hitos R1–R5). **PRÓXIMO: Hito 7** (dedup fuzzy `[dedup]`). El entorno se
+  levanta con `uv sync`.
 - Toda la información del producto, la arquitectura, los contratos y la secuencia de
   construcción está en `docs/`. **Leer `docs/ROADMAP.md` antes de tocar nada**: cada hito declara
   qué historias del PRD §7 cumple, sus criterios de aceptación (DoD) y los tests TDD que se
@@ -54,7 +67,8 @@ El proyecto se gestiona con **uv** (entorno + lockfile + versión de Python). **
 - **Setup dev completo:** `uv sync` (crea `.venv`, instala núcleo + dev-deps desde `uv.lock`)
   y `uv run pre-commit install`.
 - **Con una capacidad opcional:** `uv sync --extra s2` / `--extra zotero` / `--extra neo4j` /
-  `--extra dedup` / `--extra viz` / `--extra llm`. Sin dev-deps: `uv sync --no-dev`.
+  `--extra dedup` / `--extra viz`. Sin dev-deps: `uv sync --no-dev`. *(No hay extra `[llm]`:
+  **se eliminó** en la remediación R4 — el producto no usa IA generativa, ADR 0022.)*
 - **Agregar dependencias:** `uv add <pkg>` (núcleo) · `uv add --dev <pkg>` (desarrollo) ·
   `uv add --optional <extra> <pkg>` (capacidad opcional).
 - **Tests (toda la suite):** `uv run pytest`
@@ -88,8 +102,9 @@ el bump localmente con `cz bump --dry-run`.
 - **Hacer un commit conventional:** `uv run cz commit` (interactivo, recomendado).
 - **Previsualizar qué versión saldría:** `uv run cz bump --dry-run` (solo preview, no publica).
 - **Tags actuales (locales, anotados, sin push):** `v0.1.0` (cierre Hitos 1–4) y `v0.2.0`
-  (HEAD, Hitos 5–6), creados a mano. El **release publicado** (push de tags + artefactos a
-  PyPI) queda **pendiente de conectar `release-please` + CI**.
+  (Hitos 5–6), creados a mano. El **`v0.3.0`** (remediación R1–R5) está **por taguearse** sobre
+  HEAD. El **release publicado** (push de tags + artefactos a PyPI) queda **pendiente de conectar
+  `release-please` + CI**.
 
 Detalle en [`CONTRIBUTING.md`](CONTRIBUTING.md) y [`VERSIONING.md`](VERSIONING.md).
 
@@ -141,14 +156,21 @@ Detalle en [`CONTRIBUTING.md`](CONTRIBUTING.md) y [`VERSIONING.md`](VERSIONING.m
 ```
 src/bib2graph/
   __init__.py
+  constants.py         # CAPA BASE (ADR 0023, Hito R1): Col/CurationStatus/NetworkKind (StrEnum),
+                       # fuente única de literales. Todo lo demás depende de esta capa.
+  models.py            # CAPA BASE (ADR 0023): ProvenanceEvent(BaseModel), parseo que falla ruidoso
   corpus.py            # Corpus, Manifest, CorpusSnapshot (wrapper sobre tabla Arrow)
-  schemas.py           # modelos Pydantic v2 (validación de schema)
+  schemas.py           # PaperRow (Pydantic) ÚNICA fuente; CORPUS_SCHEMA (Arrow) derivado/verificado
+  cycle.py             # FSM CÍCLICO de dominio puro (ADR 0016 enmendado, Hito R3): SEEDED→…→
+                       # MONITORED + reseed/ronda. Sale del backend; el backend solo lo persiste.
   sources/             # OpenAlexSource (núcleo, backbone); BibtexSource (secundaria);
                        # RIS, CSV (futuro, no publicar)
   backends/            # TabularBackend (Protocol) + InMemoryBackend (núcleo puro) +
-                       # DuckDBBackend (biblioteca viva, carga perezosa de duckdb)
-  foraging/            # Forager (chaining + ranking por scent); explain_candidate ([llm], stub)
-  preprocessors/       # normalize + thesaurus multilingüe (núcleo); dedup fuzzy en [dedup]
+                       # DuckDBBackend (biblioteca viva, carga perezosa de duckdb; persiste cycle)
+  foraging/            # Forager (chaining + ranking por scent BIBLIOMÉTRICO vía proyectores, Hito R4).
+                       # SIN explain.py / explain_candidate / [llm] (eliminados, ADR 0022)
+  preprocessors/       # normalize + thesaurus multilingüe DETERMINISTA, sin fallback LLM (núcleo);
+                       # dedup fuzzy DETERMINISTA en [dedup]
   filters/             # filtros de inclusión/exclusión con conteo PRISMA (núcleo)
   enrichers/           # FUTURO (Hito 8): OpenAlexEnricher opt-in (refs→DOI, 2º nivel); S2 ([s2])
   networks/            # Projector, Analyzer, NetworkSpec, NetworkArtifact, Networks
@@ -157,8 +179,8 @@ src/bib2graph/
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
-                       # cli/commands/ = 11 subcomandos. CLI = API para LLM y agentes (Hito 6,
-                       # ARCHITECTURE.md §6.3). No es un cli.py plano.
+                       # cli/commands/ = 12 subcomandos (incl. monitor, FSM→MONITORED). CLI = API
+                       # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
 tests/
   unit/                # tests puros, sin red ni I/O (default)
   integration/         # red / APIs externas / Neo4j; @pytest.mark.integration
@@ -230,7 +252,7 @@ dominio** y los **contratos de `docs/API.md`**.
 - Exit codes claros (ver §Manejo de errores).
 - Sin estado entre invocaciones: cada llamada es independiente. El agente orquesta
   orquestando subprocess.
-- Tool schemas JSON y/o servidor MCP son trabajo futuro (post-v0.2). El CLI ya
+- Tool schemas JSON y/o servidor MCP son trabajo futuro (post-v0.3). El CLI ya
   alcanza como frontera programática.
 
 ### Publicar solo lo que existe

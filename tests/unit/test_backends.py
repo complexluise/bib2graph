@@ -383,3 +383,47 @@ def test_filter_view_accepted(backend_factory: BackendFactory) -> None:
 
     assert len(accepted) == 1
     assert accepted.to_pylist()[0]["id"] == "oa:bbbbcccc22223333"
+
+
+# ---------------------------------------------------------------------------
+# Regresión Task C — merge parametrizado (sin interpolación de ids crudos)
+# ---------------------------------------------------------------------------
+
+
+def test_merge_solapado_preserva_hash_y_orden(backend_factory: BackendFactory) -> None:
+    """merge de dos corpus solapados produce el mismo corpus_hash/orden que InMemoryBackend.
+
+    Regresión: verifica que el rewrite de merge (sin interpolación de ids crudos
+    en SQL, ADR 0015/C) mantiene el comportamiento D3 exacto.  El InMemoryBackend
+    es la referencia de verdad; DuckDBBackend debe producir el mismo hash.
+    """
+    id_a = "oa:aaaabbbb11112222"
+    id_b = "oa:bbbbcccc22223333"
+    id_c = "oa:ccccdddd33334444"
+
+    table_self = _make_table(
+        [
+            _make_row(id=id_a, title="Paper A"),
+            _make_row(id=id_b, title="Paper B"),
+        ]
+    )
+    table_other = _make_table(
+        [
+            _make_row(id=id_c, title="Paper C"),  # nueva
+            _make_row(id=id_a, title="Paper A bis"),  # solapada (merge D3)
+        ]
+    )
+
+    backend = backend_factory(table_self)
+    merged = backend.merge(table_other)
+
+    # Orden: A, B (del self), C (nueva de other)
+    ids = merged.to_arrow().column("id").to_pylist()
+    assert ids == [id_a, id_b, id_c]
+    # Contenido completo: 3 papers
+    assert len(merged) == 3
+    # corpus_hash debe coincidir con el de InMemoryBackend (referencia D2/D3)
+    from bib2graph.backends import InMemoryBackend
+
+    ref_backend = InMemoryBackend(table_self).merge(table_other)
+    assert merged.corpus_hash() == ref_backend.corpus_hash()

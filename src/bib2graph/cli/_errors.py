@@ -8,9 +8,21 @@ Mapeo de exit codes (ADR 0010):
   0: éxito
   1: uso (opción faltante/inválida)
   2: datos (schema inválido, ids inexistentes, filtro inválido)
-  3: dependencia/capacidad faltante (ImportError, AttributeError)
+  3: dependencia/capacidad faltante (ImportError)
   4: red (httpx.HTTPError / timeout)
   5: store/snapshot bloqueado o corrupto (StoreLockedError / OSError)
+
+R5 — footguns cerrados:
+  - Rama muerta de OSError eliminada: el ``if isinstance(exc, StoreLockedError)``
+    y el ``else`` producían el mismo exit code 5 (Nota 06, catálogo de secundarios).
+    Ahora se captura OSError directamente, sin bifurcación innecesaria.
+  - ``AttributeError`` ya NO se captura aquí como dependencia faltante
+    (``exit 3``).  Un ``AttributeError`` genuino (bug en el código) no debe
+    disfrazarse de "Capacidad no disponible" — eso escondía bugs reales.
+    Los ``AttributeError`` controlados se convierten en ``DependencyError``
+    mediante un **pre-check explícito en el borde CLI** (p. ej. ``chain.py``
+    verifica ``hasattr(source, 'fetch_citing')`` antes de llamar al Forager).
+    Un ``AttributeError`` inesperado ahora se propaga limpio (falla accionable).
 """
 
 from __future__ import annotations
@@ -110,9 +122,19 @@ def handle_errors(command: str) -> Callable[[F], F]:
 
     Captura (en orden de precedencia):
     - ``B2GError`` y subclases → exit code propio
-    - ``StoreLockedError`` (OSError) → exit 5
-    - ``ImportError`` / ``AttributeError`` accionables → exit 3
+    - ``OSError`` (incluye ``StoreLockedError``) → exit 5
+    - ``ImportError`` → exit 3
     - ``httpx.HTTPError`` / ``httpx.TimeoutException`` → exit 4
+
+    R5: ``AttributeError`` ya NO se captura aquí.  Un bug real no debe
+    disfrazarse de "dependencia faltante"; los ``AttributeError`` controlados
+    (p. ej. source sin ``fetch_citing``) se convierten en ``DependencyError``
+    mediante un pre-check explícito en el comando CLI que los detecta (p. ej.
+    ``chain.py`` verifica ``hasattr`` antes de llamar al Forager).
+    Un ``AttributeError`` inesperado se propaga limpio para que sea visible y accionable.
+
+    R5: la rama muerta del ``if isinstance(exc, StoreLockedError)`` / ``else``
+    se eliminó: ambas ramas hacían exactamente lo mismo (exit 5).
 
     Args:
         command: Nombre del subcomando (para el envelope).
@@ -137,25 +159,14 @@ def handle_errors(command: str) -> Callable[[F], F]:
                 )
                 sys.exit(exc.exit_code)
             except OSError as exc:
-                # StoreLockedError es subclase de OSError
-                from bib2graph.backends.duckdb import StoreLockedError
-
-                if isinstance(exc, StoreLockedError):
-                    _emit_error_envelope(command, 5, "STORE_ERROR", str(exc), json_mode)
-                    sys.exit(5)
+                # Captura OSError y su subclase StoreLockedError (exit 5).
+                # R5: rama muerta eliminada — el if/else previo hacía lo mismo.
                 _emit_error_envelope(command, 5, "STORE_ERROR", str(exc), json_mode)
                 sys.exit(5)
             except ImportError as exc:
                 msg = (
                     f"Dependencia faltante: {exc}. "
                     "Instalá el extra requerido (ver pyproject.toml [project.optional-dependencies])."
-                )
-                _emit_error_envelope(command, 3, "DEPENDENCY_ERROR", msg, json_mode)
-                sys.exit(3)
-            except AttributeError as exc:
-                msg = (
-                    f"Capacidad no disponible en este source: {exc}. "
-                    "Verificá que el source soporte la operación pedida."
                 )
                 _emit_error_envelope(command, 3, "DEPENDENCY_ERROR", msg, json_mode)
                 sys.exit(3)

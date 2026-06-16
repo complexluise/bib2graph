@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from bib2graph.backends import InMemoryBackend, TabularBackend
 from bib2graph.backends.memory import compute_corpus_hash
+from bib2graph.constants import Col, CurationStatus
 from bib2graph.schemas import (
     CORPUS_SCHEMA,
     SCHEMA_VERSION,
@@ -44,13 +45,18 @@ _compute_corpus_hash = compute_corpus_hash
 
 
 def _lib_version() -> str:
-    """Devuelve la versión instalada de bib2graph, con fallback a '0.0.0'."""
-    try:
-        from importlib.metadata import version
+    """Devuelve la versión instalada de bib2graph.
 
-        return version("bib2graph")
+    R5: fallback a ``'unknown'`` (no a ``'0.0.0'``).  Una versión inventada
+    entra al ``Manifest`` y engaña sobre la reproducibilidad (Nota 06,
+    catálogo de secundarios).  ``'unknown'`` es honesto.
+    """
+    try:
+        import importlib.metadata as _meta
+
+        return _meta.version("bib2graph")
     except Exception:
-        return "0.0.0"
+        return "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +97,38 @@ def _compute_id(
         prefix = "tt"
     digest = hashlib.sha256(valor.encode()).hexdigest()[:16]
     return f"{prefix}:{digest}"
+
+
+def _rows_with_ids(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Pre-computa el ``id`` canónico (D1) para cada fila que no lo tenga.
+
+    Función helper para el bulk-load (R5): los loaders construyen listas de
+    filas sin ``id``; esta función las completa antes de armar la tabla Arrow
+    de una vez con ``Corpus.from_arrow``.
+
+    Args:
+        rows: Lista de dicts con los datos de los papers.  Cada dict debe
+            incluir al menos ``title``, ``is_seed`` y ``curation_status``.
+            Si ya tiene ``id`` no se recalcula.
+
+    Returns:
+        Lista de dicts con ``id`` garantizado (calculado con D1 si ausente).
+    """
+    result = []
+    for row in rows:
+        row_copy = dict(row)
+        if not row_copy.get(Col.ID):
+            raw_year = row_copy.get(Col.YEAR)
+            row_copy[Col.ID] = _compute_id(
+                openalex_id=str(row_copy[Col.OPENALEX_ID])
+                if row_copy.get(Col.OPENALEX_ID)
+                else None,
+                doi=str(row_copy[Col.DOI]) if row_copy.get(Col.DOI) else None,
+                title=str(row_copy.get(Col.TITLE, "")),
+                year=int(str(raw_year)) if raw_year is not None else None,
+            )
+        result.append(row_copy)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -307,14 +345,14 @@ class Corpus:
             SchemaError: Si los datos no pasan la validación de ``PaperRow``.
         """
         row_copy = dict(row)
-        if not row_copy.get("id"):
-            raw_year = row_copy.get("year")
-            row_copy["id"] = _compute_id(
-                openalex_id=str(row_copy["openalex_id"])
-                if row_copy.get("openalex_id")
+        if not row_copy.get(Col.ID):
+            raw_year = row_copy.get(Col.YEAR)
+            row_copy[Col.ID] = _compute_id(
+                openalex_id=str(row_copy[Col.OPENALEX_ID])
+                if row_copy.get(Col.OPENALEX_ID)
                 else None,
-                doi=str(row_copy["doi"]) if row_copy.get("doi") else None,
-                title=str(row_copy.get("title", "")),
+                doi=str(row_copy[Col.DOI]) if row_copy.get(Col.DOI) else None,
+                title=str(row_copy.get(Col.TITLE, "")),
                 year=int(str(raw_year)) if raw_year is not None else None,
             )
         try:
@@ -369,38 +407,70 @@ class Corpus:
         new_backend = self._backend.merge(other._backend.to_arrow())
         return Corpus(new_backend, self._manifest)
 
-    def accept(self, ids: list[str], *, by: str = "human") -> Corpus:
+    def accept(
+        self,
+        ids: list[str],
+        *,
+        by: str = "human",
+        decided_at: datetime | None = None,
+    ) -> Corpus:
         """Marca los papers con los ids dados como 'accepted'.
 
         Agrega un evento al log de provenance con ``action='accepted'``,
         ``decided_by`` y ``decided_at`` (ISO8601 UTC). El Corpus original
         no muta (semántica de valor).
 
+        R2 (ADR 0017 enmendado): ``decided_at`` se inyecta desde la frontera
+        (CLI) para que el núcleo no llame al reloj.  Si es ``None``, el
+        backend usa ``datetime.now(UTC)`` como conveniencia para uso como
+        librería.
+
         Args:
             ids: Lista de ``id`` a aceptar.
             by: Identificador de quien toma la decisión (default ``'human'``).
+            decided_at: Instante de la decisión.  Si es ``None``, el backend
+                usa ``datetime.now(UTC)`` como fallback (ergonomía de librería).
 
         Returns:
             Nuevo ``Corpus`` con los papers aceptados.
         """
-        new_backend = self._backend.apply_curation(ids, action="accepted", by=by)
+        decided_at_str = decided_at.isoformat() if decided_at is not None else None
+        new_backend = self._backend.apply_curation(
+            ids, action=CurationStatus.ACCEPTED, by=by, decided_at=decided_at_str
+        )
         return Corpus(new_backend, self._manifest)
 
-    def reject(self, ids: list[str], *, by: str = "human") -> Corpus:
+    def reject(
+        self,
+        ids: list[str],
+        *,
+        by: str = "human",
+        decided_at: datetime | None = None,
+    ) -> Corpus:
         """Marca los papers con los ids dados como 'rejected'.
 
         Agrega un evento al log de provenance con ``action='rejected'``,
         ``decided_by`` y ``decided_at`` (ISO8601 UTC). El Corpus original
         no muta (semántica de valor).
 
+        R2 (ADR 0017 enmendado): ``decided_at`` se inyecta desde la frontera
+        (CLI) para que el núcleo no llame al reloj.  Si es ``None``, el
+        backend usa ``datetime.now(UTC)`` como conveniencia para uso como
+        librería.
+
         Args:
             ids: Lista de ``id`` a rechazar.
             by: Identificador de quien toma la decisión (default ``'human'``).
+            decided_at: Instante de la decisión.  Si es ``None``, el backend
+                usa ``datetime.now(UTC)`` como fallback (ergonomía de librería).
 
         Returns:
             Nuevo ``Corpus`` con los papers rechazados.
         """
-        new_backend = self._backend.apply_curation(ids, action="rejected", by=by)
+        decided_at_str = decided_at.isoformat() if decided_at is not None else None
+        new_backend = self._backend.apply_curation(
+            ids, action=CurationStatus.REJECTED, by=by, decided_at=decided_at_str
+        )
         return Corpus(new_backend, self._manifest)
 
     def materialize(
@@ -421,9 +491,9 @@ class Corpus:
             ValueError: Si el nombre de vista no es reconocido.
         """
         col_map = {
-            "author": "authors_id",
-            "keyword": "keywords_id",
-            "institution": "institutions_id",
+            "author": Col.AUTHORS_ID,
+            "keyword": Col.KEYWORDS_ID,
+            "institution": Col.INSTITUTIONS_ID,
         }
         if view not in col_map:
             raise ValueError(f"Vista '{view}' no reconocida. Use: {list(col_map)}.")
@@ -433,7 +503,7 @@ class Corpus:
         for row in rows:
             items = row.get(col) or []
             for item in items:
-                result.append({"paper_id": row["id"], view: item})
+                result.append({"paper_id": row[Col.ID], view: item})
         return pa.table(
             {
                 "paper_id": [r["paper_id"] for r in result],
@@ -459,17 +529,11 @@ class Corpus:
 
         table = self._backend.to_arrow()
         corpus_hash = self._backend.corpus_hash()
-        manifest = Manifest(
-            schema_version=self._manifest.schema_version,
-            corpus_hash=corpus_hash,
-            lib_version=self._manifest.lib_version,
-            openalex_version=self._manifest.openalex_version,
-            equations=self._manifest.equations,
-            chaining=self._manifest.chaining,
-            preprocessors=self._manifest.preprocessors,
-            filters=self._manifest.filters,
-            enrichers=self._manifest.enrichers,
-            created_at=datetime.now(UTC),
+        manifest = self._manifest.model_copy(
+            update={
+                "corpus_hash": corpus_hash,
+                "created_at": datetime.now(UTC),
+            }
         )
 
         pq.write_table(table, path / "corpus.parquet")  # type: ignore[no-untyped-call]

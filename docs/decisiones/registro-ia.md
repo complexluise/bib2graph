@@ -251,3 +251,191 @@
 > **Hito 9**, no construido; (c) un `OSError` del store no relacionado con el bloqueo igual cae en
 > exit 5 (conservador). El entry point `b2g = "bib2graph.cli:main"` ya estaba declarado desde el
 > Hito 0; el Hito 6 reemplaza el placeholder por los 11 subcomandos reales.
+
+---
+
+## 2026-06-16 — Hito R2 (Reproducibilidad / identidad: content-hash vs procedencia + Louvain seeded)
+
+> Implementa la enmienda 2026-06-15 del ADR
+> [0017](0017-reproducibilidad-historia-snapshot.md) (RAÍZ 2 de la Nota 06). El **principio**
+> (identidad de contenido ≠ procedencia de auditoría; reloj en la frontera; Louvain seeded) es del
+> ADR/PO; lo de abajo son las decisiones **de implementación** que tomó la IA al construirlo. El
+> verifier **APRUEBA CON RESERVAS** (247 tests verdes, 13 nuevos en `test_r2_reproducibility.py`;
+> mypy strict / ruff limpios; núcleo sigue importando sin `duckdb`), dejando dos puntos al steering
+> arquitectónico (resueltos en las filas R2.1 y R2.5).
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| R2.1 | **El núcleo conserva un fallback `datetime.now(UTC)`** en `_apply_curation_to_rows` (`backends/memory.py`) cuando `decided_at is None`; las tres fronteras CLI (`accept`/`reject`/`filter`) **siempre** inyectan, así que el path real nunca lo toca | Mantiene `corpus.accept(ids)` ergonómico como **librería** sin obligar a pasar un reloj. **No** contradice el objetivo de R2 (hash determinista) porque el `decided_at` **no entra al hash** (identidad excluye provenance): la reproducibilidad bit a bit está garantizada *por construcción*, venga el timestamp inyectado o del fallback. El **arquitecto aceptó el fallback como contrato documentado** y ajustó la redacción del ADR 0017 (punto 3) para que sea honesta ("el reloj se inyecta en la frontera; el núcleo solo usa `datetime.now()` como fallback de librería, fuera de la identidad"), en vez de "el núcleo nunca toca el reloj" | Media: hacer el núcleo 100% clock-free exigiría `decided_at` requerido y rompería `corpus.accept(ids)`; queda como opción del PO si algún día se quiere pureza total (ver recomendación) | **Sí — steering arquitectónico** (ADR 0017 reconciliado) |
+| R2.2 | **Mecanismo `decided_at: datetime \| None` (parámetro), no `clock: Callable`** en `accept`/`reject`/`apply_filter(s)` | (a) Simplifica la firma; (b) los tests inyectan el instante exacto sin construir closures; (c) ergonomía de librería (sin argumento → fallback razonable). Un `Callable` agregaría indirección sin beneficio en este dominio (un único instante por invocación) | Alta: cambiar a `clock` es local a la firma; los callers ya pasan un `datetime` | Sí (PO proxy; verifier PASA) |
+| R2.3 | **`filter.py` inyecta un único `decided_at` para todos los pasos PRISMA** de la invocación (`apply_filters(corpus, criteria, decided_at=now)`), no uno por criterio | Una corrida de filtrado es **una** decisión en el tiempo; un solo timestamp hace la procedencia coherente y el resultado idéntico entre corridas. `apply_filters` propaga el mismo `decided_at` a cada `apply_filter` | Alta: pasar a timestamp por paso es aditivo | Sí (PO proxy; verifier PASA) |
+| R2.4 | **Derivación del seed de Louvain: `int(corpus_hash[:8], 16) % 2**31`** (`_louvain_seed_from_hash`, `facade.py`), threadeado por `_build_artifact` solo cuando `clustering == "louvain"` | Toma 32 bits del content-hash y los acota a `[0, 2^31-1]` (rango positivo de int32 que acepta `python-louvain`). Determinista y barato; "mismo corpus → mismo seed → mismas comunidades". Derivar del content-hash (no del que incluía provenance) garantiza que la reproducibilidad de comunidades herede la de identidad | Alta: cambiar la derivación (p. ej. usar el hash completo mód 2^31) es local a la función; no cambia la API | Sí (PO proxy; verifier PASA) |
+| R2.5 | **`resolution` de Louvain NO se implementó — diferido a Hito 9** (NetworkSpec declarativo), pese a que el punto 4 del ADR 0017 / el DoD de R2 lo pedían | R2 entrega la pata que importa para la **identidad/reproducibilidad** (el `random_state` seeded). `resolution` es un parámetro de **tuning** del clustering que pertenece a la capa declarativa por algoritmo (`NetworkSpec` + YAML, Hito 9), no a la corrección de reproducibilidad. El **arquitecto reconcilió** el DoD/ADR/ROADMAP para reflejar el diferimiento honestamente (no dejar un criterio del DoD sin cumplir sin nota) | Alta: exponer `resolution` en el Hito 9 es aditivo (el `random_state` ya está) | **Sí — steering arquitectónico** (DoD/ADR 0017/ROADMAP reconciliados) |
+
+> **Reconciliación de docs (arquitecto, 2026-06-16):** ADR 0017 (redacción del fallback honesta +
+> `resolution` diferido + `filter.py` en la lista de fronteras), ROADMAP (Hito R2 ✅ + DoD
+> reconciliado + `resolution`→Hito 9), ARCHITECTURE.md (§6.2 AS-BUILT R2), API.md (§1.1/§1.2/§8/§10:
+> `decided_at`, hash content-only, Louvain seeded).
+>
+> **Recomendación de código (no implementada — queda al PO):** si alguna vez se quiere el núcleo
+> **100% clock-free**, hacer `decided_at` **requerido** en `_apply_curation_to_rows`/`apply_curation`
+> y mover el fallback a un helper de frontera (p. ej. `corpus.accept(ids)` resolviendo `now()` antes
+> de delegar). Hoy **no es necesario**: el objetivo de R2 (hash determinista) ya está cumplido porque
+> el hash excluye provenance, y el fallback es una conveniencia de librería legítima.
+
+---
+
+## 2026-06-16 — Hito R3 (Ciclo: FSM cíclico de dominio `cycle.py` + `reseed`/ronda + curación transversal)
+
+> Implementa la enmienda 2026-06-15 de los ADR
+> [0016](0016-maquina-estados-lazo.md)/[0021](0021-cli-agente-native-contrato.md) (RAÍZ 1 de la Nota
+> 06, la parte del lazo). El **modelo** (FSM cíclico de dominio, `reseed` de primera clase, curación
+> transversal, backend solo persiste) es **del PO/ADR**; lo de abajo son las decisiones **de
+> implementación** que tomó la IA al construirlo. El verifier **APRUEBA CON RESERVAS**; la reserva
+> principal (chain/filter/build no pasaban por el dominio) **ya se cerró** con el fix posterior (filas
+> R3.4 + test domain-tied). Verifier final: **275 tests** verdes (R3 + 9 del fix), mypy strict / ruff
+> limpios; núcleo sigue importando sin `duckdb`. El steering arquitectónico (2026-06-16) confirma la
+> **coherencia** con el ADR 0016 enmendado / ARCHITECTURE.md / Nota 05.
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| R3.1 | **Diseño de `cycle.py` (dominio puro): `apply_transition(state, action, round) → (state, round)` + `available_transitions(state)` + `CURATION_ACTIONS`**, con transiciones **permisivas** (la acción nombrada lleva a su estado de cadena; no se bloquean saltos) y `reseed` como única acción que incrementa la ronda. El enum `CycleState` (5 estados) sale del backend al núcleo | El ADR 0016 enmendado §1 manda el ciclo como **concepto de dominio puro y testeable**; una función pura `(estado, ronda, acción) → (estado, ronda)` lo hace verificable **sin** DuckDB y deja al backend como mero persistidor. `available_transitions` mapea cada estado a sus acciones lógicas (mapa, no guardia) | Media: cambiar la forma de la función toca los call-sites (`seed`/`chain`/`filter`/`build`/`status`) | Sí (PO proxy / ADR 0016; verifier PASA) |
+| R3.2 | **Alias transicional `LoopState = CycleState`** en `backends/duckdb.py` (no se borró `LoopState` de golpe) | Evita romper imports históricos (`from bib2graph.backends.duckdb import LoopState` en `stores/duckdb.py`, tests, docs) en el mismo commit que mueve el dominio; el rename completo es un barrido aparte | Alta: borrar el alias es mecánico (migrar call-sites a `CycleState`). **Queda como recomendación: retirar pre-1.0** | Sí (PO proxy; verifier PASA) |
+| R3.3 | **Persistencia de `round` por migración liviana** (columna `round INTEGER DEFAULT 0` en `loop_state_log`; `ALTER TABLE … ADD COLUMN` envuelto en `contextlib.suppress(CatalogException)` para bases pre-R3; `loop_round()` devuelve 0 si NULL/sin filas; `set_loop_state(state, *, cycle_round=None)` conserva la ronda si no se pasa) | El contador de ronda necesita persistirse junto al estado (log append-only ya existente, ADR 0016/decisión 3.b). DuckDB no admite `ADD COLUMN NOT NULL`, así que nullable + default 0; la migración es segura pre-1.0 (sin datos reales en uso). `_clone()` copia también `round` | Alta: la columna es aditiva; revertir exigiría dropearla (sin datos en producción) | Sí (PO proxy; verifier PASA) |
+| R3.4 | **`chain`/`filter`/`build` DERIVAN su estado destino de `apply_transition`** (no de un literal `LoopState.X`): `current = loop_state(); round = loop_round(); new_state, new_round = apply_transition(current, action, round); set_loop_state(new_state, cycle_round=new_round)`. **Cierra el gap que marcó el verifier.** Atado por `tests/unit/test_r3_commands_domain.py` (parametrizado, 9 casos) | El verifier observó que el AS-BUILT inicial dejaba los comandos hardcodeando el estado destino, duplicando la verdad del dominio. Enrutar por `apply_transition` hace de `cycle.py` la **fuente única**: si cambian las reglas, los comandos las siguen y el test lo detecta | Media: revertir a literales re-abre el gap (test rojo) | **Sí — fix posterior al verifier** (steering: gap cerrado) |
+| R3.5 | **`seed` cablea `reseed` cuando hay estado previo** (estado previo ⇒ `apply_transition(prev, "reseed", round)` → `SEEDED`, ronda++; sin estado previo ⇒ `apply_transition(None, "seed", round)`); el payload de `seed` suma `round` y `reseeded` | "La idea muta" (Bates, Nota 05 §3): re-sembrar sobre la biblioteca viva debe **acumular** (el merge ya lo hace) y **contar la ronda**, no ser una corrida tirada. Es lo que el ADR 0016 prometía (historia A5) | Alta: la rama es local a `seed.py`; los campos del payload son aditivos | Sí (PO proxy / ADR 0016; verifier PASA) |
+| R3.6 | **`status` expone `curation_available=["accept","reject"]` SIEMPRE + `round`** (campos **aditivos** en `data`, **manteniendo `schema="1"`**); `transitions_available` pasa a derivarse de `available_transitions` (tabla local `_TRANSITIONS` retirada) e incluye `reseed`; `accept.py`/`reject.py` documentan "curación transversal, no transiciona" | La enmienda del ADR 0016/0021 manda que el mapa del lazo **no oculte** lo único irreductiblemente humano (Nota 05 §4). Mantener `schema="1"` es **decisión del PO** (2026-06-16: campos nuevos no rompen a los agentes — solo agregan; bumpear sería ruido). Derivar de `available_transitions` mata el drift entre la tabla de `status` y el dominio | Media: quitar los campos sí bumpearía el schema; mantenerlos es contrato | **Sí — decisión del PO** (`schema="1"` aditivo) |
+| R3.7 | **Cosmético `round` → `cycle_round`** en el kwarg de `set_loop_state` (`set_loop_state(state, *, cycle_round=None)`), no `round=` | Evita sombrear el builtin `round()` y la columna SQL `round` en la firma pública del backend; el verifier lo marcó como cosmético y quedó resuelto | Alta: rename local del kwarg | Sí (PO proxy; verifier PASA) |
+
+> **Reservas del verifier:** la principal (chain/filter/build fuera del dominio) **quedó cerrada**
+> (R3.4 + test domain-tied); el cosmético (`round`→`cycle_round`) **resuelto** (R3.7). **No hay
+> reservas de código abiertas.**
+>
+> **Recomendaciones de código (no implementadas — quedan al PO):** (a) **retirar el alias
+> `LoopState = CycleState` pre-1.0** (migrar `stores/duckdb.py`, tests y docs a `CycleState`); (b) si
+> alguna vez se construye el paso 8 del ciclo, agregar un comando **`b2g monitor`** que dispare la
+> transición a `MONITORED` (hoy el estado existe en el modelo pero ningún comando lo alcanza).
+>
+> **Reconciliación de docs (arquitecto, 2026-06-16):** ADR 0016 (nota "implementado en R3"), ADR 0021
+> (envelope de `status` con `curation_available`/`round` aditivos, `schema="1"`), ROADMAP (Hito R3 ✅ +
+> banner as-built), ARCHITECTURE.md (§5.5 FSM → `cycle.py` AS-BUILT R3), API.md (§convenciones CLI +
+> bloque `cycle.py`), CHANGELOG (R3 marcado). La [Nota 05](../Notas/05-ciclo-investigacion-humano.md)
+> ya describía el ciclo correcto y **no requirió cambios** (R3 la **implementa**, no la corrige).
+
+---
+
+## 2026-06-16 — Hito R4 (Scent bibliométrico vía proyectores + retiro de IA del producto)
+
+> Implementa las enmiendas 2026-06-15 de los ADR
+> [0020](0020-metodo-forrajeo-scent-filtros-reject.md) (scent = proyectores),
+> [0022](0022-producto-sin-ia-generativa.md) (el producto no usa IA) y
+> [0008](0008-wedge-forrajeo.md) (tensiones retiradas). Cierra la RAÍZ 1 (parte de IA) de la
+> [Nota 06](../Notas/06-critica-as-built-v0.2.md). **291 tests** verdes, mypy strict / ruff limpios; el
+> núcleo de scent depende del núcleo de proyección (puro), no al revés. **Verifier: APRUEBA CON
+> RESERVAS** (3 cuestiones de método); el **steering arquitectónico (2026-06-16)** las resolvió.
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| R4.1 | **`compute_backward/forward_scent` consumen el primitivo público `collect_item_to_papers`** (extraído a `networks/projectors.py` y re-exportado) en vez de reimplementar `Counter`/`sum`. El forrajeo (costura) **depende del núcleo de proyección**, nunca al revés | El ADR 0020 enmendado §1 manda que el scent "use los proyectores" como olfato. Extraer el índice inverso `{ref → papers que lo citan}` como primitivo público lo comparte entre proyectores y scent sin construir un `nx.Graph` por candidato (olfato barato y determinista) | Media: cambiar el primitivo toca proyectores y scent a la vez | Sí (PO proxy / ADR 0020; verifier PASA) |
+| R4.2 | **Backward ratificado como _fuerza de co-citación con el corpus_** (`backward_score(X) = |{Pi ∈ corpus : X ∈ Pi.references_id}|`), NO "conteo plano sin sentido" | Numéricamente coincide con el viejo conteo, pero su **semántica es estructural**: `X` referenciado por `N` corpus-papers está **co-citado `N` veces dentro del corpus** (columna de `X` en la matriz de co-citación). Cumple el DoD ("no por conteo plano"): mide una propiedad de red, vía el primitivo de proyectores. Se renombra el concepto en docstrings/docs de "frecuencia de enlace" → "fuerza de co-citación con el corpus" | Alta: es ratificación + rename de concepto, no cambia el cómputo | **Sí — steering arquitectónico** (ADR 0020 AS-BUILT) |
+| R4.3 | **Forward = _fuerza de citación directa al corpus_** (señal primaria), NO acoplamiento puro. El AS-BUILT inicial lo implementó como acoplamiento (`refs compartidas Y↔corpus`), que **degeneraba a 0** con `references_id` ralas (común tras `seed`) y **descartaba el citante directo como candidato**. **Fix IMPLEMENTADO dentro de R4**: `compute_forward_scent` calcula `forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|`, siempre > 0 para un citante real, y emite con `direct > 0`; acoplamiento queda secundario | El forward chaining busca **citantes**; un citante directo NO necesariamente comparte refs con el corpus-paper que cita → el acoplamiento es la medida equivocada para esta dirección. La citación directa rankea por cuán embebido está el citante en mi corpus (Wohlin, snowballing forward), robusta y siempre informativa | Media: el fix fue local a `compute_forward_scent` | **Sí — steering arquitectónico** (recomendación de código explícita, **implementada dentro de R4**; 293 tests verdes, mypy/ruff OK) |
+| R4.4 | **Centralidad de red del candidato: DIFERIDA** (viz), no exigida para cerrar R4 | El DoD listaba "acoplamiento **/** co-citación **/** centralidad" con un **"y/o"**: pide señal estructural de red, no las tres. Con backward = co-citación + forward = citación-directa el espíritu se cumple. La centralidad requiere construir el grafo completo por candidato (costo que excede el olfato barato y determinista de R4). DoD reconciliado honestamente | Alta: agregar una señal de centralidad es aditivo (mejora futura) | **Sí — steering arquitectónico** (DoD reconciliado) |
+| R4.5 | **`explain_candidate`, `foraging/explain.py` y el extra `[llm]` ELIMINADOS** de la superficie pública y de `pyproject.toml` (ADR 0022) | El producto no usa IA generativa; el "porqué" de un candidato lo da la estructura visible, no un LLM. El stub vacío era deuda/vapor (Nota 06 RAÍZ 1) | Baja: re-introducir IA sería una **decisión nueva** (ADR nuevo), no un default | **Sí — decisión del PO** (ADR 0022) |
+
+> **Reservas del verifier:** RESERVA 2 (forward degenera a 0) → el arquitecto la convirtió en
+> **recomendación de código** (R4.3): revertir el forward a citación directa; **se implementó dentro de
+> R4** (la elimina-IA y el scent-vía-proyectores **están cerrados y verificados**).
+> RESERVA 1 (backward = conteo) → **ratificada como co-citación** (R4.2), es measure bibliométrico
+> legítimo. RESERVA 3 (centralidad del DoD) → **diferida** (R4.4), el "y/o" del DoD se cumple.
+>
+> **Veredicto del arquitecto:** **R4 ✅ TERMINADO** — la parte de cierre (sin IA, scent-vía-proyectores,
+> dependencia forrajeo→núcleo) está hecha y verificada, y el **fix del forward** (citación directa) se
+> **implementó dentro de R4** (`compute_forward_scent`, 293 tests verdes). R4 no deja seguimiento abierto.
+>
+> **Reconciliación de docs (arquitecto, 2026-06-16):** ADR 0020 (AS-BUILT: fórmulas reales,
+> backward=co-citación, forward=citación-directa **implementada**, centralidad diferida),
+> ADR 0022 (AS-BUILT: sin IA construido), ROADMAP (Hito R4 ✅ TERMINADO + DoD reconciliado),
+> ARCHITECTURE.md (§3.5 scent→proyectores AS-BUILT R4), API.md (§5 scent bibliométrico construido),
+> CHANGELOG (R4 marcado). README/AI_DISCLOSURE/AGENTS ya describían el retiro de `[llm]`/IA en pasado y
+> **no requirieron limpieza adicional**. La [Nota 05](../Notas/05-ciclo-investigacion-humano.md) §4 ya
+> prometía "la bibliometría ES el information scent" y **no requirió cambios** (R4 la **implementa**).
+
+---
+
+## 2026-06-16 — Hito R5 (Robustez / escala: bulk-load, UTF-8 en la frontera, footguns de la Nota 06)
+
+> Último hito de la tanda de remediación. **No cambia el modelo conceptual; endurece lo construido.**
+> Cierra la RAÍZ 3 (no corre a escala + bug del contrato agente-native) y el catálogo de secundarios de
+> la [Nota 06](../Notas/06-critica-as-built-v0.2.md). **319 tests** verdes
+> (`tests/unit/test_r5_robustness.py` + ajustes), mypy strict / ruff check+format limpios.
+> **Verifier: APRUEBA** (reservas cerradas). Con R5 la **tanda R1–R5 queda COMPLETA**.
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| R5.1 | **Bulk-load en los cuatro loaders** (seed/load OpenAlex, BibTeX, Forager): construir la tabla Arrow de una vez con `Corpus.from_arrow` + helper `corpus._rows_with_ids` (precomputa el `id` D1 por fila), en vez del loop `add_paper`/`_clone` | Cada `add_paper`→`_clone` re-upserteaba la tabla entera (O(n²), Nota 06 RAÍZ 3). El bulk `from_arrow` ya existía y no se usaba en los loaders; mismo resultado, carga lineal | Media: el helper es local a `corpus.py`; los loaders vuelven al loop trivialmente | Sí (PO proxy / Nota 06; verifier PASA) |
+| R5.2 | **UTF-8 en la frontera CLI** (`cli/__init__.py:main` → `_force_utf8()`: reconfigura `sys.stdout`/`stderr` a UTF-8 con guarda `hasattr(..., "reconfigure")` + `suppress(Exception)`, **antes** de que Click lea argumentos) | El envelope `--json` usa `ensure_ascii=False`; en la consola cp1252 de Windows los acentos salían corruptos (`ecuaci�n`), rompiendo el contrato agente-native (BUG VERIFICADO, Nota 06 RAÍZ 3). Es el arreglo de mayor impacto/menor costo | Alta: `_force_utf8` es una función aislada, quitable | Sí (PO proxy / Nota 06; verifier PASA) |
+| R5.3 | **Retry/backoff en `fetch_citing`** (`_fetch_all_with_retry`: 429/5xx → exponential backoff, 3 intentos); **batching-por-OR NO implementado** | El forward chaining hace N+1 requests; sin retry, un rate-limit de OpenAlex (429) hacía fallar un corpus mediano (falla de **correctitud/robustez**). El batching-por-OR (agrupar `cites:` en una query) lo pedía el spec **"si es factible"** → se evaluó **mejora de PERFORMANCE**, no de correctitud, y **quedó diferido** (el N+1 persiste, pero ahora resiliente). Decisión consciente: priorizar robustez sobre throughput en R5 | Media (retry: local a `OpenAlexSource`). **El batching diferido queda como recomendación de seguimiento** | **Sí — steering** (DoD reconciliado: retry sí, batching diferido) |
+| R5.4 | **`AttributeError`→`DependencyError` es responsabilidad del BORDE CLI, no del forager.** `@handle_errors` deja de capturar `AttributeError`; el comando `chain` hace un **pre-check `hasattr(source, "fetch_citing")`** y lanza `DependencyError` (exit 3) accionable; un `AttributeError` inesperado se propaga limpio | El AS-BUILT capturaba `AttributeError` en el decorador como "Capacidad no disponible", **disfrazando bugs reales** de "dependencia faltante" (Nota 06, footgun gemelo). Mover la conversión al borde mantiene el **forager agnóstico de `_errors`** (núcleo puro) y hace visible cualquier bug genuino. Toca el contrato del ADR 0021 §D (exit 3) — reconciliado | Media: el pre-check es local a `chain.py`; revertir re-abre el footgun | **Sí — steering** (ADR 0021 §D enmendado) |
+| R5.5 | **`open_store_readonly` para comandos de solo lectura** (`status`/`validate`): falla con `StoreError` accionable si el `.duckdb` no existe, en vez de auto-crear uno vacío. Los comandos de escritura conservan `open_store` | Footgun verificado (Nota 06): `b2g status --store typo.duckdb` creaba un store vacío en silencio, ocultando el typo. Crear-si-falta es correcto en escritura, peligroso en lectura | Alta: `open_store_readonly` es aditivo; los dos comandos eligen la variante | Sí (PO proxy / Nota 06; verifier PASA) |
+| R5.6 | **Los 6 footguns restantes cerrados sin enmascarar:** (a) rama muerta `OSError` de `_errors.py` (`if/else` que hacía lo mismo → un único `except OSError → 5`); (b) `except Exception` de `detect_communities` (`facade.py`) eliminado (solo `ImportError` se re-lanza, lo demás propaga); (c) PRISMA campo/op desconocido → `ValueError` accionable (antes `return True` no-op); (d) `.bib` parseo grave → `ValueError`, vacío/sin-título → `UserWarning`; (e) param muerto `g` de `cocitation_quality_report` quitado; (f) `_lib_version` fallback `"0.0.0"`→`"unknown"`; (g) `NetworkSpec.kind: NetworkKind` (sin `Literal` duplicado) | Todos son **no-ops silenciosos / ramas-params muertos / versión inventada** que esconden bugs (Nota 06, catálogo de secundarios). Principio: **fallar/avisar accionable, nunca tragar** (lección 7, AGENTS.md) | Alta cada uno (cambios locales y aditivos) | Sí (PO proxy / Nota 06; verifier PASA) |
+
+> **Cambios de comportamiento (importan para CHANGELOG/API):** PRISMA **lanza** ante campo/op
+> desconocido (antes no-op); `status`/`validate` **ya no auto-crean** el store ante typo en `--store`;
+> `.bib` roto **lanza**; `_lib_version` desconocida = `"unknown"` (antes `"0.0.0"`); `AttributeError`
+> deja de mapearse a exit 3 en el decorador (la capacidad-faltante se detecta en el borde). **Ninguno
+> toca `schema="1"` ni los exit codes externos del contrato** (exit 3 sigue siendo "dependencia/capacidad
+> faltante", ahora vía `DependencyError` en vez de `AttributeError`).
+>
+> **Reservas del verifier:** cerradas (el verifier APRUEBA). **No hay reservas de código abiertas.**
+>
+> **Decisiones de seguimiento (no son de R5 — quedan al PO):** (a) **batching-por-OR de `fetch_citing`**
+> (mejora de performance: matar el N+1 agrupando `cites:` en una query; R5 entregó solo retry) — candidato
+> a un hito de performance o al Hito 8 (`Enricher` de co-citación); (b) sigue abierta la de R3: **retirar
+> el alias `LoopState = CycleState` pre-1.0** y, si se construye el paso 8 del ciclo, agregar **`b2g
+> monitor`** (el estado `MONITORED` existe en el modelo, sin comando que lo dispare).
+>
+> **Veredicto del arquitecto:** **R5 ✅ TERMINADO** — endurece sin cambiar el modelo conceptual; los
+> cambios de comportamiento son consistentes con el contrato (la Nota 06 los pidió). R5 no deja
+> seguimiento de **código** abierto (solo el batching diferido, que es mejora futura).
+>
+> **Reconciliación de docs (arquitecto, 2026-06-16):** ADR 0021 (§D enmendado: `AttributeError`→`DependencyError`
+> en el borde, `open_store_readonly`), ADR 0023 (AS-BUILT: `NetworkSpec.kind: NetworkKind`, fuente única
+> completada), ROADMAP (Hito R5 ✅ + banner as-built + DoD reconciliado: batching diferido; tanda R1–R5
+> COMPLETA), ARCHITECTURE.md (§3.1 bulk-load, §6.3 UTF-8/store-readonly, §8 footguns), API.md (PRISMA
+> lanza, store read-only, `.bib` lanza, `lib_version` "unknown", forward `DependencyError`+retry),
+> CHANGELOG (R5 ✅ Fixed + Changed de comportamiento). La [Nota 06](../Notas/06-critica-as-built-v0.2.md)
+> recibió una nota corta de cierre (rastro histórico, sin reescribir hallazgos).
+
+---
+
+## 2026-06-16 — Cleanup pre-v0.3 (cerrar seguimientos abiertos de R3/R5)
+
+> Tanda de limpieza **antes de v0.3**: cierra tres seguimientos que R3/R5 dejaron abiertos
+> (alias `LoopState`, `MONITORED` sin comando, SQL del `merge` por interpolación). **No cambia el
+> modelo conceptual.** Implementado + verificado: **327 tests** verdes, mypy strict, ruff check+format
+> limpios.
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| C.1 | **Alias `LoopState = CycleState` RETIRADO** (de `backends/duckdb.py` y `stores/duckdb.py`); el código usa **solo `CycleState`** (de `bib2graph.cycle`) | Cierra la recomendación abierta de R3.2 ("retirar pre-1.0"). Una sola clase para el concepto del ciclo elimina la ambigüedad de imports y la doble verdad | Alta: re-introducir el alias es mecánico (una línea), pero no hay motivo | **Sí — steering** (cierra R3.2) |
+| C.2 | **Comando `b2g monitor` (12° subcomando)**: re-chequea OpenAlex por **citantes nuevos** del corpus (forward chaining), mergea los candidatos nuevos a la biblioteca viva y transiciona a **`MONITORED`** vía `apply_transition(state, "monitor", round)` (paso 8 del ciclo, Ellis). `data = {new_candidates, total_papers, loop_state, round}`, `schema="1"`; `--email`; sin corpus/estado previo → `DataError` (exit 2) | Cierra la recomendación abierta de R3/R5 ("`MONITORED` existe en el modelo, sin comando que lo dispare"). El estado deja de ser inalcanzable; el ciclo de Ellis queda completo en la CLI. Regla `monitor` añadida a `_AVAILABLE_TRANSITIONS` desde `BUILT` y `MONITORED` | Media: el comando es aditivo (módulo propio `cli/commands/monitor.py`); quitarlo vuelve `MONITORED` inalcanzable | **Sí — steering** (cierra R3/R5; ADR 0021 enmendado) |
+| C.3 | **`monitor` SIN pre-check de capacidad `fetch_citing`** (asimetría deliberada con `chain`): instancia `OpenAlexSource` fijo, que **siempre** soporta forward; `chain` sí pre-chequea porque acepta `--direction` variable y puede recibir una `Source` de solo-mínimo | El pre-check `hasattr` (enmienda R5.4) es responsabilidad del borde **solo donde la capacidad puede faltar**. En `monitor` no puede faltar → la guardia sería ruido. Es **decisión documentada, no deuda** (ADR 0021 §D enmendado) | Alta: agregar el pre-check sería trivial si en el futuro `monitor` aceptara sources variables | **Sí — steering** (ADR 0021 §D) |
+| C.4 | **`merge` de `DuckDBBackend` SIN interpolación de ids**: en vez de `... id IN ('<id>',...) ORDER BY CASE id WHEN ... END` con f-strings, lee todas las filas (`SELECT *`), **ordena en Python** por orden de aparición y reinserta. Orden determinista D3 preservado | Cierra el footgun catalogado en la Nota 06 (`backends/duckdb.py:417,423`): SQL construido con datos (hoy seguro porque los ids son hashes hex, pero frágil). La alternativa **CTE con `VALUES`** quedó **descartada** (ordenar en Python es más simple para el tamaño objetivo y no acopla a un dialecto SQL) | Media: cambio local al `merge`; revertir re-abre el footgun. D3 cubierto por regresión | **Sí — steering** (cierra footgun Nota 06; ADR 0013 AS-BUILT) |
+
+> **Cambios de contrato (importan para CHANGELOG/API/ADRs):** **12 subcomandos** (era 11; `monitor` es el
+> 12°); `monitor` transiciona `→ MONITORED` (tabla §F del ADR 0021); el alias `LoopState` ya no existe
+> (el contrato usa `CycleState`). **`schema="1"` no se bumpea** (el `data` de `monitor` es payload nuevo,
+> no cambia la forma del envelope).
+>
+> **Seguimientos restantes:** queda **uno** de código abierto — el **batching-por-OR de `fetch_citing`**
+> (mejora de performance: matar el N+1 agrupando `cites:` en una query; R5 entregó solo retry/backoff).
+> El arquitecto lo **encuadró en el Hito 8** (`Enricher` de co-citación), que es donde se hace el 2º nivel
+> de fetch. Ver ROADMAP Hito 8. **No es deuda de correctitud** (el N+1 ya es resiliente al rate-limit). La
+> asimetría del pre-check `monitor`/`chain` (C.3) **NO es seguimiento**: es decisión documentada (ADR 0021 §D).
+>
+> **Reconciliación de docs (arquitecto, 2026-06-16):** ADR 0016 (§Cleanup: `MONITORED` alcanzable, alias
+> retirado), ADR 0021 (§Enmienda cleanup: 12° subcomando `monitor`, envelope, asimetría del pre-check),
+> ADR 0013 (§AS-BUILT: merge sin interpolación, CTE descartado), ARCHITECTURE.md (`monitor`/`MONITORED`
+> alcanzable, `CycleState` única, merge sin interpolación), API.md (subcomando `monitor` 12°, conteo 11→12),
+> ROADMAP (seguimientos cerrados, batching → Hito 8, `monitor` ya no "futuro"), CHANGELOG (Added `monitor`,
+> Changed/Fixed alias + merge).

@@ -404,29 +404,60 @@ def test_exit_code_3_build_louvain_faltante(tmp_path: Path) -> None:
 def test_exit_code_3_chain_forward_source_sin_fetch_citing(tmp_path: Path) -> None:
     """chain forward con source que no tiene fetch_citing → DependencyError → exit 3.
 
-    Simula el AttributeError que lanza Forager._fetch_forward cuando el
-    source no implementa fetch_citing (por ejemplo, BibtexSource).
+    El pre-check en run_chain detecta la ausencia de ``fetch_citing`` ANTES de
+    llamar a Forager.chain, evitando que un AttributeError genuino dentro de
+    chain/merge/_fetch_forward quede disfrazado como "source no soporta forward".
     """
+    from unittest.mock import MagicMock
+
     from bib2graph.cli._errors import DependencyError
     from bib2graph.cli.commands.chain import run_chain
 
     store_path = tmp_path / "test.duckdb"
     _seed_store(store_path)
 
-    # Patchear Forager.chain para que lance AttributeError (simula source sin fetch_citing)
+    # Reemplazar OpenAlexSource con un mock sin ``fetch_citing`` para activar
+    # el pre-check de run_chain (la conversión ocurre en el borde CLI, no en
+    # Forager._fetch_forward).
+    # OpenAlexSource se importa dentro de run_chain (lazy import), así que el
+    # patch apunta al módulo de origen donde la función lo resuelve.
+    source_sin_fetch_citing = MagicMock(spec=[])  # spec vacío → sin fetch_citing
     with (
         patch(
-            "bib2graph.foraging.forager.Forager.chain",
-            side_effect=AttributeError(
-                "El source 'BibtexSource' no implementa 'fetch_citing': "
-                "el forward chaining requiere OpenAlexSource o un source con ese método."
-            ),
+            "bib2graph.sources.openalex.OpenAlexSource",
+            return_value=source_sin_fetch_citing,
         ),
         pytest.raises(DependencyError) as exc_info,
     ):
         run_chain(store_path, direction="forward", transport=_make_mock_transport([]))
 
     assert exc_info.value.exit_code == 3
+    assert "fetch_citing" in str(exc_info.value.message)
+
+
+@pytest.mark.unit
+def test_attribute_error_genuino_en_chain_no_disfrazado(tmp_path: Path) -> None:
+    """AttributeError genuino dentro de Forager.chain NO se disfraza como exit 3.
+
+    Cierra el footgun gemelo de R5: antes, el ``except AttributeError`` amplio
+    de chain.py convertía cualquier bug real en "source no soporta forward"
+    (DependencyError, exit 3).  Ahora el AttributeError genuino se propaga limpio.
+    """
+    from bib2graph.cli.commands.chain import run_chain
+
+    store_path = tmp_path / "test.duckdb"
+    _seed_store(store_path)
+
+    # Inyectar un AttributeError genuino dentro de Forager.chain (bug real, no
+    # ausencia de fetch_citing — OpenAlexSource sí tiene fetch_citing).
+    with (
+        patch(
+            "bib2graph.foraging.forager.Forager.chain",
+            side_effect=AttributeError("bug_real: atributo inexistente en corpus"),
+        ),
+        pytest.raises(AttributeError, match="bug_real"),
+    ):
+        run_chain(store_path, direction="forward", transport=_make_mock_transport([]))
 
 
 @pytest.mark.unit
@@ -511,12 +542,12 @@ def test_e2e_seed_chain_filter_build_export(tmp_path: Path) -> None:
     - export: re-emite GraphML a out_dir.
     Verifica: exit 0, GraphML existe, corpus acumulado coherente.
     """
-    from bib2graph.backends.duckdb import LoopState
     from bib2graph.cli.commands.build import run_build
     from bib2graph.cli.commands.chain import run_chain
     from bib2graph.cli.commands.export import run_export
     from bib2graph.cli.commands.filter import run_filter
     from bib2graph.cli.commands.seed import run_seed
+    from bib2graph.cycle import CycleState
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "investigacion.duckdb"
@@ -568,10 +599,10 @@ def test_e2e_seed_chain_filter_build_export(tmp_path: Path) -> None:
     assert export_data["format"] == "csv"
     assert len(export_data["files_written"]) > 0
 
-    # Verificar LoopState final
+    # Verificar CycleState final
     store = DuckDBStore(store_path)
     final_state = store.backend.loop_state()
-    assert final_state == LoopState.BUILT
+    assert final_state == CycleState.BUILT
 
     # Corpus coherente: tiene papers
     corpus = store.load()
@@ -616,22 +647,24 @@ def test_status_tras_seed_chain_filter(tmp_path: Path) -> None:
     # Debe haber al menos papers en candidate o rejected
     all_counts = sum(data["counts_by_status"].values())
     assert all_counts == data["total_papers"]
-    assert "seed" in data["transitions_available"]
+    # R3: desde cualquier estado con estado previo, reseed está disponible
+    # (el "seed" inicial solo está en None → "seed"; con estado previo → "reseed")
+    assert "reseed" in data["transitions_available"]
 
 
 # ---------------------------------------------------------------------------
-# 5. Prueba adicional: LoopState transiciona correctamente
+# 5. Prueba adicional: CycleState transiciona correctamente
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_loop_state_transiciona_en_secuencia(tmp_path: Path) -> None:
     """seed transiciona a SEEDED; chain a FORAGED; filter a FILTERED; build a BUILT."""
-    from bib2graph.backends.duckdb import LoopState
     from bib2graph.cli.commands.build import run_build
     from bib2graph.cli.commands.chain import run_chain
     from bib2graph.cli.commands.filter import run_filter
     from bib2graph.cli.commands.seed import run_seed
+    from bib2graph.cycle import CycleState
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "transitions.duckdb"
@@ -643,22 +676,22 @@ def test_loop_state_transiciona_en_secuencia(tmp_path: Path) -> None:
     # Tras seed
     run_seed(store_path, "ecology", transport=_make_mock_transport())
     store2 = DuckDBStore(store_path)
-    assert store2.backend.loop_state() == LoopState.SEEDED
+    assert store2.backend.loop_state() == CycleState.SEEDED
 
     # Tras chain backward
     run_chain(store_path, direction="backward", transport=_make_mock_transport([]))
     store3 = DuckDBStore(store_path)
-    assert store3.backend.loop_state() == LoopState.FORAGED
+    assert store3.backend.loop_state() == CycleState.FORAGED
 
     # Tras filter
     run_filter(store_path, year_gte=2000)
     store4 = DuckDBStore(store_path)
-    assert store4.backend.loop_state() == LoopState.FILTERED
+    assert store4.backend.loop_state() == CycleState.FILTERED
 
     # Tras build
     run_build(store_path)
     store5 = DuckDBStore(store_path)
-    assert store5.backend.loop_state() == LoopState.BUILT
+    assert store5.backend.loop_state() == CycleState.BUILT
 
 
 # ---------------------------------------------------------------------------

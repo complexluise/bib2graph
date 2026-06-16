@@ -1,11 +1,12 @@
 """cli.commands.filter — Subcomando ``b2g filter``.
 
 Aplica filtros PRISMA deterministas al corpus: marca rejected (no borra).
-Transiciona el LoopState a FILTERED tras persistir con éxito.
+Transiciona el CycleState a FILTERED tras persistir con éxito.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +33,7 @@ def run_filter(
     """Aplica filtros PRISMA al corpus marcando rejected los excluidos.
 
     Los filtros se aplican en orden; cada uno ve el resultado del anterior.
-    El LoopState transiciona a FILTERED tras persistir con éxito.
+    El CycleState transiciona a FILTERED tras persistir con éxito.
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
@@ -49,7 +50,7 @@ def run_filter(
         DataError: Si ningún criterio es válido.
         StoreError: Si el store está bloqueado.
     """
-    from bib2graph.backends.duckdb import LoopState
+    from bib2graph.cycle import apply_transition
     from bib2graph.filters.prisma import FilterCriterion, apply_filters
 
     criteria: list[FilterCriterion] = []
@@ -76,9 +77,19 @@ def run_filter(
     store = open_store(store_path)
     corpus = store.load()
 
-    filtered_corpus, steps = apply_filters(corpus, criteria)
+    # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
+    # no un literal en el comando (ADR 0016 enmendado §1).
+    current_state = store.backend.loop_state()
+    current_round = store.backend.loop_round()
+    new_state, new_round = apply_transition(current_state, "filter", current_round)
+
+    # R2: el reloj se inyecta en la frontera (ADR 0017 enmendado); el núcleo
+    # no llama datetime.now(). Un único timestamp para todos los pasos de
+    # filtrado de esta invocación.
+    now = datetime.now(UTC)
+    filtered_corpus, steps = apply_filters(corpus, criteria, decided_at=now)
     store.persist(filtered_corpus)
-    store.backend.set_loop_state(LoopState.FILTERED)
+    store.backend.set_loop_state(new_state, cycle_round=new_round)
 
     steps_data = [
         {

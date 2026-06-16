@@ -1,6 +1,7 @@
 # 0016 — Máquina de estados del lazo; no-linealidad de primera clase; una investigación por archivo
 
-- **Estado:** Aceptada
+- **Estado:** Aceptada · **enmendada 2026-06-15** (FSM cíclico con `reseed` de primera clase,
+  contador de ronda, curación transversal, `cycle.py` en el dominio — ver "Enmienda" al final)
 - **Fecha:** 2026-06-15
 - **Relacionada con:** [0008](0008-wedge-forrajeo.md) (wedge = forrajeo),
   [0009](0009-biblioteca-viva-duckdb.md) (biblioteca viva en DuckDB),
@@ -63,3 +64,79 @@ los estados no son una escalera de un solo sentido.
 - **Tensión declarada:** la máquina de estados es del **archivo vivo**; el **snapshot** (ADR
   [0017](0017-reproducibilidad-historia-snapshot.md)) es una foto que puede incluir el `LoopState`
   del instante sellado, pero no es donde vive.
+
+## Enmienda — 2026-06-15 (FSM cíclico de dominio; `reseed` de primera clase; curación transversal)
+
+> Motivada por el red-team del AS-BUILT v0.2
+> ([Nota 06](../Notas/06-critica-as-built-v0.2.md), RAÍZ 1): este ADR prometía no-linealidad de
+> primera clase, pero el AS-BUILT la entregó como un enum **lineal** (`SEEDED→FORAGED→FILTERED→BUILT`)
+> enterrado en `backends/duckdb.py:67-78`, con la no-linealidad reducida a un comentario
+> ("transiciones permisivas") y la curación **invisible** en el mapa. El cuerpo del ADR (arriba)
+> queda como historia; esta enmienda precisa el modelo correcto.
+
+1. **El ciclo es un concepto de DOMINIO puro y testeable** — módulo nuevo `cycle.py` (núcleo): el
+   modelo de estados + las reglas de transición viven ahí; el **backend solo lo persiste** (el
+   `LoopState` deja de estar definido dentro de `backends/duckdb.py`).
+2. **FSM cíclico fiel a la [Nota 05](../Notas/05-ciclo-investigacion-humano.md):**
+
+   ```
+   SEEDED ─(chain)→ FORAGED ─(filter)→ FILTERED ─(build)→ BUILT ─(monitor)→ MONITORED
+      ▲                                                                          │
+      └──────────────────────── reseed = "la idea muta" ◄─────────────────────────┘
+   ```
+
+   con la transición de **PRIMERA CLASE `reseed`** (loop-back a `SEEDED`), que **incrementa un
+   CONTADOR DE RONDA** y **acumula sobre lo curado**. La no-linealidad pasa a ser **propiedad del
+   sistema** (lo que este ADR prometía y el AS-BUILT no cumplía), no un comentario. `MONITORED`
+   modela el paso 8 del ciclo (el comando que lo dispara puede ser futuro; el estado existe).
+3. **La curación es TRANSVERSAL.** `accept`/`reject` están disponibles **en cualquier estado**, **no
+   transicionan** el lazo, pero `b2g status` **debe** mostrarlas como **acción siempre-disponible**
+   (hoy las oculta de `transitions_available`). Es lo único irreductiblemente humano (Nota 05 §4,
+   pasos 0/4/7): el mapa del lazo no puede esconderlo.
+
+**Consecuencia:** humanos e IAs ven un mapa que (a) refleja el ciclo real, no un pipeline; (b)
+cuenta las rondas; (c) muestra la curación. **Recomendación para el `coder`:** ver ROADMAP **Hito
+R3** (extraer `cycle.py`; `cli/commands/status.py:19-34` debe incluir `accept`/`reject` como
+siempre-disponibles; `cli/commands/accept.py:104` ya no transiciona — eso queda, pero `status` debe
+exponerlas).
+
+### Implementado en R3 (2026-06-16)
+
+La enmienda está **construida** (ROADMAP Hito R3 ✅). As-built:
+
+- **`src/bib2graph/cycle.py` es la sede del dominio** (puro, sin DuckDB): `CycleState`
+  (`SEEDED`/`FORAGED`/`FILTERED`/`BUILT`/`MONITORED`), `apply_transition(state, action, round)
+  → (state, round)`, `available_transitions(state)` y `CURATION_ACTIONS = ["accept", "reject"]`.
+  El enum de estados **salió** de `backends/duckdb.py`; el backend solo persiste (columna `round`
+  añadida a `loop_state_log` por migración liviana; `loop_round()` / `set_loop_state(state, *,
+  cycle_round=...)`).
+- **`reseed` es de primera clase:** `apply_transition(state, "reseed", r) = (SEEDED, r+1)`. Lo
+  cablea `seed.py`: si hay estado previo, la siembra se trata como `reseed` (ronda++, acumula sobre
+  lo curado); si no, primera siembra (`seed` → `SEEDED`, ronda→1).
+- **Fuente única de verdad:** `chain.py`/`filter.py`/`build.py` **derivan** su estado destino de
+  `apply_transition`, no de un literal (cierra el gap que el verifier marcó). Un test domain-tied
+  (`tests/unit/test_r3_commands_domain.py`) lo ata: si cambian las reglas en `cycle.py`, los comandos
+  las siguen.
+- **Curación transversal:** `accept.py`/`reject.py` documentan "no transiciona"; `status.py` expone
+  `curation_available=["accept","reject"]` **siempre** + `round`, usando `available_transitions`.
+- **Alias transicional:** `backends/duckdb.py` mantiene `LoopState = CycleState` por
+  compatibilidad de imports. **A retirar pre-1.0** (recomendación de código abierta).
+- **`MONITORED`** existe en el modelo y en las reglas de transición, pero **ningún comando lo
+  dispara todavía** (futuro; un eventual `b2g monitor`).
+
+Verifier: **APRUEBA** (275 tests; mypy strict / ruff limpios). La reserva del verifier
+(chain/filter/build no pasaban por el dominio) quedó **cerrada** con el fix posterior.
+
+### Cleanup pre-v0.3 (2026-06-16) — `MONITORED` alcanzable; alias `LoopState` retirado
+
+Dos seguimientos abiertos de R3 (arriba) quedan **CERRADOS**:
+
+- **`MONITORED` ya NO es inalcanzable.** Se construyó el comando **`b2g monitor`** (12° subcomando):
+  re-chequea OpenAlex por **citantes nuevos** del corpus (forward chaining), mergea los candidatos
+  nuevos a la biblioteca viva y transiciona vía `apply_transition(state, "monitor", round)`. El paso 8
+  del ciclo (monitoreo, Ellis) deja de ser un estado del modelo sin compuerta: ahora es **reachable**.
+  La regla `monitor` se agregó a `_AVAILABLE_TRANSITIONS` desde `BUILT` y desde `MONITORED` (re-monitoreo
+  idempotente del estado). Contrato del comando: ADR [0021](0021-cli-agente-native-contrato.md).
+- **El alias `LoopState = CycleState` se RETIRÓ** (la recomendación "a retirar pre-1.0"): el código usa
+  **solo `CycleState`** (de `bib2graph.cycle`). Se eliminó de `backends/duckdb.py` y `stores/duckdb.py`;
+  los call-sites migraron. No queda una segunda clase para el mismo concepto.

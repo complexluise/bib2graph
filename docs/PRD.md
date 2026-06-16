@@ -19,6 +19,17 @@
 > de aceptación. Los ADR 0001–0006 son **registro histórico** (inmutables): los puntos superados
 > quedan marcados como tales por los ADR 0007–0011, no se reescriben.
 >
+> ⚠️ **Reconciliación pendiente con el modelo nuevo (2026-06-15, ADR
+> [0022](decisiones/0022-producto-sin-ia-generativa.md)/[0023](decisiones/0023-capa-constants-modelos-schema.md)):**
+> tras el red-team del AS-BUILT ([Nota 06](Notas/06-critica-as-built-v0.2.md)) el PO bloqueó que el
+> **producto NO usa IA generativa**: el *information scent* es **bibliométrico determinista vía
+> proyectores** (sin LLM/embeddings); la **"máquina de tensiones" se RETIRA** (no se difiere a v2: se
+> borra); `explain_candidate`/`[llm]` se **eliminan**; el sensemaking de tensiones es **humano**
+> (asistido por las redes). Donde abajo este PRD aún dice "inserción de IA", "paso opcional de IA",
+> "máquina de tensiones a v2" o "fallback fuzzy `[llm]`", **leerlo bajo esta corrección** (las §2/§5/§6/§7
+> marcan los puntos afectados). El principio "IA in the loop, NOT human in the loop" se reencuadra a
+> **"asistencia algorítmica determinista, no IA; el juicio humano no se automatiza"**.
+>
 > ✅ **Reconciliado con el 2º giro (2026-06-15):** este PRD incorpora los ADR
 > [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md)
 > (breaking change). En síntesis: la persistencia por defecto es el **`DuckDBBackend` del `Corpus`**
@@ -76,17 +87,18 @@ consciente**, **asista el forrajeo** usando la estructura bibliométrica como *i
 y conserve una **biblioteca viva reproducible**.
 
 La contribución (y la tesis del paper, [`Notas/05`](Notas/05-ciclo-investigacion-humano.md) §5)
-es **re-instrumentar el ciclo humano clásico** insertando IA solo en los puntos donde la
-estructura bibliométrica funciona como *information scent*, **sin desplazar el juicio humano**.
+es **re-instrumentar el ciclo humano clásico** con un método donde la **estructura bibliométrica
+funciona como *information scent*** (forrajeo asistido, **determinista y reproducible, sin IA
+generativa**), **sin desplazar el juicio humano**.
 Mapeo del ciclo de 9 pasos (05 §3–4) sobre la V1:
 
 | Paso del ciclo | En la V1 |
 |---|---|
 | **0** · Idea / pregunta difusa | **Humano** — no se automatiza |
-| **1–3** · Semillas → chaining/forrajeo → browsing/diferenciar | **Núcleo de V1** (inserción de IA nº1: bibliometría = *information scent*) |
+| **1–3** · Semillas → chaining/forrajeo → browsing/diferenciar | **Núcleo de V1** (asistencia algorítmica nº1: bibliometría = *information scent*, **determinista, sin IA**) |
 | **4** · La query y la idea **mutan** | **Humano**; la herramienta lo soporta (re-sembrar, ecuaciones que evolucionan) |
 | **5** · Organizar en evidencia | **Parcial** — las redes/métricas son la organización estructural; la matriz concepto×paper (Webster & Watson) no está en V1 |
-| **6** · Sensemaking / tensiones | **v2** (máquina de tensiones, inserción de IA nº2) |
+| **6** · Sensemaking / tensiones | **Humano**, asistido por las redes (comunidades/centralidad/acoplamiento). La "máquina de tensiones" asistida por IA se **retiró** del producto (ADR 0008/0022), no es v2 |
 | **7** · Curar la biblioteca | **V1** — biblioteca viva en DuckDB (berry growing); el *juicio* de qué curar es humano |
 | **8** · Monitoreo / alertas de lo nuevo | **Futuro** (encaja sobre la biblioteca viva) |
 
@@ -155,9 +167,12 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   traducción**, ambas **registradas** con la corrida.
 - **Chaining asistido** backward/forward sobre OpenAlex; **profundidad 1 por defecto**, opt-in a
   2, con **preview de crecimiento** ("esta expansión sumaría ~N papers") y **tope** configurable.
-- **Ranking por estructura** (acoplamiento/co-citación, centralidad) de los candidatos.
-- **Paso opcional de IA** que **explica por qué** un candidato es relevante / a qué conversación
-  pertenece — **sin decidir por el humano**.
+- **Ranking por estructura** (acoplamiento/co-citación, centralidad) de los candidatos —
+  *information scent* **bibliométrico determinista, sin IA** (ADR
+  [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)/[0022](decisiones/0022-producto-sin-ia-generativa.md)).
+- *(RETIRADO, ADR 0022:)* el "paso opcional de IA que explica por qué un candidato es relevante"
+  (`explain_candidate`/`[llm]`) **se elimina** del producto. El "porqué" de un candidato lo explica la
+  **estructura visible** (con qué del corpus se acopla/co-cita), no un LLM.
 - **Ejercicio bibliotecario**: dedup/normalización de autores/instituciones apoyada en IDs de
   OpenAlex (DOI/ORCID/ROR); **normalización de keywords vía thesaurus multilingüe** (en/es/pt,
   curado y auditable, formato JSON portable); **filtros de inclusión/exclusión** (año, tipo,
@@ -183,18 +198,24 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 
 ### 5.2 Fuera de alcance / futuro (marcado explícito, NO en V1)
 
-- **Máquina de tensiones** (intención de cita: apoya / refuta / escuelas en conflicto) → **v2**.
-  Es el candidato a *moat* ([`Notas/04`](Notas/04-direccion-ia-in-the-loop.md) §5), **deferido a
-  propósito** para que la V1 sea un wedge entregable (inserción de IA nº1: forrajeo).
+- **Máquina de tensiones** (intención de cita asistida por IA: apoya / refuta / escuelas en
+  conflicto) → **RETIRADA del producto** (ADR
+  [0022](decisiones/0022-producto-sin-ia-generativa.md), 2026-06-15): **no se difiere a v2, se
+  borra**. El producto no usa IA generativa; el sensemaking de tensiones lo hace el **humano leyendo
+  las redes** (comunidades/centralidad/acoplamiento). Era el candidato a *moat*
+  ([`Notas/04`](Notas/04-direccion-ia-in-the-loop.md) §5); el diferenciador pasa a ser la **biblioteca
+  viva curada + estructura bibliométrica de primera clase + flujo abierto**, no una capa de IA.
 - **Costura Zotero** (biblioteca viva externa) → **V1.1**, extra opt-in `[zotero]`. El **corazón
   de la persistencia en V1.0 es DuckDB nativo**, no Zotero.
 - **Monitoreo / alertas de literatura nueva** (paso 8 del ciclo, estilo Litmaps) → futuro;
   encaja sobre la biblioteca viva, pero no en V1.
 - **Matriz concepto×paper** (Webster & Watson, paso 5) → futuro; en V1 la organización es vía
   redes/métricas.
-- **Fallback fuzzy/semántico del thesaurus** (embeddings o LLM barato para keywords que no
-  matchean el thesaurus curado) → futuro (v0.2). En V1 el thesaurus es **curado y determinista**
-  (decisión abierta exhaustivo-vs-cobertura+fuzzy, ver ADR pendiente en §11).
+- **Fallback fuzzy/semántico del thesaurus por LLM/embeddings** → **RETIRADO** (ADR
+  [0022](decisiones/0022-producto-sin-ia-generativa.md)/[0011](decisiones/0011-thesaurus-multilingue.md)
+  enmendado): el thesaurus es **curado y determinista**; lo que no matchea queda fuera, sin inventar
+  conceptos con un modelo. El **dedup fuzzy determinista** (`rapidfuzz`, extra `[dedup]`, Hito 7) sí
+  queda — no es semántico ni LLM.
 - **Resolución de `references_doi` a DOI canónico** (OpenAlex las entrega como URLs internas) y
   fetch de **citantes-con-citas** para co-citación → trabajo del `Enricher`, fuera del primer
   flujo de V1.
@@ -214,9 +235,12 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 ## 6. Principios de producto
 
 1. **Fácil PERO consciente.** La ecuación es ciudadana de primera clase, explícita y registrada.
-2. **IA in the loop, NOT human in the loop.** La IA entra en **1–2 puntos** (forrajeo en V1;
-   tensiones en v2); el **juicio humano** (formular la idea, dejarla mutar, decidir qué curar)
-   no se automatiza.
+2. **Asistencia algorítmica determinista, NO IA en el producto** (ADR
+   [0022](decisiones/0022-producto-sin-ia-generativa.md)). El producto **no usa IA generativa**: la
+   única asistencia es el **scent bibliométrico** del forrajeo (acoplamiento/co-citación/centralidad,
+   determinista, reproducible). El **juicio humano** (formular la idea, dejarla mutar, decidir qué
+   curar, leer las tensiones) **no se automatiza**. "AI-in-the-loop" se refiere **solo** al
+   *desarrollo* asistido por IA (ver [`AI_DISCLOSURE.md`](../AI_DISCLOSURE.md)).
 3. **Núcleo puro, costuras opcionales.** La lógica bibliométrica no depende de servidores ni red.
 4. **Configuración inyectada, nunca embebida.** Ningún secreto en el código, sin efectos de
    import (lecciones 1 y 6 de v0).
@@ -246,7 +270,7 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   (berrypicking: la idea muta y vuelvo a sembrar) y que la **biblioteca viva acumule** a través
   de esas versiones, para que el lazo del ciclo sea de primera clase y no una corrida tirada.
 
-### Épica B — Forrajear: chaining asistido (inserción de IA nº1)
+### Épica B — Forrajear: chaining asistido por estructura bibliométrica (sin IA)
 - **B1** · Como investigador, quiero **backward chaining** (las referencias de mis semillas) y
   **forward chaining** (lo que las cita) automáticos sobre OpenAlex, para no hacer snowballing a
   mano (Wohlin).
@@ -254,10 +278,12 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   opt-in a 2) y ver un **preview de cuánto crece** el corpus antes de traer, para no hacerlo
   explotar.
 - **B3** · Como investigador, quiero que los candidatos vengan **rankeados por estructura
-  bibliométrica** (*information scent*: acoplamiento/co-citación, centralidad), para revisar
-  primero lo más relevante.
-- **B4** · Como investigador, quiero un paso **opcional** de IA que me **explique por qué** un
-  candidato es relevante, para decidir más rápido — **sin que decida por mí**.
+  bibliométrica** (*information scent*: acoplamiento/co-citación, centralidad — **determinista, sin
+  IA**), para revisar primero lo más relevante.
+- ~~**B4** · paso opcional de IA que explique por qué un candidato es relevante~~ → **RETIRADA**
+  (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)): el producto no usa IA generativa. El
+  "porqué" lo da la **estructura visible** (con qué del corpus se acopla/co-cita el candidato), no un
+  LLM. `explain_candidate`/`[llm]` se eliminan.
 
 ### Épica C — Ejercicio bibliotecario y biblioteca viva (curar y conservar)
 - **C1** · Como investigador, quiero **dedup y normalización** de autores/instituciones apoyada
@@ -265,7 +291,8 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 - **C2** · Como investigador, quiero **normalizar mis keywords con un thesaurus multilingüe**
   (en/es/pt) curado y auditable, para que conceptos equivalentes en distintos idiomas colapsen en
   la red de co-ocurrencia (p. ej. *intercambio ecológico desigual* ≡ *unequal exchange*) y no
-  queden dispersos. *(Fallback fuzzy/semántico → v0.2.)*
+  queden dispersos. *(Sin fallback semántico/LLM: el thesaurus es determinista — ADR 0022/0011. El
+  dedup fuzzy determinista de keywords fuera del thesaurus es el Hito 7, `[dedup]`.)*
 - **C3** · Como investigador, quiero aplicar **criterios de inclusión/exclusión** (año, tipo,
   idioma, mínimo de citas) y ver el **conteo en cada filtro**, para curar con trazabilidad
   (estilo flujo PRISMA).
@@ -316,8 +343,9 @@ precisada por el ADR [0015](decisiones/0015-corpus-tabular-backend.md):
 - **Zotero** queda como **costura externa opt-in en V1.1**, no como la persistencia de 1.0.
 
 Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.2), `API.md` (§1, §4) y
-`ROADMAP.md` (Hitos 1.5/3). El estado de construcción (Hitos 0–6 + 1.5 terminados; v0.2 con
-capacidades completas) vive en el `ROADMAP.md`.
+`ROADMAP.md` (Hitos 1.5/3). El estado de construcción (Hitos 0–6 + 1.5 terminados; v0.2 cubre el
+**flujo**, con la **tanda de remediación R1–R5 pendiente** antes de los Hitos 7–11) vive en el
+`ROADMAP.md`.
 
 ## 9. Criterios de "V1 hecha"
 
@@ -349,17 +377,24 @@ capacidades completas) vive en el `ROADMAP.md`.
 
 ## 11. Próximos pasos
 
+> ⚠️ **Corrección 2026-06-15:** el punto 1 es **planning histórico ya saldado** (los ADR 0007–0021
+> están escritos). Donde dice "tensiones a v2", leer **"tensiones RETIRADAS del producto"** (ADR
+> 0022); el thesaurus es **determinista sin fallback fuzzy/LLM** (ADR 0011 enmendado). El próximo
+> trabajo real es la **tanda de remediación R1–R5** del [`ROADMAP.md`](ROADMAP.md).
+
 1. **Nuevos ADRs** (architect), además del [0007](decisiones/0007-openalex-backbone.md) ya
-   redactado: wedge = forrajeo (tensiones a v2); **biblioteca viva en DuckDB** (supersede la
-   premisa de 0003 y 0006); agente-native como columna; **thesaurus multilingüe** (T6/T10 del
-   sandbox: exhaustivo vs cobertura+fuzzy, formato JSON portable).
+   redactado: wedge = forrajeo (~~tensiones a v2~~ → **retiradas**, ADR 0022); **biblioteca viva en
+   DuckDB** (supersede la premisa de 0003 y 0006); agente-native como columna; **thesaurus
+   multilingüe** (T6/T10 del sandbox; formato JSON portable, **determinista sin fallback LLM**).
 2. ✅ `ARCHITECTURE.md`, `API.md` y `ROADMAP.md` **reconciliados** con este PRD (§8) y con los
    ADR 0007–0011, y luego con el **2º giro** (ADR
    [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md)).
 3. ✅ Implementación por hitos en curso (coder): **Hitos 0–6 + 1.5 terminados** (núcleo del corpus
    stateful sobre `TabularBackend`, proyectores/analizadores/export, biblioteca viva en DuckDB,
    fuentes OpenAlex/BibTeX, forrajeo + `Preprocessor` + filtros PRISMA, y el **CLI agente-native
-   `b2g`** — 11 subcomandos, ADR [0021](decisiones/0021-cli-agente-native-contrato.md)). Con ello
-   **v0.2 alcanza capacidades completas** (criterio "V1 hecha" del §9 a nivel de capacidades).
-   Pendiente para v0.3+ → v1.0: Hitos 7–11 (dedup fuzzy, `Enricher` co-citación, `NetworkSpec` YAML,
-   viz, Zotero/Neo4j). Estado vivo en el [`ROADMAP.md`](ROADMAP.md).
+   `b2g`** — 12 subcomandos, ADR [0021](decisiones/0021-cli-agente-native-contrato.md)). Con ello
+   v0.2 alcanza las capacidades del **flujo** `seed → … → export`. **El red-team de la
+   [Nota 06](Notas/06-critica-as-built-v0.2.md) corrige el claim "capacidades completas":** falta la
+   **tanda de remediación R1–R5** (modelo sin IA, identidad-vs-procedencia reproducible, FSM cíclico,
+   scent bibliométrico, robustez) **antes** de los Hitos 7–11 (dedup fuzzy, `Enricher` co-citación,
+   `NetworkSpec` YAML, viz, Zotero/Neo4j). Estado vivo en el [`ROADMAP.md`](ROADMAP.md).

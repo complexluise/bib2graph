@@ -1,27 +1,65 @@
-"""foraging.scent — cómputo del *information scent* (funciones puras).
+"""foraging.scent — cómputo del *information scent* bibliométrico (funciones puras).
 
-El scent mide la frecuencia de enlace de un candidato con el corpus
-existente, en ambas direcciones:
+El scent mide el acoplamiento bibliométrico de un candidato con el corpus
+curado, usando los **proyectores** como base (`networks/projectors.py`).
+El forrajeo (costura) depende del núcleo de proyección; el núcleo NUNCA
+depende de la costura (ADR 0020, enmienda 2026-06-15; ADR 0022).
 
-- **Backward**: el candidato aparece en ``references_id`` de los papers
-  del corpus; su scent = nº de papers del corpus que lo listan como
-  referencia.  Excluye los ids que ya son ``id``/``openalex_id`` del corpus
-  (no son candidatos nuevos).
+## Fórmula del score (determinista, sin LLM)
 
-- **Forward**: el citante trae ``cited_by_id``; su scent = nº de papers del
-  corpus a los que cita (cuántos papers del corpus cita el candidato).
+### Backward — candidato X referenciado por papers del corpus
 
-Sin acoplamiento, sin centralidad, sin construcción de grafo (ADR 0008,
-decisión a=A).  El ranking final es descendente por scent, con desempate
-estable por id ascendente (determinista ante cualquier ``PYTHONHASHSEED``).
+    backward_score(X) = |{Pi ∈ corpus : X ∈ Pi.references_id}|
 
-Ver docs/API.md §5.
+*Interpretación bibliométrica*: cuántos papers del corpus apuntan a X.
+Equivale a la "columna" de X en la matriz de acoplamiento: si muchos
+papers del corpus citan X, es que X es un antecedente compartido del campo
+(acoplamiento hacia atrás).  Se computa mediante
+``collect_item_to_papers(corpus, Col.ID, Col.REFERENCES_ID)[X]``.
+
+### Forward — candidato Y que cita papers del corpus
+
+    corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+    forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
+
+*Interpretación bibliométrica*: cuántos corpus-papers cita Y directamente
+(fuerza de citación directa al corpus, Wohlin).  Es robusto y siempre > 0
+para cualquier citante real traído por ``fetch_citing``, sin depender de que
+los corpus-papers tengan ``references_id`` poblado (a diferencia del
+acoplamiento bibliográfico puro, que degenera a 0 cuando ``references_id``
+es rala — estado común tras un seed sin enriquecimiento).
+
+No requiere el índice inverso ``collect_item_to_papers``; se resuelve con
+intersección directa ``Y.references_id ∩ corpus_ids``.
+
+### Score combinado (dirección "both")
+
+Cuando se usan ambas direcciones, los scores se suman por candidato; un
+candidato backward puede aparecer también como forward si es a su vez
+citante.
+
+### Desempate estable
+
+Ranking descendente por score, desempate ascendente por ``id`` (garantía
+de determinismo independiente de ``PYTHONHASHSEED`` o del orden de
+iteración de dicts).
+
+### Sesgo reconocido (ADR 0020, enmienda 2026-06-15)
+
+El scent *prioriza*; no garantiza exhaustividad.  La exhaustividad la
+sostienen los filtros PRISMA y el conteo de exclusiones, no el scent.
+El efecto Mateo está presente: un candidato marginal pero relevante puede
+quedar abajo si el corpus existente aún no lo cita.
+
+Ver docs/API.md §5 y ADR 0020/0022.
 """
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
 from typing import Any
+
+from bib2graph.constants import Col
+from bib2graph.networks.projectors import collect_item_to_papers
 
 
 def compute_backward_scent(
@@ -29,44 +67,42 @@ def compute_backward_scent(
 ) -> dict[str, float]:
     """Calcula el scent backward para cada candidato potencial.
 
-    El candidato backward es un id que aparece en ``references_id`` de
-    al menos un paper del corpus, pero que NO es el ``id`` ni el
+    Un candidato backward es un id que aparece en ``references_id`` de al
+    menos un paper del corpus, pero que NO es el ``id`` ni el
     ``openalex_id`` de ningún paper ya en el corpus.
+
+    Score = ``|{Pi ∈ corpus : X ∈ Pi.references_id}|``
+    (acoplamiento hacia atrás: cuántos corpus-papers apuntan al candidato).
+
+    Computa el score mediante el primitivo
+    ``collect_item_to_papers(corpus, Col.ID, Col.REFERENCES_ID)``, que
+    construye el índice ``{ref_id → [corpus_paper_ids_que_lo_citan]}``.
 
     Args:
         corpus_rows: Lista de filas del corpus como dicts (``to_pylist()``).
 
     Returns:
-        Dict ``{candidate_id: scent}`` donde scent = nº de papers del
-        corpus que listan al candidato en ``references_id``.
+        Dict ``{candidate_id: score}`` donde score = nº de corpus-papers
+        que listan al candidato en ``references_id``.
     """
-    # ids ya presentes en el corpus (para excluir)
+    # ids ya presentes en el corpus (para excluir candidatos duplicados)
     corpus_ids: set[str] = set()
     for row in corpus_rows:
-        id_val = row.get("id")
-        openalex_id_val = row.get("openalex_id")
+        id_val = row.get(Col.ID)
+        openalex_id_val = row.get(Col.OPENALEX_ID)
         if id_val:
             corpus_ids.add(str(id_val))
         if openalex_id_val:
             corpus_ids.add(str(openalex_id_val))
 
-    # Conteo: cuántos papers del corpus listan a cada ref
-    ref_count: Counter[str] = Counter()
-    for row in corpus_rows:
-        refs = row.get("references_id")
-        if not refs or not isinstance(refs, list):
-            continue
-        # Usamos un set para no contar el mismo ref dos veces en el mismo paper
-        seen_in_paper: set[str] = set()
-        for ref in refs:
-            if ref and isinstance(ref, str) and ref not in seen_in_paper:
-                seen_in_paper.add(ref)
-                ref_count[ref] += 1
+    # Primitivo del proyector: {ref_id → [paper_ids del corpus que lo citan]}
+    # Usamos Col.ID como id_col para registrar qué corpus-paper hace la cita.
+    ref_to_papers = collect_item_to_papers(corpus_rows, Col.ID, Col.REFERENCES_ID)
 
-    # Excluir los que ya están en el corpus
+    # Score = número de corpus-papers distintos que citan el candidato
     return {
-        ref_id: float(count)
-        for ref_id, count in ref_count.items()
+        ref_id: float(len(set(papers)))
+        for ref_id, papers in ref_to_papers.items()
         if ref_id not in corpus_ids
     }
 
@@ -77,52 +113,71 @@ def compute_forward_scent(
 ) -> dict[str, float]:
     """Calcula el scent forward para cada candidato citante.
 
-    El scent de un citante = nº de papers del corpus a los que cita.
-    ``citing_rows`` son los Works de OpenAlex traídos como citantes
-    (tienen ``references_id`` con los ids que citan).
+    Un candidato forward es un paper (en ``citing_rows``) que cita papers
+    del corpus pero que aún NO es ``id``/``openalex_id`` de ningún corpus-paper.
+
+    ## Fórmula (citación directa al corpus — Wohlin)
+
+        corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+        forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
+
+    *Interpretación*: cuántos corpus-papers cita Y directamente.  Este score
+    es robusto y siempre > 0 para cualquier citante real traído por
+    ``fetch_citing`` (que, por definición, cita al menos un corpus-paper),
+    sin requerir que los corpus-papers tengan ``references_id`` poblado.
+    La medida de acoplamiento bibliográfico puro degenera a 0 cuando
+    ``references_id`` es rala (estado habitual tras un seed sin enriquecimiento);
+    la citación directa NO tiene ese problema.
+
+    Solo se emite una entrada en el resultado cuando ``forward_score(Y) > 0``
+    (i.e., Y cita al menos un corpus-paper directamente).  Todos los citantes
+    reales traídos por ``fetch_citing`` satisfacen esta condición por
+    construcción.
 
     Args:
-        corpus_rows: Filas del corpus actual (para saber qué ids están).
-        citing_rows: Filas de los citantes traídos vía fetch_citing.
+        corpus_rows: Filas del corpus actual (para construir ``corpus_ids``
+            y excluir candidatos ya presentes).
+        citing_rows: Filas de los citantes traídos vía ``fetch_citing``.
+            Deben tener ``references_id`` para que el score sea computable.
 
     Returns:
-        Dict ``{citing_id: scent}`` donde scent = nº de papers del corpus
-        que el citante lista en sus referencias.
+        Dict ``{citing_id: score}`` donde score = nº de corpus-papers
+        citados directamente por el candidato Y.
     """
-    # ids y openalex_ids del corpus
+    # corpus_ids: ids y openalex_ids del corpus
+    # — sirven para (a) excluir candidatos ya presentes y
+    #   (b) intersectar con Y.references_id para el score de citación directa.
     corpus_ids: set[str] = set()
     for row in corpus_rows:
-        id_val = row.get("id")
-        openalex_id_val = row.get("openalex_id")
+        id_val = row.get(Col.ID)
+        openalex_id_val = row.get(Col.OPENALEX_ID)
         if id_val:
             corpus_ids.add(str(id_val))
         if openalex_id_val:
             corpus_ids.add(str(openalex_id_val))
 
-    # ids ya en el corpus (para excluir al candidato si ya está)
-    citing_ids_already: set[str] = corpus_ids.copy()
-
-    scent: defaultdict[str, float] = defaultdict(float)
+    scent: dict[str, float] = {}
     for row in citing_rows:
-        citing_id = row.get("id")
+        citing_id = row.get(Col.ID)
         if not citing_id:
             continue
         citing_id_str = str(citing_id)
-        if citing_id_str in citing_ids_already:
+        if citing_id_str in corpus_ids:
             continue  # ya en el corpus, no es candidato nuevo
 
-        refs = row.get("references_id")
+        refs = row.get(Col.REFERENCES_ID)
         if not refs or not isinstance(refs, list):
             continue
 
-        # Cuántas refs de este citante son papers del corpus
-        overlap = sum(
-            1 for ref in refs if ref and isinstance(ref, str) and ref in corpus_ids
+        # Citación directa: cuántos corpus-papers aparecen en Y.references_id
+        direct = sum(
+            1 for ref in refs if ref and isinstance(ref, str) and str(ref) in corpus_ids
         )
-        if overlap > 0:
-            scent[citing_id_str] += float(overlap)
 
-    return dict(scent)
+        if direct > 0:
+            scent[citing_id_str] = float(direct)
+
+    return scent
 
 
 def rank_candidates(

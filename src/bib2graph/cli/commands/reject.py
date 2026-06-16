@@ -1,11 +1,17 @@
 """cli.commands.reject — Subcomando ``b2g reject``.
 
 Marca papers como rejected en el corpus.
-NO transiciona el LoopState.
+
+CURACIÓN TRANSVERSAL (ADR 0016 enmendado, R3): ``accept`` y ``reject`` están
+disponibles en CUALQUIER estado del lazo y NO transicionan el CycleState.
+Son lo único irreductiblemente humano (Nota 05 §4, pasos 0/4/7).  El mapa del
+lazo (``b2g status``) los muestra siempre en ``curation_available``, separado
+de ``transitions_available``.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +63,10 @@ def run_reject(
             "Verificá los ids con ``b2g inspect``."
         )
 
-    updated = corpus.reject(ids, by=by)
+    # R2: el reloj se inyecta en la frontera (ADR 0017 enmendado); el núcleo
+    # no llama datetime.now().
+    now = datetime.now(UTC)
+    updated = corpus.reject(ids, by=by, decided_at=now)
     store.persist(updated)
 
     return {
@@ -101,7 +110,8 @@ def reject_cmd(
 ) -> None:
     """Marca papers como rejected en el corpus.
 
-    No transiciona el LoopState.
+    Curación TRANSVERSAL: no transiciona el CycleState.  Disponible en
+    cualquier estado del lazo (Nota 05 §4, ADR 0016 enmendado R3).
     """
     store_path = ctx.obj["store"]
     data = run_reject(store_path, list(ids), by=by)

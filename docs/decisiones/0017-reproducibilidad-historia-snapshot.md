@@ -1,6 +1,7 @@
 # 0017 — Reproducibilidad por historia auditable + snapshot sellado, no por recómputo
 
-- **Estado:** Aceptada
+- **Estado:** Aceptada · **enmendada 2026-06-15** (identidad vs procedencia; Louvain seeded — ver
+  "Enmienda" al final)
 - **Fecha:** 2026-06-15
 - **Relacionada con:** [0007](0007-openalex-backbone.md) (OpenAlex backbone),
   [0009](0009-biblioteca-viva-duckdb.md) (biblioteca viva; snapshot = export),
@@ -58,3 +59,54 @@ en fechas distintas no son comparables.
   `snapshot()` ya sella `corpus_hash`); el **Hito 4** (`OpenAlexSource`) debe poblar
   `Manifest.openalex_version` al sembrar, y el reporte de calidad (Hito 5+, ADR 0018) debe marcar
   los snapshots sin ancla de versión.
+
+## Enmienda — 2026-06-15 (identidad vs procedencia; reloj en la frontera; Louvain seeded)
+
+> Motivada por el red-team del AS-BUILT v0.2
+> ([Nota 06](../Notas/06-critica-as-built-v0.2.md), RAÍZ 2): el **principio de este ADR es
+> correcto**, pero el **código no lo cumple** — el `corpus_hash` actual **incluye los timestamps de
+> curación**, así que dos corridas que aceptan los mismos ids producen hash distinto y el snapshot
+> **no** es reproducible bit a bit. El cuerpo del ADR (arriba) queda como historia; esta enmienda
+> precisa el contrato correcto.
+
+**Identidad (contenido) ≠ procedencia (auditoría).** Son dos ejes:
+
+1. **Identidad — el `corpus_hash` se computa SOLO sobre contenido bibliográfico**, **excluyendo**
+   `ProvenanceEvent`/timestamps. Dos corridas con el mismo contenido curado (mismos ids, mismo
+   `curation_status`) tienen el **mismo** hash, aunque hayan ocurrido en momentos distintos. La
+   identidad es del *qué*, no del *cuándo*.
+2. **Procedencia — log append-only FUERA de la identidad.** El `provenance` (ADR
+   [0013](0013-identidad-hash-merge-corpus.md) D4) sigue registrando cuándo/quién/por qué (para
+   auditar PRISMA / vom Brocke), pero **no entra al hash**. Es modelado por `ProvenanceEvent(BaseModel)`
+   (ADR [0023](0023-capa-constants-modelos-schema.md)).
+3. **El reloj se inyecta en la frontera (CLI), no en el núcleo.** `accept`/`reject` y los filtros
+   (`apply_filter`/`apply_filters`) **reciben** el instante de decisión (`decided_at`) como
+   parámetro inyectado desde la frontera, en vez de llamar `datetime.now(UTC)` adentro. Las cuatro
+   fronteras CLI que curan lo inyectan: `cli/commands/accept.py`, `reject.py` y `filter.py`
+   (este último con un único `decided_at` para todos los pasos PRISMA de la invocación).
+   **Fallback documentado (no contradicción):** cuando el caller **no** provee `decided_at`
+   (uso como **librería** sin frontera CLI), el helper `_apply_curation_to_rows`
+   (`backends/memory.py`) genera `datetime.now(UTC)` como conveniencia ergonómica, de modo que
+   `corpus.accept(ids)` sigue funcionando sin obligar a pasar un reloj. Esto **no** rompe la
+   reproducibilidad porque **el `decided_at` no entra al hash** (es procedencia, no identidad,
+   punto 1): la identidad del corpus es determinista *por construcción*, independientemente de
+   si el timestamp vino inyectado o del fallback. El contrato preciso es entonces "**el reloj se
+   inyecta en la frontera; el núcleo solo recurre a `datetime.now()` como fallback de librería,
+   fuera de la identidad**" — no "el núcleo nunca toca el reloj".
+4. **Análisis reproducible — Louvain con `random_state` derivado del content-hash.**
+   `detect_communities(method="louvain")` se siembra con un `random_state` derivado del
+   `corpus_hash` (`_louvain_seed_from_hash`, `facade.py`: `int(corpus_hash[:8], 16) % 2**31`),
+   de modo que **mismo corpus → mismas comunidades** entre corridas.
+   **`resolution` diferido a Hito 9 (NetworkSpec):** la idea original incluía exponer el parámetro
+   `resolution` de Louvain; se difiere al Hito 9, donde `NetworkSpec` gana la carga declarativa
+   (YAML) y los parámetros por algoritmo. R2 entrega la pata que importa para la reproducibilidad
+   (el `random_state` seeded); `resolution` queda `python-louvain` default hasta entonces. El
+   diferimiento es aditivo (no rompe nada construido).
+
+**Consecuencia:** el snapshot vuelve a ser **reproducible bit a bit** (cumple la promesa original) y
+la pureza de `facade.py` ("mismo corpus + mismo spec → mismo `NetworkArtifact`") deja de estar rota.
+**Implementado en Hito R2** (✅ 2026-06-16; ver ROADMAP): `backends/memory.py`
+(`compute_corpus_hash` excluye `provenance`; `_apply_curation_to_rows` recibe `decided_at` con
+fallback), `corpus.py` (`accept`/`reject` con `decided_at: datetime | None`), `filters/prisma.py`
+(`apply_filter`/`apply_filters` con `decided_at`), `cli/commands/{accept,reject,filter}.py` (inyectan
+`datetime.now(UTC)`), `networks/{facade,analyzer}.py` (Louvain seeded).

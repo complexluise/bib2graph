@@ -1,7 +1,7 @@
 """cli.commands.export — Subcomando ``b2g export``.
 
 Serializa los artefactos de build al formato pedido.
-NO transiciona el LoopState.
+NO transiciona el CycleState.
 """
 
 from __future__ import annotations
@@ -152,7 +152,7 @@ def export_cmd(
 ) -> None:
     """Serializa artefactos de build al formato pedido (GraphML o CSV).
 
-    No transiciona el LoopState.
+    No transiciona el CycleState.
     """
     store_path = ctx.obj["store"]
     data = run_export(

@@ -5,6 +5,10 @@ Ver API.md §10.
 
 Ambos métodos son estáticos y puros: mismo corpus + mismo spec → mismo
 ``NetworkArtifact``. Sin I/O, sin red, sin estado global (AGENTS.md).
+
+R2 (ADR 0017 enmendado): ``_louvain_seed_from_hash`` deriva un ``random_state``
+determinista del ``corpus_hash`` de **contenido** (excluye provenance), de modo
+que "mismo corpus + mismo spec → mismas comunidades" entre corridas.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 
+from bib2graph.constants import NetworkKind
 from bib2graph.networks.analyzer import detect_communities, network_metrics
 from bib2graph.networks.projectors import (
     AuthorCollaborationProjector,
@@ -36,16 +41,40 @@ else:
 logger = logging.getLogger(__name__)
 
 # Tipos de red disponibles en Networks.quick (D3: sin co-citación)
+# Derivado de NetworkKind — fuente única (R1, ADR 0023)
 _QUICK_KINDS: list[str] = [
-    "bibliographic_coupling",
-    "author_collab",
-    "institution_collab",
-    "keyword_cooccurrence",
+    NetworkKind.BIBLIOGRAPHIC_COUPLING,
+    NetworkKind.AUTHOR_COLLAB,
+    NetworkKind.INSTITUTION_COLLAB,
+    NetworkKind.KEYWORD_COOCCURRENCE,
 ]
+
+
+def _louvain_seed_from_hash(corpus_hash: str) -> int:
+    """Deriva un ``random_state`` determinista del ``corpus_hash`` de contenido.
+
+    R2 (ADR 0017 enmendado): siembra Louvain con un entero derivado del
+    content-hash (no del hash que incluía provenance).  Esto garantiza
+    "mismo corpus + mismo spec → mismas comunidades" entre corridas.
+
+    Algoritmo: toma los primeros 8 caracteres hex del hash (32 bits),
+    los convierte a int y los acota a [0, 2^31 - 1] (rango positivo de
+    numpy int32 que acepta ``python-louvain``).
+
+    Args:
+        corpus_hash: Hexdigest SHA-256 del contenido bibliográfico.
+
+    Returns:
+        Entero en [0, 2^31 - 1] derivado del hash.
+    """
+    return int(corpus_hash[:8], 16) % (2**31)
 
 
 def _projector_for_kind(spec: NetworkSpec) -> Projector:
     """Devuelve la instancia del proyector correspondiente al ``spec.kind``.
+
+    R5: compara con ``NetworkKind`` (fuente única, ADR 0023) en vez de
+    string-literals.
 
     Args:
         spec: Especificación de la red.
@@ -57,15 +86,15 @@ def _projector_for_kind(spec: NetworkSpec) -> Projector:
         ValueError: Si el kind no es reconocido.
     """
     kind = spec.kind
-    if kind == "bibliographic_coupling":
+    if kind == NetworkKind.BIBLIOGRAPHIC_COUPLING:
         return BibliographicCouplingProjector()
-    elif kind == "author_collab":
+    elif kind == NetworkKind.AUTHOR_COLLAB:
         return AuthorCollaborationProjector()
-    elif kind == "institution_collab":
+    elif kind == NetworkKind.INSTITUTION_COLLAB:
         return InstitutionCollaborationProjector()
-    elif kind == "keyword_cooccurrence":
+    elif kind == NetworkKind.KEYWORD_COOCCURRENCE:
         return KeywordCoOccurrenceProjector()
-    elif kind == "cocitation":
+    elif kind == NetworkKind.COCITATION:
         return CoCitationProjector()
     else:
         raise ValueError(f"Kind de red no reconocido: '{kind}'")
@@ -76,6 +105,9 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
 
     Proyecta, calcula métricas y detecta comunidades (si spec.clustering está
     configurado).
+
+    R2: Louvain se siembra con un ``random_state`` derivado del
+    ``corpus_hash`` de contenido (excluyendo provenance) para reproducibilidad.
 
     Args:
         corpus: Corpus de origen.
@@ -97,17 +129,21 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
 
     communities: dict[Any, int] | None = None
     if spec.clustering is not None and g.number_of_nodes() > 0:
+        # R5: el ``except Exception`` que enmascaraba fallos reales fue eliminado.
+        # Solo se captura ``ImportError`` (dependencia faltante → fallar fuerte,
+        # lección 7, AGENTS.md).  Cualquier otro error se propaga limpio.
+        # ``ValueError`` (método desconocido) y errores de graph también se propagan.
         try:
-            communities = detect_communities(g, method=spec.clustering)
+            # R2: derivar random_state del content-hash para Louvain reproducible
+            random_state: int | None = None
+            if spec.clustering == "louvain":
+                corpus_hash = corpus._backend.corpus_hash()
+                random_state = _louvain_seed_from_hash(corpus_hash)
+            communities = detect_communities(
+                g, method=spec.clustering, random_state=random_state
+            )
         except ImportError:
             raise  # dep faltante: fallar fuerte (lección 7, AGENTS.md)
-        except Exception as exc:
-            logger.warning(
-                "No se pudo detectar comunidades con método '%s': %s",
-                spec.clustering,
-                exc,
-            )
-            communities = None
 
     return NetworkArtifact(
         graph=g,

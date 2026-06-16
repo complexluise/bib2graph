@@ -21,8 +21,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bib2graph"
-version = "0.2.0"  # Hitos 1–6 construidos. Bump manual/local (tag v0.2.0); release-please
-                   # bumpeará automáticamente cuando se conecte CI (.github/ aún no existe).
+version = "0.3.0"  # Hitos 1–6 + remediación R1–R5 (v0.3). Bump manual/local (tag v0.3.0);
+                   # release-please bumpeará cuando se conecte CI (.github/ aún no existe).
 description = "Librería de Python para transformar corpus bibliográficos en redes bibliométricas reproducibles (co-citación, colaboración, co-ocurrencia)."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -58,7 +58,6 @@ s2 = []
 neo4j = []
 dedup = []
 viz = []
-llm = []
 bibtex = [
     "bibtexparser>=1.4.4",
 ]
@@ -188,7 +187,7 @@ exclude_lines = [
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.2.0"
+version = "0.3.0"
 version_files = [
     "pyproject.toml:version",
 ]

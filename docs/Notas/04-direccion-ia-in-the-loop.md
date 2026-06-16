@@ -6,6 +6,18 @@
 > **nuevo cluster** (asistentes de investigación con IA), que es distinto del cluster
 > bibliométrico de [`../referentes.md`](../referentes.md). No es diseño congelado: es material
 > para pensar. Fecha: 2026-06-14.
+>
+> ⚠️ **ESTADO HISTÓRICO — superado en parte por ADR
+> [0022](../decisiones/0022-producto-sin-ia-generativa.md) (2026-06-15).** Esta nota es la **base de
+> la "máquina de tensiones"** (la *Inserción 2* de IA). Tras el red-team del AS-BUILT
+> ([Nota 06](06-critica-as-built-v0.2.md)) el PO **bloqueó que el producto NO usa IA generativa**: la
+> **máquina de tensiones / sensemaking asistido por IA se ABANDONA** (no se difiere a v2: se retira
+> del producto), y la *Inserción 1* (forrajeo) se reencuadra como **asistencia bibliométrica
+> determinista, sin IA**. El sensemaking de tensiones lo hace el **humano leyendo las redes**. Se
+> conserva el contenido como **historia del proceso** (de dónde vino el giro), **no como diseño
+> vigente**. El "AI-in-the-loop" que queda es **solo el del desarrollo** (ver
+> [`../../AI_DISCLOSURE.md`](../../AI_DISCLOSURE.md)). El diseño vigente está en
+> [`../ARCHITECTURE.md`](../ARCHITECTURE.md) y los ADR 0022/0023.
 
 ## 1. El giro, en una frase
 

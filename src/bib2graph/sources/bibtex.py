@@ -24,15 +24,19 @@ Ver ``docs/API.md`` §2, ADR 0018.
 
 from __future__ import annotations
 
-import json
+import logging
+import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from bib2graph.corpus import Corpus
-from bib2graph.schemas import CORPUS_SCHEMA
+from bib2graph.constants import Col, CurationStatus
+from bib2graph.corpus import Corpus, _rows_with_ids
+from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
 
 from .base import SeedResult
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_authors(raw: str) -> list[str]:
@@ -112,39 +116,39 @@ def _entry_to_row(
         doi = d.lower() or None
 
     # Provenance
-    provenance_event = {
-        "action": "seeded",
-        "equation_id": None,
-        "chaining_hop": None,
-        "source": "bibtex",
-        "fetched_at": fetched_at,
-        "decided_by": None,
-        "decided_at": None,
-    }
+    provenance_event = ProvenanceEvent(
+        action="seeded",
+        equation_id=None,
+        chaining_hop=None,
+        source="bibtex",
+        fetched_at=fetched_at,
+        decided_by=None,
+        decided_at=None,
+    )
 
     return {
-        "openalex_id": None,
-        "doi": doi,
-        "title": (entry.get("title") or "").strip() or "",
-        "year": year,
-        "abstract": entry.get("abstract") or None,
-        "source": venue,
-        "language": None,
-        "publisher": entry.get("publisher") or None,
-        "research_areas": None,
-        "is_seed": True,
-        "curation_status": "candidate",
-        "provenance": json.dumps([provenance_event]),
-        "authors_raw": authors_raw,
-        "authors_id": None,
-        "authors_affiliations": authors_affiliations,
-        "keywords_raw": keywords_raw,
-        "keywords_id": None,
-        "institutions_raw": None,
-        "institutions_id": None,
-        "references_id": None,
-        "references_doi": None,
-        "cited_by_id": None,
+        Col.OPENALEX_ID: None,
+        Col.DOI: doi,
+        Col.TITLE: (entry.get("title") or "").strip() or "",
+        Col.YEAR: year,
+        Col.ABSTRACT: entry.get("abstract") or None,
+        Col.SOURCE: venue,
+        Col.LANGUAGE: None,
+        Col.PUBLISHER: entry.get("publisher") or None,
+        Col.RESEARCH_AREAS: None,
+        Col.IS_SEED: True,
+        Col.CURATION_STATUS: CurationStatus.CANDIDATE,
+        Col.PROVENANCE: ProvenanceEvent.dump_list([provenance_event]),
+        Col.AUTHORS_RAW: authors_raw,
+        Col.AUTHORS_ID: None,
+        Col.AUTHORS_AFFILIATIONS: authors_affiliations,
+        Col.KEYWORDS_RAW: keywords_raw,
+        Col.KEYWORDS_ID: None,
+        Col.INSTITUTIONS_RAW: None,
+        Col.INSTITUTIONS_ID: None,
+        Col.REFERENCES_ID: None,
+        Col.REFERENCES_DOI: None,
+        Col.CITED_BY_ID: None,
     }
 
 
@@ -207,23 +211,63 @@ class BibtexSource:
 
         parser = BibTexParser(common_strings=True)
         parser.customization = convert_to_unicode
-        bib_db = bibtexparser.loads(bib_text, parser=parser)
+        try:
+            bib_db = bibtexparser.loads(bib_text, parser=parser)
+        except Exception as exc:
+            # R5: archivo .bib con error de parseo → warning accionable (no no-op silencioso).
+            # bibtexparser puede emitir advertencias internas pero raramente lanza excepciones;
+            # este try/except captura errores graves del parser (p.ej. encoding inesperado).
+            raise ValueError(
+                f"Error al parsear el archivo BibTeX '{path}': {exc}. "
+                "Verificá que el archivo esté bien formado (codificación UTF-8, llaves balanceadas)."
+            ) from exc
+
+        # R5: detectar si el parser encontró errores/warnings internos y avisar.
+        # bibtexparser no lanza excepciones en entradas mal formadas; las ignora silenciosamente.
+        # Verificamos si hay entradas nulas o completamente vacías como proxy de parsing roto.
+        if not bib_db.entries:
+            warnings.warn(
+                f"El archivo BibTeX '{path}' no contiene entradas válidas o está vacío. "
+                "Si el archivo tiene entradas, puede estar mal formado.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         fetched_at = datetime.now(UTC).isoformat()
 
         import pyarrow as pa
 
-        corpus = Corpus.from_arrow(
-            pa.table(
-                {col: [] for col in CORPUS_SCHEMA.names},
-                schema=CORPUS_SCHEMA,
-            )
-        )
+        rows: list[dict[str, Any]] = []
+        skipped_no_title = 0
         for entry in bib_db.entries:
             row = _entry_to_row(entry, fetched_at=fetched_at)
             # Saltar entradas sin título (no pueden cumplir el schema)
             if not row.get("title"):
+                skipped_no_title += 1
                 continue
-            corpus = corpus.add_paper(row)
+            rows.append(row)
+
+        if skipped_no_title > 0:
+            warnings.warn(
+                f"{skipped_no_title} entrada(s) del archivo BibTeX '{path}' se omitieron "
+                "por no tener título (campo 'title' ausente o vacío).",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # R5: bulk load — construir la tabla Arrow de una vez y usar from_arrow
+        # en vez del loop add_paper/clone que era O(n²).
+        # Pre-computar ids (D1) antes de armar la tabla.
+        rows_complete = _rows_with_ids(rows) if rows else []
+        if rows_complete:
+            table = pa.Table.from_pylist(rows_complete, schema=CORPUS_SCHEMA)
+            corpus = Corpus.from_arrow(table)
+        else:
+            corpus = Corpus.from_arrow(
+                pa.table(
+                    {col: [] for col in CORPUS_SCHEMA.names},
+                    schema=CORPUS_SCHEMA,
+                )
+            )
 
         return corpus

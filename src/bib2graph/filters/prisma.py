@@ -13,16 +13,20 @@ Criterios soportados:
 - ``language`` + ``eq``/``in``/``not_in``: idioma igual / en lista / no en lista.
 - ``min_citations`` + ``gte``: ``len(cited_by_id)`` >= valor.
 
+R5: campo o operador desconocido → ``ValueError`` accionable (antes era no-op silencioso).
+
 Ver docs/API.md §convenciones (CLI ``filter``).
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
 
-from bib2graph.corpus import Corpus, FilterStep, Manifest
+from bib2graph.constants import Col, CurationStatus
+from bib2graph.corpus import Corpus, FilterStep
 
 # Campos soportados y operadores válidos por campo
 _FIELD_OPS: dict[str, set[str]] = {
@@ -63,7 +67,7 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
     value = criterion.value
 
     if field == "year":
-        year_raw = row.get("year")
+        year_raw = row.get(Col.YEAR)
         if year_raw is None:
             return False  # sin año → no pasa
         y = int(str(year_raw))
@@ -72,10 +76,14 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
             return y >= int_value
         if op == "lte":
             return y <= int_value
-        return True
+        # R5: operador no válido para este campo → error accionable.
+        raise ValueError(
+            f"Operador '{op}' no soportado para el campo 'year'. "
+            f"Operadores válidos: {_FIELD_OPS['year']}."
+        )
 
     if field == "type":
-        areas = row.get("research_areas")
+        areas = row.get(Col.RESEARCH_AREAS)
         area_list: list[str] = (
             [str(a) for a in areas] if isinstance(areas, list) else []
         )
@@ -86,10 +94,14 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
             return any(v in area_list for v in vals)
         if op == "not_in":
             return not any(v in area_list for v in vals)
-        return True
+        # R5: operador no válido para este campo → error accionable.
+        raise ValueError(
+            f"Operador '{op}' no soportado para el campo 'type'. "
+            f"Operadores válidos: {_FIELD_OPS['type']}."
+        )
 
     if field == "language":
-        lang = row.get("language")
+        lang = row.get(Col.LANGUAGE)
         lang_str = str(lang).lower() if lang is not None else ""
         vals_lang: list[str] = (
             [str(value).lower()]
@@ -102,17 +114,29 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
             return lang_str in vals_lang
         if op == "not_in":
             return lang_str not in vals_lang
-        return True
+        # R5: operador no válido para este campo → error accionable.
+        raise ValueError(
+            f"Operador '{op}' no soportado para el campo 'language'. "
+            f"Operadores válidos: {_FIELD_OPS['language']}."
+        )
 
     if field == "min_citations":
-        cited = row.get("cited_by_id")
+        cited = row.get(Col.CITED_BY_ID)
         n = len(cited) if isinstance(cited, list) else 0
         min_val = int(str(value))
         if op == "gte":
             return n >= min_val
-        return True
+        # R5: operador desconocido para el campo → error accionable.
+        raise ValueError(
+            f"Operador '{op}' no soportado para el campo 'min_citations'. "
+            f"Operadores válidos: {_FIELD_OPS.get(field, set())}."
+        )
 
-    return True  # campo desconocido: pasar sin filtrar
+    # R5: campo desconocido → error accionable (antes era no-op silencioso).
+    raise ValueError(
+        f"Campo de filtro desconocido: '{field}'. "
+        f"Campos soportados: {list(_FIELD_OPS.keys())}."
+    )
 
 
 def _count_not_rejected(corpus: Corpus) -> int:
@@ -125,11 +149,14 @@ def _count_not_rejected(corpus: Corpus) -> int:
         Número de papers no rechazados.
     """
     rows = corpus.to_arrow().to_pylist()
-    return sum(1 for r in rows if r.get("curation_status") != "rejected")
+    return sum(1 for r in rows if r.get(Col.CURATION_STATUS) != CurationStatus.REJECTED)
 
 
 def apply_filter(
-    corpus: Corpus, criterion: FilterCriterion
+    corpus: Corpus,
+    criterion: FilterCriterion,
+    *,
+    decided_at: datetime | None = None,
 ) -> tuple[Corpus, FilterStep]:
     """Aplica un criterio de filtro, marcando rejected los papers que no pasan.
 
@@ -139,9 +166,15 @@ def apply_filter(
     Los papers rechazados siguen en la tabla con ``curation_status='rejected'``
     (NUNCA se borran; flujo PRISMA).
 
+    R2 (ADR 0017 enmendado): ``decided_at`` se inyecta desde la frontera
+    (CLI) para que el núcleo no llame al reloj.  Si es ``None``, el backend
+    usa ``datetime.now(UTC)`` como conveniencia para uso como librería.
+
     Args:
         corpus: Corpus a filtrar (no muta).
         criterion: Criterio a aplicar.
+        decided_at: Instante de la decisión.  Si es ``None``, el backend
+            usa ``datetime.now(UTC)`` como fallback (ergonomía de librería).
 
     Returns:
         Tupla ``(corpus_nuevo, FilterStep)`` con los conteos PRISMA.
@@ -150,13 +183,18 @@ def apply_filter(
 
     rows = corpus.to_arrow().to_pylist()
     ids_to_reject = [
-        str(row["id"])
+        str(row[Col.ID])
         for row in rows
-        if row.get("curation_status") != "rejected" and not _passes(row, criterion)
+        if row.get(Col.CURATION_STATUS) != CurationStatus.REJECTED
+        and not _passes(row, criterion)
     ]
 
     label = f"filter:{criterion.field}{criterion.op}{criterion.value}"
-    new_corpus = corpus.reject(ids_to_reject, by=label) if ids_to_reject else corpus
+    new_corpus = (
+        corpus.reject(ids_to_reject, by=label, decided_at=decided_at)
+        if ids_to_reject
+        else corpus
+    )
 
     count_after = _count_not_rejected(new_corpus)
 
@@ -172,6 +210,8 @@ def apply_filter(
 def apply_filters(
     corpus: Corpus,
     criteria: list[FilterCriterion],
+    *,
+    decided_at: datetime | None = None,
 ) -> tuple[Corpus, list[FilterStep]]:
     """Encadena varios criterios de filtro y sella ``Manifest.filters``.
 
@@ -179,9 +219,15 @@ def apply_filters(
     resultado del anterior.  Al final, ``Manifest.filters`` se actualiza
     con todos los pasos.
 
+    R2 (ADR 0017 enmendado): ``decided_at`` se inyecta desde la frontera
+    (CLI) para que el núcleo no llame al reloj.  Si es ``None``, el backend
+    usa ``datetime.now(UTC)`` como conveniencia para uso como librería.
+
     Args:
         corpus: Corpus inicial (no muta).
         criteria: Lista de criterios a aplicar en orden.
+        decided_at: Instante de la decisión compartido por todos los pasos.
+            Si es ``None``, el backend usa ``datetime.now(UTC)`` como fallback.
 
     Returns:
         Tupla ``(corpus_final, [FilterStep, ...])`` con todos los pasos.
@@ -190,22 +236,10 @@ def apply_filters(
     current = corpus
 
     for criterion in criteria:
-        current, step = apply_filter(current, criterion)
+        current, step = apply_filter(current, criterion, decided_at=decided_at)
         steps.append(step)
 
     # Sellar el Manifest.filters con todos los pasos
-    old = current.manifest
-    new_manifest = Manifest(
-        schema_version=old.schema_version,
-        corpus_hash=old.corpus_hash,
-        lib_version=old.lib_version,
-        created_at=old.created_at,
-        openalex_version=old.openalex_version,
-        equations=old.equations,
-        chaining=old.chaining,
-        preprocessors=old.preprocessors,
-        filters=steps,
-        enrichers=old.enrichers,
-    )
+    new_manifest = current.manifest.model_copy(update={"filters": steps})
     final_corpus = current.with_manifest(new_manifest)
     return final_corpus, steps

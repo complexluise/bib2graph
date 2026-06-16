@@ -42,12 +42,13 @@
 > lanza `NotImplementedError`; `explain_candidate` (B4) es un stub gateado en `[llm]`.
 >
 > **Sincronizado con el Hito 6 (2026-06-15):** el **CLI agente-native `b2g`** está **construido**
-> (paquete `bib2graph.cli`, §convenciones): **11 subcomandos** (`seed`, `chain`, `filter`, `build`,
-> `export`, `snapshot`, `status`, `inspect`, `validate`, `accept`, `reject`), **envelope JSON común
-> versionado** (`schema="1"`), exit codes 0–5 mapeados **por tipo de error**, opción global
-> `--store` (obligatoria) y `LoopState` que transiciona automáticamente por comando (ADR
+> (paquete `bib2graph.cli`, §convenciones): **12 subcomandos** (`seed`, `chain`, `filter`, `build`,
+> `export`, `snapshot`, `status`, `inspect`, `validate`, `accept`, `reject`, **`monitor`**), **envelope
+> JSON común versionado** (`schema="1"`), exit codes 0–5 mapeados **por tipo de error**, opción global
+> `--store` (obligatoria) y `CycleState` que transiciona automáticamente por comando (ADR
 > [0021](decisiones/0021-cli-agente-native-contrato.md)). **Con el Hito 6, las capacidades de v0.2
-> (Hitos 5–6) quedan completas** (ver [`ROADMAP.md`](ROADMAP.md)).
+> (Hitos 5–6) quedan completas** (ver [`ROADMAP.md`](ROADMAP.md)). *(El 12° subcomando `monitor`
+> —AS-BUILT del cleanup pre-v0.3— cierra el paso 8 del ciclo: `MONITORED` ahora es alcanzable.)*
 
 ## Convenciones
 
@@ -66,17 +67,29 @@ subcomando lleva `--json` (envelope estable/versionado) y exit codes (`0` éxito
 datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado). **Sin estado entre
 invocaciones:** el estado vive en el archivo `.duckdb` (opción global `--store`).
 
-**Set de 11 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
-y dejaba `accept`/`reject` como "solo programático"):
+**Set de 12 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
+pre-v0.3):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
-  en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el `LoopState`:
-  `SEEDED/FORAGED/FILTERED/BUILT`, transiciones disponibles y conteos por `curation_status`),
-  `inspect`, `validate`.
+  en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
+  transiciones disponibles y conteos por `curation_status`). **AS-BUILT R3 (2026-06-16):** el ciclo
+  es el FSM cíclico `SEEDED/FORAGED/FILTERED/BUILT/MONITORED` (dominio en `bib2graph.cycle`) con
+  **`reseed`**/contador de ronda; `status` **muestra `accept`/`reject` como acción siempre-disponible**
+  (`curation_available`, curación transversal) + la **ronda** (`round`), campos aditivos que mantienen
+  `schema="1"`. `inspect`, `validate`.
 - **`accept`** / **`reject`** (decisión del PO, ADR 0021 §A): curación programática por `--ids`,
   ahora **subcomandos CLI de primera clase** (no solo API de librería), para que un agente cure la
   biblioteca viva por subprocess (historia C4). La **curación interactiva rica (`curate`) y la GUI
   siguen siendo futuro** (no en v0.2). Ver [`ROADMAP.md`](ROADMAP.md) Hito 6.
+- **`monitor`** (cleanup pre-v0.3): re-chequea OpenAlex por **citantes nuevos** del corpus (forward
+  chaining), mergea los candidatos nuevos a la biblioteca viva y **transiciona a `MONITORED`** vía
+  `apply_transition(state, "monitor", round)` (paso 8 del ciclo, Ellis). `data` =
+  `{new_candidates, total_papers, loop_state, round}`; `--email` para el polite pool; `--json` con
+  `schema="1"`. **Sin pre-check de capacidad** (a diferencia de `chain`): instancia `OpenAlexSource`
+  fijo, que **siempre** tiene `fetch_citing` (asimetría deliberada con `chain`, que acepta
+  `--direction` variable y sí pre-chequea). Errores accionables: sin corpus/estado previo →
+  `DataError` (exit 2). Con `monitor`, **`MONITORED` deja de ser inalcanzable**.
 
 **`--store` global (obligatoria).** Va en el grupo `b2g`, **antes** del subcomando:
 `b2g --store mi.duckdb seed --equation "..."`. Una investigación = un archivo `.duckdb` (ADR
@@ -87,9 +100,12 @@ y dejaba `accept`/`reject` como "solo programático"):
 `export --format graphml|csv --out-dir ...` **relee** esos artefactos y los serializa (sin
 transición).
 
-**Transiciones automáticas de `LoopState`** (ADR 0021 §F): `seed`→`SEEDED`, `chain`→`FORAGED`,
-`filter`→`FILTERED`, `build`→`BUILT`; `accept`/`reject`/`export`/`snapshot`/`status`/`inspect`/
-`validate` **no transicionan**.
+**Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`, `chain`→`FORAGED`,
+`filter`→`FILTERED`, `build`→`BUILT`, **`monitor`→`MONITORED`** (cleanup pre-v0.3);
+`accept`/`reject`/`export`/`snapshot`/`status`/`inspect`/`validate` **no transicionan**. El estado
+destino lo dicta `bib2graph.cycle.apply_transition`
+(fuente única de verdad; los comandos no hardcodean el destino). `seed` con **estado previo** se trata
+como **`reseed`** (loop-back a `SEEDED`, ronda++, acumula sobre lo curado).
 
 **Envelope JSON común y versionado** (ADR 0021 §C): en modo `--json`, cada subcomando emite **un
 objeto JSON** con `schema="1"`:
@@ -108,7 +124,11 @@ objeto JSON** con `schema="1"`:
 
 En error conocido: `ok=false`, `data={}`, `error={"code": <CODE>, "message": <accionable>}`. Los
 exit codes se mapean **por tipo de error** (ADR 0021 §D): `DataError`→2, `ImportError`/
-`AttributeError`/`NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5.
+`DependencyError`/`NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5.
+**R5:** `AttributeError` ya **no** se mapea en el decorador (un bug real no se disfraza de "capacidad
+faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` con un **pre-check
+`hasattr` en el comando** (p. ej. `chain` antes del `Forager`). Un `AttributeError` inesperado se
+propaga limpio.
 
 **Borde: el error de uso sale SIN envelope.** Si falta `--store` (u otra opción requerida), Click
 aborta el parseo **antes** de entrar al comando: se emite el mensaje de uso de Click en **stderr** y
@@ -177,6 +197,23 @@ cambia el contenedor, no el núcleo de análisis**.
 El schema exacto vive en `bib2graph.schemas`. La validación se hace en `Corpus.from_arrow()` y en
 cada `Source.seed()/load()`.
 
+> **TARGET (capa base, ADR [0023](decisiones/0023-capa-constants-modelos-schema.md), Hito R1):** los
+> nombres de columna salen de `bib2graph.constants.Col(StrEnum)` y `curation_status` de
+> `CurationStatus(StrEnum)` (fuente única; matan los string-literals dispersos). `PaperRow` (Pydantic)
+> es la **única** definición de fila y `CORPUS_SCHEMA` (Arrow) se **deriva/verifica** de ella (no
+> duplicada a mano). El evento de `provenance` es un **`ProvenanceEvent(BaseModel)`** con parseo que
+> **falla ruidoso** ante JSON corrupto. Se **mantiene** "`Paper`/`Author`/… = vistas derivadas, no
+> tipos".
+>
+> **AS-BUILT (identidad vs procedencia, ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)
+> enmendado, Hito R2 ✅ 2026-06-16):** el `corpus_hash` (D2) se computa **solo sobre contenido
+> bibliográfico**, **excluyendo** `provenance`/timestamps (la procedencia audita, no identifica;
+> `curation_status` **sí** entra, es contenido curado). Por eso dos corridas que aceptan los mismos
+> ids dan el **mismo** hash. `accept`/`reject` (y los filtros `apply_filter`/`apply_filters`) **reciben
+> el instante** (`decided_at`) inyectado desde la frontera CLI; el núcleo usa `datetime.now(UTC)` solo
+> como **fallback de librería** cuando no se inyecta `decided_at` (fuera de la identidad, no rompe la
+> reproducibilidad). *(El §1.2 abajo conserva la nota histórica del AS-BUILT v0.2 roto.)*
+
 **`provenance` es un log append-only** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md),
 D4), no un objeto único: la columna `string` guarda un JSON que es una **lista de eventos**. Cada
 evento tiene la forma:
@@ -242,9 +279,11 @@ class Corpus:
         `accepted`>`rejected`>`candidate`; `provenance` = unión de eventos únicos (log).
         Orden de filas: **primera aparición** (filas de `self` en orden, luego las nuevas de
         `other`). Ver ADR 0013 (D3)."""
-    def accept(self, ids: list[str], *, by: str = "human") -> "Corpus":
-        """Marca papers como 'accepted' y AGREGA un evento al log de provenance. Devuelve Corpus nuevo."""
-    def reject(self, ids: list[str], *, by: str = "human") -> "Corpus": ...
+    def accept(self, ids: list[str], *, by: str = "human", decided_at: datetime | None = None) -> "Corpus":
+        """Marca papers como 'accepted' y AGREGA un evento al log de provenance. Devuelve Corpus nuevo.
+        `decided_at` se inyecta desde la frontera CLI (Hito R2, ADR 0017); `None` → el backend usa
+        `datetime.now(UTC)` como fallback de librería. El `decided_at` NO entra al `corpus_hash`."""
+    def reject(self, ids: list[str], *, by: str = "human", decided_at: datetime | None = None) -> "Corpus": ...
     def materialize(self, view: Literal["author", "keyword", "institution"]) -> pa.Table: ...
     def snapshot(self, path: Path) -> "CorpusSnapshot":
         """Exporta una FOTO sellada del estado actual (parquet + manifest.json) para reportar/
@@ -261,8 +300,11 @@ class Corpus:
 
 - **`__eq__` es por `corpus_hash`, no por `pa.Table.equals`:** dos `Corpus` con el mismo contenido
   en distinto orden de filas (o de elementos de listas) son iguales. El `corpus_hash` hashea solo
-  el contenido de la tabla (incluye `curation_status` y `provenance`), nunca campos volátiles del
-  Manifest (D2).
+  el contenido de la tabla, nunca campos volátiles del Manifest (D2). **AS-BUILT (Hito R2, ADR 0017
+  enmendado, ✅ 2026-06-16):** el hash **excluye `provenance`/timestamps** (identidad = contenido
+  bibliográfico; la procedencia audita, no identifica) pero **incluye `curation_status`** (contenido
+  curado). *(Histórico v0.2 roto: incluía `provenance` con timestamps → rompía la reproducibilidad
+  bit a bit; R2 lo corrigió.)* Ver la nota AS-BUILT de §1.1.
 - **`merge` emite filas en orden determinista** (primera aparición): habilita diffs y snapshots
   reproducibles. Es idempotente: `c.merge(c) == c`.
 
@@ -315,6 +357,10 @@ class CorpusSnapshot:
 - **Obligatorios vs default** (D5): `schema_version`, `corpus_hash`, `lib_version`, `created_at`
   no tienen default; el resto sí (`equations=[]`, `chaining=None`, `preprocessors=[]`,
   `filters=[]`, `enrichers=[]`, `openalex_version=None`).
+- **R5 — `lib_version` desconocida = `"unknown"`** (cambio de comportamiento): si
+  `importlib.metadata` no resuelve la versión instalada de `bib2graph`, el fallback es **`"unknown"`**,
+  no `"0.0.0"`. Una versión inventada entraba al `Manifest` y mentía sobre la reproducibilidad; `"unknown"`
+  es honesto.
 - **`schema_version`** (D6): en Hito 1 solo se escribe y se round-tripea (sin lógica de rechazo
   por incompatibilidad; queda para un hito posterior con migraciones sobre el store vivo).
 
@@ -340,8 +386,11 @@ class TabularBackend(Protocol):
         # `id` ya calculado y fila ya validada por Corpus.add_paper. Devuelve backend nuevo.
     def merge(self, other_table: pa.Table) -> "TabularBackend": ...
         # Fusión D3: orden por primera aparición (filas de self, luego nuevas), dedup por `id`.
-    def apply_curation(self, ids: list[str], *, action: str, by: str) -> "TabularBackend": ...
+    def apply_curation(self, ids: list[str], *, action: str, by: str,
+                       decided_at: str | None = None) -> "TabularBackend": ...
         # accept/reject: AGREGA un evento al log `provenance` (action/decided_by/decided_at).
+        # `decided_at` (ISO8601 UTC) inyectado desde la frontera (Hito R2, ADR 0017);
+        # `None` → fallback `datetime.now(UTC)` (uso como librería). NO entra al corpus_hash.
     def filter_view(self, view: Literal["seeds", "candidates", "accepted"]) -> pa.Table: ...
         # Vista filtrada (is_seed / curation_status == 'candidate' | 'accepted').
     def corpus_hash(self) -> str: ...        # D2, order-independent, sobre el contenido
@@ -400,7 +449,7 @@ class SeedResult(BaseModel):
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
 | `OpenAlexSource` | **v1 (construido, Hito 4)** | **Referencia/backbone**, sobre `httpx`. Entrega mínimo + enriquecimiento: refs inline + afiliaciones per-autor + instituciones; `cited_by_id` queda **diferido** al chaining/`Enricher` (no se trae en el seed). Traducción **passthrough** —envuelve la ecuación en `title_and_abstract.search:(...)` y **reporta** los límites WoS (NEAR/comodín/tags) sin traducirlos; el traductor WoS→OpenAlex es v0.2. Flag `native=True` (query cruda). Credenciales inyectadas (arg → `OPENALEX_API_KEY` → `~/.openalex/credentials` → polite pool; ADR 0012). Cursor paging con tope `max_results=200`. Puebla `Manifest.openalex_version` (header o fecha del fetch; ADR 0017). `transport` inyectable (tests con `MockTransport`, sin red en CI). |
-| `BibtexSource` | **v1, secundaria (construido, Hito 4)** | Sembrar desde *pearls* vía `load()`. Extra **`[bibtex]`** (import perezoso de `bibtexparser`, ADR 0005); acceso defensivo (fix del bug T1: campos faltantes sin `KeyError`). Mínimo universal. `seed()` lanza `NotImplementedError` (BibTeX no siembra por ecuación). |
+| `BibtexSource` | **v1, secundaria (construido, Hito 4)** | Sembrar desde *pearls* vía `load()`. Extra **`[bibtex]`** (import perezoso de `bibtexparser`, ADR 0005); acceso defensivo (fix del bug T1: campos faltantes sin `KeyError`). Mínimo universal. `seed()` lanza `NotImplementedError` (BibTeX no siembra por ecuación). **R5:** un `.bib` con error de parseo grave → `ValueError` accionable (antes lo tragaba en silencio); un `.bib` sin entradas válidas / con entradas omitidas por falta de título → `UserWarning` (no no-op silencioso). Carga bulk con `from_arrow`. |
 | `ScieloSource` / `RedalycSource` / `LaReferenciaSource` | futuro | Fuentes regionales, mínimo universal. Declaradas, no implementadas (ADR 0018). |
 | `RisSource` / `CsvSource` | futuro | No implementados. |
 
@@ -493,37 +542,75 @@ class DuckDBStore:
 ```python
 class DuckDBBackend:
     # ... cumple TabularBackend (§1.4) ...
-    def loop_state(self) -> "LoopState | None": ...      # estado actual del lazo (None si no hubo transiciones)
-    def set_loop_state(self, state: "LoopState") -> None: ...  # registra una transición (log append-only, permisiva)
+    def loop_state(self) -> "CycleState | None": ...     # estado actual del ciclo (None si no hubo transiciones)
+    def loop_round(self) -> int: ...                     # contador de ronda (0 sin estado; 1 primera; 2+ re-sembrados)
+    def set_loop_state(self, state: "CycleState", *, cycle_round: int | None = None) -> None: ...
+                                                         # registra una transición + ronda (log append-only, permisiva)
     def query(self, sql: str) -> pa.Table: ...           # consulta SQL de SOLO lectura sobre el corpus
-
-class LoopState(StrEnum):   # ADR 0016 — vive en bib2graph.backends.duckdb
-    SEEDED = "SEEDED"; FORAGED = "FORAGED"; FILTERED = "FILTERED"; BUILT = "BUILT"
 ```
 
-`LoopState` se persiste en la tabla `loop_state_log` (append-only; estado actual = última fila);
-las transiciones son **permisivas** (ADR 0016: no se bloquea ningún salto, p. ej. re-sembrar tras
-`BUILT`). El comando `b2g status` (Hito 6) consume `loop_state()`.
+**El ciclo es un concepto de dominio puro** (`bib2graph.cycle`, **AS-BUILT R3, 2026-06-16**); el
+backend **solo lo persiste**:
+
+```python
+# bib2graph/cycle.py — dominio puro, sin DuckDB (ADR 0016 enmendado, R3)
+class CycleState(StrEnum):
+    SEEDED = "SEEDED"; FORAGED = "FORAGED"; FILTERED = "FILTERED"; BUILT = "BUILT"; MONITORED = "MONITORED"
+
+def apply_transition(state: CycleState | None, action: str, round: int) -> tuple[CycleState, int]: ...
+    # reseed → (SEEDED, round+1); seed/chain/filter/build/monitor → estado de cadena, misma ronda
+def available_transitions(state: CycleState | None) -> list[str]: ...   # transiciones de ciclo desde el estado
+CURATION_ACTIONS: list[str] = ["accept", "reject"]                      # transversal: siempre disponible, no transiciona
+```
+
+El estado + la **ronda** se persisten en `loop_state_log` (append-only; estado actual = última fila;
+columna `round`); las transiciones son **permisivas** (ADR 0016: no se bloquea ningún salto). `reseed`
+es de **primera clase** (loop-back a `SEEDED` + ronda++, acumula sobre lo curado); `seed.py` lo cablea
+cuando hay estado previo. **Fuente única de verdad:** `chain`/`filter`/`build` derivan su destino de
+`apply_transition`, no de un literal. **`MONITORED`** es **alcanzable** desde el cleanup pre-v0.3: el
+comando **`b2g monitor`** lo dispara (`apply_transition(state, "monitor", round)`, paso 8 del ciclo).
+El comando `b2g status` consume `loop_state()`/`loop_round()`/`available_transitions()` y expone
+`curation_available`/`round` (ver §convenciones CLI).
+
+> **Alias `LoopState` retirado (cleanup pre-v0.3):** el código usa **solo `CycleState`** (de
+> `bib2graph.cycle`). El alias transicional `LoopState = CycleState` de `backends/duckdb.py` **se
+> eliminó** (también de `stores/duckdb.py`); los call-sites migraron a `CycleState`.
 
 > **Carga perezosa (PEP 562):** `DuckDBBackend` y `DuckDBStore` se exponen vía `__getattr__` en
 > `bib2graph/__init__.py`, de modo que **`import bib2graph` NO importa `duckdb`** (el núcleo
 > permanece puro y testeable sin DuckDB). Solo `bib2graph.DuckDBBackend` / `bib2graph.DuckDBStore`
-> cargan el módulo bajo demanda. `LoopState` y `StoreLockedError` se importan desde
-> `bib2graph.backends.duckdb` (o desde `bib2graph.stores.duckdb`).
+> cargan el módulo bajo demanda. `CycleState` (y su alias `LoopState`) y `StoreLockedError` se
+> importan desde `bib2graph.backends.duckdb` (o `bib2graph.stores.duckdb`); `bib2graph.cycle`
+> (`CycleState`/`apply_transition`/`available_transitions`/`CURATION_ACTIONS`) es **núcleo puro**, sin
+> DuckDB.
 
 ---
 
-## 5. Núcleo — Forrajeo / chaining (inserción de IA nº1, v1 — construido, Hito 5)
+## 5. Núcleo — Forrajeo / chaining (asistencia algorítmica, SIN IA — construido, Hito 5 + R4)
 
-El *information scent* es **frecuencia de enlace de cita con el corpus** (ADR
-[0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)), **no** acoplamiento
-bibliográfico, co-citación ni centralidad de red. Es una **función pura** sobre conteos
-(`bib2graph.foraging.scent`), sin construir grafo:
+> **AS-BUILT R4 (2026-06-16) — ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)
+> enmendado / [0022](decisiones/0022-producto-sin-ia-generativa.md)):** el *information scent* es
+> **estructura bibliométrica determinista** que consume el primitivo público `collect_item_to_papers`
+> de los proyectores (§7), **sin LLM ni embeddings**. El forrajeo (costura) **depende del núcleo de
+> proyección** (puro), nunca al revés. El producto **no usa IA generativa**.
+> `explain_candidate`/`foraging/explain.py`/`[llm]` quedaron **eliminados**.
 
-- **Backward** (puro, local): scent = nº de papers del corpus que listan al candidato en
-  `references_id`. No toca la red (las referencias ya vienen en el corpus tras el seed).
-- **Forward** (requiere red): scent = nº de papers del corpus a los que el candidato cita. Exige
-  traer los citantes vía `source.fetch_citing(...)` (ver abajo).
+El *information scent* es **estructura bibliométrica de cita con el corpus** (ADR
+[0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md), AS-BUILT R4). Es una **función pura**
+sobre el primitivo `collect_item_to_papers` (índice `{ref → corpus-papers que lo citan}`):
+
+- **Backward** (puro, local): scent = **fuerza de co-citación con el corpus** = nº de corpus-papers
+  que listan al candidato en `references_id` (cuántos corpus-papers co-citan al candidato). No toca la
+  red (las referencias ya vienen en el corpus tras el seed).
+- **Forward** (requiere red): scent = **fuerza de citación directa al corpus** = nº de corpus-papers a
+  los que el candidato cita directamente (señal primaria, robusta: siempre > 0 para un citante real).
+  Exige traer los citantes vía `source.fetch_citing(...)` (ver abajo). El acoplamiento bibliográfico
+  queda como señal secundaria. *(El AS-BUILT inicial midió **acoplamiento puro** y degenera a 0 con
+  referencias ralas; se **corrigió a citación directa dentro de R4** — `compute_forward_scent` calcula
+  `forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|` y emite con `direct > 0`. Ver ADR
+  0020 AS-BUILT.)*
+- **Centralidad** del candidato: **diferida** (viz); el DoD "y/o" se cumple con
+  co-citación + citación-directa.
 
 El ranking es descendente por scent con **desempate por `id` ascendente** (estable ante cualquier
 `PYTHONHASHSEED`).
@@ -533,7 +620,8 @@ Direction = Literal["backward", "forward", "both"]   # bib2graph.foraging.Direct
 
 class Forager:
     """Orquesta el chaining sobre un Source, rankeando candidatos por *information scent*
-    (frecuencia de enlace de cita, ADR 0008/0020). Solo el Forager toca la red; el núcleo
+    bibliométrico (co-citación backward / citación directa forward, ADR 0008/0020/0022).
+    El scent consume el primitivo de proyectores. Solo el Forager toca la red; el núcleo
     de scent es puro."""
     def __init__(self, source: Source, *, depth: int = 1, max_candidates: int | None = None) -> None:
         """depth=1 por defecto; depth>1 lanza NotImplementedError (futuro v0.3+).
@@ -560,19 +648,25 @@ class RankedCandidates(BaseModel):
     corpus: Corpus                     # SOLO los candidatos nuevos (no mergeado con el corpus semilla)
     ranking: list[tuple[str, float]]   # (id, information_scent), desc scent / asc id
 
-def explain_candidate(corpus: Corpus, paper_id: str) -> str:
-    """Paso OPCIONAL de IA: explica por qué un candidato es relevante (historia B4). NO decide
-    por el humano. STUB gateado en el extra [llm]: la firma existe y el error es accionable, pero
-    la integración LLM es v0.2. Se importa desde bib2graph.foraging (NO se re-exporta desde la raíz)."""
+# RETIRADO (ADR 0022): `explain_candidate` y el extra `[llm]` se ELIMINAN del producto.
+# El producto no usa IA generativa. El "porqué" de un candidato lo explica la ESTRUCTURA
+# VISIBLE (con qué del corpus se acopla/co-cita), no un LLM. Ver ROADMAP Hito R4.
+# (En el AS-BUILT v0.2 existía como stub gateado en [llm]; la remediación lo borra.)
 ```
 
 **Notas de contrato** (Hito 5, ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)):
 
 - **Forward chaining requiere `source.fetch_citing(openalex_id) -> list[dict]`** (`GET
-  works?filter=cites:`). El `Forager` **exige ese método al source** y lanza `AttributeError`
-  accionable si no lo tiene; **no se amplió el Protocol `Source`** (§2) — `fetch_citing` es
-  capacidad de `OpenAlexSource`, no contrato universal. Una `Source` de solo-mínimo (ADR 0018) no
+  works?filter=cites:`). **R5:** el **comando `chain` hace un pre-check `hasattr(source,
+  "fetch_citing")`** y lanza `DependencyError` accionable (exit 3) si el source no lo soporta —el
+  forager queda agnóstico de la capa CLI/`_errors`; un `AttributeError` genuino dentro del chaining ya
+  no se disfraza de "source sin forward". **No se amplió el Protocol `Source`** (§2) — `fetch_citing`
+  es capacidad de `OpenAlexSource`, no contrato universal. Una `Source` de solo-mínimo (ADR 0018) no
   habilita forward chaining.
+- **R5 — `fetch_citing` con retry/backoff** ante 429/5xx (`_fetch_all_with_retry`: exponential
+  backoff, 3 intentos). Sin esto, un rate-limit de OpenAlex hacía fallar el forward de un corpus
+  mediano. *(El **batching por OR** queda diferido —mejora de performance—: el N+1 de requests
+  persiste, pero ahora es resiliente al rate-limit. Ver ROADMAP Hito R5.)*
 - **Candidatos backward = stubs id-only**: título placeholder `[candidate:{id}]`, `openalex_id`
   poblado, resto nulo, `is_seed=False`, `curation_status='candidate'`, `provenance` con
   `chaining_hop=1`. No contaminan las redes; son curables/enriquecibles después (gap conocido).
@@ -593,7 +687,8 @@ class Preprocessor:
     def apply_thesaurus(self, corpus: Corpus, thesaurus: dict | Path) -> Corpus:
         """Lee keywords_raw y SOBRESCRIBE keywords_id con los conceptos canónicos del thesaurus
         multilingüe CURADO (en/es/pt), dict canónico→aliases en JSON o Path a ese JSON.
-        Determinista e idempotente (ADR 0011). El fallback fuzzy/LLM es v0.2."""
+        Determinista e idempotente (ADR 0011). SIN fallback semántico/LLM (ADR 0011 enmendado /
+        0022): lo que no matchea queda fuera, sin inventar conceptos con un modelo."""
 ```
 
 **Filtros de inclusión/exclusión** (funciones puras, flujo PRISMA; ADR
@@ -625,10 +720,15 @@ def apply_filters(corpus: Corpus, criteria: list[FilterCriterion]) -> tuple[Corp
 - **`keywords_id` es post-thesaurus**: hasta que se corre `apply_thesaurus`, `keywords_id` no es
   autoritativa (puede estar cruda o vacía); los proyectores de co-ocurrencia de keywords (§7)
   deben correr **después** del thesaurus.
+- **R5 — campo/operador desconocido LANZA** (cambio de comportamiento): un `FilterCriterion` con un
+  `field` no soportado, o un `op` inválido para ese campo, ahora lanza `ValueError` accionable (lista
+  los campos/operadores válidos). **Antes era un no-op silencioso** (`return True` → el criterio no
+  filtraba nada, escondiendo el error). Esto endurece el flujo PRISMA (sin exclusiones perdidas en
+  silencio).
 - **Símbolos públicos del Hito 5** (`from bib2graph import ...`): `Forager`, `GrowthPreview`,
-  `RankedCandidates`, `Preprocessor`, `FilterCriterion`, `apply_filters`. `explain_candidate` y
-  `apply_filter` (singular) se importan desde sus sub-paquetes (`bib2graph.foraging` /
-  `bib2graph.filters`).
+  `RankedCandidates`, `Preprocessor`, `FilterCriterion`, `apply_filters`. `apply_filter` (singular)
+  se importa desde `bib2graph.filters`. *(`explain_candidate` **se elimina** en la remediación —
+  ADR 0022, Hito R4: ya no es parte de la superficie pública.)*
 
 ---
 
@@ -673,9 +773,13 @@ def network_metrics(g: nx.Graph) -> dict:
 def centrality(g: nx.Graph) -> dict:
     """Centralidad de grado e intermediación por nodo."""
 
-def detect_communities(g: nx.Graph, method: str = "louvain") -> dict:
+def detect_communities(g: nx.Graph, method: str = "louvain", *,
+                       random_state: int | None = None) -> dict:
     """method ∈ {'louvain', 'label_prop', 'greedy_modularity'}. Louvain requiere
-    `python-louvain` (DECLARADO); si falta, FALLA explícito (lección 7)."""
+    `python-louvain` (DECLARADO); si falta, FALLA explícito (lección 7).
+    `random_state` (Hito R2, ADR 0017): semilla determinista de Louvain. `facade.py` la
+    deriva del `corpus_hash` de contenido (`_louvain_seed_from_hash`) → comunidades
+    reproducibles entre corridas. `None` = Louvain sin semilla. (`resolution`: Hito 9.)"""
 
 def assortativity(g: nx.Graph, *, attribute: str | None = None,
                   by_degree: bool = True, proxy: str | None = None) -> dict:
@@ -735,13 +839,15 @@ class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
 
 ```python
 class NetworkSpec(BaseModel):
-    kind: Literal["bibliographic_coupling", "cocitation", "author_collab",
-                  "institution_collab", "keyword_cooccurrence"]
+    kind: NetworkKind        # R5: enum de constants.py (fuente única, ADR 0023);
+                             # antes era un Literal[...] duplicado (eliminado)
     min_weight: int = 1
     min_year: int | None = None
     max_year: int | None = None
     scope: Literal["full", "seeds_only"] = "full"
     clustering: Literal["louvain", "label_prop", "greedy_modularity"] | None = "louvain"
+    # Louvain ya es reproducible (random_state derivado del corpus_hash, Hito R2). El parámetro
+    # `resolution` (y demás params por algoritmo) se exponen acá en el Hito 9 (diferido de R2).
     assortativity_attribute: str | None = None     # p. ej. "region"
     layout: Literal["spring", "kamada_kawai", "circular"] | None = None
 
@@ -863,7 +969,7 @@ b2g --store biblioteca.duckdb filter --year-gte 2010 --language en --language es
 b2g --store biblioteca.duckdb accept --ids oa:abc123 --ids oa:def456 --json
 b2g --store biblioteca.duckdb build --json
 b2g --store biblioteca.duckdb export --format graphml --out-dir redes/ --json
-b2g --store biblioteca.duckdb status --json     # LoopState + conteos por curation_status
+b2g --store biblioteca.duckdb status --json     # CycleState + round + curation_available + conteos
 ```
 
 El **modo declarativo** (`b2g ... --spec redes.yaml`, `NetworkSpec` desde YAML) es del **Hito 9**

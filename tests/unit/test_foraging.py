@@ -1,13 +1,29 @@
-"""Tests TDD del Hito 5 — Forager, scent, explain_candidate.
+"""Tests TDD del Hito 5 + R4 — Forager y scent bibliométrico.
 
 Tests prescriptos:
-- Backward scent: ranking con orden conocido.
+- Backward scent: ranking con orden conocido (score = acoplamiento hacia atrás).
+- Forward scent: ranking por citación directa al corpus (fix forward-scent).
 - Preview no muta el corpus + estima correctamente.
 - max_candidates corta el ranking.
 - Candidatos marcados (is_seed=False, candidate, provenance chaining_hop=1).
 - Forward chaining con httpx MockTransport.
-- explain_candidate sin [llm] falla con ImportError accionable.
 - depth=2 lanza NotImplementedError.
+
+**R4 — cambio de scent (ADR 0020 enmienda + ADR 0022):**
+``explain_candidate`` y el extra ``[llm]`` fueron ELIMINADOS del producto.
+Los tests de ``explain_candidate`` / ``[llm]`` se RETIRAN (la capacidad ya
+no existe).  Los tests de scent que asertaban la fórmula de frecuencia de
+enlace se AJUSTAN a la nueva fórmula estructural:
+
+- Backward: score = |{Pi ∈ corpus : X ∈ Pi.references_id}| — numéricamente
+  igual al viejo conteo, pero computable vía ``collect_item_to_papers``.
+- Forward (fix forward-scent, Wohlin):
+    corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+    forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
+  (citación directa al corpus: cuántos corpus-papers cita Y explícitamente).
+  CAMBIO RESPECTO DEL AS-BUILT R4: el viejo score era acoplamiento bibliográfico
+  (corpus-papers que comparten refs con Y), que degeneraba a 0 cuando el corpus
+  tiene references_id ralas (estado común tras un seed).
 
 Marcador: ``unit`` (sin red, sin I/O real).
 """
@@ -24,7 +40,6 @@ import pytest
 
 from bib2graph.corpus import Corpus
 from bib2graph.foraging.base import GrowthPreview, RankedCandidates
-from bib2graph.foraging.explain import explain_candidate
 from bib2graph.foraging.forager import Forager
 from bib2graph.foraging.scent import (
     compute_backward_scent,
@@ -88,12 +103,20 @@ def _make_corpus(*rows: dict[str, Any]) -> Corpus:
 
 
 class TestComputeBackwardScent:
-    """Backward scent: frecuencia con que un ref aparece en el corpus."""
+    """Backward scent: acoplamiento hacia atrás.
+
+    score(X) = |{Pi ∈ corpus : X ∈ Pi.references_id}|
+
+    La fórmula numérica es la misma que el viejo conteo de frecuencia de enlace,
+    pero ahora se computa usando el primitivo ``collect_item_to_papers`` del
+    proyector (no reimplementando el Counter).
+    """
 
     def test_ranking_orden_conocido(self) -> None:
         """REF_A aparece en 3 papers, REF_B en 2, REF_C en 1.
 
-        El orden esperado es REF_A > REF_B > REF_C.
+        Score = cuántos corpus-papers listan al candidato en references_id.
+        El orden esperado es REF_A (3.0) > REF_B (2.0) > REF_C (1.0).
         """
         rows = [
             _base_row("P1", references_id=["REF_A", "REF_B", "REF_C"]),
@@ -144,34 +167,93 @@ class TestComputeBackwardScent:
 
 
 class TestComputeForwardScent:
-    """Forward scent: cuántos papers del corpus cita el candidato."""
+    """Forward scent: citación directa al corpus (fix forward-scent, Wohlin).
 
-    def test_scent_basico(self) -> None:
+    score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
+    donde corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+
+    CAMBIO RESPECTO DEL AS-BUILT R4 (ADR 0020 enmienda, fix forward-scent):
+    El viejo score era acoplamiento bibliográfico:
+      |{Pi ∈ corpus : Pi.references_id ∩ Y.references_id ≠ ∅}|
+    que degeneraba a 0 cuando el corpus tiene references_id ralas.
+    El nuevo score es citación directa al corpus: cuántos corpus-papers
+    aparecen en Y.references_id (usando id u openalex_id del corpus).
+    """
+
+    def test_citacion_directa_basica(self) -> None:
+        """Corpus sin references_id: la citación directa funciona igual.
+
+        corpus_ids = {"P1", "P2"} (ids de los papers, sin openalex_id)
+
+        Citantes:
+          CITER_A cita [P1, P2, OTHER] → 2 corpus-ids en refs → score = 2
+          CITER_B cita [P1]            → 1 corpus-id en refs  → score = 1
+          CITER_C cita [EXTERNAL]      → ningún corpus-id     → excluido
+        """
         corpus_rows = [
-            _base_row("P1", openalex_id="W1"),
-            _base_row("P2", openalex_id="W2"),
+            _base_row("P1", references_id=None),
+            _base_row("P2", references_id=None),
         ]
         citing_rows = [
-            # Este citante cita W1 y W2 del corpus
             _base_row(
                 "CITER_A",
-                openalex_id="WCITER_A",
-                references_id=["W1", "W2"],
+                references_id=["P1", "P2", "OTHER"],
                 is_seed=False,
             ),
-            # Este citante solo cita W1
             _base_row(
                 "CITER_B",
-                openalex_id="WCITER_B",
-                references_id=["W1"],
+                references_id=["P1"],
+                is_seed=False,
+            ),
+            _base_row(
+                "CITER_C",
+                references_id=["EXTERNAL"],
                 is_seed=False,
             ),
         ]
-        # El scent de CITER_A debe ser 2.0 (cita 2 papers del corpus)
-        # El scent de CITER_B debe ser 1.0
         scent = compute_forward_scent(corpus_rows, citing_rows)
-        assert scent.get("CITER_A", 0.0) == 2.0
-        assert scent.get("CITER_B", 0.0) == 1.0
+
+        # CITER_A cita P1 y P2 directamente → score = 2
+        assert scent.get("CITER_A") == 2.0
+        # CITER_B cita solo P1 → score = 1
+        assert scent.get("CITER_B") == 1.0
+        # CITER_C no cita ningún corpus-paper → excluido
+        assert "CITER_C" not in scent
+
+    def test_openalex_id_match(self) -> None:
+        """El score usa openalex_id del corpus además de id."""
+        corpus_rows = [
+            _base_row("P1", openalex_id="W_OA1", references_id=None),
+        ]
+        citing_rows = [
+            # Cita al corpus-paper por su openalex_id
+            _base_row("CITER_X", references_id=["W_OA1"], is_seed=False),
+        ]
+        scent = compute_forward_scent(corpus_rows, citing_rows)
+        assert scent.get("CITER_X") == 1.0
+
+    def test_orden_de_ranking_forward(self) -> None:
+        """Candidato que cita más corpus-papers sale primero."""
+        corpus_rows = [
+            _base_row("P1", openalex_id="W1", references_id=None),
+            _base_row("P2", openalex_id="W2", references_id=None),
+        ]
+        # CITER_X cita W1 y P2 (= dos corpus-papers) → score = 2
+        citing_rows_x = [
+            _base_row("CITER_X", references_id=["W1", "P2"], is_seed=False),
+        ]
+        # CITER_Y cita solo W1 (= un corpus-paper) → score = 1
+        citing_rows_y = [
+            _base_row("CITER_Y", references_id=["W1"], is_seed=False),
+        ]
+        all_citing = citing_rows_x + citing_rows_y
+        scent = compute_forward_scent(corpus_rows, all_citing)
+
+        ranked = rank_candidates(scent)
+        assert ranked[0][0] == "CITER_X"
+        assert ranked[0][1] == 2.0
+        assert ranked[1][0] == "CITER_Y"
+        assert ranked[1][1] == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -362,12 +444,28 @@ class TestForagerForward:
         return httpx.MockTransport(handler)
 
     def test_forward_chaining_con_mock_transport(self) -> None:
-        """Forward chaining: candidatos traídos por fetch_citing con scent correcto."""
-        # Corpus con 1 paper que tiene openalex_id
-        rows = [_base_row("P1", openalex_id="W1", references_id=None)]
+        """Forward chaining: candidatos traídos por fetch_citing con citación directa.
+
+        Fix forward-scent: el score es citación directa al corpus, no acoplamiento.
+
+        El corpus tiene P1 (openalex_id="W1") sin references_id (simulando
+        el estado tras un seed sin enriquecimiento — references_id rala).
+        El citante (W9999) cita "W1" directamente (→ _oa_id_short("https://…/W1") = "W1").
+        Con el fix: score(W9999) = 1 > 0 → entra al ranking.
+        Con el as-built (acoplamiento): score=0 porque el corpus no tiene refs → se perdía.
+        """
+        # Corpus con 1 paper, sin references_id (estado común tras un seed)
+        rows = [
+            _base_row(
+                "P1",
+                openalex_id="W1",
+                references_id=None,  # rala — así viene del seed
+            )
+        ]
         corpus = _make_corpus(*rows)
 
-        # Citante que cita W1 (su reference_id incluye W1)
+        # Citante que cita a W1 (el corpus-paper) directamente.
+        # referenced_works → _oa_id_short → "W1" → en corpus_ids → score = 1
         citing_work = {
             "id": "https://openalex.org/W9999",
             "title": "Citing Paper",
@@ -388,8 +486,10 @@ class TestForagerForward:
         ranked = forager.chain(corpus, direction="forward")
 
         assert isinstance(ranked, RankedCandidates)
-        # Debe haber al menos 1 candidato
+        # Debe haber exactamente 1 candidato (cita W1 directamente)
         assert len(ranked.ranking) >= 1
+        # El score del candidato refleja citación directa (1 corpus-paper citado)
+        assert ranked.ranking[0][1] == 1.0
         # El candidato forward tiene is_seed=False
         cand_rows = ranked.corpus.to_arrow().to_pylist()
         assert all(not r["is_seed"] for r in cand_rows)
@@ -438,11 +538,27 @@ class TestForagerDepth:
             Forager(source, depth=2)
 
 
-class TestExplainCandidate:
-    def test_sin_llm_falla_con_import_error_accionable(self) -> None:
-        """explain_candidate sin [llm] lanza ImportError con instrucciones."""
-        rows = [_base_row("P1")]
-        corpus = _make_corpus(*rows)
+# ---------------------------------------------------------------------------
+# R4 — Tests de retiro de explain_candidate (ADR 0022)
+# ---------------------------------------------------------------------------
 
-        with pytest.raises(ImportError, match="uv sync --extra llm"):
-            explain_candidate(corpus, "P1")
+
+class TestExplainCandidateRetirado:
+    """explain_candidate ya no existe en la superficie pública (R4, ADR 0022)."""
+
+    def test_import_explain_candidate_desde_foraging_falla(self) -> None:
+        """explain_candidate ya no está en bib2graph.foraging (R4, ADR 0022)."""
+        import importlib
+
+        foraging_mod = importlib.import_module("bib2graph.foraging")
+        assert not hasattr(foraging_mod, "explain_candidate"), (
+            "explain_candidate fue eliminado en R4 (ADR 0022): "
+            "no debe existir en bib2graph.foraging"
+        )
+
+    def test_modulo_explain_no_existe(self) -> None:
+        """El módulo foraging.explain fue borrado en R4."""
+        import importlib
+
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("bib2graph.foraging.explain")

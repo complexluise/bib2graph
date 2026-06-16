@@ -1,7 +1,7 @@
 """cli.commands.inspect — Subcomando ``b2g inspect``.
 
 Dump read-only del manifest y conteos. Con --id: datos de un paper.
-NO transiciona el LoopState.
+NO transiciona el CycleState.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import click
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
 from bib2graph.cli._store import open_store
+from bib2graph.constants import Col
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -50,15 +51,15 @@ def run_inspect(
         # Buscar el paper
         table = corpus.to_arrow()
         rows = table.to_pylist()
-        matching = [r for r in rows if str(r.get("id")) == paper_id]
+        matching = [r for r in rows if str(r.get(Col.ID)) == paper_id]
         if not matching:
             raise DataError(
                 f"Paper '{paper_id}' no encontrado en el corpus. "
                 "Verificá el id con ``b2g status``."
             )
         row = matching[0]
-        provenance_raw = row.get("provenance")
-        provenance = []
+        provenance_raw = row.get(Col.PROVENANCE)
+        provenance: list[object] = []
         if provenance_raw:
             try:
                 provenance = json.loads(str(provenance_raw))
@@ -67,10 +68,10 @@ def run_inspect(
 
         return {
             "paper_id": paper_id,
-            "title": row.get("title"),
-            "year": row.get("year"),
-            "curation_status": row.get("curation_status"),
-            "is_seed": row.get("is_seed"),
+            "title": row.get(Col.TITLE),
+            "year": row.get(Col.YEAR),
+            "curation_status": row.get(Col.CURATION_STATUS),
+            "is_seed": row.get(Col.IS_SEED),
             "provenance": provenance,
         }
 
@@ -157,7 +158,7 @@ def inspect_cmd(
             emit_human(f"Es semilla: {data.get('is_seed')}")
         else:
             emit_human(f"Total papers: {data.get('total_papers')}")
-            emit_human(f"LoopState: {data.get('loop_state')}")
+            emit_human(f"CycleState: {data.get('loop_state')}")
             manifest = data.get("manifest", {})
             emit_human(f"OpenAlex version: {manifest.get('openalex_version')}")
             emit_human(f"Ecuaciones: {len(manifest.get('equations', []))}")

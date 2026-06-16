@@ -25,14 +25,16 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 import pyarrow as pa
 
-from bib2graph.corpus import Corpus, EquationRef, Manifest
-from bib2graph.schemas import CORPUS_SCHEMA
+from bib2graph.constants import Col, CurationStatus
+from bib2graph.corpus import Corpus, EquationRef, _rows_with_ids
+from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
 
 from .base import SeedResult
 
@@ -62,6 +64,13 @@ _FIELDS = ",".join(
 _RE_NEAR = re.compile(r"\bNEAR/\d+\b", re.IGNORECASE)
 _RE_WILDCARD = re.compile(r"\*")
 _RE_WOS_TAG = re.compile(r"\b(TS|AB|TI|AU|SO|LA|DT|WC|SU)=", re.IGNORECASE)
+
+# R5 — retry/backoff: parámetros para reintentos ante 429/5xx en fetch_citing.
+# El seed/load no usa retry (son llamadas únicas al usuario, con cursor paging;
+# si fallan el usuario puede reintentar el comando completo).
+_RETRY_STATUS_CODES: frozenset[int] = frozenset({429, 500, 502, 503, 504})
+_RETRY_MAX_ATTEMPTS: int = 3
+_RETRY_BACKOFF_BASE: float = 1.0  # segundos; duplica por cada intento
 
 
 # ---------------------------------------------------------------------------
@@ -254,40 +263,40 @@ def _work_to_row(
     venue = loc_source.get("display_name")
 
     # --- Provenance (evento inicial) ---
-    provenance_event = {
-        "action": "fetched",
-        "equation_id": equation_id,
-        "chaining_hop": None,
-        "source": "openalex",
-        "fetched_at": fetched_at,
-        "decided_by": None,
-        "decided_at": None,
-    }
+    provenance_event = ProvenanceEvent(
+        action="fetched",
+        equation_id=equation_id,
+        chaining_hop=None,
+        source="openalex",
+        fetched_at=fetched_at,
+        decided_by=None,
+        decided_at=None,
+    )
 
     return {
         # id se calcula en Corpus.add_paper (D1)
-        "openalex_id": openalex_id,
-        "doi": doi,
-        "title": work.get("title") or work.get("display_name") or "",
-        "year": work.get("publication_year"),
-        "abstract": _reconstruct_abstract(work.get("abstract_inverted_index")),
-        "source": venue,
-        "language": work.get("language"),
-        "publisher": None,
-        "research_areas": None,
-        "is_seed": True,
-        "curation_status": "candidate",
-        "provenance": json.dumps([provenance_event]),
-        "authors_raw": authors_raw or None,
-        "authors_id": authors_id or None,
-        "authors_affiliations": authors_affiliations or None,
-        "keywords_raw": keywords_raw or None,
-        "keywords_id": keywords_id or None,
-        "institutions_raw": institutions_raw or None,
-        "institutions_id": institutions_id or None,
-        "references_id": references_id_clean or None,
-        "references_doi": None,
-        "cited_by_id": [],
+        Col.OPENALEX_ID: openalex_id,
+        Col.DOI: doi,
+        Col.TITLE: work.get("title") or work.get("display_name") or "",
+        Col.YEAR: work.get("publication_year"),
+        Col.ABSTRACT: _reconstruct_abstract(work.get("abstract_inverted_index")),
+        Col.SOURCE: venue,
+        Col.LANGUAGE: work.get("language"),
+        Col.PUBLISHER: None,
+        Col.RESEARCH_AREAS: None,
+        Col.IS_SEED: True,
+        Col.CURATION_STATUS: CurationStatus.CANDIDATE,
+        Col.PROVENANCE: ProvenanceEvent.dump_list([provenance_event]),
+        Col.AUTHORS_RAW: authors_raw or None,
+        Col.AUTHORS_ID: authors_id or None,
+        Col.AUTHORS_AFFILIATIONS: authors_affiliations or None,
+        Col.KEYWORDS_RAW: keywords_raw or None,
+        Col.KEYWORDS_ID: keywords_id or None,
+        Col.INSTITUTIONS_RAW: institutions_raw or None,
+        Col.INSTITUTIONS_ID: institutions_id or None,
+        Col.REFERENCES_ID: references_id_clean or None,
+        Col.REFERENCES_DOI: None,
+        Col.CITED_BY_ID: [],
     }
 
 
@@ -448,30 +457,33 @@ class OpenAlexSource:
 
         works, openalex_version = self._fetch_all(executed_query)
 
-        corpus = Corpus.from_arrow(
-            pa.table(
+        # R5: bulk-load — construir tabla Arrow de una vez en vez de N add_paper/clone.
+        rows = [
+            _work_to_row(work, equation_id=equation_id, fetched_at=fetched_at)
+            for work in works
+        ]
+        rows_with_ids = _rows_with_ids(rows)
+        if rows_with_ids:
+            table = pa.Table.from_pylist(rows_with_ids, schema=CORPUS_SCHEMA)
+        else:
+            table = pa.table(
                 {col: [] for col in CORPUS_SCHEMA.names},
                 schema=CORPUS_SCHEMA,
             )
-        )
-        for work in works:
-            row = _work_to_row(work, equation_id=equation_id, fetched_at=fetched_at)
-            corpus = corpus.add_paper(row)
+        corpus = Corpus.from_arrow(table)
 
         # Actualizar Manifest con openalex_version y ecuación (ADR 0017)
-        updated_manifest = Manifest(
-            schema_version=corpus.manifest.schema_version,
-            corpus_hash=corpus.manifest.corpus_hash,
-            lib_version=corpus.manifest.lib_version,
-            created_at=corpus.manifest.created_at,
-            openalex_version=openalex_version,
-            equations=[
-                EquationRef(
-                    equation_id=equation_id,
-                    query=executed_query,
-                    translation_report=translation_report,
-                )
-            ],
+        updated_manifest = corpus.manifest.model_copy(
+            update={
+                "openalex_version": openalex_version,
+                "equations": [
+                    EquationRef(
+                        equation_id=equation_id,
+                        query=executed_query,
+                        translation_report=translation_report,
+                    )
+                ],
+            }
         )
         # Sustituir el manifest en el corpus usando la API pública
         result_corpus = corpus.with_manifest(updated_manifest)
@@ -482,12 +494,54 @@ class OpenAlexSource:
             translation_report=translation_report,
         )
 
+    def _fetch_all_with_retry(
+        self, filter_str: str
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """Como ``_fetch_all`` pero con retry/backoff ante 429/5xx.
+
+        R5: el forward chaining hace N+1 requests (una por paper); sin retry
+        ante rate-limit (429) o errores transitorios de servidor (5xx), un
+        corpus mediano falla silenciosamente.  Este método implementa
+        exponential backoff con ``_RETRY_MAX_ATTEMPTS`` intentos.
+
+        No duerme en tests: el ``time.sleep`` está en el código de producción;
+        los tests usan ``MockTransport`` que puede simular 429 → 200 sin delays
+        reales (el test puede patchear ``time.sleep`` si necesita velocidad).
+
+        Args:
+            filter_str: Valor del parámetro ``filter`` de la API.
+
+        Returns:
+            Tupla ``(works, openalex_version)`` con retry/backoff.
+
+        Raises:
+            httpx.HTTPStatusError: Si se agotan los reintentos.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(_RETRY_MAX_ATTEMPTS):
+            try:
+                return self._fetch_all(filter_str)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in _RETRY_STATUS_CODES:
+                    last_exc = exc
+                    wait = _RETRY_BACKOFF_BASE * (2**attempt)
+                    time.sleep(wait)
+                else:
+                    raise  # error no retryable: propagar inmediatamente
+        # Se agotaron los reintentos
+        assert last_exc is not None
+        raise last_exc
+
     def fetch_citing(self, openalex_id: str) -> list[dict[str, Any]]:
         """Trae los works que citan al paper con ``openalex_id`` dado.
 
         Usa ``GET /works?filter=cites:{openalex_id}`` con paginación por
         cursor, reutilizando el cliente httpx y ``_work_to_row``.  Es el
         mecanismo del forward chaining (Hito 5, ADR 0008).
+
+        R5: agrega retry/backoff ante 429/5xx (``_fetch_all_with_retry``).
+        Sin esto, un corpus mediano falla en el forward chaining con un rate
+        limit de OpenAlex (Nota 06, RAÍZ 3).
 
         Calcula el ``id`` canónico (D1) de cada citante antes de devolverlo,
         de modo que los consumidores de estas filas (``Forager``,
@@ -507,22 +561,23 @@ class OpenAlexSource:
         fetched_at = datetime.now(UTC).isoformat()
         equation_id = f"chaining:forward:{openalex_id}"
 
-        works, _ = self._fetch_all(filter_str)
+        # R5: retry/backoff ante 429/5xx
+        works, _ = self._fetch_all_with_retry(filter_str)
         rows: list[dict[str, Any]] = []
         for work in works:
             row = _work_to_row(work, equation_id=equation_id, fetched_at=fetched_at)
             # Sobrescribir is_seed y provenance para forward chaining
-            row["is_seed"] = False
-            provenance_event = {
-                "action": "fetched",
-                "equation_id": None,
-                "chaining_hop": 1,
-                "source": "openalex",
-                "fetched_at": fetched_at,
-                "decided_by": None,
-                "decided_at": None,
-            }
-            row["provenance"] = json.dumps([provenance_event])
+            row[Col.IS_SEED] = False
+            provenance_event = ProvenanceEvent(
+                action="fetched",
+                equation_id=None,
+                chaining_hop=1,
+                source="openalex",
+                fetched_at=fetched_at,
+                decided_by=None,
+                decided_at=None,
+            )
+            row[Col.PROVENANCE] = ProvenanceEvent.dump_list([provenance_event])
             # Calcular id canónico (D1) para que Forager y compute_forward_scent
             # puedan identificar el candidato
             row["id"] = _compute_id(
@@ -552,13 +607,17 @@ class OpenAlexSource:
         fetched_at = datetime.now(UTC).isoformat()
         equation_id = "load"
 
-        corpus = Corpus.from_arrow(
-            pa.table(
+        # R5: bulk-load — construir tabla Arrow de una vez en vez de N add_paper/clone.
+        rows = [
+            _work_to_row(work, equation_id=equation_id, fetched_at=fetched_at)
+            for work in data
+        ]
+        rows_with_ids = _rows_with_ids(rows)
+        if rows_with_ids:
+            table = pa.Table.from_pylist(rows_with_ids, schema=CORPUS_SCHEMA)
+        else:
+            table = pa.table(
                 {col: [] for col in CORPUS_SCHEMA.names},
                 schema=CORPUS_SCHEMA,
             )
-        )
-        for work in data:
-            row = _work_to_row(work, equation_id=equation_id, fetched_at=fetched_at)
-            corpus = corpus.add_paper(row)
-        return corpus
+        return Corpus.from_arrow(table)

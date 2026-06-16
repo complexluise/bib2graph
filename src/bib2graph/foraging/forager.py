@@ -1,9 +1,18 @@
 """foraging.forager — ``Forager``: orquesta el chaining sobre un Source.
 
-El Forager rankeea candidatos por *information scent* (frecuencia de
-enlace con el corpus existente) usando funciones puras de ``scent.py``.
+El Forager rankea candidatos por *information scent* bibliométrico usando
+funciones puras de ``scent.py`` (R4, ADR 0020/0022):
+
+- **Backward**: score = nº de corpus-papers que listan al candidato en
+  ``references_id`` (acoplamiento hacia atrás).
+- **Forward** (fix forward-scent, Wohlin): score = citación directa al corpus.
+    corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+    forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
+  Robusto ante corpus con ``references_id`` ralas (estado común tras un seed
+  sin enriquecimiento); el acoplamiento bibliográfico puro degeneraba a 0.
+
 Solo él toca la red (a través del ``Source`` inyectado).  El núcleo de
-scent es puro.
+scent es puro.  ``explain_candidate`` fue **eliminado** (R4, ADR 0022).
 
 ``depth > 1`` lanza ``NotImplementedError`` claro (decisión e=A, ADR 0008).
 
@@ -15,20 +24,20 @@ Ver docs/API.md §5.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from typing import Any
 
 import pyarrow as pa
 
-from bib2graph.corpus import Corpus, Manifest
+from bib2graph.constants import Col, CurationStatus
+from bib2graph.corpus import Corpus, _rows_with_ids
 from bib2graph.foraging.base import Direction, GrowthPreview, RankedCandidates
 from bib2graph.foraging.scent import (
     compute_backward_scent,
     compute_forward_scent,
     rank_candidates,
 )
-from bib2graph.schemas import CORPUS_SCHEMA
+from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
 
 
 def _make_empty_corpus() -> Corpus:
@@ -59,47 +68,48 @@ def _build_backward_candidate_row(
     Returns:
         Dict con las columnas mínimas del schema canónico.
     """
-    provenance_event = {
-        "action": "fetched",
-        "equation_id": None,
-        "chaining_hop": 1,
-        "source": "chaining:backward",
-        "fetched_at": fetched_at,
-        "decided_by": None,
-        "decided_at": None,
-    }
+    provenance_event = ProvenanceEvent(
+        action="fetched",
+        equation_id=None,
+        chaining_hop=1,
+        source="chaining:backward",
+        fetched_at=fetched_at,
+        decided_by=None,
+        decided_at=None,
+    )
     return {
-        "openalex_id": ref_id,
-        "doi": None,
-        "title": f"[candidate:{ref_id}]",
-        "year": None,
-        "abstract": None,
-        "source": None,
-        "language": None,
-        "publisher": None,
-        "research_areas": None,
-        "is_seed": False,
-        "curation_status": "candidate",
-        "provenance": json.dumps([provenance_event]),
-        "authors_raw": None,
-        "authors_id": None,
-        "authors_affiliations": None,
-        "keywords_raw": None,
-        "keywords_id": None,
-        "institutions_raw": None,
-        "institutions_id": None,
-        "references_id": None,
-        "references_doi": None,
-        "cited_by_id": None,
+        Col.OPENALEX_ID: ref_id,
+        Col.DOI: None,
+        Col.TITLE: f"[candidate:{ref_id}]",
+        Col.YEAR: None,
+        Col.ABSTRACT: None,
+        Col.SOURCE: None,
+        Col.LANGUAGE: None,
+        Col.PUBLISHER: None,
+        Col.RESEARCH_AREAS: None,
+        Col.IS_SEED: False,
+        Col.CURATION_STATUS: CurationStatus.CANDIDATE,
+        Col.PROVENANCE: ProvenanceEvent.dump_list([provenance_event]),
+        Col.AUTHORS_RAW: None,
+        Col.AUTHORS_ID: None,
+        Col.AUTHORS_AFFILIATIONS: None,
+        Col.KEYWORDS_RAW: None,
+        Col.KEYWORDS_ID: None,
+        Col.INSTITUTIONS_RAW: None,
+        Col.INSTITUTIONS_ID: None,
+        Col.REFERENCES_ID: None,
+        Col.REFERENCES_DOI: None,
+        Col.CITED_BY_ID: None,
     }
 
 
 class Forager:
     """Orquesta el chaining sobre un Source, rankeando candidatos por scent.
 
-    El scent mide la frecuencia de enlace bibliométrica (ADR 0008, decisión
-    a=A): backward = cuántos papers del corpus listan al candidato en sus
-    referencias; forward = cuántos papers del corpus cita el candidato.
+    El scent mide el acoplamiento bibliométrico (ADR 0020/0022, R4):
+    backward = cuántos corpus-papers listan al candidato en sus referencias;
+    forward = cuántos corpus-papers cita el candidato directamente (citación
+    directa al corpus, Wohlin; robusto ante ``references_id`` ralas en el corpus).
 
     Uso::
 
@@ -246,26 +256,31 @@ class Forager:
         # Ranking estable (desc scent, asc id)
         ranking = rank_candidates(combined_scent, max_candidates=self._max_candidates)
 
-        # Construir el Corpus de candidatos en orden del ranking
-        # (los que entran tras el corte de max_candidates no se incluyen)
-        candidates_corpus = _make_empty_corpus()
-        for cand_id, _ in ranking:
-            row = candidate_rows[cand_id]
-            candidates_corpus = candidates_corpus.add_paper(row)
+        # R5: bulk-load — construir la tabla Arrow de una vez en vez de N add_paper/clone.
+        # El orden del ranking se preserva construyendo la lista en ese orden.
+        candidate_rows_ordered = [
+            candidate_rows[cand_id]
+            for cand_id, _ in ranking
+            if cand_id in candidate_rows
+        ]
+        rows_with_ids = _rows_with_ids(candidate_rows_ordered)
+        if rows_with_ids:
+            table = pa.Table.from_pylist(rows_with_ids, schema=CORPUS_SCHEMA)
+            candidates_corpus = Corpus.from_arrow(table)
+        else:
+            candidates_corpus = _make_empty_corpus()
 
         # Poblar el manifest con chaining params
         from bib2graph.corpus import ChainingParams
 
-        new_manifest = Manifest(
-            schema_version=candidates_corpus.manifest.schema_version,
-            corpus_hash=candidates_corpus.manifest.corpus_hash,
-            lib_version=candidates_corpus.manifest.lib_version,
-            created_at=candidates_corpus.manifest.created_at,
-            chaining=ChainingParams(
-                depth=self._depth,
-                max_candidates=self._max_candidates,
-                direction=direction,
-            ),
+        new_manifest = candidates_corpus.manifest.model_copy(
+            update={
+                "chaining": ChainingParams(
+                    depth=self._depth,
+                    max_candidates=self._max_candidates,
+                    direction=direction,
+                )
+            }
         )
         candidates_corpus = candidates_corpus.with_manifest(new_manifest)
 
@@ -306,7 +321,7 @@ class Forager:
 
         all_citing_rows: list[dict[str, Any]] = []
         for row in corpus_rows:
-            oa_id = row.get("openalex_id")
+            oa_id = row.get(Col.OPENALEX_ID)
             if not oa_id:
                 continue
             citing = self._source.fetch_citing(str(oa_id))

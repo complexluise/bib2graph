@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 from pydantic import BaseModel
 
+from bib2graph.constants import Col
+
 if TYPE_CHECKING:
     from bib2graph.corpus import Corpus
 
@@ -100,13 +102,26 @@ def centrality(g: _Graph) -> dict[str, dict[Any, float]]:
 # ---------------------------------------------------------------------------
 
 
-def detect_communities(g: _Graph, method: str = "louvain") -> dict[Any, int]:
+def detect_communities(
+    g: _Graph,
+    method: str = "louvain",
+    *,
+    random_state: int | None = None,
+) -> dict[Any, int]:
     """Detecta comunidades en el grafo con el método indicado.
+
+    R2 (ADR 0017 enmendado): el parámetro ``random_state`` siembra el
+    generador de Louvain de forma **determinista** cuando se provee.
+    Pasarlo derivado del ``corpus_hash`` de contenido (ver ``facade.py``)
+    garantiza "mismo corpus + mismo spec → mismas comunidades".
 
     Args:
         g: Grafo NetworkX (no dirigido).
         method: Algoritmo de detección. Uno de ``'louvain'``,
             ``'label_prop'``, ``'greedy_modularity'``.
+        random_state: Semilla entera para reproducibilidad de Louvain
+            (solo se usa cuando ``method='louvain'``).  Si es ``None``,
+            Louvain corre sin semilla (no reproducible).
 
     Returns:
         Dict nodo → id de comunidad (int).
@@ -125,7 +140,9 @@ def detect_communities(g: _Graph, method: str = "louvain") -> dict[Any, int]:
                 "detect_communities(method='louvain') requiere el paquete "
                 "'python-louvain'. Instalalo con: uv add python-louvain"
             ) from None
-        partition: dict[Any, int] = community_louvain.best_partition(g)
+        partition: dict[Any, int] = community_louvain.best_partition(
+            g, random_state=random_state
+        )
         return partition
 
     elif method == "label_prop":
@@ -262,7 +279,6 @@ def community_composition(
 
 def cocitation_quality_report(
     corpus: Corpus,
-    g: _Graph,
     *,
     thresholds: QualityThresholds | None = None,
 ) -> dict[str, object]:
@@ -272,10 +288,12 @@ def cocitation_quality_report(
     ``{criterio: {valor, umbral, pasa}}`` + ``"overall_pass": bool``.
     Sin score ponderado.
 
+    R5: param muerto ``g`` eliminado (Nota 06, catálogo de secundarios).
+    El grafo no se usaba en ningún criterio; pasarlo era un anti-patrón
+    que ARCHITECTURE §8 dice evitar.
+
     Args:
         corpus: Corpus a evaluar.
-        g: Grafo de co-citación (actualmente no se usa en los criterios; se
-            pasa por contrato para extensibilidad futura).
         thresholds: Umbrales configurables. Si None, usa ``QualityThresholds()``
             con los defaults de metodología §4.
 
@@ -293,7 +311,7 @@ def cocitation_quality_report(
     vol_pasa = total >= thresholds.min_volume
 
     # Criterio 2: fracción con DOI
-    con_doi = sum(1 for r in rows if r.get("doi"))
+    con_doi = sum(1 for r in rows if r.get(Col.DOI))
     doi_pct = con_doi / total if total > 0 else 0.0
     doi_pasa = doi_pct >= thresholds.min_doi_refs_pct
 
@@ -313,7 +331,7 @@ def cocitation_quality_report(
     # Para tests, el caller puede usar institution ids con prefijo de país.
     unique_insts: set[str] = set()
     for r in rows:
-        insts = r.get("institutions_id")
+        insts = r.get(Col.INSTITUTIONS_ID)
         if isinstance(insts, list):
             for inst in insts:
                 if inst is not None:
@@ -323,7 +341,7 @@ def cocitation_quality_report(
     # Criterio 4: autores recurrentes (aparecen en ≥2 papers)
     author_count: dict[str, int] = {}
     for r in rows:
-        authors = r.get("authors_id")
+        authors = r.get(Col.AUTHORS_ID)
         if isinstance(authors, list):
             for a in authors:
                 if a is not None:

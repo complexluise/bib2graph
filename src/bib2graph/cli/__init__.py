@@ -1,22 +1,31 @@
 """cli — CLI agente-native ``b2g`` (Hito 6).
 
-Arma el grupo Click principal, registra los 11 subcomandos y expone
+Arma el grupo Click principal, registra los 12 subcomandos y expone
 ``main()`` como entry point del paquete.
 
 Entry point en ``pyproject.toml``:
     b2g = "bib2graph.cli:main"
 
 Subcomandos:
-    seed, chain, filter, build, export, snapshot,
+    seed, chain, filter, build, monitor, export, snapshot,
     status, inspect, validate, accept, reject.
 
 Cada subcomando lleva:
   - ``--json``: salida JSON estructurada (envelope versionado, §API.md).
   - Exit codes 0-5 (ADR 0010).
   - Sin estado entre invocaciones: el estado vive en ``--store``.
+
+R5 — UTF-8 en la frontera:
+  ``main()`` fuerza ``sys.stdout``/``sys.stderr`` a UTF-8 antes de que Click
+  lea cualquier argumento.  Esto corrige la corrupción de acentos en Windows
+  (consola cp1252) cuando el envelope ``--json`` usa ``ensure_ascii=False``
+  (ADR 0010/0021 — bug verificado en Nota 06 RAÍZ 3).
 """
 
 from __future__ import annotations
+
+import contextlib
+import sys
 
 import click
 
@@ -26,11 +35,28 @@ from bib2graph.cli.commands.chain import chain_cmd
 from bib2graph.cli.commands.export import export_cmd
 from bib2graph.cli.commands.filter import filter_cmd
 from bib2graph.cli.commands.inspect import inspect_cmd
+from bib2graph.cli.commands.monitor import monitor_cmd
 from bib2graph.cli.commands.reject import reject_cmd
 from bib2graph.cli.commands.seed import seed_cmd
 from bib2graph.cli.commands.snapshot import snapshot_cmd
 from bib2graph.cli.commands.status import status_cmd
 from bib2graph.cli.commands.validate import validate_cmd
+
+
+def _force_utf8() -> None:
+    """Fuerza stdout/stderr a UTF-8 si la stream lo soporta.
+
+    Usa ``reconfigure(encoding='utf-8')`` (Python 3.7+) con guarda por si
+    la stream no es reconfigurable (p. ej. redirección a archivo binario o
+    entorno sin ``reconfigure``).  Sin esto, ``json.dumps(ensure_ascii=False)``
+    corrompe acentos en Windows cuando la consola usa cp1252.
+
+    R5 (Nota 06, RAÍZ 3): arreglo de mayor impacto/menor costo.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            with contextlib.suppress(Exception):
+                stream.reconfigure(encoding="utf-8")
 
 
 @click.group()
@@ -47,7 +73,7 @@ def b2g(ctx: click.Context, store: str) -> None:
     Transforma corpus bibliográficos en redes bibliométricas reproducibles.
     El estado de la investigación vive en --store (archivo .duckdb).
 
-    Subcomandos: seed, chain, filter, build, export, snapshot,
+    Subcomandos: seed, chain, filter, build, monitor, export, snapshot,
     status, inspect, validate, accept, reject.
 
     Ejemplo:
@@ -58,11 +84,12 @@ def b2g(ctx: click.Context, store: str) -> None:
     ctx.obj["store"] = store
 
 
-# Registrar los 11 subcomandos
+# Registrar los 12 subcomandos
 b2g.add_command(seed_cmd)
 b2g.add_command(chain_cmd)
 b2g.add_command(filter_cmd)
 b2g.add_command(build_cmd)
+b2g.add_command(monitor_cmd)
 b2g.add_command(export_cmd)
 b2g.add_command(snapshot_cmd)
 b2g.add_command(status_cmd)
@@ -75,6 +102,10 @@ b2g.add_command(reject_cmd)
 def main() -> int:
     """Entry point del CLI agente-native b2g.
 
+    R5: fuerza stdout/stderr a UTF-8 antes de cualquier salida para que el
+    envelope ``--json`` (``ensure_ascii=False``) no corrompa acentos en
+    Windows (consola cp1252).  Ver ``_force_utf8``.
+
     Invoca el grupo Click principal y devuelve el exit code.
     Los errores ya están manejados por el decorador ``@handle_errors``
     en cada subcomando.
@@ -82,6 +113,7 @@ def main() -> int:
     Returns:
         Exit code del proceso (0 éxito, 1-5 error según ADR 0010).
     """
+    _force_utf8()
     try:
         b2g(standalone_mode=False)
         return 0

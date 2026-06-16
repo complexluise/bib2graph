@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pyarrow as pa
 
-from bib2graph.corpus import Corpus, Manifest, PreprocRef
+from bib2graph.corpus import Corpus, PreprocRef
 from bib2graph.preprocessors.normalize import normalize_row
 from bib2graph.preprocessors.thesaurus import apply_thesaurus_to_rows, load_thesaurus
 from bib2graph.schemas import CORPUS_SCHEMA
@@ -54,18 +54,8 @@ class Preprocessor:
             name="normalize",
             params={"applied_at": datetime.now(UTC).isoformat()},
         )
-        old = corpus.manifest
-        new_manifest = Manifest(
-            schema_version=old.schema_version,
-            corpus_hash=old.corpus_hash,
-            lib_version=old.lib_version,
-            created_at=old.created_at,
-            openalex_version=old.openalex_version,
-            equations=old.equations,
-            chaining=old.chaining,
-            preprocessors=[*old.preprocessors, preproc_ref],
-            filters=old.filters,
-            enrichers=old.enrichers,
+        new_manifest = corpus.manifest.model_copy(
+            update={"preprocessors": [*corpus.manifest.preprocessors, preproc_ref]}
         )
         return new_corpus.with_manifest(new_manifest)
 
@@ -103,17 +93,7 @@ class Preprocessor:
             params["source"] = str(thesaurus)
 
         preproc_ref = PreprocRef(name="apply_thesaurus", params=params)
-        old = corpus.manifest
-        new_manifest = Manifest(
-            schema_version=old.schema_version,
-            corpus_hash=old.corpus_hash,
-            lib_version=old.lib_version,
-            created_at=old.created_at,
-            openalex_version=old.openalex_version,
-            equations=old.equations,
-            chaining=old.chaining,
-            preprocessors=[*old.preprocessors, preproc_ref],
-            filters=old.filters,
-            enrichers=old.enrichers,
+        new_manifest = corpus.manifest.model_copy(
+            update={"preprocessors": [*corpus.manifest.preprocessors, preproc_ref]}
         )
         return new_corpus.with_manifest(new_manifest)

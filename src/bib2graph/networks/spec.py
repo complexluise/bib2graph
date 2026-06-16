@@ -4,6 +4,10 @@ Contiene los tipos de datos centrales del módulo de redes:
   - ``NetworkSpec``: configuración declarativa de una red (hook para Hito 9).
   - ``NetworkArtifact``: resultado de proyectar + analizar un corpus.
 
+R5: ``NetworkSpec.kind`` usa ``NetworkKind`` como tipo (fuente única, ADR 0023).
+El ``Literal[...]`` duplicado fue eliminado; mypy sigue validando porque
+``NetworkKind`` es un ``StrEnum`` con los mismos valores.
+
 Ver API.md §10.
 """
 
@@ -14,6 +18,8 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import networkx as nx
 from pydantic import BaseModel
+
+from bib2graph.constants import NetworkKind
 
 if TYPE_CHECKING:
     # nx.Graph es genérico solo en los stubs de types-networkx, no en runtime.
@@ -28,8 +34,11 @@ class NetworkSpec(BaseModel):
     Hito 2: se usa como hook mínimo en ``Networks.build``/``Networks.quick``.
     La carga desde YAML y la validación avanzada se implementan en el Hito 9.
 
+    R5: ``kind`` es de tipo ``NetworkKind`` (fuente única, ADR 0023).  Ya no
+    hay un ``Literal[...]`` duplicado en ``spec.py`` y ``facade.py``.
+
     Args:
-        kind: Tipo de red a proyectar.
+        kind: Tipo de red a proyectar (``NetworkKind`` enum).
         min_weight: Peso mínimo de arista (D1). Default 1 = sin filtro.
         min_year: Filtro de año mínimo (futuro).
         max_year: Filtro de año máximo (futuro).
@@ -39,13 +48,7 @@ class NetworkSpec(BaseModel):
         layout: Algoritmo de layout para visualización (futuro).
     """
 
-    kind: Literal[
-        "bibliographic_coupling",
-        "cocitation",
-        "author_collab",
-        "institution_collab",
-        "keyword_cooccurrence",
-    ]
+    kind: NetworkKind
     min_weight: int = 1
     min_year: int | None = None
     max_year: int | None = None

@@ -55,9 +55,17 @@ que habilita dedup en `merge` y en la biblioteca viva.
 
 El hash es **insensible al orden** de filas y de elementos dentro de las columnas `list[string]`:
 se ordenan las filas por `id`, se ordenan los elementos de cada columna de lista, se serializa con
-`json.dumps(sort_keys=True)` y se aplica `sha256`. Hashea **solo el contenido de la tabla**
-(incluye `curation_status` y `provenance`), **nunca** campos volátiles del `Manifest`
-(`created_at`, `lib_version`, etc.). Es la definición autoritativa de "mismo contenido".
+`json.dumps(sort_keys=True)` y se aplica `sha256`. Hashea **solo el contenido de la tabla**,
+**nunca** campos volátiles del `Manifest` (`created_at`, `lib_version`, etc.). Es la definición
+autoritativa de "mismo contenido".
+
+> **Precisado por ADR [0017](0017-reproducibilidad-historia-snapshot.md) (enmienda 2026-06-15,
+> Hito R2 ✅ 2026-06-16):** "contenido" = **contenido bibliográfico + `curation_status`**, pero
+> **excluye `provenance`** (log de auditoría con timestamps). El texto original de este D2 incluía
+> `provenance` en el hash, lo que rompía la reproducibilidad bit a bit (dos corridas que aceptaban
+> los mismos ids daban hashes distintos por los timestamps de curación). R2 corrigió: la identidad
+> es del *qué* (contenido), no del *cuándo* (procedencia). El `provenance` sigue siendo D4 (log
+> append-only) fuera de la identidad.
 
 ### D3 — `merge` idempotente, combinación por campo
 
@@ -74,6 +82,17 @@ Dedup por `id`. Al fundir dos filas con el mismo `id`:
 El **orden de filas del resultado es determinista por primera aparición**: primero las filas de
 `self` en su orden original, luego las filas nuevas de `other` (las que no estaban en `self`) en
 el orden en que aparecen en `other`. `merge` es idempotente.
+
+> **AS-BUILT — Cleanup pre-v0.3 (2026-06-16):** en `DuckDBBackend`, el orden de primera aparición (D3)
+> ya **NO se materializa interpolando ids crudos en el SQL.** El AS-BUILT construía
+> `... WHERE id IN ('<id1>', ...) ORDER BY CASE id WHEN '<id>' THEN <pos> ... END` con f-strings sobre
+> los ids (seguro entonces porque los ids son hashes hex, pero **frágil** —SQL construido con datos—;
+> footgun catalogado en la Nota 06, `backends/duckdb.py:417,423`). El cleanup lo reemplazó por: **leer
+> todas las filas** (`SELECT * FROM corpus`), **ordenarlas en Python** por el orden de aparición
+> precomputado (`existing_ids + new_ids_in_order`) y **reinsertar**. Mismo orden determinista D3
+> (regresión verde), **sin** SQL parametrizado por ids. La **alternativa de un CTE con `VALUES`** (pasar
+> el orden como tabla de parámetros) quedó **descartada**: el ordenamiento en Python es más simple para
+> el tamaño de corpus objetivo y no acopla el orden a un dialecto SQL.
 
 ### D4 — `provenance` como log append-only
 

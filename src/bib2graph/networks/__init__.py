@@ -27,6 +27,7 @@ from bib2graph.networks.projectors import (
     CoCitationProjector,
     InstitutionCollaborationProjector,
     KeywordCoOccurrenceProjector,
+    collect_item_to_papers,
 )
 from bib2graph.networks.spec import NetworkArtifact, NetworkSpec
 
@@ -44,6 +45,7 @@ __all__ = [
     "assortativity",
     "centrality",
     "cocitation_quality_report",
+    "collect_item_to_papers",
     "community_composition",
     "detect_communities",
     "network_metrics",
