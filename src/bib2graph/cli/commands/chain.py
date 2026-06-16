@@ -1,7 +1,7 @@
 """cli.commands.chain — Subcomando ``b2g chain``.
 
 Expande el corpus con candidatos rankeados por information scent.
-Transiciona el LoopState a FORAGED tras persistir con éxito.
+Transiciona el CycleState a FORAGED tras persistir con éxito.
 """
 
 from __future__ import annotations

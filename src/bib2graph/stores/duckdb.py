@@ -17,12 +17,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bib2graph.backends.duckdb import DuckDBBackend, LoopState, StoreLockedError
+from bib2graph.backends.duckdb import DuckDBBackend, StoreLockedError
 from bib2graph.corpus import Corpus
 from bib2graph.cycle import CycleState
 from bib2graph.schemas import CORPUS_SCHEMA
 
-__all__ = ["CycleState", "DuckDBStore", "LoopState", "StoreLockedError"]
+__all__ = ["CycleState", "DuckDBStore", "StoreLockedError"]
 
 
 class DuckDBStore:
@@ -77,7 +77,7 @@ class DuckDBStore:
         return Corpus.from_arrow(table, backend=self._backend)
 
     # ------------------------------------------------------------------
-    # Acceso al backend subyacente (LoopState, query SQL)
+    # Acceso al backend subyacente (CycleState, query SQL)
     # ------------------------------------------------------------------
 
     @property

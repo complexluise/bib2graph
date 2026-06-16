@@ -179,6 +179,7 @@ _AVAILABLE_TRANSITIONS: dict[str | None, list[str]] = {
         "reseed",
     ],
     CycleState.BUILT: [
+        "monitor",
         "export",
         "build",
         "filter",
@@ -189,6 +190,7 @@ _AVAILABLE_TRANSITIONS: dict[str | None, list[str]] = {
         "reseed",
     ],
     CycleState.MONITORED: [
+        "monitor",
         "reseed",
         "build",
         "filter",

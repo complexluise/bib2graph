@@ -43,14 +43,6 @@ from bib2graph.cycle import CycleState
 from bib2graph.schemas import CORPUS_SCHEMA, validate_table
 
 # ---------------------------------------------------------------------------
-# Re-export CycleState bajo el alias LoopState para compatibilidad
-# con código que ya importa LoopState desde este módulo.
-# R3: el dominio vive en cycle.py; backends.duckdb solo persiste.
-# ---------------------------------------------------------------------------
-
-LoopState = CycleState  # alias de compatibilidad (R3)
-
-# ---------------------------------------------------------------------------
 # Error de bloqueo de archivo (ADR 0019)
 # ---------------------------------------------------------------------------
 
@@ -218,7 +210,7 @@ class DuckDBBackend:
     Internamente cada instancia tiene su propia conexión; la semántica de
     valor se mantiene porque cada operación crea una nueva instancia.
 
-    ``LoopState`` (ADR 0016): extensión propia con ``loop_state()`` y
+    ``CycleState`` (ADR 0016): extensión propia con ``loop_state()`` y
     ``set_loop_state()``.
 
     Args:
@@ -411,22 +403,20 @@ class DuckDBBackend:
         ordered_ids = existing_ids + new_ids_in_order
 
         if ordered_ids:
-            placeholders = ", ".join(f"'{i}'" for i in ordered_ids)
-            # Usamos un CASE WHEN para forzar el orden
-            order_sql = (
-                f"SELECT * FROM corpus WHERE id IN ({placeholders}) "
-                f"ORDER BY CASE id "
-                + " ".join(
-                    f"WHEN '{id_}' THEN {pos}" for pos, id_ in enumerate(ordered_ids)
-                )
-                + " END"
-            )
-            ordered_table: pa.Table = (
-                new_backend._con.execute(order_sql).to_arrow_table().cast(CORPUS_SCHEMA)
-            )
+            # Leer todas las filas, ordenar en Python por orden de aparición
+            # (seeds primero, luego nuevos en el orden de other_table) y reinsertar.
+            all_rows_by_id: dict[str, dict[str, object]] = {
+                str(r["id"]): r
+                for r in new_backend._con.execute("SELECT * FROM corpus")
+                .to_arrow_table()
+                .cast(CORPUS_SCHEMA)
+                .to_pylist()
+            }
+            rows_ordered = [
+                all_rows_by_id[id_] for id_ in ordered_ids if id_ in all_rows_by_id
+            ]
             # Re-insertar en el orden correcto: limpiar y reinsertar
             new_backend._con.execute("DELETE FROM corpus")
-            rows_ordered = ordered_table.to_pylist()
             for row in rows_ordered:
                 params = _row_to_params(row)
                 new_backend._con.execute(_UPSERT_SQL, params)
@@ -534,7 +524,7 @@ class DuckDBBackend:
         return self.corpus_hash() == other.corpus_hash()
 
     # ------------------------------------------------------------------
-    # Extensiones propias: CycleState / LoopState (ADR 0016, R3)
+    # Extensiones propias: CycleState (ADR 0016, R3)
     # ------------------------------------------------------------------
 
     def loop_state(self) -> CycleState | None:

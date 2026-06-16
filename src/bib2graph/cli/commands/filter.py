@@ -1,7 +1,7 @@
 """cli.commands.filter — Subcomando ``b2g filter``.
 
 Aplica filtros PRISMA deterministas al corpus: marca rejected (no borra).
-Transiciona el LoopState a FILTERED tras persistir con éxito.
+Transiciona el CycleState a FILTERED tras persistir con éxito.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ def run_filter(
     """Aplica filtros PRISMA al corpus marcando rejected los excluidos.
 
     Los filtros se aplican en orden; cada uno ve el resultado del anterior.
-    El LoopState transiciona a FILTERED tras persistir con éxito.
+    El CycleState transiciona a FILTERED tras persistir con éxito.
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.

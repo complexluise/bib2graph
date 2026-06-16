@@ -4,7 +4,7 @@ Expone el CycleState y los conteos por curation_status del corpus.
 NO transiciona el CycleState.
 
 R3: el mapa honesto del lazo (ADR 0016 enmendado).  Muestra:
-- estado actual (CycleState / LoopState),
+- estado actual (CycleState),
 - transiciones disponibles desde ese estado,
 - ``curation_available``: accept/reject son acciones SIEMPRE-DISPONIBLES
   (curación transversal, NO transicionan el lazo),

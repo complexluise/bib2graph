@@ -1,7 +1,7 @@
 """cli.commands.inspect — Subcomando ``b2g inspect``.
 
 Dump read-only del manifest y conteos. Con --id: datos de un paper.
-NO transiciona el LoopState.
+NO transiciona el CycleState.
 """
 
 from __future__ import annotations
@@ -158,7 +158,7 @@ def inspect_cmd(
             emit_human(f"Es semilla: {data.get('is_seed')}")
         else:
             emit_human(f"Total papers: {data.get('total_papers')}")
-            emit_human(f"LoopState: {data.get('loop_state')}")
+            emit_human(f"CycleState: {data.get('loop_state')}")
             manifest = data.get("manifest", {})
             emit_human(f"OpenAlex version: {manifest.get('openalex_version')}")
             emit_human(f"Ecuaciones: {len(manifest.get('equations', []))}")

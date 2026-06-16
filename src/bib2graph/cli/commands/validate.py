@@ -2,7 +2,7 @@
 
 Valida el schema del store y la consistencia del corpus.
 Exit 0: válido. Exit 2: datos inválidos. Exit 5: store corrupto/bloqueado.
-NO transiciona el LoopState.
+NO transiciona el CycleState.
 """
 
 from __future__ import annotations

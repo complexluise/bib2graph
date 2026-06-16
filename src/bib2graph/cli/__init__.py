@@ -1,13 +1,13 @@
 """cli — CLI agente-native ``b2g`` (Hito 6).
 
-Arma el grupo Click principal, registra los 11 subcomandos y expone
+Arma el grupo Click principal, registra los 12 subcomandos y expone
 ``main()`` como entry point del paquete.
 
 Entry point en ``pyproject.toml``:
     b2g = "bib2graph.cli:main"
 
 Subcomandos:
-    seed, chain, filter, build, export, snapshot,
+    seed, chain, filter, build, monitor, export, snapshot,
     status, inspect, validate, accept, reject.
 
 Cada subcomando lleva:
@@ -35,6 +35,7 @@ from bib2graph.cli.commands.chain import chain_cmd
 from bib2graph.cli.commands.export import export_cmd
 from bib2graph.cli.commands.filter import filter_cmd
 from bib2graph.cli.commands.inspect import inspect_cmd
+from bib2graph.cli.commands.monitor import monitor_cmd
 from bib2graph.cli.commands.reject import reject_cmd
 from bib2graph.cli.commands.seed import seed_cmd
 from bib2graph.cli.commands.snapshot import snapshot_cmd
@@ -72,7 +73,7 @@ def b2g(ctx: click.Context, store: str) -> None:
     Transforma corpus bibliográficos en redes bibliométricas reproducibles.
     El estado de la investigación vive en --store (archivo .duckdb).
 
-    Subcomandos: seed, chain, filter, build, export, snapshot,
+    Subcomandos: seed, chain, filter, build, monitor, export, snapshot,
     status, inspect, validate, accept, reject.
 
     Ejemplo:
@@ -83,11 +84,12 @@ def b2g(ctx: click.Context, store: str) -> None:
     ctx.obj["store"] = store
 
 
-# Registrar los 11 subcomandos
+# Registrar los 12 subcomandos
 b2g.add_command(seed_cmd)
 b2g.add_command(chain_cmd)
 b2g.add_command(filter_cmd)
 b2g.add_command(build_cmd)
+b2g.add_command(monitor_cmd)
 b2g.add_command(export_cmd)
 b2g.add_command(snapshot_cmd)
 b2g.add_command(status_cmd)

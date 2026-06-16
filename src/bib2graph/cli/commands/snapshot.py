@@ -1,7 +1,7 @@
 """cli.commands.snapshot — Subcomando ``b2g snapshot``.
 
 Exporta una foto sellada del corpus actual (parquet + manifest.json).
-NO transiciona el LoopState.
+NO transiciona el CycleState.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ def run_snapshot(
     """Exporta una foto sellada del corpus actual.
 
     Carga el corpus del store y exporta un snapshot sellado (parquet +
-    manifest.json) al directorio indicado. No transiciona el LoopState.
+    manifest.json) al directorio indicado. No transiciona el CycleState.
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
@@ -80,7 +80,7 @@ def snapshot_cmd(
 ) -> None:
     """Exporta una foto sellada del corpus actual (parquet + manifest.json).
 
-    No transiciona el LoopState.
+    No transiciona el CycleState.
     """
     store_path = ctx.obj["store"]
     data = run_snapshot(store_path, out_dir=out_dir)

@@ -1,4 +1,4 @@
-"""Tests de ``DuckDBStore`` y ``LoopState`` — Hito 3.
+"""Tests de ``DuckDBStore`` y ``CycleState`` — Hito 3.
 
 Todos los tests tocan DuckDB sobre disco → marcados ``integration``.
 El gate ``uv run pytest -m unit`` no los ejecuta.
@@ -7,7 +7,7 @@ Escenarios cubiertos (los justos, ROADMAP Hito 3):
 - persist → load en instancia nueva acumula (biblioteca viva entre corridas).
 - Idempotencia de persist (no duplica filas; mismo ``corpus_hash``).
 - Procedencia/curación sobreviven al reinicio.
-- ``LoopState``: transición SEEDED→FORAGED sobrevive al reload.
+- ``CycleState``: transición SEEDED→FORAGED sobrevive al reload.
 - Consulta SQL representativa vía ``backend.query(...)``.
 """
 
@@ -19,8 +19,8 @@ from pathlib import Path
 import pyarrow as pa
 import pytest
 
-from bib2graph.backends.duckdb import LoopState
 from bib2graph.corpus import Corpus
+from bib2graph.cycle import CycleState
 from bib2graph.schemas import CORPUS_SCHEMA
 from bib2graph.stores.duckdb import DuckDBStore
 
@@ -153,17 +153,17 @@ def test_provenance_curation_sobreviven_reinicio(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 def test_loop_state_sobrevive_al_reload(tmp_path: Path) -> None:
-    """LoopState SEEDED→FORAGED sobrevive al reinicio (nueva instancia)."""
+    """CycleState SEEDED→FORAGED sobrevive al reinicio (nueva instancia)."""
     db_path = tmp_path / "lib.duckdb"
 
     # Primera sesión: registrar transiciones
     store1 = DuckDBStore(db_path)
-    store1.backend.set_loop_state(LoopState.SEEDED)
-    store1.backend.set_loop_state(LoopState.FORAGED)
+    store1.backend.set_loop_state(CycleState.SEEDED)
+    store1.backend.set_loop_state(CycleState.FORAGED)
 
     # Segunda sesión: estado actual es FORAGED
     store2 = DuckDBStore(db_path)
-    assert store2.backend.loop_state() == LoopState.FORAGED
+    assert store2.backend.loop_state() == CycleState.FORAGED
 
 
 @pytest.mark.integration
@@ -179,9 +179,9 @@ def test_loop_state_transicion_permisiva(tmp_path: Path) -> None:
     """Las transiciones son permisivas: se puede saltar de SEEDED a BUILT."""
     db_path = tmp_path / "lib.duckdb"
     store = DuckDBStore(db_path)
-    store.backend.set_loop_state(LoopState.SEEDED)
-    store.backend.set_loop_state(LoopState.BUILT)
-    assert store.backend.loop_state() == LoopState.BUILT
+    store.backend.set_loop_state(CycleState.SEEDED)
+    store.backend.set_loop_state(CycleState.BUILT)
+    assert store.backend.loop_state() == CycleState.BUILT
 
 
 @pytest.mark.integration

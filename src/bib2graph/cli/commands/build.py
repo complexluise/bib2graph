@@ -1,7 +1,7 @@
 """cli.commands.build — Subcomando ``b2g build``.
 
 Computa las redes bibliométricas con Networks.quick y escribe artefactos
-a disco. Transiciona el LoopState a BUILT tras persistir con éxito.
+a disco. Transiciona el CycleState a BUILT tras persistir con éxito.
 
 Los artefactos se escriben en ``<store_dir>/networks/<kind>/``:
   - ``network.graphml``: el grafo en formato GraphML.

@@ -542,12 +542,12 @@ def test_e2e_seed_chain_filter_build_export(tmp_path: Path) -> None:
     - export: re-emite GraphML a out_dir.
     Verifica: exit 0, GraphML existe, corpus acumulado coherente.
     """
-    from bib2graph.backends.duckdb import LoopState
     from bib2graph.cli.commands.build import run_build
     from bib2graph.cli.commands.chain import run_chain
     from bib2graph.cli.commands.export import run_export
     from bib2graph.cli.commands.filter import run_filter
     from bib2graph.cli.commands.seed import run_seed
+    from bib2graph.cycle import CycleState
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "investigacion.duckdb"
@@ -599,10 +599,10 @@ def test_e2e_seed_chain_filter_build_export(tmp_path: Path) -> None:
     assert export_data["format"] == "csv"
     assert len(export_data["files_written"]) > 0
 
-    # Verificar LoopState final
+    # Verificar CycleState final
     store = DuckDBStore(store_path)
     final_state = store.backend.loop_state()
-    assert final_state == LoopState.BUILT
+    assert final_state == CycleState.BUILT
 
     # Corpus coherente: tiene papers
     corpus = store.load()
@@ -653,18 +653,18 @@ def test_status_tras_seed_chain_filter(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 5. Prueba adicional: LoopState transiciona correctamente
+# 5. Prueba adicional: CycleState transiciona correctamente
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_loop_state_transiciona_en_secuencia(tmp_path: Path) -> None:
     """seed transiciona a SEEDED; chain a FORAGED; filter a FILTERED; build a BUILT."""
-    from bib2graph.backends.duckdb import LoopState
     from bib2graph.cli.commands.build import run_build
     from bib2graph.cli.commands.chain import run_chain
     from bib2graph.cli.commands.filter import run_filter
     from bib2graph.cli.commands.seed import run_seed
+    from bib2graph.cycle import CycleState
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "transitions.duckdb"
@@ -676,22 +676,22 @@ def test_loop_state_transiciona_en_secuencia(tmp_path: Path) -> None:
     # Tras seed
     run_seed(store_path, "ecology", transport=_make_mock_transport())
     store2 = DuckDBStore(store_path)
-    assert store2.backend.loop_state() == LoopState.SEEDED
+    assert store2.backend.loop_state() == CycleState.SEEDED
 
     # Tras chain backward
     run_chain(store_path, direction="backward", transport=_make_mock_transport([]))
     store3 = DuckDBStore(store_path)
-    assert store3.backend.loop_state() == LoopState.FORAGED
+    assert store3.backend.loop_state() == CycleState.FORAGED
 
     # Tras filter
     run_filter(store_path, year_gte=2000)
     store4 = DuckDBStore(store_path)
-    assert store4.backend.loop_state() == LoopState.FILTERED
+    assert store4.backend.loop_state() == CycleState.FILTERED
 
     # Tras build
     run_build(store_path)
     store5 = DuckDBStore(store_path)
-    assert store5.backend.loop_state() == LoopState.BUILT
+    assert store5.backend.loop_state() == CycleState.BUILT
 
 
 # ---------------------------------------------------------------------------
