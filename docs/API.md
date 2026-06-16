@@ -31,7 +31,7 @@
 > `cited_by_id` diferido al chaining/Enricher, `bibtexparser` como extra **`[bibtex]`**, credenciales
 > inyectadas (ADR 0012) y `Manifest.openalex_version` poblada (ADR 0017). El método
 > `Corpus.with_manifest()` (§1.2) es la API canónica que usan para sellar metadata. **Con el Hito 4,
-> v0.1 queda feature-complete** (ver [`ROADMAP.md`](ROADMAP.md)).
+> v0.1 queda feature-complete** (ver [`ROADMAP.md`](ROADMAP/README.md)).
 >
 > **Sincronizado con el Hito 5 (2026-06-15):** `Forager`, `GrowthPreview`, `RankedCandidates`,
 > `Preprocessor`, `FilterCriterion`/`apply_filters` están **construidos** (§5/§6). El *information
@@ -47,7 +47,7 @@
 > JSON común versionado** (`schema="1"`), exit codes 0–5 mapeados **por tipo de error**, opción global
 > `--store` (obligatoria) y `CycleState` que transiciona automáticamente por comando (ADR
 > [0021](decisiones/0021-cli-agente-native-contrato.md)). **Con el Hito 6, las capacidades de v0.2
-> (Hitos 5–6) quedan completas** (ver [`ROADMAP.md`](ROADMAP.md)). *(El 12° subcomando `monitor`
+> (Hitos 5–6) quedan completas** (ver [`ROADMAP.md`](ROADMAP/README.md)). *(El 12° subcomando `monitor`
 > —AS-BUILT del cleanup pre-v0.3— cierra el paso 8 del ciclo: `MONITORED` ahora es alcanzable.)*
 
 ## Convenciones
@@ -81,7 +81,7 @@ pre-v0.3):
 - **`accept`** / **`reject`** (decisión del PO, ADR 0021 §A): curación programática por `--ids`,
   ahora **subcomandos CLI de primera clase** (no solo API de librería), para que un agente cure la
   biblioteca viva por subprocess (historia C4). La **curación interactiva rica (`curate`) y la GUI
-  siguen siendo futuro** (no en v0.2). Ver [`ROADMAP.md`](ROADMAP.md) Hito 6.
+  siguen siendo futuro** (no en v0.2). Ver [`ROADMAP.md`](ROADMAP/README.md) Hito 6.
 - **`monitor`** (cleanup pre-v0.3): re-chequea OpenAlex por **citantes nuevos** del corpus (forward
   chaining), mergea los candidatos nuevos a la biblioteca viva y **transiciona a `MONITORED`** vía
   `apply_transition(state, "monitor", round)` (paso 8 del ciclo, Ellis). `data` =
@@ -156,7 +156,7 @@ D1/D2/D3) son **contrato que cada backend cumple** (InMemory en Python, DuckDB e
 `corpus.to_arrow()` es el puente estable a los proyectores/analizadores puros (§7–§8): **solo
 cambia el contenedor, no el núcleo de análisis**.
 
-> **Nota de construcción:** el rework del **Hito 1.5 está hecho** (ver [`ROADMAP.md`](ROADMAP.md),
+> **Nota de construcción:** el rework del **Hito 1.5 está hecho** (ver [`ROADMAP.md`](ROADMAP/README.md),
 > "Hito 1.5"). El `Corpus` ya **delega en `self._backend: TabularBackend`** (no guarda `self._table`);
 > el `InMemoryBackend` (núcleo puro, semántica de valor) está implementado en
 > `src/bib2graph/backends/`. El `DuckDBBackend` (costura por defecto) **también está construido**

@@ -60,7 +60,7 @@ los estados no son una escalera de un solo sentido.
   Bates/Ellis/Kuhlthau, al costo de que el `LoopState` es un **mapa**, no un guardia.
 - **Recomendación para el `coder`:** el `LoopState` (enum + transición + timestamp) y la tabla que
   lo persiste caen en el **Hito 3** (`DuckDBBackend`/`DuckDBStore`); el comando `b2g status` en el
-  **Hito 6** (CLI). Ver [ROADMAP](../ROADMAP.md) Hitos 3 y 6.
+  **Hito 6** (CLI). Ver [ROADMAP](../ROADMAP/README.md) Hitos 3 y 6.
 - **Tensión declarada:** la máquina de estados es del **archivo vivo**; el **snapshot** (ADR
   [0017](0017-reproducibilidad-historia-snapshot.md)) es una foto que puede incluir el `LoopState`
   del instante sellado, pero no es donde vive.

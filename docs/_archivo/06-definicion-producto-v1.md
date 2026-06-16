@@ -23,7 +23,7 @@ Queremos que sea fácil, pero **esto es ciencia**. La **ecuación de búsqueda e
 primera clase**, explícita y registrada — no una caja negra como los asistentes IA que ocultan
 la query (Elicit, Consensus). El investigador **debe ser consciente** de qué recupera y por qué;
 esa consciencia *es* el ejercicio bibliotecario y es lo que hace el resultado reportable
-(PRISMA / vom Brocke, ver [`05-...`](05-ciclo-investigacion-humano.md)). Diferenciador real
+(PRISMA / vom Brocke, ver [`05-...`](../Notas/05-ciclo-investigacion-humano.md)). Diferenciador real
 frente al "magic black box".
 
 ## 3. Qué puedo esperar (y qué NO) en V1
@@ -50,7 +50,7 @@ frente al "magic black box".
   exportadores. *El final siguen siendo las redes.*
 - **Cambia el front**: las semillas dejan de ser "importar un BibTeX" y pasan a ser
   **ecuación de búsqueda + chaining sobre OpenAlex**. Muere el Enricher-S2 estructural y
-  Neo4j-como-sustrato (ver [`../critica-base.md`](critica-base.md)).
+  Neo4j-como-sustrato (ver [`../critica-base.md`](../critica-base.md)).
 
 ## 5. Historias de usuario
 

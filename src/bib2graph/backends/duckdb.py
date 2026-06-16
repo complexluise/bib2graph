@@ -484,11 +484,13 @@ class DuckDBBackend:
             ).to_arrow_table()
         elif view == "candidates":
             result = self._con.execute(
-                "SELECT * FROM corpus WHERE curation_status = 'candidate'"
+                "SELECT * FROM corpus WHERE curation_status = "
+                f"'{CurationStatus.CANDIDATE.value}'"
             ).to_arrow_table()
         elif view == "accepted":
             result = self._con.execute(
-                "SELECT * FROM corpus WHERE curation_status = 'accepted'"
+                "SELECT * FROM corpus WHERE curation_status = "
+                f"'{CurationStatus.ACCEPTED.value}'"
             ).to_arrow_table()
         else:
             raise ValueError(

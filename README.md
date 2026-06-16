@@ -30,7 +30,7 @@ cura, **la idea muta** y se vuelve a sembrar — acumulando sobre lo curado. La 
 > snapshot se arregló con **content-hash determinista** identidad-vs-procedencia (R2); el ciclo es un
 > **FSM cíclico** de dominio (`cycle.py`) con `reseed`/ronda y curación visible (R3); se **eliminó**
 > `explain_candidate` + el extra `[llm]` (R4); y se endureció la robustez (bulk-load, UTF-8 en la
-> frontera, `except` acotados — R5). Ver el [roadmap](docs/ROADMAP.md) (tanda R1–R5, ✅ completa).
+> frontera, `except` acotados — R5). Ver el [roadmap](docs/ROADMAP/README.md) (tanda R1–R5, ✅ completa).
 >
 > **Todavía no** (v0.4+ → v1.0, ya con la remediación cerrada): dedup fuzzy (Hito 7), `Enricher` de co-citación
 > end-to-end (Hito 8), `NetworkSpec` YAML (Hito 9), visualización (Hito 10) y costuras Zotero/Neo4j
@@ -183,7 +183,7 @@ decisión, en los [ADRs](docs/decisiones/).
 | [`docs/PRD.md`](docs/PRD.md) | Producto: usuarios, problema, valor, alcance, historias de usuario. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Arquitectura objetivo: núcleo puro + costuras, `TabularBackend`, flujo iterativo. |
 | [`docs/API.md`](docs/API.md) | Contratos públicos: `Corpus`/`TabularBackend`, `Source`, `Store`, proyectores, analizadores, exportadores. |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Secuencia de construcción y mapa de releases (v0.1 → v1.0), con estado por hito. |
+| [`docs/ROADMAP/`](docs/ROADMAP/README.md) | Secuencia de construcción y mapa de releases (v0.1 → v1.0), con estado por hito. |
 | [`docs/decisiones/`](docs/decisiones/) | ADRs (decisiones de arquitectura y su porqué) + `registro-ia.md` (decisiones tomadas por la IA). |
 | [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md) | Estado experimental y declaración de uso de IA (AI-in-the-loop): cómo se construye y qué implica. |
 | [`docs/metodología.md`](docs/metodología.md) | Método bibliométrico (autoridad de dominio). |

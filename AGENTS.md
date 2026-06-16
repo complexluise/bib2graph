@@ -21,7 +21,8 @@
 - **Hitos 0–6 + 1.5 CONSTRUIDOS y remediación R1–R5 COMPLETA** (v0.3, 2026-06-16): de una
   ecuación de búsqueda a las redes bibliométricas, desde código Python **o** desde el CLI `b2g`,
   sobre una biblioteca viva en DuckDB. El árbol `src/bib2graph/` tiene ~30 módulos: `constants.py`
-  y `models.py` (capa base, R1), `corpus.py`, `schemas.py`, `cycle.py` (FSM cíclico de dominio, R3),
+  y `schemas.py` (capa base, R1; `ProvenanceEvent` vive en `schemas.py`, no hay `models.py`),
+  `corpus.py`, `cycle.py` (FSM cíclico de dominio, R3),
   `backends/` (`TabularBackend` + `InMemoryBackend` + `DuckDBBackend`), `stores/`
   (`DuckDBStore`), `sources/` (`OpenAlexSource`, `BibtexSource`), `foraging/` (`Forager`,
   scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
@@ -32,7 +33,8 @@
   ([`docs/Notas/06-critica-as-built-v0.2.md`](docs/Notas/06-critica-as-built-v0.2.md)) el PO bloqueó
   un **modelo nuevo** (ADR [0022](docs/decisiones/0022-producto-sin-ia-generativa.md)/
   [0023](docs/decisiones/0023-capa-constants-modelos-schema.md) + enmiendas), ya construido:
-  **R1** — **capa base** `constants.py`/`models.py`/`schemas.py` única; **R2** — **identidad ≠
+  **R1** — **capa base** `constants.py`/`schemas.py` única (con `ProvenanceEvent` en `schemas.py`,
+  no en un `models.py`); **R2** — **identidad ≠
   procedencia** (el `corpus_hash` excluye timestamps, reloj en la frontera, Louvain seeded);
   **R3** — **FSM cíclico de dominio** `cycle.py` (sale del backend) con `reseed`/ronda + curación
   transversal en `status`; **R4** — **scent bibliométrico vía proyectores**, **el producto NO usa
@@ -158,9 +160,10 @@ src/bib2graph/
   __init__.py
   constants.py         # CAPA BASE (ADR 0023, Hito R1): Col/CurationStatus/NetworkKind (StrEnum),
                        # fuente única de literales. Todo lo demás depende de esta capa.
-  models.py            # CAPA BASE (ADR 0023): ProvenanceEvent(BaseModel), parseo que falla ruidoso
   corpus.py            # Corpus, Manifest, CorpusSnapshot (wrapper sobre tabla Arrow)
-  schemas.py           # PaperRow (Pydantic) ÚNICA fuente; CORPUS_SCHEMA (Arrow) derivado/verificado
+  schemas.py           # CAPA BASE (ADR 0023): PaperRow (Pydantic) ÚNICA fuente; CORPUS_SCHEMA (Arrow)
+                       # derivado/verificado; ProvenanceEvent(BaseModel) consolidado acá (NO hay
+                       # models.py separado), parseo que falla ruidoso
   cycle.py             # FSM CÍCLICO de dominio puro (ADR 0016 enmendado, Hito R3): SEEDED→…→
                        # MONITORED + reseed/ronda. Sale del backend; el backend solo lo persiste.
   sources/             # OpenAlexSource (núcleo, backbone); BibtexSource (secundaria);

@@ -34,7 +34,7 @@ consecuencia directa de tener Neo4j como sustrato: nada se podía probar sin ser
 proyectores, los analizadores y los exportadores son funciones puras sin I/O, cubiertas por
 tests unitarios con datos sintéticos.
 → ADR [0002](../decisiones/0002-modelo-agnostico-backend.md); Hitos 1–2 del
-[`ROADMAP.md`](../ROADMAP.md).
+[`ROADMAP.md`](../ROADMAP/README.md).
 
 ---
 
@@ -77,7 +77,7 @@ muerto; la entrada `csv`/`json` estaba listada como soportada pero lanzaba
 (RIS/CSV, CrossRef/Scopus) se marcan **explícitamente como no implementadas**; no se cablean
 clientes que no se usan ni se prometen formatos que no existen.
 → [`PRD.md`](../PRD.md) §5.2, [`API.md`](../API.md) (columnas de estado v1/futuro),
-[`ROADMAP.md`](../ROADMAP.md) (costuras futuras).
+[`ROADMAP.md`](../ROADMAP/README.md) (costuras futuras).
 
 ---
 

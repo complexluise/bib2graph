@@ -11,10 +11,10 @@
 >
 > **Documentos hermanos:**
 > - [`01-lecciones-v0.md`](01-lecciones-v0.md) — reglas que motivan el código
-> - [`arquitecturas-alternativas.md`](../02-exploracion/arquitecturas-alternativas.md) — comparación de modelos del `Corpus`
+> - [`arquitecturas-alternativas.md`](02-exploracion/arquitecturas-alternativas.md) — comparación de modelos del `Corpus`
 > - [`referentes.md`](../referentes.md) — mapa del campo
 > - [`04-direccion-ia-in-the-loop.md`](04-direccion-ia-in-the-loop.md) — giro de "librería" a "sustrato"
-> - [`ROADMAP.md`](../ROADMAP.md) — la secuencia de construcción vigente
+> - [`ROADMAP.md`](../ROADMAP/README.md) — la secuencia de construcción vigente
 >
 > **Dónde vive el código:** [`../../exploracion/`](../../exploracion/). Todo
 > lo descrito acá es reproducible corriendo los scripts en orden.
@@ -223,7 +223,7 @@ que el ROADMAP/ADRs pueden seguir sosteniendo sin cambio:
 - Sandbox completa: `exploracion/` (5 scripts, 1 .bib, 2 informes, 4 GraphML)
 - Informe cuantitativo auto: `exploracion/informe_ied.md` (regenerable)
 - Informe cualitativo a mano: `exploracion/informe_ied_lectura.md` (6 tensiones)
-- Decisiones de producto: [`../ROADMAP.md`](../ROADMAP.md) y [`../decisiones/`](../decisiones/)
+- Decisiones de producto: [`../ROADMAP.md`](../ROADMAP/README.md) y [`../decisiones/`](../decisiones/)
 - Direccionamiento "IA in the loop": [`04-direccion-ia-in-the-loop.md`](04-direccion-ia-in-the-loop.md)
 - Bibliografía crítica IED + asimetrías Norte-Sur (citada en la
   exploración): Dorninger et al. 2021, "How prepared are we to bridge

@@ -74,7 +74,7 @@ estable entre la biblioteca viva (cualquier backend) y el núcleo puro de proyec
   `merge` (D3). El `corpus_hash` se computa siempre sobre el contenido (vía `to_arrow()`), nunca
   sobre detalles del backend.
 - **Costo (rework del Hito 1).** Hay que migrar `src/bib2graph/corpus.py`. Detalle accionable
-  para el `coder` en el milestone "Hito 1.5 — Rework de `Corpus`" del [ROADMAP](../ROADMAP.md);
+  para el `coder` en el milestone "Hito 1.5 — Rework de `Corpus`" del [ROADMAP](../ROADMAP/README.md);
   resumen:
   - Extraer un `TabularBackend` (Protocol) en `src/bib2graph/backends/` (o módulo nuevo).
     Operaciones mínimas: `add_paper`, `merge`, `set_curation`/`apply_curation`,

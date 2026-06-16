@@ -24,7 +24,7 @@ commits.
 > **Modelo nuevo bloqueado por el PO (2026-06-15)** tras el red-team del AS-BUILT v0.2
 > ([Nota 06](docs/Notas/06-critica-as-built-v0.2.md)): el **producto no usa IA generativa** (ADR
 > 0022); **capa base** `constants`/`models`/`schemas` única (ADR 0023); enmiendas a
-> 0008/0011/0016/0017/0020/0021. La **tanda de remediación R1–R5** del [roadmap](docs/ROADMAP.md) lo
+> 0008/0011/0016/0017/0020/0021. La **tanda de remediación R1–R5** del [roadmap](docs/ROADMAP/README.md) lo
 > implementa **antes** de los Hitos 7–11. Esta sección documenta el diseño nuevo; el código se
 > entrega por hito R.
 
