@@ -86,8 +86,19 @@ Las releases las maneja [`release-please`](https://github.com/googleapis/release
 > contra recursión). Sin ese secret, el PR de release queda sin CI propio y se
 > mergea con bypass de admin.
 
-**PyPI todavía NO está conectado** (decisión del PO: por ahora solo GitHub Releases). El
-paso de publicación a PyPI se agrega cuando se configure *trusted publishing* (OIDC).
+## Publicación a TestPyPI / PyPI (Trusted Publishing, OIDC)
+
+La publicación usa **Trusted Publishing** (OIDC) — sin tokens ni secrets en el repo.
+
+- **TestPyPI** (`.github/workflows/publish-testpypi.yml`, **disparo manual** `workflow_dispatch`):
+  `uv build` + publish a `https://test.pypi.org/legacy/`. Sirve para probar el paquete
+  (`pip install -i https://test.pypi.org/simple/ bib2graph`) antes de productivo.
+  **Setup una sola vez** en https://test.pypi.org (Your account → Publishing → *pending publisher*):
+  Project `bib2graph`, Owner `complexluise`, Repo `bib2graph`, Workflow `publish-testpypi.yml`,
+  Environment `testpypi`.
+- **PyPI productivo:** se conecta en una segunda tanda (workflow disparado al crear el GitHub
+  Release de release-please), una vez validado el flujo en TestPyPI. Mismo mecanismo OIDC con un
+  *pending publisher* en https://pypi.org.
 
 `cz bump --dry-run` te muestra, localmente, qué versión resultaría de los
 commits acumulados sin necesidad de pushear (ayuda de preview; el publicador es
