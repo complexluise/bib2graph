@@ -58,7 +58,6 @@ s2 = []
 neo4j = []
 dedup = []
 viz = []
-llm = []
 bibtex = [
     "bibtexparser>=1.4.4",
 ]

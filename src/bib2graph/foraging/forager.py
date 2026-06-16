@@ -1,9 +1,18 @@
 """foraging.forager — ``Forager``: orquesta el chaining sobre un Source.
 
-El Forager rankeea candidatos por *information scent* (frecuencia de
-enlace con el corpus existente) usando funciones puras de ``scent.py``.
+El Forager rankea candidatos por *information scent* bibliométrico usando
+funciones puras de ``scent.py`` (R4, ADR 0020/0022):
+
+- **Backward**: score = nº de corpus-papers que listan al candidato en
+  ``references_id`` (acoplamiento hacia atrás).
+- **Forward** (fix forward-scent, Wohlin): score = citación directa al corpus.
+    corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+    forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
+  Robusto ante corpus con ``references_id`` ralas (estado común tras un seed
+  sin enriquecimiento); el acoplamiento bibliográfico puro degeneraba a 0.
+
 Solo él toca la red (a través del ``Source`` inyectado).  El núcleo de
-scent es puro.
+scent es puro.  ``explain_candidate`` fue **eliminado** (R4, ADR 0022).
 
 ``depth > 1`` lanza ``NotImplementedError`` claro (decisión e=A, ADR 0008).
 
@@ -97,9 +106,10 @@ def _build_backward_candidate_row(
 class Forager:
     """Orquesta el chaining sobre un Source, rankeando candidatos por scent.
 
-    El scent mide la frecuencia de enlace bibliométrica (ADR 0008, decisión
-    a=A): backward = cuántos papers del corpus listan al candidato en sus
-    referencias; forward = cuántos papers del corpus cita el candidato.
+    El scent mide el acoplamiento bibliométrico (ADR 0020/0022, R4):
+    backward = cuántos corpus-papers listan al candidato en sus referencias;
+    forward = cuántos corpus-papers cita el candidato directamente (citación
+    directa al corpus, Wohlin; robusto ante ``references_id`` ralas en el corpus).
 
     Uso::
 

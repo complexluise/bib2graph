@@ -111,6 +111,39 @@ def _build_cooccurrence_graph(
     return g
 
 
+def collect_item_to_papers(
+    rows: list[dict[str, object]],
+    id_col: str,
+    list_col: str,
+) -> dict[str, list[str]]:
+    """Construye el índice inverso ``{item → [paper_ids que lo contienen]}``.
+
+    Primitivo compartido por los proyectores y por el cómputo del *information
+    scent* bibliométrico (``foraging.scent``).  Separa la fase de indexación de
+    la fase de construcción del grafo para que el forrajeo pueda reusar la
+    lógica sin construir un ``nx.Graph`` completo.
+
+    Args:
+        rows: Filas de la tabla como dicts.
+        id_col: Columna con el id del paper.
+        list_col: Columna con la lista de ítems (referencias, citantes, etc.).
+
+    Returns:
+        Dict ``{item_str: [paper_id_str, ...]}`` sin deduplicar (los papers se
+        pueden repetir si el mismo paper aparece varias veces en ``rows``).
+    """
+    item_to_papers: dict[str, list[str]] = defaultdict(list)
+    for row in rows:
+        paper_id = str(row.get(id_col) or "")
+        items = row.get(list_col)
+        if not items or not isinstance(items, list):
+            continue
+        for item in items:
+            if item is not None:
+                item_to_papers[str(item)].append(paper_id)
+    return dict(item_to_papers)
+
+
 def _build_shared_refs_graph(
     rows: list[dict[str, object]],
     id_col: str,
@@ -134,17 +167,8 @@ def _build_shared_refs_graph(
     Returns:
         Grafo no dirigido con atributo ``weight``.
     """
-    # ítem → lista ordenada de paper_ids que lo contienen
-    item_to_papers: dict[str, list[str]] = defaultdict(list)
-
-    for row in rows:
-        paper_id = str(row.get(id_col) or "")
-        items = row.get(list_col)
-        if not items or not isinstance(items, list):
-            continue
-        for item in items:
-            if item is not None:
-                item_to_papers[str(item)].append(paper_id)
+    # Reusar el primitivo público: ítem → lista de paper_ids que lo contienen.
+    item_to_papers = collect_item_to_papers(rows, id_col, list_col)
 
     pair_count: dict[tuple[str, str], int] = defaultdict(int)
     for papers in item_to_papers.values():

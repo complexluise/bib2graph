@@ -1,16 +1,18 @@
-"""foraging — forrajeo/chaining rankeado por *information scent*.
+"""foraging — forrajeo/chaining rankeado por *information scent* bibliométrico.
 
-Re-exporta las piezas públicas del paquete.  ``explain_candidate`` es
-una capacidad gateada en el extra ``[llm]`` y NO se re-exporta desde
-la raíz de bib2graph; se importa desde este sub-paquete explícitamente.
+Re-exporta las piezas públicas del paquete.
 
-Ver docs/API.md §5 y ADR 0008.
+El *information scent* usa los proyectores del núcleo de redes (acoplamiento
+bibliográfico / co-citación) — sin LLM, sin embeddings (ADR 0022).
+``explain_candidate`` y el extra ``[llm]`` fueron **eliminados** (R4, ADR 0022):
+el "porqué" de un candidato lo da la estructura visible, no un modelo generativo.
+
+Ver docs/API.md §5 y ADR 0020/0022.
 """
 
 from __future__ import annotations
 
 from bib2graph.foraging.base import Direction, GrowthPreview, RankedCandidates
-from bib2graph.foraging.explain import explain_candidate
 from bib2graph.foraging.forager import Forager
 
 __all__ = [
@@ -18,5 +20,4 @@ __all__ = [
     "Forager",
     "GrowthPreview",
     "RankedCandidates",
-    "explain_candidate",
 ]

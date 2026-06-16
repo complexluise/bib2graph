@@ -8,8 +8,9 @@ Hito 4: ``OpenAlexSource``, ``BibtexSource``, ``Source``, ``SeedResult``
         (costura de siembra directa — httpx es núcleo, sin carga perezosa).
 Hito 5: ``Forager``, ``RankedCandidates``, ``GrowthPreview``, ``Preprocessor``,
         ``apply_filters``, ``FilterCriterion`` (forrajeo + preprocessor + filtros
-        PRISMA).  ``explain_candidate`` se importa desde ``bib2graph.foraging``
-        (gateado en ``[llm]``, NO listo como capacidad de la raíz).
+        PRISMA).
+R4: ``explain_candidate`` y el extra ``[llm]`` **eliminados** (ADR 0022).
+        El *information scent* usa proyectores bibliométricos, sin IA generativa.
 Hito 6: CLI agente-native ``b2g`` (``bib2graph.cli``). 11 subcomandos:
         ``seed``, ``chain``, ``filter``, ``build``, ``export``, ``snapshot``,
         ``status``, ``inspect``, ``validate``, ``accept``, ``reject``.
