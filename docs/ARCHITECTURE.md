@@ -18,7 +18,7 @@
 > de la [Nota 06](Notas/06-critica-as-built-v0.2.md). Donde el código v0.2 difiere del objetivo,
 > el bloque está marcado **`TARGET`** (lo que debe construirse) y/o **`AS-BUILT v0.2`** (lo que hay
 > hoy). La tanda de **remediación** que cierra esa brecha está secuenciada **por dependencia** en el
-> [`ROADMAP.md`](ROADMAP.md) (Hitos **R1–R5**), antes de los hitos nuevos: **R1** cimientos
+> [`ROADMAP.md`](ROADMAP/README.md) (Hitos **R1–R5**), antes de los hitos nuevos: **R1** cimientos
 > (constants/modelos/schema), **R2** identidad-vs-procedencia (hash/reloj/Louvain), **R3** ciclo
 > (`cycle.py`/`reseed`/curación transversal), **R4** scent bibliométrico (proyectores; retiro de
 > IA), **R5** robustez (bulk-load/UTF-8/footguns).
@@ -38,18 +38,19 @@
 > **BibTeX a OpenAlex** (ADR 0007); la persistencia por defecto pasó de **snapshot inmutable /
 > InMemoryStore** a un **`Store` stateful en DuckDB** (biblioteca viva; ADR 0009), con el
 > snapshot demotado a *export*; se agregaron al núcleo el **forrajeo/chaining** y el **thesaurus
-> multilingüe**; se incorporó una **capa base de vocabulario + modelos** (`constants` / `models` /
-> `schemas`, ADR [0023](decisiones/0023-capa-constants-modelos-schema.md)) y el **ciclo como
+> multilingüe**; se incorporó una **capa base de vocabulario + modelos** (`constants` / `schemas`,
+> con `ProvenanceEvent` consolidado en `schemas.py` —no en un `models.py` aparte—, ADR
+> [0023](decisiones/0023-capa-constants-modelos-schema.md)) y el **ciclo como
 > dominio puro** (`cycle.py` con FSM cíclico, ADR 0016 enmendado); y se **retiró la rama de IA**
 > generativa (ADR 0022).
 
 ## 1. Idea en un párrafo
 
 `bib2graph` es **un núcleo puro rodeado de costuras**, apoyado en una **capa base de vocabulario
-y modelos**. La **capa base** (`constants`, `models`, `schemas`; ADR
+y modelos**. La **capa base** (`constants`, `schemas`; ADR
 [0023](decisiones/0023-capa-constants-modelos-schema.md)) es la **fuente única** de nombres de
-columna, estados de curación, tipos de red y del evento de procedencia — todo el resto depende de
-ella. El **núcleo puro** opera sobre un `Corpus` en memoria (una **tabla canónica Arrow**) y nunca
+columna, estados de curación, tipos de red y del evento de procedencia (`ProvenanceEvent` vive en
+`schemas.py`, no en un `models.py` separado) — todo el resto depende de ella. El **núcleo puro** opera sobre un `Corpus` en memoria (una **tabla canónica Arrow**) y nunca
 hace red ni servidores: proyecta el corpus a redes, las analiza y las exporta, normaliza/cura la
 tabla, y **modela el ciclo** de investigación como una máquina de estados de dominio (`cycle.py`,
 ADR [0016](decisiones/0016-maquina-estados-lazo.md)). Alrededor hay costuras: **`Source`** (sembrar
@@ -449,11 +450,12 @@ producto no usa IA generativa, así que no hay cliente LLM ni para forrajeo ni p
 **Capa base de vocabulario + modelos** (ADR [0023](decisiones/0023-capa-constants-modelos-schema.md),
 `TARGET`): por debajo de todo, `bib2graph.constants` (`Col(StrEnum)`, `CurationStatus(StrEnum)`,
 `NetworkKind`) es la **fuente única** de nombres de columna/estados/tipos de red (mata los ~62
-string-literals dispersos en 14 archivos, Nota 06 CONSTANTS); `ProvenanceEvent(BaseModel)` es la
-fuente única del evento de procedencia (Nota 06 MODELS); `schemas.py` aloja la **única** definición
-de fila (`PaperRow` ⇄ `CORPUS_SCHEMA` derivado/verificado, no duplicado a mano). Se **mantiene** la
+string-literals dispersos en 14 archivos, Nota 06 CONSTANTS); `ProvenanceEvent(BaseModel)` —definido
+en `schemas.py`, no en un `models.py` separado— es la fuente única del evento de procedencia (Nota 06
+MODELS); `schemas.py` aloja también la **única** definición de fila (`PaperRow` ⇄ `CORPUS_SCHEMA`
+derivado/verificado, no duplicado a mano). Se **mantiene** la
 decisión "`Paper`/`Author`/`Keyword`/`Institution` = vistas derivadas, no tipos". El grafo de
-dependencias va **de abajo hacia arriba**: `constants/models` → núcleo puro (`corpus`, `cycle`,
+dependencias va **de abajo hacia arriba**: `constants/schemas` → núcleo puro (`corpus`, `cycle`,
 `projectors`, `analyzer`) → costuras (`sources`, `foraging` [consume el núcleo de proyección],
 `stores`) → `cli`. El núcleo nunca depende de una costura. Ver ROADMAP **Hito R1**.
 
@@ -501,7 +503,7 @@ dependencias va **de abajo hacia arriba**: `constants/models` → núcleo puro (
 
 ## 10. Estado de la documentación
 
-Los canónicos — [`PRD.md`](PRD.md), este doc, [`API.md`](API.md), [`ROADMAP.md`](ROADMAP.md) y los
+Los canónicos — [`PRD.md`](PRD.md), este doc, [`API.md`](API.md), [`ROADMAP.md`](ROADMAP/README.md) y los
 [ADR 0007–0011](decisiones/) — están **reconciliados** con el giro, y luego con el **2º giro** (ADR
 [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md):
 `Corpus` sobre `TabularBackend` con `DuckDBBackend` por defecto, `LoopState`, reproducibilidad por
@@ -510,7 +512,7 @@ snapshot, `Source` agnóstico, single-writer). El contrato del CLI agente-native
 [`_archivo/`](_archivo/). Implementación por hitos: **Hitos 0–6 + 1.5 construidos** (núcleo,
 biblioteca viva, fuentes, forrajeo y el CLI `b2g`). Tras el **red-team de la
 [Nota 06](Notas/06-critica-as-built-v0.2.md)** y el **nuevo modelo conceptual bloqueado por el PO**
-(scent bibliométrico sin IA, FSM cíclico, identidad-vs-procedencia, capa constants/models), este doc
+(scent bibliométrico sin IA, FSM cíclico, identidad-vs-procedencia, capa constants/schemas), este doc
 describe el **TARGET**; la brecha con el AS-BUILT se cierra con la **tanda de remediación R1–R5** del
-[`ROADMAP.md`](ROADMAP.md), **antes** de los Hitos 7–11. (Ya no se afirma "v0.2 con capacidades
+[`ROADMAP.md`](ROADMAP/README.md), **antes** de los Hitos 7–11. (Ya no se afirma "v0.2 con capacidades
 completas": ese claim era parte de la sobre-venta que la Nota 06 corrigió.)

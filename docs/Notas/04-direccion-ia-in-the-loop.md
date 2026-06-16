@@ -115,7 +115,7 @@ Frase de posicionamiento candidata (a validar):
    cita (caro, frontera de investigación) o se integra (Scite API paga / ContraCrow OSS)? Define
    cuánto del moat es propio.
 4. **OpenAlex vs. Semantic Scholar como backbone** (S2 tiene mejor señal de citas/contextos;
-   OpenAlex es más abierto). Hereda el debate de [`../critica-base.md`](critica-base.md) §1.
+   OpenAlex es más abierto). Hereda el debate de [`../critica-base.md`](../critica-base.md) §1.
 
 ## 7. Próximo paso recomendado
 

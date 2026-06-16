@@ -100,7 +100,7 @@
 > tomado por el ADR de proyección de redes (Hito 2). Para no reescribir historia, los ADR nuevos
 > usan **`0015`–`0019`**. La separación `filter`/`curate` (punto 4 del acta) **no recibió ADR
 > propio**: es una decisión de superficie CLI/roadmap, no de arquitectura — se refleja en
-> [`../ROADMAP.md`](../ROADMAP.md) (Hito 6) y [`../API.md`](../API.md) (§convenciones CLI).
+> [`../ROADMAP.md`](../ROADMAP/README.md) (Hito 6) y [`../API.md`](../API.md) (§convenciones CLI).
 
 ---
 

@@ -380,7 +380,7 @@ Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.
 > ⚠️ **Corrección 2026-06-15:** el punto 1 es **planning histórico ya saldado** (los ADR 0007–0021
 > están escritos). Donde dice "tensiones a v2", leer **"tensiones RETIRADAS del producto"** (ADR
 > 0022); el thesaurus es **determinista sin fallback fuzzy/LLM** (ADR 0011 enmendado). El próximo
-> trabajo real es la **tanda de remediación R1–R5** del [`ROADMAP.md`](ROADMAP.md).
+> trabajo real es la **tanda de remediación R1–R5** del [`ROADMAP.md`](ROADMAP/README.md).
 
 1. **Nuevos ADRs** (architect), además del [0007](decisiones/0007-openalex-backbone.md) ya
    redactado: wedge = forrajeo (~~tensiones a v2~~ → **retiradas**, ADR 0022); **biblioteca viva en
@@ -397,4 +397,4 @@ Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.
    [Nota 06](Notas/06-critica-as-built-v0.2.md) corrige el claim "capacidades completas":** falta la
    **tanda de remediación R1–R5** (modelo sin IA, identidad-vs-procedencia reproducible, FSM cíclico,
    scent bibliométrico, robustez) **antes** de los Hitos 7–11 (dedup fuzzy, `Enricher` co-citación,
-   `NetworkSpec` YAML, viz, Zotero/Neo4j). Estado vivo en el [`ROADMAP.md`](ROADMAP.md).
+   `NetworkSpec` YAML, viz, Zotero/Neo4j). Estado vivo en el [`ROADMAP.md`](ROADMAP/README.md).

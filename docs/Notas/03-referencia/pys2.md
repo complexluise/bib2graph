@@ -7,7 +7,7 @@
 [![ReadTheDocs](https://readthedocs.org/projects/pys2/badge/?version=latest)](https://pys2.readthedocs.io/)
 
 
-A python library for the [Semantic Scholar (S2) API](api.semanticscholar.org/) 
+A python library for the [Semantic Scholar (S2) API](https://api.semanticscholar.org/) 
 with typed [pydantic](https://pydantic-docs.helpmanual.io/) objects 
 and various nifty functionalities. 
 
