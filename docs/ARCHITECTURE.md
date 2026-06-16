@@ -187,17 +187,23 @@ Orquestación pura sobre la costura `Source`: dado el corpus actual, computa can
 determinista y reproducible**, **sin LLM ni embeddings** (ADR
 [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) actualizado;
 [0022](decisiones/0022-producto-sin-ia-generativa.md)): el forrajeo **consume el núcleo de
-proyección** (§3.2) — un candidato rankea por cuánto se acopla / co-cita / es central respecto del
-corpus curado.
+proyección** (§3.2, primitivo `collect_item_to_papers`) — un candidato rankea por cuánto se co-cita
+(backward) o cita directamente (forward) respecto del corpus curado.
 
-- **`AS-BUILT v0.2`:** el scent es **frecuencia de enlace de cita** —backward: nº de papers del
-  corpus que listan al candidato; forward: nº de papers del corpus a los que el candidato cita— una
-  función pura sobre conteos, **sin** proyectores ni grafo.
-- **`TARGET`:** el scent pasa a usar los **proyectores** como olfato (lo que la
-  [Nota 05](Notas/05-ciclo-investigacion-humano.md) §4 promete): señal de **acoplamiento /
-  co-citación / centralidad** del candidato con el corpus. Sigue siendo **función pura y
-  determinista** (mismo corpus → mismo ranking); el forrajeo (costura) **depende del núcleo de
-  proyección** (puro), nunca al revés. Ver ROADMAP **Hito R4**.
+- **`AS-BUILT R4` (2026-06-16):** el scent consume el primitivo público `collect_item_to_papers`
+  de `networks/projectors.py` (lo que la [Nota 05](Notas/05-ciclo-investigacion-humano.md) §4
+  promete): el forrajeo (costura) **depende del núcleo de proyección** (puro), nunca al revés.
+  Sigue siendo **función pura y determinista** (mismo corpus → mismo ranking).
+  - **Backward** = **fuerza de co-citación con el corpus**: `|{Pi ∈ corpus : X ∈ Pi.references_id}|`
+    (cuántos corpus-papers co-citan al candidato; es la columna de `X` en la matriz de co-citación).
+  - **Forward** = **fuerza de citación directa al corpus** (señal primaria): a cuántos corpus-papers
+    cita el candidato directamente — robusta, siempre > 0 para un citante real.
+    `forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|` (emite con `direct > 0`). *(El
+    AS-BUILT inicial de R4 implementó el forward como **acoplamiento puro**, que degenera a 0 con
+    referencias ralas; se **corrigió a citación directa dentro de R4** — ver ADR
+    [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) AS-BUILT.)*
+  - **Centralidad** de red del candidato: **diferida** (viz); el DoD "y/o" se cumple con
+    co-citación + citación-directa.
 
 Reglas (ADR 0008, nota 07): **profundidad 1 por defecto** (`depth>1` lanza `NotImplementedError`);
 **preview de crecimiento** ("sumaría ~N papers") **sin red** —backward exacto local; forward no

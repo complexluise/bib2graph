@@ -61,3 +61,14 @@ bibliométrica como *information scent***, **determinista y reproducible** (acop
   `pyproject.toml`; quitar `explain_candidate` de la superficie pública; reescribir `foraging/scent.py`
   para consumir proyectores (ver ROADMAP Hito R4). Tratar las Notas 04/05 que prometían tensiones
   como historia, anotando qué se abandonó.
+
+## AS-BUILT — 2026-06-16 (Hito R4: sin IA, construido y verificado)
+
+El Hito R4 **cumple esta decisión en el código**: `foraging/explain.py`, `explain_candidate` y el extra
+`[llm]` quedaron **eliminados** (verificable: el import falla, el extra no está en `pyproject.toml`); el
+*information scent* se computa con el primitivo bibliométrico `collect_item_to_papers`
+(`networks/projectors.py`) — **sin LLM ni embeddings**. El forrajeo (costura) **depende del núcleo de
+proyección** (puro); el núcleo no depende de la costura. La curación sigue siendo 100% humana. 291 tests
+verdes, mypy/ruff limpios. Las fórmulas de método (backward = co-citación; forward = citación directa;
+centralidad diferida) se documentan en el AS-BUILT del ADR
+[0020](0020-metodo-forrajeo-scent-filtros-reject.md); **ninguna usa IA**.

@@ -321,3 +321,41 @@
 > banner as-built), ARCHITECTURE.md (§5.5 FSM → `cycle.py` AS-BUILT R3), API.md (§convenciones CLI +
 > bloque `cycle.py`), CHANGELOG (R3 marcado). La [Nota 05](../Notas/05-ciclo-investigacion-humano.md)
 > ya describía el ciclo correcto y **no requirió cambios** (R3 la **implementa**, no la corrige).
+
+---
+
+## 2026-06-16 — Hito R4 (Scent bibliométrico vía proyectores + retiro de IA del producto)
+
+> Implementa las enmiendas 2026-06-15 de los ADR
+> [0020](0020-metodo-forrajeo-scent-filtros-reject.md) (scent = proyectores),
+> [0022](0022-producto-sin-ia-generativa.md) (el producto no usa IA) y
+> [0008](0008-wedge-forrajeo.md) (tensiones retiradas). Cierra la RAÍZ 1 (parte de IA) de la
+> [Nota 06](../Notas/06-critica-as-built-v0.2.md). **291 tests** verdes, mypy strict / ruff limpios; el
+> núcleo de scent depende del núcleo de proyección (puro), no al revés. **Verifier: APRUEBA CON
+> RESERVAS** (3 cuestiones de método); el **steering arquitectónico (2026-06-16)** las resolvió.
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| R4.1 | **`compute_backward/forward_scent` consumen el primitivo público `collect_item_to_papers`** (extraído a `networks/projectors.py` y re-exportado) en vez de reimplementar `Counter`/`sum`. El forrajeo (costura) **depende del núcleo de proyección**, nunca al revés | El ADR 0020 enmendado §1 manda que el scent "use los proyectores" como olfato. Extraer el índice inverso `{ref → papers que lo citan}` como primitivo público lo comparte entre proyectores y scent sin construir un `nx.Graph` por candidato (olfato barato y determinista) | Media: cambiar el primitivo toca proyectores y scent a la vez | Sí (PO proxy / ADR 0020; verifier PASA) |
+| R4.2 | **Backward ratificado como _fuerza de co-citación con el corpus_** (`backward_score(X) = |{Pi ∈ corpus : X ∈ Pi.references_id}|`), NO "conteo plano sin sentido" | Numéricamente coincide con el viejo conteo, pero su **semántica es estructural**: `X` referenciado por `N` corpus-papers está **co-citado `N` veces dentro del corpus** (columna de `X` en la matriz de co-citación). Cumple el DoD ("no por conteo plano"): mide una propiedad de red, vía el primitivo de proyectores. Se renombra el concepto en docstrings/docs de "frecuencia de enlace" → "fuerza de co-citación con el corpus" | Alta: es ratificación + rename de concepto, no cambia el cómputo | **Sí — steering arquitectónico** (ADR 0020 AS-BUILT) |
+| R4.3 | **Forward = _fuerza de citación directa al corpus_** (señal primaria), NO acoplamiento puro. El AS-BUILT inicial lo implementó como acoplamiento (`refs compartidas Y↔corpus`), que **degeneraba a 0** con `references_id` ralas (común tras `seed`) y **descartaba el citante directo como candidato**. **Fix IMPLEMENTADO dentro de R4**: `compute_forward_scent` calcula `forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|`, siempre > 0 para un citante real, y emite con `direct > 0`; acoplamiento queda secundario | El forward chaining busca **citantes**; un citante directo NO necesariamente comparte refs con el corpus-paper que cita → el acoplamiento es la medida equivocada para esta dirección. La citación directa rankea por cuán embebido está el citante en mi corpus (Wohlin, snowballing forward), robusta y siempre informativa | Media: el fix fue local a `compute_forward_scent` | **Sí — steering arquitectónico** (recomendación de código explícita, **implementada dentro de R4**; 293 tests verdes, mypy/ruff OK) |
+| R4.4 | **Centralidad de red del candidato: DIFERIDA** (viz), no exigida para cerrar R4 | El DoD listaba "acoplamiento **/** co-citación **/** centralidad" con un **"y/o"**: pide señal estructural de red, no las tres. Con backward = co-citación + forward = citación-directa el espíritu se cumple. La centralidad requiere construir el grafo completo por candidato (costo que excede el olfato barato y determinista de R4). DoD reconciliado honestamente | Alta: agregar una señal de centralidad es aditivo (mejora futura) | **Sí — steering arquitectónico** (DoD reconciliado) |
+| R4.5 | **`explain_candidate`, `foraging/explain.py` y el extra `[llm]` ELIMINADOS** de la superficie pública y de `pyproject.toml` (ADR 0022) | El producto no usa IA generativa; el "porqué" de un candidato lo da la estructura visible, no un LLM. El stub vacío era deuda/vapor (Nota 06 RAÍZ 1) | Baja: re-introducir IA sería una **decisión nueva** (ADR nuevo), no un default | **Sí — decisión del PO** (ADR 0022) |
+
+> **Reservas del verifier:** RESERVA 2 (forward degenera a 0) → el arquitecto la convirtió en
+> **recomendación de código** (R4.3): revertir el forward a citación directa; **se implementó dentro de
+> R4** (la elimina-IA y el scent-vía-proyectores **están cerrados y verificados**).
+> RESERVA 1 (backward = conteo) → **ratificada como co-citación** (R4.2), es measure bibliométrico
+> legítimo. RESERVA 3 (centralidad del DoD) → **diferida** (R4.4), el "y/o" del DoD se cumple.
+>
+> **Veredicto del arquitecto:** **R4 ✅ TERMINADO** — la parte de cierre (sin IA, scent-vía-proyectores,
+> dependencia forrajeo→núcleo) está hecha y verificada, y el **fix del forward** (citación directa) se
+> **implementó dentro de R4** (`compute_forward_scent`, 293 tests verdes). R4 no deja seguimiento abierto.
+>
+> **Reconciliación de docs (arquitecto, 2026-06-16):** ADR 0020 (AS-BUILT: fórmulas reales,
+> backward=co-citación, forward=citación-directa **implementada**, centralidad diferida),
+> ADR 0022 (AS-BUILT: sin IA construido), ROADMAP (Hito R4 ✅ TERMINADO + DoD reconciliado),
+> ARCHITECTURE.md (§3.5 scent→proyectores AS-BUILT R4), API.md (§5 scent bibliométrico construido),
+> CHANGELOG (R4 marcado). README/AI_DISCLOSURE/AGENTS ya describían el retiro de `[llm]`/IA en pasado y
+> **no requirieron limpieza adicional**. La [Nota 05](../Notas/05-ciclo-investigacion-humano.md) §4 ya
+> prometía "la bibliometría ES el information scent" y **no requirió cambios** (R4 la **implementa**).

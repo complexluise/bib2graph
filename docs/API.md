@@ -565,26 +565,31 @@ dispara** todavía (futuro). El comando `b2g status` consume `loop_state()`/`loo
 
 ---
 
-## 5. Núcleo — Forrajeo / chaining (asistencia algorítmica, SIN IA — construido, en remediación)
+## 5. Núcleo — Forrajeo / chaining (asistencia algorítmica, SIN IA — construido, Hito 5 + R4)
 
-> **TARGET (ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) enmendado /
-> [0022](decisiones/0022-producto-sin-ia-generativa.md)):** el *information scent* es **estructura
-> bibliométrica determinista** —acoplamiento / co-citación / centralidad del candidato respecto del
-> corpus curado, consumiendo los **proyectores** (§7)—, **sin LLM ni embeddings**. El forrajeo
-> (costura) **depende del núcleo de proyección** (puro), nunca al revés. El producto **no usa IA
-> generativa**. Ver ROADMAP **Hito R4**.
->
-> **AS-BUILT v0.2:** el scent es **frecuencia de enlace de cita** (conteo puro sobre
-> `references_id`/`cited_by_id`, sin grafo), descrito abajo. R4 lo eleva a scent-vía-proyectores.
+> **AS-BUILT R4 (2026-06-16) — ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)
+> enmendado / [0022](decisiones/0022-producto-sin-ia-generativa.md)):** el *information scent* es
+> **estructura bibliométrica determinista** que consume el primitivo público `collect_item_to_papers`
+> de los proyectores (§7), **sin LLM ni embeddings**. El forrajeo (costura) **depende del núcleo de
+> proyección** (puro), nunca al revés. El producto **no usa IA generativa**.
+> `explain_candidate`/`foraging/explain.py`/`[llm]` quedaron **eliminados**.
 
-El *information scent* (AS-BUILT) es **frecuencia de enlace de cita con el corpus** (ADR
-[0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)). Es una **función pura** sobre
-conteos (`bib2graph.foraging.scent`), sin construir grafo:
+El *information scent* es **estructura bibliométrica de cita con el corpus** (ADR
+[0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md), AS-BUILT R4). Es una **función pura**
+sobre el primitivo `collect_item_to_papers` (índice `{ref → corpus-papers que lo citan}`):
 
-- **Backward** (puro, local): scent = nº de papers del corpus que listan al candidato en
-  `references_id`. No toca la red (las referencias ya vienen en el corpus tras el seed).
-- **Forward** (requiere red): scent = nº de papers del corpus a los que el candidato cita. Exige
-  traer los citantes vía `source.fetch_citing(...)` (ver abajo).
+- **Backward** (puro, local): scent = **fuerza de co-citación con el corpus** = nº de corpus-papers
+  que listan al candidato en `references_id` (cuántos corpus-papers co-citan al candidato). No toca la
+  red (las referencias ya vienen en el corpus tras el seed).
+- **Forward** (requiere red): scent = **fuerza de citación directa al corpus** = nº de corpus-papers a
+  los que el candidato cita directamente (señal primaria, robusta: siempre > 0 para un citante real).
+  Exige traer los citantes vía `source.fetch_citing(...)` (ver abajo). El acoplamiento bibliográfico
+  queda como señal secundaria. *(El AS-BUILT inicial midió **acoplamiento puro** y degenera a 0 con
+  referencias ralas; se **corrigió a citación directa dentro de R4** — `compute_forward_scent` calcula
+  `forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|` y emite con `direct > 0`. Ver ADR
+  0020 AS-BUILT.)*
+- **Centralidad** del candidato: **diferida** (viz); el DoD "y/o" se cumple con
+  co-citación + citación-directa.
 
 El ranking es descendente por scent con **desempate por `id` ascendente** (estable ante cualquier
 `PYTHONHASHSEED`).
@@ -594,7 +599,8 @@ Direction = Literal["backward", "forward", "both"]   # bib2graph.foraging.Direct
 
 class Forager:
     """Orquesta el chaining sobre un Source, rankeando candidatos por *information scent*
-    (frecuencia de enlace de cita, ADR 0008/0020). Solo el Forager toca la red; el núcleo
+    bibliométrico (co-citación backward / citación directa forward, ADR 0008/0020/0022).
+    El scent consume el primitivo de proyectores. Solo el Forager toca la red; el núcleo
     de scent es puro."""
     def __init__(self, source: Source, *, depth: int = 1, max_candidates: int | None = None) -> None:
         """depth=1 por defecto; depth>1 lanza NotImplementedError (futuro v0.3+).

@@ -159,7 +159,8 @@ Testcontainers). El núcleo es todo `unit`.
   `click`, `tqdm`, **`duckdb`**, **`httpx`** como cliente OpenAlex) y extras opt-in (`[bibtex]`,
   `[zotero]`, `[s2]`, `[neo4j]`, `[viz]`, `[dedup]`, `[llm]`). **La lista canónica de extras vive
   en `pyproject.toml`** (fuente de verdad); el ADR 0005 fija el *principio* (núcleo liviano +
-  import perezoso), no la lista, que crece por hito.
+  import perezoso), no la lista, que crece por hito. *(El extra `[llm]` se declaró en Hito 0 pero quedó
+  **eliminado** en R4 — ADR 0022: el producto no usa IA generativa.)*
 - **Tooling LOCAL desde el día uno** (ADR 0006): `ruff`, `mypy`, `pytest`, `pre-commit` y
   `commitizen` (linter de Conventional Commits + `cz bump --dry-run` para previsualizar el bump).
   SemVer estricto, `CONTRIBUTING.md`. **La automatización de releases (`release-please` + CI/PyPI)
@@ -863,8 +864,23 @@ clase y la curación —lo irreductiblemente humano— por fin figura en el mapa
 
 ---
 
-## Hito R4 — Scent bibliométrico vía proyectores + retiro de `explain`/`[llm]`/tensiones · ⏳ PENDIENTE
+## Hito R4 — Scent bibliométrico vía proyectores + retiro de `explain`/`[llm]`/tensiones · ✅ TERMINADO (2026-06-16)
 
+> **AS-BUILT (2026-06-16):** R4 reescribió `foraging/scent.py` para consumir el primitivo público
+> `collect_item_to_papers` de `networks/projectors.py` (el forrajeo **depende del núcleo de
+> proyección**, nunca al revés), y **eliminó** `foraging/explain.py`/`explain_candidate` y el extra
+> `[llm]` (ADR 0022). **291 tests** verdes, mypy strict / ruff limpios. El **steering arquitectónico
+> (2026-06-16)** resolvió tres cuestiones de método: **backward = fuerza de co-citación con el corpus**
+> (ratificado), **forward = fuerza de citación directa al corpus** (señal primaria; el AS-BUILT inicial
+> midió *acoplamiento puro* —que **degenera a 0** con referencias ralas— y se **corrigió a citación
+> directa dentro de R4**) y **centralidad diferida** (no es requisito de cierre; el DoD "y/o" se cumple
+> con co-citación + citación-directa). Ver AS-BUILT del ADR
+> [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) (fórmulas + recomendación de código
+> del forward, **implementada**). **Cierre total:** `compute_forward_scent` calcula
+> `forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|` (citación directa, emite con
+> `direct > 0`); la elimina-IA, el scent-vía-proyectores y el forward robusto **están cerrados**. R4 no
+> deja seguimiento abierto.
+>
 > Cuarto porque el scent-vía-proyectores **consume el núcleo de proyección** (Hito 2, ya construido) y
 > conviene tener identidad estable (R2) para que el ranking sea reproducible. Cierra la RAÍZ 1 (la
 > parte de IA) de la [Nota 06](Notas/06-critica-as-built-v0.2.md) y las enmiendas 2026-06-15 de los
@@ -891,8 +907,14 @@ clase y la curación —lo irreductiblemente humano— por fin figura en el mapa
 
 **Criterios de aceptación (DoD)**
 
-- `chain` rankea por **acoplamiento/co-citación/centralidad** del candidato con el corpus (consume
-  `networks/`), **determinista** (mismo corpus → mismo orden).
+- `chain` rankea por **estructura bibliométrica** del candidato con el corpus (consume el primitivo
+  `collect_item_to_papers` de `networks/`), **determinista** (mismo corpus → mismo orden). El DoD
+  listaba "acoplamiento **/** co-citación **/** centralidad" (un **"y/o"**: pide señal estructural de
+  red, no las tres). **AS-BUILT R4:** backward = **co-citación** (cuántos corpus-papers co-citan al
+  candidato); forward = **citación directa al corpus** (señal primaria robusta) con acoplamiento como
+  secundario. **Centralidad diferida** a viz (excede el olfato barato y determinista). Espíritu del
+  DoD cumplido. *(El forward as-built fue acoplamiento puro y se corrigió a citación directa dentro de
+  R4: `compute_forward_scent` emite con `direct > 0`.)*
 - **No existe** `explain_candidate`, `foraging/explain.py` ni el extra `[llm]` (verificable: import
   falla, el extra no está en `pyproject.toml`). El thesaurus no tiene fallback LLM.
 - El **sesgo de confirmación** (efecto Mateo) del scent queda documentado: el scent **prioriza**; la

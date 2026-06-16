@@ -22,10 +22,14 @@ commits.
 > entrega por hito R.
 
 ### Changed (modelo / docs — diseño objetivo)
-- **El producto NO usa IA generativa** (ADR 0022): el *information scent* del forrajeo deja de ser
-  una heurística de frecuencia de enlace y pasa a **scent bibliométrico determinista vía proyectores**
-  (acoplamiento/co-citación/centralidad), **sin LLM ni embeddings** (Hito R4). Un solo sentido de
-  "AI-in-the-loop": el desarrollo es asistido por IA; el producto no.
+- **El producto NO usa IA generativa** (ADR 0022, **Hito R4 ✅ 2026-06-16**): el *information scent*
+  del forrajeo deja de ser una heurística de frecuencia de enlace y pasa a **scent bibliométrico
+  determinista** que consume el primitivo `collect_item_to_papers` de los proyectores, **sin LLM ni
+  embeddings**. As-built: backward = **fuerza de co-citación con el corpus**; forward = **fuerza de
+  citación directa al corpus** (señal primaria; el AS-BUILT inicial midió acoplamiento puro y degeneraba
+  a 0 con referencias ralas → corregido a citación directa **dentro de R4**:
+  `forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|`); **centralidad diferida**.
+  Un solo sentido de "AI-in-the-loop": el desarrollo es asistido por IA; el producto no.
 - **Identidad ≠ procedencia** (ADR 0017 enmendado, **Hito R2 ✅ 2026-06-16**): el `corpus_hash` se
   computa **solo sobre contenido bibliográfico** (excluye `provenance`/timestamps; incluye
   `curation_status`); el reloj se inyecta desde la **frontera CLI** (`accept`/`reject`/`filter` pasan
@@ -45,8 +49,9 @@ commits.
   ruidoso**; `PaperRow` ⇄ `CORPUS_SCHEMA` de una sola fuente (Hito R1).
 
 ### Removed (diseño objetivo)
-- **`explain_candidate`, `foraging/explain.py` y el extra `[llm]`** se **eliminan** (ADR 0022): el
-  producto no usa IA generativa (Hito R4).
+- **`explain_candidate`, `foraging/explain.py` y el extra `[llm]`** **eliminados** (ADR 0022,
+  **Hito R4 ✅ 2026-06-16**): el producto no usa IA generativa (verificable: el import falla, el extra
+  no está en `pyproject.toml`).
 - **La "máquina de tensiones"** (antigua "inserción de IA nº2") se **retira del producto** —no se
   difiere a v2, se borra (ADR 0008 enmendado). El **fallback semántico/LLM del thesaurus** también se
   retira (ADR 0011 enmendado): el thesaurus es curado y determinista.
