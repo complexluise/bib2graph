@@ -7,7 +7,7 @@ Entry point en ``pyproject.toml``:
     b2g = "bib2graph.cli:main"
 
 Subcomandos:
-    seed, chain, filter, build, monitor, export, snapshot,
+    seed, chain, filter, build, enrich, monitor, export, snapshot,
     status, inspect, validate, accept, reject.
 
 Cada subcomando lleva:
@@ -32,6 +32,7 @@ import click
 from bib2graph.cli.commands.accept import accept_cmd
 from bib2graph.cli.commands.build import build_cmd
 from bib2graph.cli.commands.chain import chain_cmd
+from bib2graph.cli.commands.enrich import enrich_cmd
 from bib2graph.cli.commands.export import export_cmd
 from bib2graph.cli.commands.filter import filter_cmd
 from bib2graph.cli.commands.inspect import inspect_cmd
@@ -73,7 +74,7 @@ def b2g(ctx: click.Context, store: str) -> None:
     Transforma corpus bibliográficos en redes bibliométricas reproducibles.
     El estado de la investigación vive en --store (archivo .duckdb).
 
-    Subcomandos: seed, chain, filter, build, monitor, export, snapshot,
+    Subcomandos: seed, chain, filter, build, enrich, monitor, export, snapshot,
     status, inspect, validate, accept, reject.
 
     Ejemplo:
@@ -84,11 +85,12 @@ def b2g(ctx: click.Context, store: str) -> None:
     ctx.obj["store"] = store
 
 
-# Registrar los 12 subcomandos
+# Registrar los 13 subcomandos
 b2g.add_command(seed_cmd)
 b2g.add_command(chain_cmd)
 b2g.add_command(filter_cmd)
 b2g.add_command(build_cmd)
+b2g.add_command(enrich_cmd)
 b2g.add_command(monitor_cmd)
 b2g.add_command(export_cmd)
 b2g.add_command(snapshot_cmd)
