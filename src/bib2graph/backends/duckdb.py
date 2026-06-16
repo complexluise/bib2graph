@@ -12,8 +12,9 @@ Detalles de diseño (ADR 0015):
   para garantizar equivalencia byte a byte con ``InMemoryBackend``.
 - ``corpus_hash`` se computa siempre sobre ``to_arrow()`` con la misma
   función que ``InMemoryBackend`` (D2).
-- ``LoopState`` (ADR 0016): enum SEEDED/FORAGED/FILTERED/BUILT + tabla
-  ``loop_state_log`` append-only; estado actual = última fila.
+- ``CycleState`` (ADR 0016 enmendado R3): importado de ``cycle.py`` (dominio
+  puro); el backend solo persiste el ciclo en ``loop_state_log`` (estado + ronda).
+  La columna ``round`` registra el número de ronda; ``reseed`` incrementa la ronda.
 - Single-writer (ADR 0019): archivo bloqueado → ``StoreLockedError``.
 - ``:memory:`` cuando no se pasa ``path``.
 
@@ -24,7 +25,6 @@ núcleo nunca importa este módulo directamente).
 from __future__ import annotations
 
 import contextlib
-from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
@@ -39,7 +39,16 @@ from bib2graph.backends.memory import (
     compute_corpus_hash,
 )
 from bib2graph.constants import LIST_COLUMNS, CurationStatus
+from bib2graph.cycle import CycleState
 from bib2graph.schemas import CORPUS_SCHEMA, validate_table
+
+# ---------------------------------------------------------------------------
+# Re-export CycleState bajo el alias LoopState para compatibilidad
+# con código que ya importa LoopState desde este módulo.
+# R3: el dominio vive en cycle.py; backends.duckdb solo persiste.
+# ---------------------------------------------------------------------------
+
+LoopState = CycleState  # alias de compatibilidad (R3)
 
 # ---------------------------------------------------------------------------
 # Error de bloqueo de archivo (ADR 0019)
@@ -51,24 +60,6 @@ class StoreLockedError(OSError):
 
     El CLI (Hito 6) mapea esta excepción al exit code ``5``.
     """
-
-
-# ---------------------------------------------------------------------------
-# LoopState (ADR 0016)
-# ---------------------------------------------------------------------------
-
-
-class LoopState(StrEnum):
-    """Estados del lazo de investigación (ADR 0016).
-
-    Transiciones permisivas: no se bloquea ningún salto.
-    Una investigación = un archivo ``.duckdb``.
-    """
-
-    SEEDED = "SEEDED"
-    FORAGED = "FORAGED"
-    FILTERED = "FILTERED"
-    BUILT = "BUILT"
 
 
 # ---------------------------------------------------------------------------
@@ -106,8 +97,17 @@ CREATE TABLE IF NOT EXISTS corpus (
 _DDL_LOOP_STATE = """
 CREATE TABLE IF NOT EXISTS loop_state_log (
     state       VARCHAR NOT NULL,
+    round       INTEGER DEFAULT 0,
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 )
+"""
+
+# R3: si la tabla ya existía sin la columna ``round`` (bases creadas antes de R3),
+# agregamos la columna en modo migración liviana (pre-1.0, sin datos reales en uso).
+# DuckDB no soporta ADD COLUMN con NOT NULL constraint; se agrega como nullable
+# con default 0 y se trata como entero en loop_round().
+_DDL_LOOP_STATE_MIGRATE = """
+ALTER TABLE loop_state_log ADD COLUMN round INTEGER DEFAULT 0
 """
 
 # ---------------------------------------------------------------------------
@@ -256,6 +256,9 @@ class DuckDBBackend:
         """Crea las tablas DDL y registra las UDFs Python."""
         self._con.execute(_DDL_CORPUS)
         self._con.execute(_DDL_LOOP_STATE)
+        # R3: migración liviana — agrega columna round si falta (bases pre-R3).
+        with contextlib.suppress(duckdb.CatalogException):
+            self._con.execute(_DDL_LOOP_STATE_MIGRATE)
         self._register_udfs()
 
     def _register_udfs(self) -> None:
@@ -324,14 +327,14 @@ class DuckDBBackend:
             new_backend._setup()
             if len(current_table) > 0:
                 new_backend._upsert_table(current_table)
-            # Copiar el loop_state_log
+            # Copiar el loop_state_log (incluyendo round — R3)
             log_rows = self._con.execute(
-                "SELECT state, recorded_at FROM loop_state_log ORDER BY recorded_at"
+                "SELECT state, round, recorded_at FROM loop_state_log ORDER BY recorded_at"
             ).fetchall()
-            for state_val, at_val in log_rows:
+            for state_val, round_val, at_val in log_rows:
                 new_backend._con.execute(
-                    "INSERT INTO loop_state_log (state, recorded_at) VALUES (?, ?)",
-                    [state_val, at_val],
+                    "INSERT INTO loop_state_log (state, round, recorded_at) VALUES (?, ?, ?)",
+                    [state_val, round_val, at_val],
                 )
             return new_backend
         else:
@@ -529,36 +532,65 @@ class DuckDBBackend:
         return self.corpus_hash() == other.corpus_hash()
 
     # ------------------------------------------------------------------
-    # Extensiones propias: LoopState (ADR 0016)
+    # Extensiones propias: CycleState / LoopState (ADR 0016, R3)
     # ------------------------------------------------------------------
 
-    def loop_state(self) -> LoopState | None:
+    def loop_state(self) -> CycleState | None:
         """Estado actual del lazo de investigación.
 
         Lee la última fila de ``loop_state_log`` (log append-only).
 
         Returns:
-            El ``LoopState`` actual, o ``None`` si no hay transiciones aún.
+            El ``CycleState`` actual, o ``None`` si no hay transiciones aún.
         """
         row = self._con.execute(
             "SELECT state FROM loop_state_log ORDER BY recorded_at DESC LIMIT 1"
         ).fetchone()
         if row is None:
             return None
-        return LoopState(row[0])
+        return CycleState(row[0])
 
-    def set_loop_state(self, state: LoopState) -> None:
-        """Registra una transición de ``LoopState`` (transición permisiva).
+    def loop_round(self) -> int:
+        """Número de ronda actual del lazo.
+
+        Lee la columna ``round`` de la última fila de ``loop_state_log``.
+        Devuelve ``0`` cuando no hay transiciones (sin estado previo) o cuando
+        la columna es NULL (bases migradas desde antes de R3).
+
+        Returns:
+            Entero >= 0.  0 = sin estado; 1 = primera ronda; 2+ = re-sembrados.
+        """
+        row = self._con.execute(
+            "SELECT round FROM loop_state_log ORDER BY recorded_at DESC LIMIT 1"
+        ).fetchone()
+        if row is None or row[0] is None:
+            return 0
+        return int(row[0])
+
+    def set_loop_state(
+        self, state: CycleState, *, cycle_round: int | None = None
+    ) -> None:
+        """Registra una transición de ``CycleState`` (transición permisiva).
 
         Agrega una fila al log append-only ``loop_state_log``.  No bloquea
         ningún salto (ADR 0016: transiciones permisivas).
 
+        R3: persiste también el número de ronda.  Si ``cycle_round`` es ``None``,
+        conserva la ronda actual (útil para transiciones dentro de la misma
+        ronda, p. ej. ``chain``/``filter``/``build``).
+
+        La curación (``accept``/``reject``) es TRANSVERSAL y NO llama
+        ``set_loop_state``: no transiciona el lazo.
+
         Args:
             state: El nuevo estado del lazo.
+            cycle_round: Número de ronda a persistir.  Si es ``None``, usa la
+                ronda actual del log.
         """
+        current_round = self.loop_round() if cycle_round is None else cycle_round
         self._con.execute(
-            "INSERT INTO loop_state_log (state) VALUES (?)",
-            [state.value],
+            "INSERT INTO loop_state_log (state, round) VALUES (?, ?)",
+            [state.value, current_round],
         )
 
     # ------------------------------------------------------------------

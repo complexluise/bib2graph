@@ -616,7 +616,9 @@ def test_status_tras_seed_chain_filter(tmp_path: Path) -> None:
     # Debe haber al menos papers en candidate o rejected
     all_counts = sum(data["counts_by_status"].values())
     assert all_counts == data["total_papers"]
-    assert "seed" in data["transitions_available"]
+    # R3: desde cualquier estado con estado previo, reseed está disponible
+    # (el "seed" inicial solo está en None → "seed"; con estado previo → "reseed")
+    assert "reseed" in data["transitions_available"]
 
 
 # ---------------------------------------------------------------------------

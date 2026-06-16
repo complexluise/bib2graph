@@ -1,7 +1,11 @@
 """cli.commands.seed — Subcomando ``b2g seed``.
 
 Siembra el corpus desde una ecuación de búsqueda en OpenAlex.
-Transiciona el LoopState a SEEDED tras persistir con éxito.
+Transiciona el CycleState a SEEDED tras persistir con éxito.
+
+R3 — reseed: si ya había un estado previo en el store (no es la primera
+siembra), la acción se trata como ``reseed`` → loop-back a SEEDED con
+ronda++ (ADR 0016 enmendado).  El corpus acumulado (lo curado) se conserva.
 """
 
 from __future__ import annotations
@@ -48,7 +52,7 @@ def run_seed(
         NetworkError: Si falla la conexión a OpenAlex.
         StoreError: Si el store está bloqueado.
     """
-    from bib2graph.backends.duckdb import LoopState
+    from bib2graph.cycle import apply_transition
     from bib2graph.sources.openalex import OpenAlexSource
 
     if not equation or not equation.strip():
@@ -56,6 +60,17 @@ def run_seed(
 
     store = open_store(store_path)
     existing = store.load()
+
+    # R3 — reseed: si ya había un estado previo, es un re-sembrado.
+    # apply_transition lleva la ronda al valor correcto.
+    current_state = store.backend.loop_state()
+    current_round = store.backend.loop_round()
+    if current_state is not None:
+        # Re-sembrado (la idea muta): reseed → SEEDED, ronda++
+        new_state, new_round = apply_transition(current_state, "reseed", current_round)
+    else:
+        # Primera siembra
+        new_state, new_round = apply_transition(None, "seed", current_round)
 
     try:
         source = OpenAlexSource(email=email, transport=transport)
@@ -68,10 +83,10 @@ def run_seed(
     # RemoteProtocolError, TransportError, etc.) se dejan propagar: el
     # decorador @handle_errors las captura por tipo y emite exit 4.
 
-    # Merge con el corpus existente (idempotente)
+    # Merge con el corpus existente (acumula sobre lo curado)
     merged = existing.merge(result.corpus)
     store.persist(merged)
-    store.backend.set_loop_state(LoopState.SEEDED)
+    store.backend.set_loop_state(new_state, cycle_round=new_round)
 
     papers_added = len(result.corpus)
 
@@ -80,6 +95,8 @@ def run_seed(
         "translation_report": result.translation_report,
         "papers_added": papers_added,
         "total_papers": len(merged),
+        "round": new_round,
+        "reseeded": current_state is not None,
     }
 
 

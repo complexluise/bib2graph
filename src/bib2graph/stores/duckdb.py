@@ -19,9 +19,10 @@ from pathlib import Path
 
 from bib2graph.backends.duckdb import DuckDBBackend, LoopState, StoreLockedError
 from bib2graph.corpus import Corpus
+from bib2graph.cycle import CycleState
 from bib2graph.schemas import CORPUS_SCHEMA
 
-__all__ = ["DuckDBStore", "LoopState", "StoreLockedError"]
+__all__ = ["CycleState", "DuckDBStore", "LoopState", "StoreLockedError"]
 
 
 class DuckDBStore:

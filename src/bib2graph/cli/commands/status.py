@@ -1,7 +1,19 @@
 """cli.commands.status — Subcomando ``b2g status``.
 
-Expone el LoopState y los conteos por curation_status del corpus.
-NO transiciona el LoopState.
+Expone el CycleState y los conteos por curation_status del corpus.
+NO transiciona el CycleState.
+
+R3: el mapa honesto del lazo (ADR 0016 enmendado).  Muestra:
+- estado actual (CycleState / LoopState),
+- transiciones disponibles desde ese estado,
+- ``curation_available``: accept/reject son acciones SIEMPRE-DISPONIBLES
+  (curación transversal, NO transicionan el lazo),
+- contador de ronda,
+- conteos por curation_status.
+
+El envelope ``--json`` incluye ``curation_available`` y ``round`` como campos
+ADITIVOS que mantienen ``schema="1"`` (decisión del PO 2026-06-16: campos
+nuevos no rompen a los agentes, no se bumpea).
 """
 
 from __future__ import annotations
@@ -14,25 +26,7 @@ import click
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._store import open_store
-
-# Transiciones disponibles desde cada estado (permisivas; ADR 0016)
-_TRANSITIONS: dict[str | None, list[str]] = {
-    None: ["seed"],
-    "SEEDED": ["seed", "chain", "filter", "build", "snapshot", "inspect", "validate"],
-    "FORAGED": ["seed", "chain", "filter", "build", "snapshot", "inspect", "validate"],
-    "FILTERED": ["seed", "chain", "filter", "build", "snapshot", "inspect", "validate"],
-    "BUILT": [
-        "seed",
-        "chain",
-        "filter",
-        "build",
-        "export",
-        "snapshot",
-        "inspect",
-        "validate",
-    ],
-}
-
+from bib2graph.cycle import CURATION_ACTIONS, available_transitions
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -40,17 +34,25 @@ _TRANSITIONS: dict[str | None, list[str]] = {
 
 
 def run_status(store_path: str | Path) -> dict[str, Any]:
-    """Lee el LoopState y los conteos del corpus del store.
+    """Lee el CycleState, la ronda y los conteos del corpus del store.
 
     Consulta la última fila de ``loop_state_log`` y hace un GROUP BY sobre
-    ``curation_status`` para obtener los conteos. No transiciona el LoopState.
+    ``curation_status`` para obtener los conteos.  No transiciona el CycleState.
+
+    R3 — mapa honesto del lazo:
+    - ``transitions_available``: acciones de ciclo disponibles desde el estado
+      actual (incluye ``reseed`` cuando hay estado previo).
+    - ``curation_available``: ``["accept", "reject"]`` SIEMPRE, porque la
+      curación es transversal y no transiciona el lazo.  Antes de R3, este
+      campo no existía y ``transitions_available`` nunca los listaba (bug).
+    - ``round``: contador de ronda (0 = sin estado; 1 = primera ronda; 2+ = re-sembrados).
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
 
     Returns:
-        Dict con ``loop_state``, ``transitions_available``, ``counts_by_status``,
-        ``total_papers``.
+        Dict con ``loop_state``, ``transitions_available``, ``curation_available``,
+        ``round``, ``counts_by_status``, ``total_papers``.
 
     Raises:
         StoreError: Si el store está bloqueado.
@@ -59,6 +61,7 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
 
     loop_state = store.backend.loop_state()
     state_str = loop_state.value if loop_state is not None else None
+    current_round = store.backend.loop_round()
 
     # Conteos por curation_status via query SQL
     from bib2graph.constants import Col
@@ -74,11 +77,19 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
 
     total = sum(counts.values())
 
-    transitions = _TRANSITIONS.get(state_str, ["seed"])
+    # Transiciones disponibles desde el dominio (cicle.py); incluye reseed
+    # cuando hay estado previo.
+    transitions = available_transitions(loop_state)
+
+    # Curación transversal: siempre disponible, nunca transiciona el lazo.
+    # Antes de R3, ``transitions_available`` nunca listaba accept/reject → bug cerrado.
+    curation = list(CURATION_ACTIONS)
 
     return {
         "loop_state": state_str,
         "transitions_available": transitions,
+        "curation_available": curation,
+        "round": current_round,
         "counts_by_status": counts,
         "total_papers": total,
     }
@@ -103,9 +114,14 @@ def status_cmd(
     ctx: click.Context,
     json_output: bool,
 ) -> None:
-    """Muestra el estado del lazo (LoopState) y conteos de curación.
+    """Muestra el estado del lazo (CycleState) y conteos de curación.
 
-    No transiciona el LoopState.
+    No transiciona el CycleState.
+
+    El mapa del lazo incluye:
+    - Estado actual y transiciones disponibles (incluyendo reseed).
+    - accept/reject como acciones siempre-disponibles (curación transversal).
+    - Contador de ronda.
     """
     store_path = ctx.obj["store"]
     data = run_status(store_path)
@@ -120,7 +136,8 @@ def status_cmd(
         emit(envelope)
     else:
         state = data["loop_state"] or "INITIAL (sin estado)"
-        emit_human(f"Estado del lazo: {state}")
+        round_str = f" (ronda {data['round']})" if data["round"] > 0 else ""
+        emit_human(f"Estado del lazo: {state}{round_str}")
         emit_human(f"Total papers: {data['total_papers']}")
         if data["counts_by_status"]:
             emit_human("Conteos por curation_status:")
@@ -128,4 +145,7 @@ def status_cmd(
                 emit_human(f"  {status}: {cnt}")
         emit_human(
             f"Próximos pasos disponibles: {', '.join(data['transitions_available'])}"
+        )
+        emit_human(
+            f"Curación (siempre disponible): {', '.join(data['curation_available'])}"
         )

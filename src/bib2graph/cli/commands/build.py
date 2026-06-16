@@ -47,12 +47,18 @@ def run_build(
         DependencyError: Si falta ``python-louvain``.
         StoreError: Si el store está bloqueado.
     """
-    from bib2graph.backends.duckdb import LoopState
+    from bib2graph.cycle import apply_transition
     from bib2graph.exporters.graphml import GraphMLExporter
     from bib2graph.networks.facade import Networks
 
     store = open_store(store_path)
     corpus = store.load()
+
+    # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
+    # no un literal en el comando (ADR 0016 enmendado §1).
+    current_state = store.backend.loop_state()
+    current_round = store.backend.loop_round()
+    new_state, new_round = apply_transition(current_state, "build", current_round)
 
     store_path_obj = Path(store_path)
     if out_dir is None:
@@ -114,7 +120,7 @@ def run_build(
             }
         )
 
-    store.backend.set_loop_state(LoopState.BUILT)
+    store.backend.set_loop_state(new_state, cycle_round=new_round)
 
     return {
         "networks_built": len(artifacts),

@@ -47,12 +47,18 @@ def run_chain(
         NetworkError: Si falla la conexión a OpenAlex.
         StoreError: Si el store está bloqueado.
     """
-    from bib2graph.backends.duckdb import LoopState
+    from bib2graph.cycle import apply_transition
     from bib2graph.foraging import Forager
     from bib2graph.sources.openalex import OpenAlexSource
 
     store = open_store(store_path)
     corpus = store.load()
+
+    # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
+    # no un literal en el comando (ADR 0016 enmendado §1).
+    current_state = store.backend.loop_state()
+    current_round = store.backend.loop_round()
+    new_state, new_round = apply_transition(current_state, "chain", current_round)
 
     source = OpenAlexSource(email=email, transport=transport)
 
@@ -75,7 +81,7 @@ def run_chain(
     # Merge de candidatos en el corpus
     merged = corpus.merge(ranked.corpus)
     store.persist(merged)
-    store.backend.set_loop_state(LoopState.FORAGED)
+    store.backend.set_loop_state(new_state, cycle_round=new_round)
 
     candidates_found = len(ranked.corpus)
     ranking_preview = [
