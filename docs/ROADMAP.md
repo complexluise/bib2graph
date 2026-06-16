@@ -647,7 +647,7 @@ sobre una **biblioteca viva**, **sin escribir código ni servidores**. Un agente
 
 ---
 
-## Hito R1 — Cimientos: capa `constants` / `models` / `schemas` única · ⏳ PENDIENTE
+## Hito R1 — Cimientos: capa `constants` / `models` / `schemas` única · ✅ TERMINADO (2026-06-16)
 
 > Primero porque **todo lo demás depende de esto** (ADR
 > [0023](decisiones/0023-capa-constants-modelos-schema.md)): `constants/models` es la capa más baja
