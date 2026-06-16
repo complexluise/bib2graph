@@ -11,6 +11,15 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.4.0](https://github.com/complexluise/bib2graph/compare/v0.3.2...v0.4.0) (2026-06-16)
+
+
+### Features
+
+* **enrichers:** co-citación end-to-end (Hito 8b — completa el Hito 8) ([#11](https://github.com/complexluise/bib2graph/issues/11)) ([21f1e2b](https://github.com/complexluise/bib2graph/commit/21f1e2b165178ea7af43db17ee45cb120335cb76))
+* **enrichers:** costura Enricher + resolución references→DOI (Hito 8a) ([#10](https://github.com/complexluise/bib2graph/issues/10)) ([ca8af51](https://github.com/complexluise/bib2graph/commit/ca8af51b8e552fe3b0e438ac5788e84a5acb325e))
+* **preprocessors:** dedup fuzzy determinista con rapidfuzz (Hito 7) ([#12](https://github.com/complexluise/bib2graph/issues/12)) ([4957eb9](https://github.com/complexluise/bib2graph/commit/4957eb98a20ea4ea5c972a570ebb1c93ddcd3710))
+
 ## [0.3.2](https://github.com/complexluise/bib2graph/compare/v0.3.1...v0.3.2) (2026-06-16)
 
 
