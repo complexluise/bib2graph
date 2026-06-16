@@ -1,5 +1,14 @@
 # Documento Metodológico: Análisis de Redes de Cocitación en Investigación Bibliométrica
 
+> ⚠️ **Documento desincronizado con el AS-BUILT (v0.2).** Describe la **arquitectura previa al
+> giro** (Neo4j/Cypher, Semantic Scholar/Scopus, BibTeX como entrada). El AS-BUILT usa
+> **OpenAlex** como backbone y **DuckDB** (biblioteca viva) como sustrato, no Neo4j. Además, el
+> **algoritmo de co-citación de la §3 (el Cypher) está mal**: cuenta *referencias compartidas*
+> (= **acoplamiento bibliográfico**), no *citantes compartidos* (= **co-citación**). El **código
+> sí implementa co-citación correctamente** (`networks/projectors.py`, vía `cited_by_id`). Una
+> reescritura completa de este documento al stack actual queda pendiente de decisión del PO; ver
+> [`Notas/06-critica-as-built-v0.2.md`](Notas/06-critica-as-built-v0.2.md).
+
 ## Introducción
 
 El presente documento describe la metodología utilizada para la construcción, análisis y visualización de redes de cocitación en el contexto de un estudio bibliométrico sobre la cadena de semiconductores. La metodología implementada se basa en técnicas avanzadas de análisis de redes sociales aplicadas a datos bibliográficos, utilizando una arquitectura de base de datos orientada a grafos para representar las relaciones entre documentos científicos.
@@ -44,9 +53,19 @@ La red de cocitación se construye mediante el siguiente algoritmo:
 3. Se crea una relación CO_CITED_WITH entre p1 y p2 con un peso igual al número de referencias compartidas.
 4. Se filtran las relaciones con un peso mínimo definido por el usuario (por defecto, 1).
 
+> ⚠️ **CORRECCIÓN:** el algoritmo descrito arriba (referencias compartidas) y el Cypher de abajo
+> **NO son co-citación**: son **acoplamiento bibliográfico** (dos documentos acoplados si
+> *comparten referencias*). La **co-citación** correcta es: dos documentos co-citados si *un
+> tercero los cita a ambos* — es decir, **citantes compartidos**, no referencias compartidas (esto
+> coincide con la definición de la §"Fundamento Teórico"). El **código construido implementa la
+> co-citación correcta** sobre `cited_by_id` (`networks/projectors.py`); este Cypher quedó del
+> diseño previo (Neo4j) y es erróneo. Pendiente de reescritura (decisión del PO).
+
 La implementación en Cypher (lenguaje de consulta de Neo4j) es la siguiente:
 
 ```cypher
+// ⚠️ Esto computa ACOPLAMIENTO BIBLIOGRÁFICO (refs compartidas), no co-citación.
+// Co-citación = citantes compartidos: (p1)<-[:REFERENCES]-(citer)-[:REFERENCES]->(p2)
 MATCH (p1:Paper {is_seed: True})-[:REFERENCES]->(ref:Paper)<-[:REFERENCES]-(p2:Paper {is_seed: True})
 WHERE p1 <> p2
 WITH p1, p2, COUNT(ref) AS shared_refs
@@ -102,6 +121,9 @@ Los resultados del análisis se exportan en formatos estándar:
 La metodología implementada se basa en principios establecidos en la literatura bibliométrica y cienciométrica, incorporando mejores prácticas de:
 
 1. **Normalización de datos**: Reducción de ambigüedades en nombres de autores e instituciones.
+   ⚠️ *AS-BUILT:* la desambiguación de autores es **parcial**: sin ORCID, la identidad cae al
+   *display name* normalizado (lowercase/trim/acentos), lo que puede producir falsos merges/splits
+   en la red de co-autoría. No es una resolución de identidad robusta.
 2. **Filtrado de ruido**: Eliminación de relaciones débiles mediante umbrales de peso mínimo.
 3. **Evaluación de calidad**: Aplicación de criterios objetivos para evaluar la representatividad de la red.
 4. **Análisis multidimensional**: Combinación de diferentes métricas y técnicas de análisis.

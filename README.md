@@ -12,9 +12,12 @@ Kuhlthau): se siembra desde la ecuación, se forrajea (chaining rankeado por est
 cura, **la idea muta** y se vuelve a sembrar — acumulando sobre lo curado. La colección
 **vive y persiste** entre corridas en DuckDB.
 
-> **Estado: v0.2 con capacidades completas** (Hitos 0–6 + 1.5 construidos y testeados). El flujo
-> completo **de una ecuación a las redes** ya corre sobre la biblioteca viva, **desde código Python
-> y desde el CLI `b2g`** (que **ya no es un placeholder**). Construido: el `Corpus` canónico sobre
+> **Estado: v0.2 (Hitos 0–6 + 1.5 construidos y testeados).** El flujo **de una ecuación a las
+> redes** ya corre sobre la biblioteca viva, **desde código Python y desde el CLI `b2g`** (que
+> **ya no es un placeholder**). **Importante:** "capacidades completas" se refiere al *flujo*
+> `seed → … → export`; **NO** está completo todavía: la **co-citación end-to-end** (Hito 8) y el
+> gancho de IA `explain_candidate` (extra `[llm]`) son **stubs/futuros**, y el *information scent*
+> del forrajeo es una **heurística determinista de frecuencia de enlace**, no bibliometría ni LLM. Construido: el `Corpus` canónico sobre
 > `TabularBackend`, los proyectores/analizadores/exportadores, el backend DuckDB (biblioteca viva),
 > las fuentes `OpenAlexSource`/`BibtexSource`, el **forrajeo asistido** (`Forager`, chaining
 > rankeado por *information scent*) + `Preprocessor`/thesaurus + filtros PRISMA, y la **CLI
@@ -39,8 +42,12 @@ documentación bajo esa dirección. Cada decisión de arquitectura queda en los
 está en [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md).
 
 > **Dos sentidos de "AI-in-the-loop"**, ambos deliberados: (1) el *desarrollo* de la librería
-> es asistido por IA; y (2) el *producto* incorpora IA en el lazo de exploración bibliográfica
-> (forrajeo y curación asistidos). No los confundas.
+> es asistido por IA; y (2) el *producto* **está diseñado** para insertar IA en dos cuellos del
+> lazo (forrajeo y sensemaking). **Honestidad sobre el AS-BUILT v0.2:** en el código de hoy esa
+> IA del producto es **incipiente** — el forrajeo rankea por una **heurística determinista de
+> frecuencia de enlace** (no LLM/embeddings), la **curación es decisión 100% humana** (no
+> asistida por IA), y el único gancho LLM (`explain_candidate`) es un **stub**. La "máquina de
+> tensiones" (el sensemaking asistido) es **futura** (v2). No los confundas.
 
 Como cualquier salida asistida por IA, **verificá los resultados** antes de usarlos en
 investigación: la reproducibilidad es un objetivo del diseño, pero la responsabilidad

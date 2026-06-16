@@ -20,13 +20,15 @@ commits.
 
 > **Hitos 5 y 6.** Forrajeo + CLI agente-native: el flujo `seed → chain → filter →
 > build → export` corre de una **ecuación** a un **GraphML** **sin escribir código**,
-> sobre la biblioteca viva. v0.2 con capacidades completas. Tag local anotado
-> `v0.2.0` (publicación pendiente).
+> sobre la biblioteca viva. v0.2 con capacidades completas **del flujo** (no del producto:
+> co-citación end-to-end y `explain_candidate`/`[llm]` quedan como stubs/futuros). Tag local
+> anotado `v0.2.0` (publicación pendiente).
 
 ### Added
 - **Forrajeo** (`Forager`: chaining backward/forward, ranking por *information
-  scent* = frecuencia de enlace, `preview` sin red, filtros PRISMA que marcan
-  `rejected`, `Preprocessor` + thesaurus multilingüe). ADR 0008/0011/0020.
+  scent* = **frecuencia de enlace** —heurística determinista, no IA/LLM—, `preview`
+  sin red, filtros PRISMA que marcan `rejected`, `Preprocessor` + thesaurus
+  multilingüe). `explain_candidate` (extra `[llm]`) es **stub**. ADR 0008/0011/0020.
 - **CLI agente-native `b2g`** (`cli/`): 11 subcomandos (`seed`/`chain`/`filter`/
   `accept`/`reject`/`build`/`export`/`snapshot`/`status`/`inspect`/`validate`),
   envelope `--json` versionado, exit codes 0–5, `--store` global sin estado,

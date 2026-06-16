@@ -28,10 +28,15 @@ Conviene no confundirlos, porque ambos están presentes a propósito:
 
 1. **Desarrollo asistido por IA** — el *código* de la librería se escribe con asistencia de IA
    (este documento).
-2. **IA en el producto** — la *librería* usa IA y heurísticas en el lazo de exploración
-   bibliográfica: el forrajeo rankea candidatos por *information scent* y la curación es
-   asistida (la persona acepta/rechaza). Ver el [PRD](docs/PRD.md) y el método de forrajeo
-   ([ADR 0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)).
+2. **IA en el producto (diseñada; incipiente en el AS-BUILT v0.2)** — la *librería* está
+   **diseñada** para insertar IA en el lazo de exploración. **En el código de v0.2, sé honesto
+   sobre el estado:** el forrajeo rankea candidatos por *information scent* que hoy es una
+   **heurística determinista de frecuencia de enlace** (conteo de citas con el corpus, **sin**
+   LLM ni embeddings; [ADR 0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md));
+   la **curación es una decisión 100% humana** (la persona acepta/rechaza — no hay IA en el
+   medio); y el único gancho de LLM (`explain_candidate`, extra `[llm]`) es un **stub** sin
+   implementar. El sensemaking asistido ("máquina de tensiones") es **futuro** (v2). Ver el
+   [PRD](docs/PRD.md) y la [Nota 06](docs/Notas/06-critica-as-built-v0.2.md).
 
 ## Qué implica para vos
 

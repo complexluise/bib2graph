@@ -62,6 +62,14 @@ conectado** (no existe `.github/` ni CI). Mientras tanto, el versionado/tag se h
   Con el **Hito 4 terminado**, todas las piezas existen y se componen en código (ver el ejemplo de
   `API.md` §12). **Sin CLI ni forrajeo todavía** (eso es v0.2). **Tag local `v0.1.0`** creado el
   2026-06-15 (anotado, sin push).
+> ⚠️ **Honestidad sobre "capacidades completas" (v0.2):** se refiere al *flujo* `seed → chain →
+> filter → build → export`, NO a la totalidad del producto. Quedan como **stubs/futuros** dentro
+> de v0.2: la **co-citación end-to-end** (Hito 8: `cited_by_id` está vacío tras el seed → 0 aristas
+> hasta el 2º nivel de fetch), el gancho de IA **`explain_candidate`** (`NotImplementedError`,
+> extra `[llm]` vacío) y la **máquina de tensiones** (v2). El *information scent* del forrajeo es
+> una **heurística determinista de frecuencia de enlace**, no bibliometría ni IA. Ver
+> [`Notas/06-critica-as-built-v0.2.md`](Notas/06-critica-as-built-v0.2.md).
+
 - **v0.2 — forrajeo + CLI agente-native (Hitos 5–6) · ✅ CAPACIDADES COMPLETAS (2026-06-15):**
   chaining rankeado, `Preprocessor`, filtros PRISMA (comando **`filter`**), `b2g status`
   (`LoopState`) y el CLI `b2g` con `--json`. **El forrajeo, el `Preprocessor` y los filtros (Hito 5)
