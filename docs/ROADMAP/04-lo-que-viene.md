@@ -29,13 +29,22 @@
 
 ---
 
-## Hito 8 — `Enricher` opt-in: resolución de refs + co-citación (extra `[s2]`)
+## Hito 8 — `Enricher` opt-in: resolución de refs + co-citación (núcleo OpenAlex)
+
+> **Partición (ADR [0025](../decisiones/0025-enricher-cocitacion-openalex.md), 2026-06-16):** el hito
+> se hace en **2 ciclos**. **8a ✅ (hecho):** costura `Enricher` + refs→DOI + subcomando `b2g enrich`.
+> **8b (pendiente):** co-citación end-to-end (poblar `cited_by_id`), **solo seeds aceptadas + tope
+> configurable**. El Enricher vive en el **núcleo sobre OpenAlex**, **no** en el extra `[s2]`: ese
+> `[s2]` era residuo pre-giro (ADR [0007](../decisiones/0007-openalex-backbone.md): S2 ya no es
+> estructural) y queda **reservado** para un futuro `SemanticScholarEnricher` de señal adicional.
 
 **Alcance**
 
-- `Enricher` (ya **no estructural**; ADR 0007, API.md §3): **resolver `references_id` a DOI
-  canónico** (T8) y el **segundo nivel de fetch** (citantes con sus citas) que habilita la
-  **co-citación** completa.
+- `Enricher` (ya **no estructural**; ADR 0007/0025, API.md §3): **resolver `references_id` a DOI
+  canónico** (T8, **8a ✅**) y el **segundo nivel de fetch** (citantes con sus citas ≡ `cited_by_id`
+  compartido) que habilita la **co-citación** completa (**8b**). El 2º nivel **solo puebla
+  `cited_by_id`**; los citantes NO se materializan como filas del corpus (eso es del `Forager` +
+  curación; decisión A).
 - **Batching-por-OR de `fetch_citing`** (seguimiento heredado de R5, encuadrado acá por el arquitecto
   2026-06-16): R5 entregó **retry/backoff** pero **difirió** el batching (agrupar varios `cites:` en
   una query `cites:W1|W2|...` para matar el N+1 de requests). El **2º nivel de fetch de este hito** es
@@ -48,11 +57,18 @@ interoperabilidad de referencias cross-source (OpenAlex ↔ `.bib`).
 
 **Criterios de aceptación (DoD)**
 
-- `enrich` es **idempotente** y no pierde papers ante rate limit/reintentos.
-- Resuelve `references_id` → `references_doi`; el 2º nivel habilita `CoCitationProjector` completo.
-- **`fetch_citing` batchea por OR** (`cites:W1|W2|...`) en el 2º nivel de fetch: el N+1 de R5 deja de
-  hacer una request por paper (mejora de performance; el retry/backoff de R5 se conserva).
-- Config/keys **inyectadas**, sin ramas muertas. **Sin red en CI** (mock).
+- **8a ✅** `enrich` es **idempotente** (reemplaza el `EnricherRef` por nombre, no duplica) y no pierde
+  papers ante rate limit/reintentos. Subcomando `b2g enrich` propio; **NO** transiciona el `CycleState`
+  (ortogonal al lazo, decisión C). `build` sigue puro/sin red.
+- **8a ✅** Resuelve `references_id` → `references_doi` **batcheando por OR** (lotes ≤100,
+  `openalex_id:W1|W2|...`, `select=id,doi`).
+- **8b** El 2º nivel habilita `CoCitationProjector` completo poblando `cited_by_id` (el projector
+  **no cambia**: cuenta `cited_by_id` compartido = citantes compartidos; decisión F). Solo seeds
+  aceptadas + tope configurable.
+- **8b** **`fetch_citing` batchea por OR** (`cites:W1|W2|...`) en el 2º nivel de fetch: el N+1 de R5
+  deja de hacer una request por paper (mejora de performance; el retry/backoff de R5 se conserva).
+- Config/keys **inyectadas**, sin ramas muertas. **Sin red en CI** (mock). Núcleo sin importar
+  `duckdb`; sin red al importar.
 
 **Tests (TDD — los justos)**
 
