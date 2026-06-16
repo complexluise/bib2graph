@@ -11,6 +11,14 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.3.1](https://github.com/complexluise/bib2graph/compare/v0.3.0...v0.3.1) (2026-06-16)
+
+
+### Documentation
+
+* ROADMAP a carpeta + saneamiento de coherencia y enlaces ([82e69c3](https://github.com/complexluise/bib2graph/commit/82e69c3206e8dfc0cd3cb724d9a709e0864d17d9))
+* ROADMAP a carpeta + saneamiento de coherencia y enlaces ([7aa0a4e](https://github.com/complexluise/bib2graph/commit/7aa0a4e15d253cb583f2ab213a3ed00f3e408721))
+
 ## [Unreleased]
 
 ## [0.3.0] - 2026-06-16

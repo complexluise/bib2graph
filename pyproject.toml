@@ -22,7 +22,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bib2graph"
-version = "0.3.0"  # Hitos 1–6 + remediación R1–R5 (v0.3). De acá en adelante el bump
+version = "0.3.1"  # Hitos 1–6 + remediación R1–R5 (v0.3). De acá en adelante el bump
                    # lo maneja release-please vía PR de release (CI ya conectado).
 description = "Librería de Python para transformar corpus bibliográficos en redes bibliométricas reproducibles (co-citación, colaboración, co-ocurrencia)."
 readme = "README.md"
