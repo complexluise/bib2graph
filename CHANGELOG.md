@@ -26,10 +26,12 @@ commits.
   una heurística de frecuencia de enlace y pasa a **scent bibliométrico determinista vía proyectores**
   (acoplamiento/co-citación/centralidad), **sin LLM ni embeddings** (Hito R4). Un solo sentido de
   "AI-in-the-loop": el desarrollo es asistido por IA; el producto no.
-- **Identidad ≠ procedencia** (ADR 0017 enmendado): el `corpus_hash` se computa **solo sobre contenido
-  bibliográfico** (excluye `provenance`/timestamps); el reloj se inyecta en la **frontera CLI**;
-  Louvain corre con `random_state` derivado del content-hash → **snapshot reproducible bit a bit**
-  (Hito R2).
+- **Identidad ≠ procedencia** (ADR 0017 enmendado, **Hito R2 ✅ 2026-06-16**): el `corpus_hash` se
+  computa **solo sobre contenido bibliográfico** (excluye `provenance`/timestamps; incluye
+  `curation_status`); el reloj se inyecta desde la **frontera CLI** (`accept`/`reject`/`filter` pasan
+  `decided_at`), con un **fallback `datetime.now(UTC)`** para uso como librería (no afecta la
+  identidad); Louvain corre con `random_state` derivado del content-hash → **snapshot reproducible
+  bit a bit**. (`resolution` de Louvain **diferido a Hito 9**, NetworkSpec.)
 - **Ciclo = FSM cíclico de dominio** (`cycle.py`, ADR 0016 enmendado): `SEEDED→FORAGED→FILTERED→
   BUILT→MONITORED` con **`reseed`** (loop-back a `SEEDED` + contador de ronda, acumula) de primera
   clase; **curación transversal** visible en `b2g status` (ADR 0021 enmendado) (Hito R3).

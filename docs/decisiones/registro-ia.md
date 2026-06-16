@@ -251,3 +251,34 @@
 > **Hito 9**, no construido; (c) un `OSError` del store no relacionado con el bloqueo igual cae en
 > exit 5 (conservador). El entry point `b2g = "bib2graph.cli:main"` ya estaba declarado desde el
 > Hito 0; el Hito 6 reemplaza el placeholder por los 11 subcomandos reales.
+
+---
+
+## 2026-06-16 — Hito R2 (Reproducibilidad / identidad: content-hash vs procedencia + Louvain seeded)
+
+> Implementa la enmienda 2026-06-15 del ADR
+> [0017](0017-reproducibilidad-historia-snapshot.md) (RAÍZ 2 de la Nota 06). El **principio**
+> (identidad de contenido ≠ procedencia de auditoría; reloj en la frontera; Louvain seeded) es del
+> ADR/PO; lo de abajo son las decisiones **de implementación** que tomó la IA al construirlo. El
+> verifier **APRUEBA CON RESERVAS** (247 tests verdes, 13 nuevos en `test_r2_reproducibility.py`;
+> mypy strict / ruff limpios; núcleo sigue importando sin `duckdb`), dejando dos puntos al steering
+> arquitectónico (resueltos en las filas R2.1 y R2.5).
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| R2.1 | **El núcleo conserva un fallback `datetime.now(UTC)`** en `_apply_curation_to_rows` (`backends/memory.py`) cuando `decided_at is None`; las tres fronteras CLI (`accept`/`reject`/`filter`) **siempre** inyectan, así que el path real nunca lo toca | Mantiene `corpus.accept(ids)` ergonómico como **librería** sin obligar a pasar un reloj. **No** contradice el objetivo de R2 (hash determinista) porque el `decided_at` **no entra al hash** (identidad excluye provenance): la reproducibilidad bit a bit está garantizada *por construcción*, venga el timestamp inyectado o del fallback. El **arquitecto aceptó el fallback como contrato documentado** y ajustó la redacción del ADR 0017 (punto 3) para que sea honesta ("el reloj se inyecta en la frontera; el núcleo solo usa `datetime.now()` como fallback de librería, fuera de la identidad"), en vez de "el núcleo nunca toca el reloj" | Media: hacer el núcleo 100% clock-free exigiría `decided_at` requerido y rompería `corpus.accept(ids)`; queda como opción del PO si algún día se quiere pureza total (ver recomendación) | **Sí — steering arquitectónico** (ADR 0017 reconciliado) |
+| R2.2 | **Mecanismo `decided_at: datetime \| None` (parámetro), no `clock: Callable`** en `accept`/`reject`/`apply_filter(s)` | (a) Simplifica la firma; (b) los tests inyectan el instante exacto sin construir closures; (c) ergonomía de librería (sin argumento → fallback razonable). Un `Callable` agregaría indirección sin beneficio en este dominio (un único instante por invocación) | Alta: cambiar a `clock` es local a la firma; los callers ya pasan un `datetime` | Sí (PO proxy; verifier PASA) |
+| R2.3 | **`filter.py` inyecta un único `decided_at` para todos los pasos PRISMA** de la invocación (`apply_filters(corpus, criteria, decided_at=now)`), no uno por criterio | Una corrida de filtrado es **una** decisión en el tiempo; un solo timestamp hace la procedencia coherente y el resultado idéntico entre corridas. `apply_filters` propaga el mismo `decided_at` a cada `apply_filter` | Alta: pasar a timestamp por paso es aditivo | Sí (PO proxy; verifier PASA) |
+| R2.4 | **Derivación del seed de Louvain: `int(corpus_hash[:8], 16) % 2**31`** (`_louvain_seed_from_hash`, `facade.py`), threadeado por `_build_artifact` solo cuando `clustering == "louvain"` | Toma 32 bits del content-hash y los acota a `[0, 2^31-1]` (rango positivo de int32 que acepta `python-louvain`). Determinista y barato; "mismo corpus → mismo seed → mismas comunidades". Derivar del content-hash (no del que incluía provenance) garantiza que la reproducibilidad de comunidades herede la de identidad | Alta: cambiar la derivación (p. ej. usar el hash completo mód 2^31) es local a la función; no cambia la API | Sí (PO proxy; verifier PASA) |
+| R2.5 | **`resolution` de Louvain NO se implementó — diferido a Hito 9** (NetworkSpec declarativo), pese a que el punto 4 del ADR 0017 / el DoD de R2 lo pedían | R2 entrega la pata que importa para la **identidad/reproducibilidad** (el `random_state` seeded). `resolution` es un parámetro de **tuning** del clustering que pertenece a la capa declarativa por algoritmo (`NetworkSpec` + YAML, Hito 9), no a la corrección de reproducibilidad. El **arquitecto reconcilió** el DoD/ADR/ROADMAP para reflejar el diferimiento honestamente (no dejar un criterio del DoD sin cumplir sin nota) | Alta: exponer `resolution` en el Hito 9 es aditivo (el `random_state` ya está) | **Sí — steering arquitectónico** (DoD/ADR 0017/ROADMAP reconciliados) |
+
+> **Reconciliación de docs (arquitecto, 2026-06-16):** ADR 0017 (redacción del fallback honesta +
+> `resolution` diferido + `filter.py` en la lista de fronteras), ROADMAP (Hito R2 ✅ + DoD
+> reconciliado + `resolution`→Hito 9), ARCHITECTURE.md (§6.2 AS-BUILT R2), API.md (§1.1/§1.2/§8/§10:
+> `decided_at`, hash content-only, Louvain seeded).
+>
+> **Recomendación de código (no implementada — queda al PO):** si alguna vez se quiere el núcleo
+> **100% clock-free**, hacer `decided_at` **requerido** en `_apply_curation_to_rows`/`apply_curation`
+> y mover el fallback a un helper de frontera (p. ej. `corpus.accept(ids)` resolviendo `now()` antes
+> de delegar). Hoy **no es necesario**: el objetivo de R2 (hash determinista) ya está cumplido porque
+> el hash excluye provenance, y el fallback es una conveniencia de librería legítima.

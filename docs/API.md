@@ -187,12 +187,14 @@ cada `Source.seed()/load()`.
 > **falla ruidoso** ante JSON corrupto. Se **mantiene** "`Paper`/`Author`/… = vistas derivadas, no
 > tipos".
 >
-> **TARGET (identidad vs procedencia, ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)
-> enmendado, Hito R2):** el `corpus_hash` (D2) se computa **solo sobre contenido bibliográfico**,
-> **excluyendo** `provenance`/timestamps (la procedencia audita, no identifica). Por eso dos corridas
-> que aceptan los mismos ids dan el **mismo** hash (hoy difieren). `accept`/`reject` **reciben el
-> instante** (`decided_at`) inyectado desde la frontera CLI; el núcleo **no** llama `datetime.now()`.
-> *(El §1.2 abajo aún describe el AS-BUILT, donde el hash incluye `provenance`.)*
+> **AS-BUILT (identidad vs procedencia, ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)
+> enmendado, Hito R2 ✅ 2026-06-16):** el `corpus_hash` (D2) se computa **solo sobre contenido
+> bibliográfico**, **excluyendo** `provenance`/timestamps (la procedencia audita, no identifica;
+> `curation_status` **sí** entra, es contenido curado). Por eso dos corridas que aceptan los mismos
+> ids dan el **mismo** hash. `accept`/`reject` (y los filtros `apply_filter`/`apply_filters`) **reciben
+> el instante** (`decided_at`) inyectado desde la frontera CLI; el núcleo usa `datetime.now(UTC)` solo
+> como **fallback de librería** cuando no se inyecta `decided_at` (fuera de la identidad, no rompe la
+> reproducibilidad). *(El §1.2 abajo conserva la nota histórica del AS-BUILT v0.2 roto.)*
 
 **`provenance` es un log append-only** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md),
 D4), no un objeto único: la columna `string` guarda un JSON que es una **lista de eventos**. Cada
@@ -259,9 +261,11 @@ class Corpus:
         `accepted`>`rejected`>`candidate`; `provenance` = unión de eventos únicos (log).
         Orden de filas: **primera aparición** (filas de `self` en orden, luego las nuevas de
         `other`). Ver ADR 0013 (D3)."""
-    def accept(self, ids: list[str], *, by: str = "human") -> "Corpus":
-        """Marca papers como 'accepted' y AGREGA un evento al log de provenance. Devuelve Corpus nuevo."""
-    def reject(self, ids: list[str], *, by: str = "human") -> "Corpus": ...
+    def accept(self, ids: list[str], *, by: str = "human", decided_at: datetime | None = None) -> "Corpus":
+        """Marca papers como 'accepted' y AGREGA un evento al log de provenance. Devuelve Corpus nuevo.
+        `decided_at` se inyecta desde la frontera CLI (Hito R2, ADR 0017); `None` → el backend usa
+        `datetime.now(UTC)` como fallback de librería. El `decided_at` NO entra al `corpus_hash`."""
+    def reject(self, ids: list[str], *, by: str = "human", decided_at: datetime | None = None) -> "Corpus": ...
     def materialize(self, view: Literal["author", "keyword", "institution"]) -> pa.Table: ...
     def snapshot(self, path: Path) -> "CorpusSnapshot":
         """Exporta una FOTO sellada del estado actual (parquet + manifest.json) para reportar/
@@ -278,10 +282,11 @@ class Corpus:
 
 - **`__eq__` es por `corpus_hash`, no por `pa.Table.equals`:** dos `Corpus` con el mismo contenido
   en distinto orden de filas (o de elementos de listas) son iguales. El `corpus_hash` hashea solo
-  el contenido de la tabla, nunca campos volátiles del Manifest (D2). **AS-BUILT v0.2:** incluye
-  `curation_status` **y `provenance`** (con sus timestamps) → rompe la reproducibilidad bit a bit.
-  **TARGET (Hito R2, ADR 0017 enmendado):** el hash **excluye `provenance`/timestamps** (identidad =
-  contenido bibliográfico; la procedencia audita, no identifica). Ver la nota TARGET de §1.1.
+  el contenido de la tabla, nunca campos volátiles del Manifest (D2). **AS-BUILT (Hito R2, ADR 0017
+  enmendado, ✅ 2026-06-16):** el hash **excluye `provenance`/timestamps** (identidad = contenido
+  bibliográfico; la procedencia audita, no identifica) pero **incluye `curation_status`** (contenido
+  curado). *(Histórico v0.2 roto: incluía `provenance` con timestamps → rompía la reproducibilidad
+  bit a bit; R2 lo corrigió.)* Ver la nota AS-BUILT de §1.1.
 - **`merge` emite filas en orden determinista** (primera aparición): habilita diffs y snapshots
   reproducibles. Es idempotente: `c.merge(c) == c`.
 
@@ -359,8 +364,11 @@ class TabularBackend(Protocol):
         # `id` ya calculado y fila ya validada por Corpus.add_paper. Devuelve backend nuevo.
     def merge(self, other_table: pa.Table) -> "TabularBackend": ...
         # Fusión D3: orden por primera aparición (filas de self, luego nuevas), dedup por `id`.
-    def apply_curation(self, ids: list[str], *, action: str, by: str) -> "TabularBackend": ...
+    def apply_curation(self, ids: list[str], *, action: str, by: str,
+                       decided_at: str | None = None) -> "TabularBackend": ...
         # accept/reject: AGREGA un evento al log `provenance` (action/decided_by/decided_at).
+        # `decided_at` (ISO8601 UTC) inyectado desde la frontera (Hito R2, ADR 0017);
+        # `None` → fallback `datetime.now(UTC)` (uso como librería). NO entra al corpus_hash.
     def filter_view(self, view: Literal["seeds", "candidates", "accepted"]) -> pa.Table: ...
         # Vista filtrada (is_seed / curation_status == 'candidate' | 'accepted').
     def corpus_hash(self) -> str: ...        # D2, order-independent, sobre el contenido
@@ -711,9 +719,13 @@ def network_metrics(g: nx.Graph) -> dict:
 def centrality(g: nx.Graph) -> dict:
     """Centralidad de grado e intermediación por nodo."""
 
-def detect_communities(g: nx.Graph, method: str = "louvain") -> dict:
+def detect_communities(g: nx.Graph, method: str = "louvain", *,
+                       random_state: int | None = None) -> dict:
     """method ∈ {'louvain', 'label_prop', 'greedy_modularity'}. Louvain requiere
-    `python-louvain` (DECLARADO); si falta, FALLA explícito (lección 7)."""
+    `python-louvain` (DECLARADO); si falta, FALLA explícito (lección 7).
+    `random_state` (Hito R2, ADR 0017): semilla determinista de Louvain. `facade.py` la
+    deriva del `corpus_hash` de contenido (`_louvain_seed_from_hash`) → comunidades
+    reproducibles entre corridas. `None` = Louvain sin semilla. (`resolution`: Hito 9.)"""
 
 def assortativity(g: nx.Graph, *, attribute: str | None = None,
                   by_degree: bool = True, proxy: str | None = None) -> dict:
@@ -780,6 +792,8 @@ class NetworkSpec(BaseModel):
     max_year: int | None = None
     scope: Literal["full", "seeds_only"] = "full"
     clustering: Literal["louvain", "label_prop", "greedy_modularity"] | None = "louvain"
+    # Louvain ya es reproducible (random_state derivado del corpus_hash, Hito R2). El parámetro
+    # `resolution` (y demás params por algoritmo) se exponen acá en el Hito 9 (diferido de R2).
     assortativity_attribute: str | None = None     # p. ej. "region"
     layout: Literal["spring", "kamada_kawai", "circular"] | None = None
 

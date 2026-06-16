@@ -346,16 +346,20 @@ versión/fecha de OpenAlex usada.
 **Identidad (contenido) vs procedencia (auditoría)** (ADR
 [0017](decisiones/0017-reproducibilidad-historia-snapshot.md), enmienda 2026-06-15):
 
-- **`AS-BUILT v0.2` (roto):** `accept`/`reject` estampan `datetime.now(UTC)` en el evento de
-  procedencia (reloj en el núcleo), y `compute_corpus_hash` hashea **todos** los campos, incluido
-  `provenance` con sus timestamps → dos corridas que aceptan los mismos ids dan `corpus_hash`
-  distintos. El snapshot **no** es reproducible bit a bit, contra lo que prometen el ADR 0017 y
-  `facade.py`.
-- **`TARGET`:** el `corpus_hash` se computa **solo sobre contenido bibliográfico**, **excluyendo**
-  `ProvenanceEvent`/timestamps. La **procedencia es un log append-only fuera de la identidad** (sirve
-  para auditar, no para identificar). El **reloj se inyecta en la frontera** (CLI), no en el núcleo
-  (`accept`/`reject` reciben el instante, no llaman `datetime.now()`). **Louvain** corre con un
-  `random_state` **derivado del content-hash** → comunidades reproducibles. Ver ROADMAP **Hito R2**.
+- **`AS-BUILT` (R2, ✅ 2026-06-16):** el `corpus_hash` se computa **solo sobre contenido
+  bibliográfico**, **excluyendo** `provenance`/`ProvenanceEvent` con sus timestamps (sigue
+  incluyendo `curation_status`, que es contenido curado). La **procedencia es un log append-only
+  fuera de la identidad** (sirve para auditar, no para identificar). Dos corridas que aceptan los
+  mismos ids dan ahora el **mismo** `corpus_hash` → el snapshot es reproducible bit a bit (cumple el
+  ADR 0017 y `facade.py`). El **reloj se inyecta en la frontera** (CLI): `accept`/`reject`/`filter`
+  reciben `decided_at`; el núcleo conserva un **fallback `datetime.now(UTC)`** para uso como librería
+  sin `decided_at` (no afecta la identidad, que excluye provenance — ADR 0017 punto 3). **Louvain**
+  corre con un `random_state` **derivado del content-hash** (`_louvain_seed_from_hash`) → comunidades
+  reproducibles. (`resolution` de Louvain **diferido a Hito 9**, NetworkSpec.) Ver ROADMAP **Hito R2**.
+- **`HISTÓRICO — AS-BUILT v0.2` (roto, pre-R2):** `accept`/`reject` estampaban `datetime.now(UTC)`
+  en el evento de procedencia (reloj en el núcleo), y `compute_corpus_hash` hasheaba **todos** los
+  campos, incluido `provenance` con sus timestamps → dos corridas que aceptaban los mismos ids daban
+  `corpus_hash` distintos. R2 lo corrigió.
 
 El **snapshot** es un **export sellado** del estado vivo en un instante: `corpus.parquet` + un
 `manifest.json` con `schema_version`, `corpus_hash`, `lib_version`, `openalex_version`/fecha,

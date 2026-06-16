@@ -80,13 +80,33 @@ en fechas distintas no son comparables.
    auditar PRISMA / vom Brocke), pero **no entra al hash**. Es modelado por `ProvenanceEvent(BaseModel)`
    (ADR [0023](0023-capa-constants-modelos-schema.md)).
 3. **El reloj se inyecta en la frontera (CLI), no en el núcleo.** `accept`/`reject` y los filtros
-   **reciben** el instante de decisión (o lo dejan que lo ponga la frontera), en vez de llamar
-   `datetime.now(UTC)` dentro del núcleo. El núcleo vuelve a ser **determinista**.
+   (`apply_filter`/`apply_filters`) **reciben** el instante de decisión (`decided_at`) como
+   parámetro inyectado desde la frontera, en vez de llamar `datetime.now(UTC)` adentro. Las cuatro
+   fronteras CLI que curan lo inyectan: `cli/commands/accept.py`, `reject.py` y `filter.py`
+   (este último con un único `decided_at` para todos los pasos PRISMA de la invocación).
+   **Fallback documentado (no contradicción):** cuando el caller **no** provee `decided_at`
+   (uso como **librería** sin frontera CLI), el helper `_apply_curation_to_rows`
+   (`backends/memory.py`) genera `datetime.now(UTC)` como conveniencia ergonómica, de modo que
+   `corpus.accept(ids)` sigue funcionando sin obligar a pasar un reloj. Esto **no** rompe la
+   reproducibilidad porque **el `decided_at` no entra al hash** (es procedencia, no identidad,
+   punto 1): la identidad del corpus es determinista *por construcción*, independientemente de
+   si el timestamp vino inyectado o del fallback. El contrato preciso es entonces "**el reloj se
+   inyecta en la frontera; el núcleo solo recurre a `datetime.now()` como fallback de librería,
+   fuera de la identidad**" — no "el núcleo nunca toca el reloj".
 4. **Análisis reproducible — Louvain con `random_state` derivado del content-hash.**
    `detect_communities(method="louvain")` se siembra con un `random_state` derivado del
-   `corpus_hash` (y expone `resolution`), de modo que **mismo corpus → mismas comunidades**.
+   `corpus_hash` (`_louvain_seed_from_hash`, `facade.py`: `int(corpus_hash[:8], 16) % 2**31`),
+   de modo que **mismo corpus → mismas comunidades** entre corridas.
+   **`resolution` diferido a Hito 9 (NetworkSpec):** la idea original incluía exponer el parámetro
+   `resolution` de Louvain; se difiere al Hito 9, donde `NetworkSpec` gana la carga declarativa
+   (YAML) y los parámetros por algoritmo. R2 entrega la pata que importa para la reproducibilidad
+   (el `random_state` seeded); `resolution` queda `python-louvain` default hasta entonces. El
+   diferimiento es aditivo (no rompe nada construido).
 
 **Consecuencia:** el snapshot vuelve a ser **reproducible bit a bit** (cumple la promesa original) y
 la pureza de `facade.py` ("mismo corpus + mismo spec → mismo `NetworkArtifact`") deja de estar rota.
-**Recomendación para el `coder`:** ver ROADMAP **Hito R2** (`backends/memory.py:50-75,281`,
-`corpus.py:386,403`, `networks/analyzer.py:120-129`).
+**Implementado en Hito R2** (✅ 2026-06-16; ver ROADMAP): `backends/memory.py`
+(`compute_corpus_hash` excluye `provenance`; `_apply_curation_to_rows` recibe `decided_at` con
+fallback), `corpus.py` (`accept`/`reject` con `decided_at: datetime | None`), `filters/prisma.py`
+(`apply_filter`/`apply_filters` con `decided_at`), `cli/commands/{accept,reject,filter}.py` (inyectan
+`datetime.now(UTC)`), `networks/{facade,analyzer}.py` (Louvain seeded).

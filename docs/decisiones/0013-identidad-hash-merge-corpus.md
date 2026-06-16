@@ -55,9 +55,17 @@ que habilita dedup en `merge` y en la biblioteca viva.
 
 El hash es **insensible al orden** de filas y de elementos dentro de las columnas `list[string]`:
 se ordenan las filas por `id`, se ordenan los elementos de cada columna de lista, se serializa con
-`json.dumps(sort_keys=True)` y se aplica `sha256`. Hashea **solo el contenido de la tabla**
-(incluye `curation_status` y `provenance`), **nunca** campos volátiles del `Manifest`
-(`created_at`, `lib_version`, etc.). Es la definición autoritativa de "mismo contenido".
+`json.dumps(sort_keys=True)` y se aplica `sha256`. Hashea **solo el contenido de la tabla**,
+**nunca** campos volátiles del `Manifest` (`created_at`, `lib_version`, etc.). Es la definición
+autoritativa de "mismo contenido".
+
+> **Precisado por ADR [0017](0017-reproducibilidad-historia-snapshot.md) (enmienda 2026-06-15,
+> Hito R2 ✅ 2026-06-16):** "contenido" = **contenido bibliográfico + `curation_status`**, pero
+> **excluye `provenance`** (log de auditoría con timestamps). El texto original de este D2 incluía
+> `provenance` en el hash, lo que rompía la reproducibilidad bit a bit (dos corridas que aceptaban
+> los mismos ids daban hashes distintos por los timestamps de curación). R2 corrigió: la identidad
+> es del *qué* (contenido), no del *cuándo* (procedencia). El `provenance` sigue siendo D4 (log
+> append-only) fuera de la identidad.
 
 ### D3 — `merge` idempotente, combinación por campo
 

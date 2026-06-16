@@ -707,38 +707,57 @@ apoya en `Col`/`CurationStatus`/`ProvenanceEvent` en vez de literales.
 
 ---
 
-## Hito R2 — Reproducibilidad / identidad: content-hash vs procedencia + Louvain seeded · ⏳ PENDIENTE
+## Hito R2 — Reproducibilidad / identidad: content-hash vs procedencia + Louvain seeded · ✅ TERMINADO (2026-06-16)
 
 > Segundo porque **necesita `ProvenanceEvent` (R1)** para separar identidad de procedencia con
 > limpieza. Cierra la RAÍZ 2 de la [Nota 06](Notas/06-critica-as-built-v0.2.md) y la enmienda
 > 2026-06-15 del ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md). Es el hito que
 > **cambia el `corpus_hash` a propósito** (breaking interno): dos corridas que aceptan los mismos ids
 > pasan a dar el **mismo** hash.
+>
+> ✅ **As-built (2026-06-16):** `compute_corpus_hash` excluye `provenance` (sigue incluyendo
+> `curation_status`); el reloj se inyecta desde las **tres** fronteras de curación (`accept`,
+> `reject` y **`filter`** vía `apply_filters(decided_at=…)`); el núcleo conserva un **fallback
+> `datetime.now(UTC)`** documentado para uso como **librería** sin `decided_at` (no afecta la
+> identidad, que excluye provenance — ver ADR 0017 enmienda punto 3); Louvain seeded con
+> `random_state` derivado del content-hash (`_louvain_seed_from_hash`). **247 tests** verdes
+> (13 nuevos en `test_r2_reproducibility.py`), mypy strict / ruff limpios. **`resolution`
+> diferido a Hito 9** (NetworkSpec declarativo) — ver DoD abajo y ADR 0017 punto 4.
 
 **Alcance**
 
 - **Identidad (contenido) ≠ procedencia (auditoría):** `compute_corpus_hash` se computa **solo sobre
   contenido bibliográfico**, **excluyendo** `provenance` (`ProvenanceEvent`/timestamps). La
   procedencia es un **log append-only fuera de la identidad** (auditar, no identificar).
-- **Reloj en la frontera, no en el núcleo:** `accept`/`reject` **reciben el instante** (`decided_at`)
-  como parámetro inyectado desde el CLI; el núcleo (`backends/memory.py`) **no llama
-  `datetime.now()`**. El reloj se inyecta en la frontera CLI (ADR 0017 enmendado).
+- **Reloj en la frontera, no en el núcleo:** `accept`/`reject`/`filter` **reciben el instante**
+  (`decided_at`) como parámetro inyectado desde el CLI. El núcleo conserva un **fallback
+  `datetime.now(UTC)`** documentado para uso como librería sin `decided_at` (no afecta la identidad,
+  que excluye provenance) — ADR 0017 enmendado, punto 3.
 - **Louvain seeded:** `detect_communities(method="louvain")` corre con `random_state` **derivado del
-  content-hash** (y expone `resolution`) → comunidades **reproducibles** entre corridas.
+  content-hash** → comunidades **reproducibles** entre corridas. (`resolution` **diferido a Hito 9**,
+  NetworkSpec — ver DoD.)
 
 **Historias:** cierra **E1** de verdad (el snapshot **sí** se reproduce bit a bit) y endurece **A4**
 (procedencia auditable separada de la identidad).
 
 **Criterios de aceptación (DoD)**
 
-- **Dos corridas que aceptan los mismos ids producen el mismo `corpus_hash`** (hoy difieren por los
-  timestamps) → el snapshot es reproducible bit a bit (cumple el ADR 0017 y `facade.py:6`).
-- `accept`/`reject` **no** llaman `datetime.now()` en el núcleo; el instante se inyecta desde la
-  frontera (CLI). La procedencia sigue registrando `decided_at` (pasa a venir inyectado).
-- `detect_communities(..., method="louvain")` da **la misma partición** entre corridas para el mismo
-  grafo (seed derivado del content-hash).
-- La suite pasa; el test viejo que (si existiera) esperaba hashes distintos por timestamps se
-  **actualiza** al TARGET.
+- ✅ **Dos corridas que aceptan los mismos ids producen el mismo `corpus_hash`** (antes diferían por
+  los timestamps) → el snapshot es reproducible bit a bit (cumple el ADR 0017 y `facade.py:6`).
+  `test_corpus_hash_estable_ante_timestamps_distintos`.
+- ✅ `accept`/`reject`/`filter` inyectan `decided_at` desde la **frontera** (CLI). **Reconciliado:** el
+  núcleo conserva un **fallback `datetime.now(UTC)`** cuando se usa como **librería** sin `decided_at`
+  (ergonomía de `corpus.accept(ids)`); el fallback **no** rompe el DoD porque el `decided_at` no entra
+  al hash (identidad ≠ procedencia, ADR 0017 punto 3). El contrato honesto: "el reloj se inyecta en la
+  frontera; el núcleo solo usa `datetime.now()` como fallback de librería, fuera de la identidad". El
+  path real de la CLI nunca toca el fallback.
+- ✅ `detect_communities(..., method="louvain", random_state=…)` da **la misma partición** entre
+  corridas para el mismo grafo (seed derivado del content-hash, `_louvain_seed_from_hash`).
+  ⚠️ **`resolution` DIFERIDO a Hito 9** (NetworkSpec): el punto 4 del ADR 0017 / el alcance original
+  pedían exponer `resolution`; se difiere al hito donde `NetworkSpec` gana parámetros por algoritmo
+  vía YAML. R2 entrega la pata reproducible (el `random_state` seeded), que es la que importa para
+  la identidad; `resolution` queda en el default de `python-louvain`. Diferimiento aditivo.
+- ✅ La suite pasa (247 verdes); no había test viejo que esperara hashes distintos por timestamps.
 
 **Tests (TDD — los justos)**
 
@@ -748,16 +767,21 @@ apoya en `Col`/`CurationStatus`/`ProvenanceEvent` en vez de literales.
   reloj de sistema (un test que pasa un instante fijo y verifica el evento).
 - Louvain determinista: misma partición en dos corridas sobre un grafo sintético.
 
-**Recomendaciones para el `coder`** (`archivo:símbolo`):
+**As-built (`archivo:símbolo`):**
 
-- `backends/memory.py:50-75` (`compute_corpus_hash`): **excluir** la columna `provenance` del hash.
-- `backends/memory.py:281` y `corpus.py:386,403` (`apply_curation`/`accept`/`reject`): **quitar**
-  `datetime.now(UTC)`; recibir `decided_at` como parámetro; el CLI (`cli/commands/accept.py`,
-  `reject.py`, y los que curan vía `filter`) lo inyecta en la frontera.
-- `networks/analyzer.py:120-129` (`detect_communities`): pasar `random_state` (derivado del
-  content-hash) y exponer `resolution` a `community_louvain.best_partition`.
+- ✅ `backends/memory.py` (`compute_corpus_hash`): **excluye** la columna `provenance` del hash
+  (sigue incluyendo `curation_status`); order-independent intacto.
+- ✅ `backends/memory.py` (`_apply_curation_to_rows`, `apply_curation`) y `corpus.py`
+  (`accept`/`reject` con `decided_at: datetime | None`): reciben `decided_at` desde la frontera;
+  **fallback `datetime.now(UTC)`** cuando es `None` (uso como librería).
+- ✅ `filters/prisma.py` (`apply_filter`/`apply_filters` con `decided_at`) + `cli/commands/filter.py`
+  (inyecta un único `datetime.now(UTC)` para todos los pasos PRISMA de la invocación).
+- ✅ `cli/commands/accept.py`, `reject.py` inyectan `datetime.now(UTC)`.
+- ✅ `networks/facade.py` (`_louvain_seed_from_hash`, threadeado por `_build_artifact`) +
+  `networks/analyzer.py` (`detect_communities(..., random_state=…)`): Louvain seeded con el
+  content-hash. ⚠️ `resolution` **NO** expuesto — **diferido a Hito 9** (ver DoD).
 
-**Se vuelve posible:** la promesa central del producto —**reproducir bit a bit** un snapshot— deja de
+**Se volvió posible:** la promesa central del producto —**reproducir bit a bit** un snapshot— deja de
 ser falsa. El forrajeo/curación/análisis son deterministas de punta a punta.
 
 ---
@@ -1021,6 +1045,9 @@ cross-source.
 
 - `NetworkSpec` como `BaseModel` con loader YAML (API.md §10); `b2g networks --spec redes.yaml
   --json`.
+- **Parámetros por algoritmo de clustering** — entre ellos `resolution` de Louvain (diferido de
+  **R2**, ADR 0017 punto 4): el `random_state` ya es seeded desde R2; aquí se expone `resolution`
+  (y demás params) vía la spec declarativa.
 
 **Historias:** profundiza **E1/E2** (pipelines reproducibles versionados en git: un YAML describe
 qué se calcula). Abre la puerta a un GUI (editor de `NetworkSpec`).
