@@ -796,8 +796,9 @@ no miente sobre el ciclo).
   entre rondas).
 - `b2g status` (humano y `--json`) muestra: estado actual, **transiciones disponibles**, **`accept`/
   `reject` como acción siempre-disponible**, **contador de ronda** y conteos por `curation_status`.
-- El campo nuevo del envelope `--json` de `status` se **versiona** (sigue `schema="1"` salvo decisión
-  de bump; ver decisión abierta al PO).
+- El campo nuevo del envelope `--json` de `status` (`curation_available`/`round`) es **aditivo** y
+  **mantiene `schema="1"`** (decisión del PO 2026-06-16: campos nuevos no rompen a los agentes, no se
+  bumpea).
 
 **Tests (TDD — los justos)**
 
