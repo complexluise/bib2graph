@@ -57,8 +57,9 @@ son deterministas y sin estado interactivo.
 
 ### B. `build` y `export` son comandos separados (decisión del PO)
 
-- **`build`** computa las redes con `Networks.quick` (4 redes: acoplamiento sobre corpus completo,
-  co-autoría, instituciones, co-word) y **escribe artefactos intermedios a disco**
+- **`build`** computa las redes con `Networks.quick` (acoplamiento sobre corpus completo,
+  co-autoría, instituciones, co-word, y co-citación si `cited_by_id` está poblado tras `enrich`,
+  Hito 8b → **4 o 5 redes**) y **escribe artefactos intermedios a disco**
   (`<store_dir>/networks/<kind>/network.graphml` + `metrics.json`). Transiciona el `LoopState` a
   `BUILT`.
 - **`export`** **relee** esos artefactos de build y los **serializa** al formato pedido

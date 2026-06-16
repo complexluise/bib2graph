@@ -63,4 +63,4 @@ Qué se vuelve posible/fácil y qué se vuelve costoso/imposible. Trade-offs hon
 | [0022](0022-producto-sin-ia-generativa.md) | El producto no usa IA generativa; la "inteligencia" del forrajeo es estructura bibliométrica | Aceptada |
 | [0023](0023-capa-constants-modelos-schema.md) | Capa base de vocabulario + modelos: `constants`, `ProvenanceEvent`, schema única (`PaperRow` ⇄ `CORPUS_SCHEMA`) | Aceptada |
 | [0024](0024-orden-d3-columna-secuencia-duckdb.md) | Orden D3 en DuckDB vía columna de secuencia interna (`_seq`) | Aceptada · AS-BUILT (2026-06-16) |
-| [0025](0025-enricher-cocitacion-openalex.md) | `Enricher` opt-in sobre OpenAlex (núcleo): refs→DOI + co-citación; supersede el `[s2]` del DoD del Hito 8 | Aceptada · AS-BUILT parcial (2026-06-16): 8a hecho, 8b pendiente |
+| [0025](0025-enricher-cocitacion-openalex.md) | `Enricher` opt-in sobre OpenAlex (núcleo): refs→DOI + co-citación; supersede el `[s2]` del DoD del Hito 8 | Aceptada · AS-BUILT COMPLETO (2026-06-16): 8a + 8b → Hito 8 completo |

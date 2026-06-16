@@ -2,10 +2,11 @@
 
 > Guía para agentes que operen en este repositorio. El proyecto es una **reescritura
 > clean-room** construida de adentro hacia afuera (docs → núcleo puro y tests → costuras).
-> **Estado (v0.3): Hitos 0–6 + 1.5 construidos y tanda de remediación R1–R5 COMPLETA** tras el
-> red-team de la Nota 06 y el modelo nuevo (ADR 0022/0023; el producto **no usa IA generativa** —
-> el desarrollo SÍ es asistido por IA, pero el scent es bibliométrico determinista). **Próximo:
-> Hito 7 (dedup fuzzy).** Ver `docs/ROADMAP/` y "Estado actual" abajo. El diseño objetivo vive en
+> **Estado (v0.3): Hitos 0–6 + 1.5 construidos, remediación R1–R5 COMPLETA y Hito 8 COMPLETO**
+> (Enricher OpenAlex: refs→DOI + co-citación end-to-end), tras el red-team de la Nota 06 y el modelo
+> nuevo (ADR 0022/0023; el producto **no usa IA generativa** — el desarrollo SÍ es asistido por IA,
+> pero el scent es bibliométrico determinista). **Próximo: Hito 7 (dedup fuzzy).** Ver
+> `docs/ROADMAP/` y "Estado actual" abajo. El diseño objetivo vive en
 > `docs/ARCHITECTURE.md`; los contratos
 > públicos en `docs/API.md`; el producto en `docs/PRD.md`; las reglas que motivan este código en
 > `docs/Notas/01-lecciones-v0.md`. Las decisiones vigentes tras **el giro** son los ADR
@@ -28,7 +29,13 @@
   scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
   El **CLI `b2g` es real** —paquete `cli/` con 13 subcomandos en `cli/commands/`, no un
-  placeholder—. **341 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+  placeholder—. **365 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+- **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
+  [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
+  núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
+  trayendo los citantes de las semillas aceptadas vía `OpenAlexSource.fetch_citing_batch` (batcheo OR
+  ≤50 con presupuesto por semilla) y los une (idempotente, sin crecer el corpus). `b2g enrich` con
+  `--max-citing` (tope por semilla); `Networks.quick` → 4 o 5 redes según haya `cited_by_id`.
 - **Tanda de remediación R1–R5 COMPLETA** (v0.3, 2026-06-16). Tras el red-team del AS-BUILT
   ([`docs/Notas/06-critica-as-built-v0.2.md`](docs/Notas/06-critica-as-built-v0.2.md)) el PO bloqueó
   un **modelo nuevo** (ADR [0022](docs/decisiones/0022-producto-sin-ia-generativa.md)/
@@ -40,8 +47,9 @@
   transversal en `status`; **R4** — **scent bibliométrico vía proyectores**, **el producto NO usa
   IA generativa** (se eliminaron `foraging/explain.py`, `explain_candidate`, el extra `[llm]` y la
   "máquina de tensiones"); **R5** — robustez (bulk-load, UTF-8 en la frontera, retry, footguns).
-  Ver `docs/ROADMAP/` (Hitos R1–R5). **PRÓXIMO: Hito 7** (dedup fuzzy `[dedup]`). El entorno se
-  levanta con `uv sync`.
+  Ver `docs/ROADMAP/` (Hitos R1–R5). Tras la remediación se construyó el **Hito 8** (Enricher
+  OpenAlex: refs→DOI + co-citación end-to-end). **PRÓXIMO: Hito 7** (dedup fuzzy `[dedup]`). El
+  entorno se levanta con `uv sync`.
 - Toda la información del producto, la arquitectura, los contratos y la secuencia de
   construcción está en `docs/`. **Leer `docs/ROADMAP/` antes de tocar nada**: cada hito declara
   qué historias del PRD §7 cumple, sus criterios de aceptación (DoD) y los tests TDD que se
@@ -211,7 +219,7 @@ src/bib2graph/
   preprocessors/       # normalize + thesaurus multilingüe DETERMINISTA, sin fallback LLM (núcleo);
                        # dedup fuzzy DETERMINISTA en [dedup]
   filters/             # filtros de inclusión/exclusión con conteo PRISMA (núcleo)
-  enrichers/           # OpenAlexEnricher opt-in, NÚCLEO (refs→DOI = Ciclo 8a ✅; cited_by_id/2º nivel = 8b);
+  enrichers/           # OpenAlexEnricher opt-in, NÚCLEO (Hito 8 ✅: refs→DOI 8a + co-citación 8b → pobla cited_by_id);
                        # Enricher Protocol; S2 ([s2]) reservado para señal adicional, NO el Enricher (ADR 0025)
   networks/            # Projector, Analyzer, NetworkSpec, NetworkArtifact, Networks
   exporters/           # GraphML, CSV
@@ -219,7 +227,7 @@ src/bib2graph/
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
-                       # cli/commands/ = 13 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI). CLI = API
+                       # cli/commands/ = 13 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación). CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
 tests/
   unit/                # tests puros, sin red ni I/O (default)

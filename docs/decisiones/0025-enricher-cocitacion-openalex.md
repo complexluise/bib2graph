@@ -1,7 +1,7 @@
 # 0025 — `Enricher` opt-in sobre OpenAlex (núcleo): refs→DOI + co-citación
 
-- **Estado:** Aceptada · **AS-BUILT parcial (2026-06-16)** (Ciclo **8a** implementado en esta rama;
-  **8b** pendiente)
+- **Estado:** Aceptada · **AS-BUILT COMPLETO (2026-06-16)** (Ciclos **8a + 8b** implementados →
+  Hito 8 completo)
 - **Fecha:** 2026-06-16
 - **Relacionada con:** [0007](0007-openalex-backbone.md) (OpenAlex backbone; el Enricher deja de ser
   estructural y S2 se demota), [0004](0004-enriquecimiento-opcional.md) (principio de enriquecimiento
@@ -51,13 +51,28 @@ El hito es grande para un solo ciclo, por lo que se **parte en dos**:
   **idempotente** = reemplaza por nombre, no duplica.
 - Métodos nuevos en `sources/openalex.py`: `fetch_dois_for(ids) -> dict` y `_fetch_batch_select`.
 
-### Ciclo 8b (PENDIENTE)
+### Ciclo 8b (HECHO, as-built)
 
-- **Poblar `cited_by_id`** (2º nivel) y co-citación end-to-end, **solo sobre semillas aceptadas** y
-  con un **tope configurable**.
-- **(Decisión A del PO)** el 2º nivel **solo poblará `cited_by_id`**; los citantes **NO** se
-  materializan como filas del corpus. Crecer el corpus con citantes es trabajo del **`Forager` +
-  curación** (chaining forward + accept/reject), no del Enricher.
+- `OpenAlexEnricher.enrich(corpus)` hace ahora **2 pasadas**: refs→DOI (8a) **+** co-citación (8b).
+  La pasada de co-citación toma las **semillas aceptadas** (`is_seed=True AND
+  curation_status=accepted`), trae sus citantes y **mergea los `openalex_id` de esos citantes en
+  `cited_by_id`** (unión, idempotente). Constructor con `max_citing_per_paper` (tope **por semilla**).
+- **(Decisión A del PO, respetada)** el 2º nivel **solo puebla `cited_by_id`**; los citantes **NO**
+  se materializan como filas del corpus (no crece el corpus). Crecer el corpus con citantes es
+  trabajo del **`Forager` + curación** (chaining forward + accept/reject), no del Enricher.
+- **Contrato `OpenAlexSource.fetch_citing_batch(ids, *, max_per_paper) -> dict[seed_id,
+  list[citer_id]]`**: **batcheo por OR** (`cites:W1|W2|...`, lotes ≤50), pagina por cursor y
+  **atribuye página a página** (cruza `referenced_works` del citante con el set objetivo, por
+  short-id), con **presupuesto por semilla**: corta la paginación cuando **todas** las semillas del
+  lote alcanzaron `max_per_paper`. `max_citing_per_paper` **acota el fetch por semilla**
+  (decisión del PO: el tope acota el *fetch*, no solo la columna), **sin starvation** entre semillas
+  del mismo lote, y mata el N+1 diferido de R5. `fetch_citing` singular (Forager) **no cambió**.
+- **Frontera de responsabilidades:** el `Source` hace **I/O + atribución + acotamiento** (devuelve
+  ya el mapa `seed → citantes` acotado); el `Enricher` **solo une** ese mapa en `cited_by_id`.
+- **`Networks.quick` (`facade.py`)** incluye la red de **co-citación** cuando el corpus tiene
+  `cited_by_id` poblado (→ **5 redes**) y la **omite graceful** (log) si está vacío (→ **4 redes**).
+  El `CoCitationProjector` **no se modificó** (decisión F).
+- CLI `b2g enrich` expone **`--max-citing INTEGER`**.
 
 ### Co-citación: el `CoCitationProjector` no cambia (decisión F del PO)
 
@@ -77,9 +92,12 @@ documentando que el 2º nivel se materializa como **`cited_by_id`** (8b): "citan
   retry/backoff de R5 se conserva).
 - (−) **El DoD del Hito 8 quedaba encuadrado en `[s2]`**: este ADR lo supersede; el `[s2]` pasa a
   reserva para señal adicional futura. Los docs (ROADMAP/04, ARCHITECTURE §4.2, API §3) se sincronizan.
-- (−) **La co-citación completa sigue gateada por 8b**: hasta poblar `cited_by_id` (2º nivel),
-  `Networks.quick` omite la co-citación (avisa por log), como ya documenta API §10.
+- (+) **La co-citación es end-to-end** (8b hecho): `b2g enrich` puebla `cited_by_id` desde las
+  semillas aceptadas y `Networks.quick` devuelve **5 redes** cuando hay `cited_by_id`; si no se
+  corrió `enrich` (columna vacía), omite la co-citación graceful (avisa por log) → **4 redes**.
 
-> **AS-BUILT parcial (2026-06-16):** **8a implementado** en esta rama (`b2g enrich`, refs→DOI,
-> `OpenAlexEnricher`), **13 subcomandos** (era 12: se suma `enrich`). **341 tests verdes.** **8b
-> pendiente** (co-citación end-to-end).
+> **AS-BUILT COMPLETO (2026-06-16):** **8a + 8b implementados** → **Hito 8 completo**. `b2g enrich`
+> (refs→DOI + co-citación, flag `--max-citing`), `OpenAlexEnricher` de 2 pasadas,
+> `OpenAlexSource.fetch_citing_batch` (batcheo OR ≤50 con presupuesto por semilla),
+> `Networks.quick` → 4/5 redes según `cited_by_id`. **13 subcomandos** (`enrich` incluido).
+> **365 tests verdes** (mypy/ruff limpios).
