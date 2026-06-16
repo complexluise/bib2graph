@@ -11,23 +11,26 @@ entorno, fija la versión de Python (`.python-version` → 3.12) y resuelve las
 dependencias contra el lockfile (`uv.lock`).
 
 ```bash
-git clone https://github.com/<org>/bib2graph.git
+git clone https://github.com/complexluise/bib2graph.git
 cd bib2graph
-uv sync                  # crea .venv, instala núcleo + dev-dependencies desde uv.lock
+git checkout dev            # se trabaja sobre dev (rama de integración)
+uv sync                     # crea .venv, instala núcleo + dev-dependencies desde uv.lock
 uv run pre-commit install   # hooks de pre-commit
 ```
 
 `uv sync` instala el núcleo (incluye DuckDB y el cliente OpenAlex) y las
 `dev-dependencies` (`pytest`, `mypy`, `ruff`, `commitizen`, `pre-commit`). Para
 una capacidad opcional, agregá su extra: `uv sync --extra dedup` (ídem `zotero`,
-`s2`, `neo4j`, `viz`, `llm`). Para excluir las dev-deps: `uv sync --no-dev`.
+`s2`, `neo4j`, `viz`, `bibtex`). Para excluir las dev-deps: `uv sync --no-dev`.
+*(El extra `[llm]` se eliminó: el producto no usa IA generativa — ADR 0022.)*
 
-Comandos del día a día (siempre con `uv run`, sin activar el venv a mano):
+Comandos del día a día (siempre con `uv run`, sin activar el venv a mano), tal
+como los corre el CI (`.github/workflows/ci.yml`):
 
 ```bash
-uv run ruff check src tests      # lint
-uv run ruff format src tests     # formato
-uv run mypy src                  # tipos
+uv run ruff check .              # lint (exploracion/ excluido)
+uv run ruff format --check .     # formato (verificación)
+uv run mypy src                  # tipos (strict)
 uv run pytest                    # tests
 ```
 
@@ -121,6 +124,49 @@ uv run pytest -m integration           # solo integración
 uv run pytest tests/unit/test_corpus.py -xvs   # un archivo puntual
 ```
 
+## Modelo de ramas y flujo (importante)
+
+El proyecto usa un modelo **GitFlow-lite** con dos ramas de larga vida:
+
+- **`dev`** — rama de **integración** y **default del repo**. Acá se **acumula** el
+  trabajo. Protegida: no se pushea directo, todo entra por PR con CI verde.
+- **`main`** — rama **estable / de release**. Protegida (estricta). **Solo** recibe
+  `dev` cuando se libera, y el PR de release. No se trabaja directo sobre `main`.
+
+Flujo de un cambio:
+
+```
+1. ramear desde dev        git checkout dev && git pull && git checkout -b feat/lo-que-sea
+2. commitear               Conventional Commits (ver arriba)
+3. push + abrir PR a dev   gh pr create --base dev               ← TU PR (manual)
+4. CI corre solo           lint + test (3.11/3.12)               ← automático
+5. merge a dev             gh pr merge --squash                  ← 1 commit limpio por idea
+```
+
+**Hay dos tipos de PR — no confundirlos:**
+
+1. **Tu PR de trabajo** (`feat/...` → `dev`): lo creás vos a mano. Es donde ocurre
+   la revisión y el CI hace de gate. Mergealo con **squash** (un commit conventional
+   por idea).
+2. **El PR de release** (`chore(main): release X.Y.Z`): lo crea **automáticamente
+   `release-please`** cuando hay commits liberables en `main`. No lo creás vos; se
+   queda esperando hasta que lo mergees (ver §Releases).
+
+**Liberar una versión** (cuando hay varias cosas acumuladas en `dev`, no por cada
+cambio):
+
+```
+1. PR dev → main           gh pr create --base main --head dev
+2. merge con MERGE COMMIT   (NO squash: release-please necesita ver los feat/fix)
+3. release-please abre el PR de release en main (CHANGELOG + bump)
+4. mergeás ese PR          → tag vX.Y.Z + GitHub Release
+```
+
+> **Caveat:** el PR de release **no dispara CI** (los commits del `GITHUB_TOKEN` no
+> disparan workflows). Hasta que exista el secret `RELEASE_PLEASE_TOKEN` (un PAT), se
+> mergea con **bypass de admin** ("merge without waiting for requirements"). Ver
+> [`VERSIONING.md`](./VERSIONING.md).
+
 ## Estructura de un PR
 
 - **Título:** conventional commit resumido (idealmente el commit de merge es
@@ -134,16 +180,27 @@ uv run pytest tests/unit/test_corpus.py -xvs   # un archivo puntual
 
 ## Antes de mergear
 
-1. CI verde (lint, types, tests, build).
-2. Al menos una aprobación.
+1. **CI verde** (lint, types, tests) — lo exige la protección de rama; es el gate.
+2. **Aprobación:** la protección pide **0 aprobaciones** (proyecto de un solo
+   dev: no podés aprobar tu propio PR). Cuando entren colaboradores, se sube el
+   mínimo a 1 — ahí la regla "al menos una aprobación" aplica.
 3. Si cambia un contrato público (`docs/API.md`), ADR nuevo en
    `docs/decisiones/` aprobado **antes** de mergear el código.
 4. Si toca el método bibliométrico, actualizar `docs/metodología.md` en el
    mismo PR.
 
+> **Protección de rama:** `main` es **estricta** (la rama del PR debe estar
+> actualizada con `main` antes de mergear → si `main` avanzó, `git merge
+> origin/main` + push y el CI re-corre). `dev` es no-estricta (menos fricción).
+> En ambas: PR obligatorio + CI verde. El owner puede hacer bypass de admin como
+> válvula de escape (`enforce_admins: false`).
+
 ## Releases
 
-Las releases las maneja `release-please` desde los Conventional Commits
-mergeados a `main`. El PR de release se revisa (CHANGELOG.md + bump de
-versión) y al mergearlo se taggea y publica. Detalle en
-[`VERSIONING.md`](./VERSIONING.md).
+Las releases las maneja **`release-please`** desde los Conventional Commits que
+llegan a **`main`** (vía el merge `dev → main`). Cuando hay commits liberables,
+abre/actualiza **solo** el PR `chore(main): release X.Y.Z` con el `CHANGELOG.md`
+y el bump de versión ya hechos; al mergearlo se crea el tag `vX.Y.Z` y el GitHub
+Release. No publica a PyPI (por ahora, solo GitHub Releases). Versionado pre-1.0:
+`feat`→minor, `fix`→patch, breaking→minor. Detalle y el rol del PAT
+`RELEASE_PLEASE_TOKEN` en [`VERSIONING.md`](./VERSIONING.md).
