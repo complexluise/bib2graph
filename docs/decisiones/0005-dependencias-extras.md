@@ -39,3 +39,12 @@ es solo dependencia de desarrollo, nunca de runtime.**
   degradación silenciosa.
 - Costo: hay que mantener la matriz de extras y verificar que cada capacidad importe sus
   deps de forma perezosa, con mensaje útil si el extra no está instalado.
+
+## Enmienda — 2026-06-16 (`[dedup]` = `rapidfuzz`; `splink` diferido)
+
+> AS-BUILT del Hito 7 (ver ADR [0026](0026-dedup-fuzzy-determinista.md)). El cuerpo de arriba lista
+> `[dedup] → fuzzywuzzy, python-levenshtein` (legado v0). **`fuzzywuzzy` está abandonado** (GPL, sin
+> releases); su sucesor mantenido y permisivo (MIT) es **`rapidfuzz`**. El extra queda:
+> **`[dedup] = rapidfuzz>=3,<4`** (import perezoso, `ImportError` accionable → `uv sync --extra
+> dedup`). `splink` (record-linkage probabilístico, pesado, no-determinista) **queda diferido a
+> post-V1** (ADR 0026). El resto de la matriz de extras no cambia.

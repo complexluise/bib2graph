@@ -40,8 +40,9 @@
 > bibliométrico** (R4: proyectores como olfato, retiro de `explain`/`[llm]`/tensiones, ADR
 > 0020/0022/0008) → **robustez/escala** (R5: bulk-load, UTF-8 en la frontera, `except` anchos de la
 > Nota 06). El `ARCHITECTURE.md` apunta a estos hitos por número (R1–R5).
-> **Lo que falta** (tras la remediación R1–R5 y el **Hito 8 ✅** —`Enricher` co-citación end-to-end—,
-> hacia v1.0): Hitos 7 (dedup fuzzy), 9 (`NetworkSpec` YAML), 10 (viz) y 11 (Zotero/Neo4j). Tras el **2º giro**
+> **Lo que falta** (tras la remediación R1–R5, el **Hito 8 ✅** —`Enricher` co-citación end-to-end— y
+> el **Hito 7 ✅** —dedup fuzzy `rapidfuzz`—, hacia v1.0): Hitos 9 (`NetworkSpec` YAML), 10 (viz) y 11
+> (Zotero/Neo4j). Tras el **2º giro**
 > (acta del PO; ADR [0015](../decisiones/0015-corpus-tabular-backend.md)–[0019](../decisiones/0019-concurrencia-diferida.md))
 > se insertó un **Hito 1.5 — Rework de `Corpus` a `TabularBackend`** como el **paso inmediato
 > siguiente, secuenciado por delante del Hito 3** (instrucción explícita del PO: el rework va
@@ -194,8 +195,8 @@ limpio y actual; el cuerpo de cada hito vive en su archivo:
 | B2 profundidad + preview | 5 ✅ | `preview` SIN red (`forward_requires_fetch`), `max_candidates`; `depth>1` futuro |
 | B3 ranking por estructura | 5 ✅ (frecuencia de enlace) → **R4** (proyectores) | as-built = frecuencia de enlace (ADR 0020); R4 lo eleva a scent **bibliométrico vía proyectores** (acoplamiento/co-citación/centralidad), determinista |
 | ~~B4 explicación opcional de IA~~ | **RETIRADA** (R4) | `explain_candidate`/`[llm]` **eliminados** (ADR 0022): el producto no usa IA generativa. El "porqué" lo explica la estructura visible, no un LLM |
-| C1 dedup/normalización autores/inst. | 5 ✅ (det.) + 7 (fuzzy) | `normalize` conservador construido; fuzzy en Hito 7 |
-| C2 thesaurus multilingüe | 5 ✅ | `apply_thesaurus` (sobrescribe `keywords_id` desde `keywords_raw`) |
+| C1 dedup/normalización autores/inst. | 5 ✅ (det.) + 7 ✅ (fuzzy) | `normalize` conservador + dedup fuzzy `rapidfuzz` (autores; keywords en C2; instituciones diferidas), ADR 0026 |
+| C2 thesaurus multilingüe | 5 ✅ + 7 ✅ (fuzzy) | `apply_thesaurus` (sobrescribe `keywords_id` desde `keywords_raw`); dedup fuzzy de keywords fuera del thesaurus en Hito 7 (`deduplicate_keywords`, ADR 0026) |
 | C3 filtros incl/excl con conteo | 5 ✅ (lógica) + 6 ✅ (CLI `filter`) | flujo PRISMA; marcan `rejected`, no borran; `b2g filter` con conteos por paso |
 | C4 aceptar/rechazar + biblioteca viva | 1 (modelo) + 1.5 (backend) + 3 (persist DuckDB) + 6 ✅ (CLI `accept`/`reject`) + 11 (Zotero) | `accept`/`reject` ahora subcomandos CLI (`b2g accept/reject --ids`); `curate`+GUI = futuro |
 | D1 cinco proyecciones | 2 + 8 ✅ (co-citación) | co-citación end-to-end vía `b2g enrich` (8b); `Networks.quick` → 4/5 redes según `cited_by_id` |

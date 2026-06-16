@@ -930,16 +930,41 @@ versionable.
 
 ---
 
-## 11. Deduplicación fuzzy (extra `[dedup]`, v1)
+## 11. Deduplicación fuzzy (extra `[dedup]`, v1 — construido, Hito 7)
+
+**Construido** (Hito 7, ADR [0026](decisiones/0026-dedup-fuzzy-determinista.md)). Dedup fuzzy
+**determinista** con `rapidfuzz` (extra `[dedup]`, import perezoso): el complemento aproximado de la
+normalización conservadora del `Preprocessor` (§6). **Funciones de librería**, exportadas desde
+`bib2graph.preprocessors` (no hay subcomando CLI — decisión del PO). Operan sobre la columna `_id`
+(`authors_id`/`keywords_id`), **nunca** sobre `_raw`, y corren **después** de `normalize` y
+`apply_thesaurus` (orden: normalize → thesaurus → dedup).
 
 ```python
-def deduplicate_authors(corpus: Corpus) -> Corpus:
-    """Combina autores por similitud de nombres (fuzzy). Lo determinístico ya lo hizo el
-    Preprocessor (§6); esto es el complemento aproximado."""
+def deduplicate_authors(corpus: Corpus, *, threshold: float = 0.92) -> Corpus:
+    """Colapsa variantes de `authors_id` por similitud de nombres (fuzzy DETERMINISTA). Lo trivial
+    ya lo hizo el Preprocessor (§6); esto es el complemento aproximado. Requiere extra [dedup]."""
 
-def deduplicate_keywords(corpus: Corpus, *, threshold: float = 0.9) -> Corpus:
-    """Similitud de cadenas para keywords fuera del thesaurus. Requiere extra [dedup]."""
+def deduplicate_keywords(corpus: Corpus, *, threshold: float = 0.90) -> Corpus:
+    """Colapsa variantes de `keywords_id` fuera del thesaurus por similitud de cadenas. Requiere
+    extra [dedup]."""
 ```
+
+**Notas de contrato** (Hito 7, ADR [0026](decisiones/0026-dedup-fuzzy-determinista.md)):
+
+- **`threshold` por-campo** (autores `0.92` / keywords `0.90`; **ambas** lo reciben): se compara con
+  `rapidfuzz.fuzz.token_sort_ratio` (0–100) contra `threshold * 100`.
+- **Determinista e idempotente:** los pares ≥ umbral forman **componentes conexas** vía Union-Find
+  (iteración ordenada); el **canónico** del cluster es la variante más frecuente (papers distintos)
+  con desempate por `id` ascendente; se preserva el **orden de primera aparición** y **nunca se toca
+  `_raw`**. Mismo corpus + threshold + versión de `rapidfuzz` → mismo resultado (verificado
+  cross-`PYTHONHASHSEED`); converge en una pasada. **NO usa IA** (similitud de cadenas, no
+  semántica/LLM; ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)).
+- **Extra `[dedup]` con import perezoso:** sin él, `ImportError` accionable → `uv sync --extra
+  dedup`. Registra un `PreprocRef` en el `Manifest` con `{library, rapidfuzz_version, scorer,
+  threshold, n_clusters_collapsed}` (reproducibilidad a igual versión del scorer, ADR 0017).
+- **Campos en V1:** autores + keywords. **Instituciones diferidas** (`institutions_id` no está
+  normalizada determinísticamente hoy). `splink` (record-linkage probabilístico) **diferido a
+  post-V1** (ADR 0026).
 
 ---
 

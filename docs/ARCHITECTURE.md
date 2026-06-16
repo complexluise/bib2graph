@@ -230,8 +230,10 @@ candidato lo explica la **estructura visible** (con qué del corpus se acopla/co
 Determinístico e idempotente: canonicalización **conservadora** de nombres de autor
 (`authors_id`: lowercase + acentos + espacios) y `language` (ISO 639-1 primario), y
 **normalización de keywords vía thesaurus multilingüe** (en/es/pt; dict `canónico → aliases` en
-JSON portable; ADR 0011). Lo *fuzzy* (dedup aproximado de autores) vive en el extra `[dedup]`
-(`rapidfuzz`/`splink`, determinista). **No hay fallback semántico/LLM del thesaurus** (ADR
+JSON portable; ADR 0011). Lo *fuzzy* (dedup aproximado de autores y keywords) vive en el extra
+`[dedup]` (`rapidfuzz`, determinista; Hito 7 ✅, ADR
+[0026](decisiones/0026-dedup-fuzzy-determinista.md); `splink` diferido a post-V1). **No hay fallback
+semántico/LLM del thesaurus** (ADR
 [0011](decisiones/0011-thesaurus-multilingue.md) enmendado / 0022): el thesaurus es **curado y
 determinista**; lo que no matchea queda fuera, sin inventar conceptos con un modelo.
 
@@ -451,7 +453,8 @@ core         pyarrow, pydantic, networkx, click, tqdm,
               señal adicional, NO el Enricher —ADR 0025)  │
 [neo4j]      neomodel / driver oficial                   │ (futuras marcadas como no
 [viz]        matplotlib, seaborn                          │ implementadas)
-[dedup]      rapidfuzz / splink (fuzzy DETERMINISTA)    ─┘
+[dedup]      rapidfuzz (fuzzy DETERMINISTA; splink         │
+              diferido a post-V1 —ADR 0026)               ─┘
 ```
 
 El extra **`[llm]` se elimina** (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)): el
