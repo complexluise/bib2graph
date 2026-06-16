@@ -59,5 +59,5 @@ bibliométrica como *information scent***, **determinista y reproducible** (acop
   no tiene un sub-árbol LLM; el forrajeo (costura) depende del **núcleo de proyección** (puro).
 - **Recomendación para el `coder`:** borrar `foraging/explain.py` y el extra `[llm]` de
   `pyproject.toml`; quitar `explain_candidate` de la superficie pública; reescribir `foraging/scent.py`
-  para consumir proyectores (ver ROADMAP Hito R1). Tratar las Notas 04/05 que prometían tensiones
+  para consumir proyectores (ver ROADMAP Hito R4). Tratar las Notas 04/05 que prometían tensiones
   como historia, anotando qué se abandonó.

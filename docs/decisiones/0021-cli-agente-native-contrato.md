@@ -139,9 +139,9 @@ exploratorio). `status` lee y presenta el estado actual + las transiciones dispo
 > enmienda del ADR [0016](0016-maquina-estados-lazo.md) (curación transversal), **`b2g status` debe
 > mostrar `accept`/`reject` como acción SIEMPRE-disponible** (en cualquier estado), separada de las
 > transiciones del lazo. Además, el FSM gana `reseed` (loop-back a `SEEDED` con contador de ronda) y
-> el estado `MONITORED`: `status` debe reflejarlos. Ver ROADMAP **Hito R2**. El bug **UTF-8 en
+> el estado `MONITORED`: `status` debe reflejarlos. Ver ROADMAP **Hito R3**. El bug **UTF-8 en
 > Windows** (`cli/_envelope.py:67`: `ensure_ascii=False` sin forzar UTF-8 en stdout → acentos
-> corruptos, rompe el contrato agente-native) se corrige en ROADMAP **Hito R6**.
+> corruptos, rompe el contrato agente-native) se corrige en ROADMAP **Hito R5**.
 
 ## Consecuencias
 

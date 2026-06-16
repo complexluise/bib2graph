@@ -17,8 +17,11 @@
 > **AS-BUILT vs TARGET (importante):** este doc describe el diseño **objetivo** tras el red-team
 > de la [Nota 06](Notas/06-critica-as-built-v0.2.md). Donde el código v0.2 difiere del objetivo,
 > el bloque está marcado **`TARGET`** (lo que debe construirse) y/o **`AS-BUILT v0.2`** (lo que hay
-> hoy). La tanda de **remediación** que cierra esa brecha está secuenciada en el
-> [`ROADMAP.md`](ROADMAP.md) (Hitos R1–R8), antes de los hitos nuevos.
+> hoy). La tanda de **remediación** que cierra esa brecha está secuenciada **por dependencia** en el
+> [`ROADMAP.md`](ROADMAP.md) (Hitos **R1–R5**), antes de los hitos nuevos: **R1** cimientos
+> (constants/modelos/schema), **R2** identidad-vs-procedencia (hash/reloj/Louvain), **R3** ciclo
+> (`cycle.py`/`reseed`/curación transversal), **R4** scent bibliométrico (proyectores; retiro de
+> IA), **R5** robustez (bulk-load/UTF-8/footguns).
 >
 > **Decisión bloqueada por el PO (2026-06-15) — el producto NO usa IA generativa.** La
 > "inteligencia" que asiste el forrajeo es **estructura bibliométrica como *information scent***,
@@ -193,7 +196,7 @@ corpus curado.
   [Nota 05](Notas/05-ciclo-investigacion-humano.md) §4 promete): señal de **acoplamiento /
   co-citación / centralidad** del candidato con el corpus. Sigue siendo **función pura y
   determinista** (mismo corpus → mismo ranking); el forrajeo (costura) **depende del núcleo de
-  proyección** (puro), nunca al revés. Ver ROADMAP **Hito R1**.
+  proyección** (puro), nunca al revés. Ver ROADMAP **Hito R4**.
 
 Reglas (ADR 0008, nota 07): **profundidad 1 por defecto** (`depth>1` lanza `NotImplementedError`);
 **preview de crecimiento** ("sumaría ~N papers") **sin red** —backward exacto local; forward no
@@ -313,7 +316,7 @@ testeable** (`cycle.py`): el modelo de estados + las reglas de transición viven
     futuro; el estado existe en el modelo.)*
   - **La curación es TRANSVERSAL:** `accept`/`reject` están disponibles **en cualquier estado**, **no
     transicionan**, pero `status` **debe** mostrarlas como acción siempre-disponible (hoy las
-    oculta). Ver ROADMAP **Hito R2**.
+    oculta). Ver ROADMAP **Hito R3**.
 
 El estado del lazo vive en el backend persistente (`DuckDBBackend`), no en el `Corpus` efímero, y se
 expone con `b2g status`: humanos e IAs comparten el mismo mapa del lazo. El **reloj se inyecta en la
@@ -352,7 +355,7 @@ versión/fecha de OpenAlex usada.
   `ProvenanceEvent`/timestamps. La **procedencia es un log append-only fuera de la identidad** (sirve
   para auditar, no para identificar). El **reloj se inyecta en la frontera** (CLI), no en el núcleo
   (`accept`/`reject` reciben el instante, no llaman `datetime.now()`). **Louvain** corre con un
-  `random_state` **derivado del content-hash** → comunidades reproducibles. Ver ROADMAP **Hito R3**.
+  `random_state` **derivado del content-hash** → comunidades reproducibles. Ver ROADMAP **Hito R2**.
 
 El **snapshot** es un **export sellado** del estado vivo en un instante: `corpus.parquet` + un
 `manifest.json` con `schema_version`, `corpus_hash`, `lib_version`, `openalex_version`/fecha,
@@ -415,7 +418,7 @@ de fila (`PaperRow` ⇄ `CORPUS_SCHEMA` derivado/verificado, no duplicado a mano
 decisión "`Paper`/`Author`/`Keyword`/`Institution` = vistas derivadas, no tipos". El grafo de
 dependencias va **de abajo hacia arriba**: `constants/models` → núcleo puro (`corpus`, `cycle`,
 `projectors`, `analyzer`) → costuras (`sources`, `foraging` [consume el núcleo de proyección],
-`stores`) → `cli`. El núcleo nunca depende de una costura. Ver ROADMAP **Hito R4**.
+`stores`) → `cli`. El núcleo nunca depende de una costura. Ver ROADMAP **Hito R1**.
 
 ## 8. Por qué este diseño (mapa a las lecciones de v0)
 
@@ -460,6 +463,6 @@ snapshot, `Source` agnóstico, single-writer). El contrato del CLI agente-native
 biblioteca viva, fuentes, forrajeo y el CLI `b2g`). Tras el **red-team de la
 [Nota 06](Notas/06-critica-as-built-v0.2.md)** y el **nuevo modelo conceptual bloqueado por el PO**
 (scent bibliométrico sin IA, FSM cíclico, identidad-vs-procedencia, capa constants/models), este doc
-describe el **TARGET**; la brecha con el AS-BUILT se cierra con la **tanda de remediación R1–R8** del
+describe el **TARGET**; la brecha con el AS-BUILT se cierra con la **tanda de remediación R1–R5** del
 [`ROADMAP.md`](ROADMAP.md), **antes** de los Hitos 7–11. (Ya no se afirma "v0.2 con capacidades
 completas": ese claim era parte de la sobre-venta que la Nota 06 corrigió.)

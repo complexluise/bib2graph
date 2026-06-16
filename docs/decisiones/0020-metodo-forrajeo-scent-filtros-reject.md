@@ -146,5 +146,5 @@ decía que `keywords_id` son los "canónicos (post-thesaurus)": antes de aplicar
    reconoce explícitamente: el scent prioriza, no garantiza exhaustividad — eso lo sostienen los
    filtros PRISMA.
 
-**Recomendación para el `coder`:** ver ROADMAP **Hito R1** (`foraging/scent.py` consume proyectores;
+**Recomendación para el `coder`:** ver ROADMAP **Hito R4** (`foraging/scent.py` consume proyectores;
 borrar `foraging/explain.py`; quitar `[llm]` de `pyproject.toml`).

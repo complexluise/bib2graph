@@ -96,6 +96,6 @@ los estados no son una escalera de un solo sentido.
 
 **Consecuencia:** humanos e IAs ven un mapa que (a) refleja el ciclo real, no un pipeline; (b)
 cuenta las rondas; (c) muestra la curación. **Recomendación para el `coder`:** ver ROADMAP **Hito
-R2** (extraer `cycle.py`; `cli/commands/status.py:19-34` debe incluir `accept`/`reject` como
+R3** (extraer `cycle.py`; `cli/commands/status.py:19-34` debe incluir `accept`/`reject` como
 siempre-disponibles; `cli/commands/accept.py:104` ya no transiciona — eso queda, pero `status` debe
 exponerlas).

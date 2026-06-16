@@ -22,21 +22,31 @@ con dirección y revisión humana**:
   implementación → revisión adversarial → sincronía de docs) está en
   [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-### Dos sentidos de "AI in the loop"
+### Un solo sentido de "AI in the loop": el desarrollo, no el producto
 
-Conviene no confundirlos, porque ambos están presentes a propósito:
+> **Decisión del PO (2026-06-15), ADR
+> [0022](docs/decisiones/0022-producto-sin-ia-generativa.md):** el producto **no usa IA generativa**.
+> Antes este documento describía **dos sentidos** de "AI in the loop"; el segundo (IA en el producto)
+> **se retira**.
 
-1. **Desarrollo asistido por IA** — el *código* de la librería se escribe con asistencia de IA
-   (este documento).
-2. **IA en el producto (diseñada; incipiente en el AS-BUILT v0.2)** — la *librería* está
-   **diseñada** para insertar IA en el lazo de exploración. **En el código de v0.2, sé honesto
-   sobre el estado:** el forrajeo rankea candidatos por *information scent* que hoy es una
-   **heurística determinista de frecuencia de enlace** (conteo de citas con el corpus, **sin**
-   LLM ni embeddings; [ADR 0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md));
-   la **curación es una decisión 100% humana** (la persona acepta/rechaza — no hay IA en el
-   medio); y el único gancho de LLM (`explain_candidate`, extra `[llm]`) es un **stub** sin
-   implementar. El sensemaking asistido ("máquina de tensiones") es **futuro** (v2). Ver el
-   [PRD](docs/PRD.md) y la [Nota 06](docs/Notas/06-critica-as-built-v0.2.md).
+Hay **un solo** sentido, y es el de este documento: **el *desarrollo* de la librería es asistido por
+IA**. El *producto* **no** usa IA generativa:
+
+- La "inteligencia" que asiste el **forrajeo** es **estructura bibliométrica como *information
+  scent*** —acoplamiento / co-citación / centralidad del candidato respecto del corpus curado—,
+  **determinista y reproducible, sin LLM ni embeddings**
+  ([ADR 0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) enmendado). Es
+  **estructura, no IA**. *(En el AS-BUILT v0.2 era una heurística de frecuencia de enlace; la
+  remediación —Hito R4— la eleva a scent vía proyectores. Ninguna de las dos es IA.)*
+- La **curación** es una **decisión 100% humana** (la persona acepta/rechaza — no hay modelo en el
+  medio).
+- El **sensemaking** (leer tensiones: quién apoya/refuta a quién) lo hace el investigador **leyendo
+  las redes**, no un LLM. La antigua **"máquina de tensiones"** asistida por IA **se retira del
+  producto** (no se difiere a v2: se borra).
+- Se **eliminan** `explain_candidate`, el módulo `foraging/explain.py` y el extra `[llm]`; el
+  thesaurus es **curado y determinista**, sin fallback semántico/LLM.
+
+Ver el [PRD](docs/PRD.md) y la [Nota 06](docs/Notas/06-critica-as-built-v0.2.md).
 
 ## Qué implica para vos
 

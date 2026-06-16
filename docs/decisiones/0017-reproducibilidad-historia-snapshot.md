@@ -88,5 +88,5 @@ en fechas distintas no son comparables.
 
 **Consecuencia:** el snapshot vuelve a ser **reproducible bit a bit** (cumple la promesa original) y
 la pureza de `facade.py` ("mismo corpus + mismo spec → mismo `NetworkArtifact`") deja de estar rota.
-**Recomendación para el `coder`:** ver ROADMAP **Hito R3** (`backends/memory.py:50-75,281`,
+**Recomendación para el `coder`:** ver ROADMAP **Hito R2** (`backends/memory.py:50-75,281`,
 `corpus.py:386,403`, `networks/analyzer.py:120-129`).

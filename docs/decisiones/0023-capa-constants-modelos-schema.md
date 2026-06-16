@@ -54,5 +54,5 @@ Se **mantiene** "`Paper`/`Author`/… = vistas derivadas, no tipos del modelo".
   hitos de remediación (scent, FSM, identidad-vs-procedencia).
 - **Posición en el grafo de dependencias:** `constants/models` es la **capa más baja**
   (`constants/models` → núcleo puro → costuras → CLI); nada de abajo importa hacia arriba.
-- **Recomendación para el `coder`:** ver ROADMAP **Hito R4** (`archivo:símbolo` de los literales a
+- **Recomendación para el `coder`:** ver ROADMAP **Hito R1** (`archivo:símbolo` de los literales a
   reemplazar y de `_parse_provenance`).

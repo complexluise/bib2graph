@@ -12,19 +12,29 @@ Kuhlthau): se siembra desde la ecuación, se forrajea (chaining rankeado por est
 cura, **la idea muta** y se vuelve a sembrar — acumulando sobre lo curado. La colección
 **vive y persiste** entre corridas en DuckDB.
 
-> **Estado: v0.2 (Hitos 0–6 + 1.5 construidos y testeados).** El flujo **de una ecuación a las
-> redes** ya corre sobre la biblioteca viva, **desde código Python y desde el CLI `b2g`** (que
-> **ya no es un placeholder**). **Importante:** "capacidades completas" se refiere al *flujo*
-> `seed → … → export`; **NO** está completo todavía: la **co-citación end-to-end** (Hito 8) y el
-> gancho de IA `explain_candidate` (extra `[llm]`) son **stubs/futuros**, y el *information scent*
-> del forrajeo es una **heurística determinista de frecuencia de enlace**, no bibliometría ni LLM. Construido: el `Corpus` canónico sobre
-> `TabularBackend`, los proyectores/analizadores/exportadores, el backend DuckDB (biblioteca viva),
-> las fuentes `OpenAlexSource`/`BibtexSource`, el **forrajeo asistido** (`Forager`, chaining
-> rankeado por *information scent*) + `Preprocessor`/thesaurus + filtros PRISMA, y la **CLI
-> agente-native `b2g`** (11 subcomandos, `--json` versionado, exit codes; ADR
-> [0021](docs/decisiones/0021-cli-agente-native-contrato.md)). **Todavía no** (v0.3+ → v1.0): dedup
-> fuzzy (Hito 7), `Enricher` de co-citación (Hito 8), `NetworkSpec` YAML (Hito 9), visualización
-> (Hito 10) y costuras Zotero/Neo4j (Hito 11). Ver el [roadmap](docs/ROADMAP.md).
+> **Estado: v0.2 construido (Hitos 0–6 + 1.5), en remediación hacia v0.3.** El flujo **de una
+> ecuación a las redes** ya corre sobre la biblioteca viva, **desde código Python y desde el CLI
+> `b2g`** (que **ya no es un placeholder**). Construido: el `Corpus` canónico sobre `TabularBackend`,
+> los proyectores/analizadores/exportadores, el backend DuckDB (biblioteca viva), las fuentes
+> `OpenAlexSource`/`BibtexSource`, el **forrajeo** (`Forager`, chaining rankeado por *information
+> scent*) + `Preprocessor`/thesaurus + filtros PRISMA, y la **CLI agente-native `b2g`** (11
+> subcomandos, `--json` versionado, exit codes; ADR
+> [0021](docs/decisiones/0021-cli-agente-native-contrato.md)).
+>
+> **En remediación (Hitos R1–R5, antes de los nuevos):** tras un red-team del código construido
+> ([Nota 06](docs/Notas/06-critica-as-built-v0.2.md)) el PO bloqueó un modelo nuevo (ADR
+> [0022](docs/decisiones/0022-producto-sin-ia-generativa.md)/[0023](docs/decisiones/0023-capa-constants-modelos-schema.md)):
+> el **producto no usa IA generativa**; el *information scent* pasa de una heurística de frecuencia de
+> enlace a **scent bibliométrico determinista vía proyectores** (acoplamiento/co-citación/
+> centralidad, **sin LLM**); la **reproducibilidad bit a bit** del snapshot se arregla
+> (identidad-vs-procedencia); el ciclo se vuelve un **FSM cíclico** con `reseed`/ronda y curación
+> visible; y se **elimina** `explain_candidate` + el extra `[llm]`. Ver el
+> [roadmap](docs/ROADMAP.md) (tanda R1–R5).
+>
+> **Todavía no** (tras la remediación, v0.4+ → v1.0): dedup fuzzy (Hito 7), `Enricher` de co-citación
+> end-to-end (Hito 8), `NetworkSpec` YAML (Hito 9), visualización (Hito 10) y costuras Zotero/Neo4j
+> (Hito 11). La **co-citación end-to-end** requiere un 2º nivel de fetch (Hito 8) — hoy da pocas/cero
+> aristas hasta enriquecer.
 
 ## ⚠️ Experimental · construido con IA (AI-in-the-loop)
 
@@ -41,13 +51,15 @@ documentación bajo esa dirección. Cada decisión de arquitectura queda en los
 [`registro-ia.md`](docs/decisiones/registro-ia.md). El detalle del proceso y sus límites
 está en [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md).
 
-> **Dos sentidos de "AI-in-the-loop"**, ambos deliberados: (1) el *desarrollo* de la librería
-> es asistido por IA; y (2) el *producto* **está diseñado** para insertar IA en dos cuellos del
-> lazo (forrajeo y sensemaking). **Honestidad sobre el AS-BUILT v0.2:** en el código de hoy esa
-> IA del producto es **incipiente** — el forrajeo rankea por una **heurística determinista de
-> frecuencia de enlace** (no LLM/embeddings), la **curación es decisión 100% humana** (no
-> asistida por IA), y el único gancho LLM (`explain_candidate`) es un **stub**. La "máquina de
-> tensiones" (el sensemaking asistido) es **futura** (v2). No los confundas.
+> **Un solo sentido de "AI-in-the-loop"** (ADR
+> [0022](docs/decisiones/0022-producto-sin-ia-generativa.md)): el *desarrollo* de la librería es
+> asistido por IA; el *producto* **no usa IA generativa**. La "inteligencia" que asiste el forrajeo es
+> **estructura bibliométrica como *information scent*** —acoplamiento/co-citación/centralidad,
+> **determinista y reproducible, sin LLM ni embeddings**—, no IA. La **curación es 100% humana** y el
+> **sensemaking** (leer tensiones en las redes) también lo hace la persona, asistida por las redes —
+> no por un modelo. `explain_candidate` y el extra `[llm]` **se eliminan**; la antigua "máquina de
+> tensiones" **se retira del producto** (no se difiere). El diferenciador no es "más IA": es una
+> **biblioteca viva curada que el investigador posee**, abierta y reproducible.
 
 Como cualquier salida asistida por IA, **verificá los resultados** antes de usarlos en
 investigación: la reproducibilidad es un objetivo del diseño, pero la responsabilidad
@@ -87,9 +99,10 @@ uv run pre-commit install     # hooks de pre-commit
 
 Capacidades opcionales como extras (lección de v0: núcleo liviano): `uv sync --extra bibtex`
 (sembrar desde un `.bib`, **ya construido**, Hito 4). Los extras `--extra dedup` (Hito 7) /
-`--extra s2` (Hito 8) / `--extra viz` (Hito 10) / `--extra zotero`·`--extra neo4j` (Hito 11) /
-`--extra llm` (`explain_candidate` + thesaurus fuzzy) están **declarados pero aún vacíos**: se
-poblarán a medida que se construya cada hito.
+`--extra s2` (Hito 8) / `--extra viz` (Hito 10) / `--extra zotero`·`--extra neo4j` (Hito 11) están
+**declarados pero aún vacíos**: se poblarán a medida que se construya cada hito. *(El extra `[llm]`
+**se elimina** en la remediación: el producto no usa IA generativa — ADR
+[0022](docs/decisiones/0022-producto-sin-ia-generativa.md).)*
 
 ## Uso
 

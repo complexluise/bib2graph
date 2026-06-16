@@ -30,10 +30,17 @@
 > identidad-vs-procedencia, capa constants/models; ADR
 > [0022](decisiones/0022-producto-sin-ia-generativa.md)/[0023](decisiones/0023-capa-constants-modelos-schema.md)
 > y enmiendas a 0008/0011/0016/0017/0020/0021). Por eso el roadmap ahora tiene **dos partes**: **(a)
-> una tanda de REMEDIACIÓN (Hitos R1–R8)** que cierra la brecha del AS-BUILT con el modelo nuevo,
+> una tanda de REMEDIACIÓN (Hitos R1–R5)** que cierra la brecha del AS-BUILT con el modelo nuevo,
 > **antes** de los hitos nuevos; **(b) LO QUE VIENE** (Hitos 7–11, actualizados a la nueva realidad).
-> **Lo que falta** (tras la remediación, v0.3+ → v1.0): Hitos 7 (dedup fuzzy), 8 (`Enricher`
-> co-citación), 9 (`NetworkSpec` YAML), 10 (viz) y 11 (Zotero/Neo4j). Tras el **2º giro**
+> La tanda R está secuenciada por **dependencia**, no por gravedad: **cimientos** (R1: capa
+> constants/modelos/schema, ADR 0023, de la que todo depende) → **reproducibilidad/identidad** (R2:
+> content-hash vs procedencia, reloj en la frontera, Louvain seeded, ADR 0017) → **ciclo** (R3: FSM
+> cíclico `cycle.py`, `reseed`/ronda, curación transversal en `status`, ADR 0016/0021) → **scent
+> bibliométrico** (R4: proyectores como olfato, retiro de `explain`/`[llm]`/tensiones, ADR
+> 0020/0022/0008) → **robustez/escala** (R5: bulk-load, UTF-8 en la frontera, `except` anchos de la
+> Nota 06). El `ARCHITECTURE.md` apunta a estos hitos por número (R1–R5).
+> **Lo que falta** (primero la remediación R1–R5, luego v0.3+ → v1.0): Hitos 7 (dedup fuzzy), 8
+> (`Enricher` co-citación), 9 (`NetworkSpec` YAML), 10 (viz) y 11 (Zotero/Neo4j). Tras el **2º giro**
 > (acta del PO; ADR [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md))
 > se insertó un **Hito 1.5 — Rework de `Corpus` a `TabularBackend`** como el **paso inmediato
 > siguiente, secuenciado por delante del Hito 3** (instrucción explícita del PO: el rework va
@@ -68,12 +75,13 @@ conectado** (no existe `.github/` ni CI). Mientras tanto, el versionado/tag se h
   `API.md` §12). **Sin CLI ni forrajeo todavía** (eso es v0.2). **Tag local `v0.1.0`** creado el
   2026-06-15 (anotado, sin push).
 > ⚠️ **Honestidad sobre "capacidades completas" (v0.2):** se refiere al *flujo* `seed → chain →
-> filter → build → export`, NO a la totalidad del producto. Quedan como **stubs/futuros** dentro
-> de v0.2: la **co-citación end-to-end** (Hito 8: `cited_by_id` está vacío tras el seed → 0 aristas
-> hasta el 2º nivel de fetch), el gancho de IA **`explain_candidate`** (`NotImplementedError`,
-> extra `[llm]` vacío) y la **máquina de tensiones** (v2). El *information scent* del forrajeo es
-> una **heurística determinista de frecuencia de enlace**, no bibliometría ni IA. Ver
-> [`Notas/06-critica-as-built-v0.2.md`](Notas/06-critica-as-built-v0.2.md).
+> filter → build → export`, NO a la totalidad del producto. Falta la **co-citación end-to-end**
+> (Hito 8: `cited_by_id` está vacío tras el seed → 0 aristas hasta el 2º nivel de fetch), y el
+> *information scent* es —en el AS-BUILT— una **heurística de frecuencia de enlace** (la remediación
+> R4 lo eleva a scent bibliométrico vía proyectores). **Corrección 2026-06-15 (ADR 0022):** lo que
+> antes figuraba acá como "stub/futuro de IA" —`explain_candidate`, el extra `[llm]` y la **máquina
+> de tensiones**— **NO es futuro: se RETIRA** (el producto no usa IA generativa). Ver
+> [`Notas/06-critica-as-built-v0.2.md`](Notas/06-critica-as-built-v0.2.md) y la **tanda R1–R5** abajo.
 
 - **v0.2 — forrajeo + CLI agente-native (Hitos 5–6) · ✅ CAPACIDADES COMPLETAS (2026-06-15):**
   chaining rankeado, `Preprocessor`, filtros PRISMA (comando **`filter`**), `b2g status`
@@ -85,8 +93,17 @@ conectado** (no existe `.github/` ni CI). Mientras tanto, el versionado/tag se h
   sobrevive (ahora como subcomando CLI); la curación interactiva rica (`curate`) y la GUI son
   futuro. Acá se cumple el criterio "V1 hecha" del PRD §9 a nivel de *capacidades* (el número de
   versión sigue en 0.y). **Tag local `v0.2.0`** creado en HEAD el 2026-06-15 (anotado, sin push).
-- **v0.3+ — opcionales (Hitos 7–9):** dedup fuzzy, `Enricher` de co-citación, `NetworkSpec`.
-- **1.0.0:** API congelada + caso real (IED/semiconductores) reproducido.
+- **v0.3 — remediación (Hitos R1–R5):** cierra la brecha AS-BUILT↔TARGET del red-team (Nota 06) y
+  del modelo nuevo (ADR 0022/0023 + enmiendas): capa `constants`/`models`/`schemas` única,
+  identidad-vs-procedencia con reproducibilidad bit a bit, FSM cíclico de dominio (`cycle.py`) con
+  curación transversal visible, scent bibliométrico vía proyectores (sin IA), y robustez (bulk-load,
+  UTF-8, footguns). **Es un breaking change de comportamiento interno** (el `corpus_hash` cambia al
+  excluir timestamps; el `LoopState` se mueve a `cycle.py`), pero **no rompe el flujo de 10 minutos**
+  ni el contrato `--json` externo. Sin esto, el claim de reproducibilidad y de "ciclo no lineal" no
+  se sostiene (Nota 06, RAÍZ 1/2).
+- **v0.4+ — opcionales (Hitos 7–9):** dedup fuzzy, `Enricher` de co-citación, `NetworkSpec`.
+- **1.0.0:** API congelada + caso real (IED) reproducido por un usuario distinto del autor (Nota 06,
+  PRODUCTO).
 
 Este mapa es la autoridad sobre el alcance de cada tag; las etiquetas de versión que aparecen
 inline en hitos sueltos se refieren a la madurez de esa capacidad, no al corte de release.
@@ -492,6 +509,13 @@ query registrada para reproducir.
 > verdes; preview network-free corregido). Decisiones de implementación de la IA en
 > [`decisiones/registro-ia.md`](decisiones/registro-ia.md) (Hito 5). El comando CLI **`filter`** y la
 > curación interactiva llegan en el Hito 6.
+>
+> ⚠️ **Reconciliación 2026-06-15 (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)):** lo
+> de este hito relativo a IA queda **superado** — el *information scent* = frecuencia de enlace se
+> **eleva a scent bibliométrico vía proyectores** en el **Hito R4**, y `explain_candidate` + el extra
+> `[llm]` (historia B4) se **eliminan** (el producto no usa IA generativa). El registro de abajo
+> describe el AS-BUILT v0.2 tal como se construyó; las menciones a `explain_candidate`/`[llm]`/B4 se
+> leen como **historia**, retiradas por R4.
 
 **Alcance**
 
@@ -604,6 +628,339 @@ sobre una **biblioteca viva**, **sin escribir código ni servidores**. Un agente
 `bib2graph` vía subprocess + JSON. *(Criterio "V1 hecha" del PRD §9.)*
 
 ---
+
+# TANDA DE REMEDIACIÓN (Hitos R1–R5) — cerrar la brecha AS-BUILT ↔ TARGET
+
+> **Va ANTES de los Hitos 7–11.** El red-team de la [Nota 06](Notas/06-critica-as-built-v0.2.md)
+> y el modelo nuevo bloqueado por el PO (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)/
+> [0023](decisiones/0023-capa-constants-modelos-schema.md) + enmiendas a 0008/0011/0016/0017/0020/0021)
+> dejaron una brecha entre lo construido (v0.2) y el diseño objetivo (`ARCHITECTURE.md`, bloques
+> `TARGET`). Esta tanda la cierra, **secuenciada por dependencia** (no por gravedad): nada de arriba
+> se construye sobre cimientos que aún no existen.
+>
+> **Disciplina de la tanda:** es **refactor con la suite verde como red de seguridad** (214 tests al
+> entrar). Cada hito R **preserva el comportamiento observable** salvo donde el ADR enmendado dice lo
+> contrario (p. ej. R2 **cambia** el `corpus_hash` a propósito; R4 **elimina** `explain_candidate`).
+> El núcleo sigue importando **sin `duckdb`**. El contrato `--json` externo del CLI **no driftea**
+> (salvo el campo nuevo de curación en `status`, R3). Los tests viejos que codifican el AS-BUILT roto
+> (p. ej. un test que espera `corpus_hash` distinto por timestamps) se **actualizan** al TARGET.
+
+---
+
+## Hito R1 — Cimientos: capa `constants` / `models` / `schemas` única · ⏳ PENDIENTE
+
+> Primero porque **todo lo demás depende de esto** (ADR
+> [0023](decisiones/0023-capa-constants-modelos-schema.md)): `constants/models` es la capa más baja
+> del grafo de dependencias (`constants/models` → núcleo puro → costuras → CLI). Cierra CONSTANTS y
+> MODELS de la [Nota 06](Notas/06-critica-as-built-v0.2.md). Es un refactor transversal **sin cambio
+> de comportamiento observable** (la base segura sobre la que se apoyan R2–R4).
+
+**Alcance**
+
+- **`bib2graph/constants.py`** (capa base): `class Col(StrEnum)` con **todos** los nombres de columna
+  del schema (§1.1 de API.md), `class CurationStatus(StrEnum)` (`candidate`/`accepted`/`rejected`) y
+  `class NetworkKind(StrEnum)` (los 5 tipos de red). Reemplazar los **~62 string-literals** de columna
+  (14 archivos) y los literales de `curation_status` (11 archivos) por referencias a estos enums.
+- **`ProvenanceEvent(BaseModel)`** (fuente única del evento de procedencia:
+  `{action, equation_id, chaining_hop, source, fetched_at, decided_by, decided_at}`), con
+  construcción y **parseo que falla ruidoso** ante JSON corrupto (cierra el `_parse_provenance` que
+  hoy hace `except … : return []` en silencio).
+- **`schemas.py` como única definición de fila:** `PaperRow` (Pydantic) autoritativa; `CORPUS_SCHEMA`
+  (Arrow) **derivado/verificado** de ella (no duplicado a mano en paralelo). Test que falla si
+  driftean.
+- **`Manifest.model_copy(update=...)`** en los 5+ sitios que hoy lo reconstruyen campo a campo.
+- **Se mantiene** "`Paper`/`Author`/`Keyword`/`Institution` = vistas derivadas, no tipos" (ADR 0023):
+  **no** se crean clases-entidad.
+
+**Historias:** ninguna nueva (deuda de base); **habilita** R2 (excluir `ProvenanceEvent`/timestamps
+del hash limpiamente) y blinda A4/C4 (procedencia honesta).
+
+**Criterios de aceptación (DoD)**
+
+- Un **typo de columna falla en import/type-check** (mypy), no en runtime tardío.
+- No quedan string-literals de columna ni de `curation_status` fuera de `constants.py` (verificable
+  con un grep en CI/local; el patrón ya existe para los exit codes en `cli/_errors.py`).
+- `PaperRow` ⇄ `CORPUS_SCHEMA` provienen de **una** fuente: un test verifica que no driftean.
+- `ProvenanceEvent` **falla ruidoso** ante JSON corrupto (no `return []`).
+- La suite del Hito 1–6 pasa **sin cambios de expectativa** (refactor sin cambio de comportamiento).
+
+**Tests (TDD — los justos)**
+
+- `PaperRow` ⇄ `CORPUS_SCHEMA`: un test de equivalencia de campos/tipos (falla si se desincronizan).
+- `ProvenanceEvent`: round-trip + **falla explícita** ante JSON corrupto (reemplaza el swallow).
+- *No testear* cada enum miembro por separado (trivial); sí un test de que el schema usa `Col`.
+
+**Recomendaciones para el `coder`** (`archivo:símbolo`):
+
+- Crear `src/bib2graph/constants.py` (`Col`, `CurationStatus`, `NetworkKind`) y
+  `src/bib2graph/models.py` (`ProvenanceEvent`). Reemplazar literales en `schemas.py`,
+  `backends/memory.py`, `backends/duckdb.py`, `filters/prisma.py`, `cli/commands/validate.py` y los
+  demás (Nota 06 CONSTANTS: 11 archivos con literales de estado, 14 con literales de columna).
+- `backends/memory.py:78-95` (`_parse_provenance`): el `except (json.JSONDecodeError, TypeError):
+  return []` debe **fallar** (o registrar y relanzar), no tragarse el corrupto.
+- `schemas.py`: derivar/verificar `CORPUS_SCHEMA` desde `PaperRow` (hoy 22 campos duplicados a mano).
+- `Manifest`: `model_copy(update=...)` en `sources/openalex.py:462`, `foraging/forager.py:259`,
+  `filters/prisma.py:198`, `preprocessors/preprocessor.py:58,107`, `corpus.py:462`.
+
+**Se vuelve posible:** una base de vocabulario que el type-checker protege; el refactor de R2–R4 se
+apoya en `Col`/`CurationStatus`/`ProvenanceEvent` en vez de literales.
+
+---
+
+## Hito R2 — Reproducibilidad / identidad: content-hash vs procedencia + Louvain seeded · ⏳ PENDIENTE
+
+> Segundo porque **necesita `ProvenanceEvent` (R1)** para separar identidad de procedencia con
+> limpieza. Cierra la RAÍZ 2 de la [Nota 06](Notas/06-critica-as-built-v0.2.md) y la enmienda
+> 2026-06-15 del ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md). Es el hito que
+> **cambia el `corpus_hash` a propósito** (breaking interno): dos corridas que aceptan los mismos ids
+> pasan a dar el **mismo** hash.
+
+**Alcance**
+
+- **Identidad (contenido) ≠ procedencia (auditoría):** `compute_corpus_hash` se computa **solo sobre
+  contenido bibliográfico**, **excluyendo** `provenance` (`ProvenanceEvent`/timestamps). La
+  procedencia es un **log append-only fuera de la identidad** (auditar, no identificar).
+- **Reloj en la frontera, no en el núcleo:** `accept`/`reject` **reciben el instante** (`decided_at`)
+  como parámetro inyectado desde el CLI; el núcleo (`backends/memory.py`) **no llama
+  `datetime.now()`**. El reloj se inyecta en la frontera CLI (ADR 0017 enmendado).
+- **Louvain seeded:** `detect_communities(method="louvain")` corre con `random_state` **derivado del
+  content-hash** (y expone `resolution`) → comunidades **reproducibles** entre corridas.
+
+**Historias:** cierra **E1** de verdad (el snapshot **sí** se reproduce bit a bit) y endurece **A4**
+(procedencia auditable separada de la identidad).
+
+**Criterios de aceptación (DoD)**
+
+- **Dos corridas que aceptan los mismos ids producen el mismo `corpus_hash`** (hoy difieren por los
+  timestamps) → el snapshot es reproducible bit a bit (cumple el ADR 0017 y `facade.py:6`).
+- `accept`/`reject` **no** llaman `datetime.now()` en el núcleo; el instante se inyecta desde la
+  frontera (CLI). La procedencia sigue registrando `decided_at` (pasa a venir inyectado).
+- `detect_communities(..., method="louvain")` da **la misma partición** entre corridas para el mismo
+  grafo (seed derivado del content-hash).
+- La suite pasa; el test viejo que (si existiera) esperaba hashes distintos por timestamps se
+  **actualiza** al TARGET.
+
+**Tests (TDD — los justos)**
+
+- **Hash estable bajo curación:** aceptar los mismos ids en dos corridas → mismo `corpus_hash`
+  (regresión directa de RAÍZ 2).
+- Reloj inyectado: `accept(ids, decided_at=…)` registra el instante recibido; el núcleo no toca el
+  reloj de sistema (un test que pasa un instante fijo y verifica el evento).
+- Louvain determinista: misma partición en dos corridas sobre un grafo sintético.
+
+**Recomendaciones para el `coder`** (`archivo:símbolo`):
+
+- `backends/memory.py:50-75` (`compute_corpus_hash`): **excluir** la columna `provenance` del hash.
+- `backends/memory.py:281` y `corpus.py:386,403` (`apply_curation`/`accept`/`reject`): **quitar**
+  `datetime.now(UTC)`; recibir `decided_at` como parámetro; el CLI (`cli/commands/accept.py`,
+  `reject.py`, y los que curan vía `filter`) lo inyecta en la frontera.
+- `networks/analyzer.py:120-129` (`detect_communities`): pasar `random_state` (derivado del
+  content-hash) y exponer `resolution` a `community_louvain.best_partition`.
+
+**Se vuelve posible:** la promesa central del producto —**reproducir bit a bit** un snapshot— deja de
+ser falsa. El forrajeo/curación/análisis son deterministas de punta a punta.
+
+---
+
+## Hito R3 — Ciclo: FSM cíclico de dominio (`cycle.py`) + `reseed`/ronda + curación transversal · ⏳ PENDIENTE
+
+> Tercero porque el ciclo se apoya en los cimientos (R1) y conviene que la identidad ya sea estable
+> (R2) antes de modelar `reseed`/acumulación. Cierra la RAÍZ 1 (la parte del lazo) de la
+> [Nota 06](Notas/06-critica-as-built-v0.2.md) y la enmienda 2026-06-15 de los ADR
+> [0016](decisiones/0016-maquina-estados-lazo.md)/[0021](decisiones/0021-cli-agente-native-contrato.md).
+
+**Alcance**
+
+- **`bib2graph/cycle.py` — FSM cíclico como concepto de dominio puro** (el enum y las reglas de
+  transición salen del backend; el backend **solo lo persiste**): estados
+  `SEEDED → FORAGED → FILTERED → BUILT → MONITORED`.
+- **`reseed` como transición de primera clase** ("la idea muta"): vuelve a `SEEDED`, **incrementa un
+  contador de RONDA** y **acumula** sobre lo curado (no es solo "transición permisiva"). Es lo que el
+  ADR 0016 prometía y el AS-BUILT no cumplía.
+- **`MONITORED`** modela el paso 8 del ciclo (Nota 05 §3). *(El comando que lo dispara puede ser
+  futuro; el estado existe en el modelo.)*
+- **Curación TRANSVERSAL:** `accept`/`reject` están disponibles **en cualquier estado**, **no
+  transicionan**, pero `b2g status` **debe** mostrarlas como **acción siempre-disponible** (hoy las
+  oculta) y exponer el **contador de ronda**. Humanos e IAs ven en el mapa lo único irreductiblemente
+  humano.
+
+**Historias:** cierra **A5** de verdad (re-sembrar que acumula con contador de ronda, no una corrida
+tirada) y **C4** (la curación aparece en el mapa del lazo); refuerza **E2** (el `status` agente-native
+no miente sobre el ciclo).
+
+**Criterios de aceptación (DoD)**
+
+- El modelo de estados + transiciones vive en `cycle.py` (núcleo puro, testeable **sin** DuckDB); el
+  `DuckDBBackend` **solo lo persiste** (log append-only, ya existente).
+- `reseed` vuelve a `SEEDED`, **incrementa la ronda** y conserva lo curado (un test de acumulación
+  entre rondas).
+- `b2g status` (humano y `--json`) muestra: estado actual, **transiciones disponibles**, **`accept`/
+  `reject` como acción siempre-disponible**, **contador de ronda** y conteos por `curation_status`.
+- El campo nuevo del envelope `--json` de `status` se **versiona** (sigue `schema="1"` salvo decisión
+  de bump; ver decisión abierta al PO).
+
+**Tests (TDD — los justos)**
+
+- `cycle.py` puro: secuencia de transiciones válidas + `reseed` (loop-back a `SEEDED`, ronda++),
+  **sin** DuckDB.
+- Acumulación entre rondas: re-sembrar tras `BUILT` no pierde lo aceptado.
+- Contrato `--json` de `status`: incluye `curation_available`/`round`/transiciones (golden/schema);
+  no driftea.
+- *No testear* el plumbing de Click de `status` (se testea `run_status`).
+
+**Recomendaciones para el `coder`** (`archivo:símbolo`):
+
+- Crear `src/bib2graph/cycle.py` y **mover** el enum `LoopState` (hoy `backends/duckdb.py:67-78`) +
+  las reglas de transición al núcleo; el backend persiste, no define el dominio. (Renombrar a
+  `CycleState`/`cycle` según prefiera el `coder`; el comando sigue siendo `status`.)
+- `cli/commands/status.py:19-34`: agregar `accept`/`reject` como acción siempre-disponible y exponer
+  el contador de ronda (hoy `transitions_available` nunca los lista).
+- `cli/commands/accept.py:104` / `reject.py`: documentar explícitamente "curación transversal, no
+  transiciona" (alineado con `status`).
+- Cablear `reseed` (loop-back + ronda) en el flujo de `seed` cuando ya hay estado previo (acumula).
+
+**Se vuelve posible:** el "ciclo no lineal" deja de ser solo prosa: `reseed`/ronda son de primera
+clase y la curación —lo irreductiblemente humano— por fin figura en el mapa del lazo.
+
+---
+
+## Hito R4 — Scent bibliométrico vía proyectores + retiro de `explain`/`[llm]`/tensiones · ⏳ PENDIENTE
+
+> Cuarto porque el scent-vía-proyectores **consume el núcleo de proyección** (Hito 2, ya construido) y
+> conviene tener identidad estable (R2) para que el ranking sea reproducible. Cierra la RAÍZ 1 (la
+> parte de IA) de la [Nota 06](Notas/06-critica-as-built-v0.2.md) y las enmiendas 2026-06-15 de los
+> ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) (scent = proyectores),
+> [0022](decisiones/0022-producto-sin-ia-generativa.md) (el producto no usa IA) y
+> [0008](decisiones/0008-wedge-forrajeo.md) (tensiones retiradas).
+
+**Alcance**
+
+- **El *information scent* pasa de frecuencia de enlace a proyectores:** un candidato rankea por
+  cuánto se **acopla / co-cita / es central** respecto del corpus curado (consume `networks/` — el
+  núcleo de proyección puro). Sigue siendo **función pura y determinista** (mismo corpus → mismo
+  ranking); el forrajeo (costura) **depende del núcleo de proyección**, nunca al revés.
+- **Eliminar la rama de IA del producto** (ADR 0022): borrar `foraging/explain.py` y `explain_candidate`
+  de la superficie pública; **eliminar el extra `[llm]`** de `pyproject.toml`; quitar el fallback
+  semántico/LLM del thesaurus (ADR 0011 enmendado: el thesaurus es curado y determinista, lo que no
+  matchea queda fuera).
+- **Retirar la "máquina de tensiones"** del alcance (ADR 0008/0022): **no se difiere a v2, se borra**
+  del producto y de las "Costuras futuras". El sensemaking es **humano**, asistido por las redes.
+- **Arreglar los docstrings de scent** que mienten sobre la dirección (Nota 06, secundarios).
+
+**Historias:** **re-define B3** (ranking por estructura bibliométrica real, no por conteo plano);
+**retira B4** (explicación opcional de IA) — deja de ser historia del producto.
+
+**Criterios de aceptación (DoD)**
+
+- `chain` rankea por **acoplamiento/co-citación/centralidad** del candidato con el corpus (consume
+  `networks/`), **determinista** (mismo corpus → mismo orden).
+- **No existe** `explain_candidate`, `foraging/explain.py` ni el extra `[llm]` (verificable: import
+  falla, el extra no está en `pyproject.toml`). El thesaurus no tiene fallback LLM.
+- El **sesgo de confirmación** (efecto Mateo) del scent queda documentado: el scent **prioriza**; la
+  exhaustividad la sostienen los filtros PRISMA y el conteo de exclusiones, no el scent.
+- La suite pasa; los tests de `explain_candidate`/`[llm]` se **retiran** (la capacidad ya no existe).
+
+**Tests (TDD — los justos)**
+
+- Ranking por scent-vía-proyectores: candidatos con acoplamiento/centralidad conocidos salen en el
+  **orden** esperado, sobre un corpus sintético con resultado calculado a mano.
+- Determinismo: mismo corpus → mismo ranking (regresión).
+- Que `import` de `explain_candidate` **falle** (la superficie ya no lo expone).
+- *No testear* la calidad bibliométrica del clustering en sí (ya cubierto en Hito 2).
+
+**Recomendaciones para el `coder`** (`archivo:símbolo`):
+
+- `foraging/scent.py:27-125`: reescribir `compute_backward/forward_scent` para consumir los
+  **proyectores** (`networks/projectors.py`) en vez de `Counter`/`sum` sobre `references_id`/
+  `cited_by_id`. El forrajeo depende del núcleo de proyección (no al revés).
+- **Borrar** `foraging/explain.py` (`explain_candidate`, `NotImplementedError` en `:47`); quitarlo de
+  la superficie pública (`bib2graph.foraging`).
+- `pyproject.toml`: **eliminar el extra `[llm]`** (vacío). Quitar cualquier gate `[llm]` en
+  `preprocessors/` (thesaurus sin fallback semántico).
+- `foraging/scent.py:11,80` vs `:114`: corregir los docstrings que invierten la dirección.
+
+**Se vuelve posible:** el scent **es** la bibliometría que la Nota 05 promete (no un conteo), y el
+producto queda **honesto: sin IA generativa** (ADR 0022). Un solo sentido de "AI-in-the-loop": el
+desarrollo es asistido por IA; el producto no.
+
+---
+
+## Hito R5 — Robustez / escala: bulk-load, UTF-8 en la frontera, footguns de la Nota 06 · ⏳ PENDIENTE
+
+> Último de la tanda: no cambia el modelo conceptual, **endurece** lo construido. Cierra la RAÍZ 3 y
+> el catálogo de secundarios de la [Nota 06](Notas/06-critica-as-built-v0.2.md). Independiente de
+> R1–R4 en su mayoría; se ubica al final para no mezclar refactor de modelo con hardening.
+
+**Alcance**
+
+- **Fin del O(n²) en carga:** los loaders (seed/load OpenAlex, BibTeX, forager) usan el bulk
+  `Corpus.from_arrow` en vez del loop `add_paper`/`_clone` que re-upserta la tabla entera por fila.
+- **UTF-8 en la frontera CLI:** forzar `sys.stdout`/`stderr` a UTF-8 (o `encoding="utf-8"` explícito)
+  en el entry point, para que el envelope `--json` (`ensure_ascii=False`) y `--help` no corrompan
+  acentos en Windows (cp1252). **Arreglo de mayor impacto/menor costo**; restaura el contrato
+  agente-native (ADR 0010/0021) en Windows.
+- **Batching + retry/backoff en forward chaining:** `fetch_citing` deja de hacer N+1 requests
+  seriales sin reintento ante 429/5xx.
+- **Footguns de la Nota 06 (catálogo de secundarios):**
+  - **rama muerta en `_errors.py`** (manejo de `OSError`: el `if isinstance(..., StoreLockedError)`
+    y el `else` hacen lo mismo) → simplificar; y `AttributeError`→"Capacidad no disponible" es
+    **engañoso** (un bug real se reporta como dependencia faltante) → distinguir.
+  - **auto-creación del store** ante typo en `--store` (`status`/`validate`) → no auto-crear en
+    comandos de solo lectura.
+  - **`.bib` roto / filtros PRISMA con campo-op desconocido = no-op silencioso** → warning o error
+    accionable (no tragar).
+  - **param muerto `g`** en `cocitation_quality_report` → quitarlo (anti-patrón que ARCHITECTURE §8
+    dice evitar).
+  - **`_lib_version` fallback `"0.0.0"`** mete versión falsa en el `Manifest` → fallar o marcar
+    `unknown`, no inventar versión.
+  - **`except Exception` en `detect_communities`** (`facade.py`) que traga el fallo → no enmascarar.
+  - **`_QUICK_KINDS` duplica el `Literal` de `NetworkSpec.kind`** → fuente única (usar `NetworkKind`
+    de R1).
+
+**Historias:** ninguna nueva; **endurece** E2 (el contrato agente-native funciona en Windows) y todo
+el flujo a escala mediana.
+
+**Criterios de aceptación (DoD)**
+
+- Cargar un corpus mediano no es O(n²) (los loaders usan `from_arrow`); un test/benchmark de no
+  regresión razonable.
+- En Windows, `b2g ... --json` y `--help` devuelven acentos correctos (UTF-8 forzado) — regresión del
+  bug verificado de la Nota 06.
+- `fetch_citing` batchea y reintenta 429/5xx sin perder papers (sobre cliente mock).
+- Cada footgun del catálogo: el comportamiento silencioso pasa a **fallar/avisar accionable** o se
+  elimina la rama muerta/param muerto/versión falsa. Sin no-ops silenciosos.
+
+**Tests (TDD — los justos)**
+
+- **UTF-8:** el envelope con un acento se decodifica bien forzando UTF-8 (regresión directa).
+- `@handle_errors`: un caso por exit code **incluido `4`** (hoy sin assert) y el `5` real (no la
+  rama muerta).
+- `.bib` roto / filtro con campo-op desconocido → **warning/raise** (no no-op).
+- Retry de `fetch_citing` ante 429/5xx sobre cliente mock (no en tiempo real).
+- *No testear* el rate limiter en tiempo real ni el motor DuckDB.
+
+**Recomendaciones para el `coder`** (`archivo:línea`, de la Nota 06):
+
+- Loaders → bulk `Corpus.from_arrow` en vez de `add_paper`/`_clone` (`backends/duckdb.py:319,368`).
+- UTF-8 en el entry point del CLI (`cli/_envelope.py:67` usa `ensure_ascii=False` sin forzar stdout).
+- `foraging/forager.py:307` → `sources/openalex.py:394-425`: batch + retry/backoff para `fetch_citing`.
+- `cli/_errors.py:139-147` (rama muerta `OSError`), `:155-159` (`AttributeError` engañoso);
+  `corpus.py:46-53` (`_lib_version` fallback `"0.0.0"`); `networks/facade.py:104` (`except Exception`
+  en `detect_communities`); `sources/bibtex.py:206,210` (`.bib` silencioso);
+  `filters/prisma.py:115` (filtro no-op); `networks/analyzer.py:277` (param muerto `g`);
+  `networks/facade.py:39` vs `spec.py:42-48` (`_QUICK_KINDS` duplica `NetworkKind`);
+  `backends/duckdb.py:417,423` (SQL por interpolación de strings en `merge` — hoy seguro, frágil).
+- `status`/`validate` auto-crean el store ante typo en `--store` → no auto-crear en solo-lectura.
+
+**Se vuelve posible:** bib2graph corre a escala mediana, el contrato agente-native funciona en
+Windows, y desaparecen los no-ops silenciosos que esconden bugs.
+
+---
+
+# LO QUE VIENE (Hitos 7–11, actualizados a la nueva realidad)
+
+> **Tras la remediación R1–R5.** Estos hitos son los opcionales/de cierre hacia v1.0, ya
+> reconciliados con el modelo nuevo (sin IA generativa, scent bibliométrico, FSM cíclico).
 
 ## Hito 7 — Deduplicación fuzzy (extra `[dedup]`)
 
@@ -730,12 +1087,18 @@ Marcadas como no implementadas hasta que exista decisión de producto y código 
 
 - `Source`: `RisSource`, `CsvSource`.
 - `Enricher`: `CrossRefEnricher`, `ScopusEnricher`.
-- **Fallback fuzzy/semántico del thesaurus** (embeddings o LLM, extra `[llm]`) → v0.2 (ADR 0011).
-- **Máquina de tensiones** (inserción de IA nº2) → **v2** (ADR 0008).
 - Tool schemas JSON / servidor MCP → posterior, si la demanda lo justifica. El CLI ya cubre la
   frontera programática desde el Hito 6.
 
 No se prometen ni se cablean clientes que no se usan.
+
+> **RETIRADO del producto (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md), 2026-06-15):**
+> el **fallback fuzzy/semántico del thesaurus por LLM** y la **"máquina de tensiones"** (la antigua
+> "inserción de IA nº2") **ya no son costuras futuras: se borran**. El producto **no usa IA
+> generativa**; el extra `[llm]` se elimina (Hito R4). El sensemaking de tensiones es **humano**,
+> asistido por las redes. El **dedup fuzzy del thesaurus** que sí queda (Hito 7) es **determinista**
+> (`rapidfuzz`/`splink`, extra `[dedup]`), no semántico/LLM. La única "inteligencia" que asiste es el
+> **scent bibliométrico** (Hito R4), que no es IA.
 
 ---
 
@@ -750,8 +1113,8 @@ No se prometen ni se cablean clientes que no se usan.
 | A5 ecuaciones que mutan + acumular | 3 + 6 ✅ | biblioteca viva + re-seed por CLI (`b2g seed` acumula vía `--store`) |
 | B1 back/forward chaining | 5 ✅ | `Forager.chain` (backward puro / forward red vía `fetch_citing`) |
 | B2 profundidad + preview | 5 ✅ | `preview` SIN red (`forward_requires_fetch`), `max_candidates`; `depth>1` futuro |
-| B3 ranking por estructura | 5 ✅ | *information scent* = frecuencia de enlace (ADR 0020) |
-| B4 explicación opcional de IA | 5 | `explain_candidate` (`[llm]`) — **stub gateado**, LLM en v0.2 |
+| B3 ranking por estructura | 5 ✅ (frecuencia de enlace) → **R4** (proyectores) | as-built = frecuencia de enlace (ADR 0020); R4 lo eleva a scent **bibliométrico vía proyectores** (acoplamiento/co-citación/centralidad), determinista |
+| ~~B4 explicación opcional de IA~~ | **RETIRADA** (R4) | `explain_candidate`/`[llm]` **eliminados** (ADR 0022): el producto no usa IA generativa. El "porqué" lo explica la estructura visible, no un LLM |
 | C1 dedup/normalización autores/inst. | 5 ✅ (det.) + 7 (fuzzy) | `normalize` conservador construido; fuzzy en Hito 7 |
 | C2 thesaurus multilingüe | 5 ✅ | `apply_thesaurus` (sobrescribe `keywords_id` desde `keywords_raw`) |
 | C3 filtros incl/excl con conteo | 5 ✅ (lógica) + 6 ✅ (CLI `filter`) | flujo PRISMA; marcan `rejected`, no borran; `b2g filter` con conteos por paso |
