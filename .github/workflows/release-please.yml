@@ -20,6 +20,10 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         with:
+          # target-branch FIJO a main: release-please gestiona SIEMPRE main aunque
+          # la rama por defecto del repo sea `dev`. Sin esto, su default es la rama
+          # por defecto del repo (dev) y abre los release PRs contra dev por error.
+          target-branch: main
           # Si existe el secret RELEASE_PLEASE_TOKEN (un PAT), el PR de release lo
           # crea ese token y SÍ dispara el CI (los commits del GITHUB_TOKEN no
           # disparan workflows). Sin el secret, cae al GITHUB_TOKEN y el PR de
