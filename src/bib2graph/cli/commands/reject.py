@@ -6,6 +6,7 @@ NO transiciona el LoopState.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +58,10 @@ def run_reject(
             "Verificá los ids con ``b2g inspect``."
         )
 
-    updated = corpus.reject(ids, by=by)
+    # R2: el reloj se inyecta en la frontera (ADR 0017 enmendado); el núcleo
+    # no llama datetime.now().
+    now = datetime.now(UTC)
+    updated = corpus.reject(ids, by=by, decided_at=now)
     store.persist(updated)
 
     return {

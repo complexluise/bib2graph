@@ -370,41 +370,69 @@ class Corpus:
         new_backend = self._backend.merge(other._backend.to_arrow())
         return Corpus(new_backend, self._manifest)
 
-    def accept(self, ids: list[str], *, by: str = "human") -> Corpus:
+    def accept(
+        self,
+        ids: list[str],
+        *,
+        by: str = "human",
+        decided_at: datetime | None = None,
+    ) -> Corpus:
         """Marca los papers con los ids dados como 'accepted'.
 
         Agrega un evento al log de provenance con ``action='accepted'``,
         ``decided_by`` y ``decided_at`` (ISO8601 UTC). El Corpus original
         no muta (semántica de valor).
 
+        R2 (ADR 0017 enmendado): ``decided_at`` se inyecta desde la frontera
+        (CLI) para que el núcleo no llame al reloj.  Si es ``None``, el
+        backend usa ``datetime.now(UTC)`` como conveniencia para uso como
+        librería.
+
         Args:
             ids: Lista de ``id`` a aceptar.
             by: Identificador de quien toma la decisión (default ``'human'``).
+            decided_at: Instante de la decisión.  Si es ``None``, el backend
+                usa ``datetime.now(UTC)`` como fallback (ergonomía de librería).
 
         Returns:
             Nuevo ``Corpus`` con los papers aceptados.
         """
+        decided_at_str = decided_at.isoformat() if decided_at is not None else None
         new_backend = self._backend.apply_curation(
-            ids, action=CurationStatus.ACCEPTED, by=by
+            ids, action=CurationStatus.ACCEPTED, by=by, decided_at=decided_at_str
         )
         return Corpus(new_backend, self._manifest)
 
-    def reject(self, ids: list[str], *, by: str = "human") -> Corpus:
+    def reject(
+        self,
+        ids: list[str],
+        *,
+        by: str = "human",
+        decided_at: datetime | None = None,
+    ) -> Corpus:
         """Marca los papers con los ids dados como 'rejected'.
 
         Agrega un evento al log de provenance con ``action='rejected'``,
         ``decided_by`` y ``decided_at`` (ISO8601 UTC). El Corpus original
         no muta (semántica de valor).
 
+        R2 (ADR 0017 enmendado): ``decided_at`` se inyecta desde la frontera
+        (CLI) para que el núcleo no llame al reloj.  Si es ``None``, el
+        backend usa ``datetime.now(UTC)`` como conveniencia para uso como
+        librería.
+
         Args:
             ids: Lista de ``id`` a rechazar.
             by: Identificador de quien toma la decisión (default ``'human'``).
+            decided_at: Instante de la decisión.  Si es ``None``, el backend
+                usa ``datetime.now(UTC)`` como fallback (ergonomía de librería).
 
         Returns:
             Nuevo ``Corpus`` con los papers rechazados.
         """
+        decided_at_str = decided_at.isoformat() if decided_at is not None else None
         new_backend = self._backend.apply_curation(
-            ids, action=CurationStatus.REJECTED, by=by
+            ids, action=CurationStatus.REJECTED, by=by, decided_at=decided_at_str
         )
         return Corpus(new_backend, self._manifest)
 

@@ -436,16 +436,22 @@ class DuckDBBackend:
         *,
         action: str,
         by: str,
+        decided_at: str | None = None,
     ) -> DuckDBBackend:
         """Aplica accept/reject a los papers indicados y devuelve backend nuevo.
 
         Reutiliza ``_apply_curation_to_rows`` de ``backends.memory`` para
         garantizar equivalencia exacta con ``InMemoryBackend``.
 
+        R2: ``decided_at`` se inyecta desde la frontera (CLI).  Si es ``None``,
+        ``_apply_curation_to_rows`` usa ``datetime.now(UTC)`` como fallback.
+
         Args:
             ids: Lista de ``id`` a actualizar.
             action: ``'accepted'`` o ``'rejected'``.
             by: Identificador de quien decide.
+            decided_at: Timestamp ISO8601 UTC de la decisión (inyectado desde
+                la frontera CLI; ``None`` = fallback a ``datetime.now(UTC)``).
 
         Returns:
             Nueva instancia con la curación aplicada.
@@ -454,7 +460,7 @@ class DuckDBBackend:
         # y hacer upsert de vuelta
         current_table = _arrow_table_from_con(self._con)
         current_rows = current_table.to_pylist()
-        updated_rows = _apply_curation_to_rows(current_rows, ids, action, by)
+        updated_rows = _apply_curation_to_rows(current_rows, ids, action, by, decided_at)
 
         new_backend = self._clone()
         # Sólo actualizar las filas que cambiaron

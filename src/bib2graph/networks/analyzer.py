@@ -102,13 +102,26 @@ def centrality(g: _Graph) -> dict[str, dict[Any, float]]:
 # ---------------------------------------------------------------------------
 
 
-def detect_communities(g: _Graph, method: str = "louvain") -> dict[Any, int]:
+def detect_communities(
+    g: _Graph,
+    method: str = "louvain",
+    *,
+    random_state: int | None = None,
+) -> dict[Any, int]:
     """Detecta comunidades en el grafo con el método indicado.
+
+    R2 (ADR 0017 enmendado): el parámetro ``random_state`` siembra el
+    generador de Louvain de forma **determinista** cuando se provee.
+    Pasarlo derivado del ``corpus_hash`` de contenido (ver ``facade.py``)
+    garantiza "mismo corpus + mismo spec → mismas comunidades".
 
     Args:
         g: Grafo NetworkX (no dirigido).
         method: Algoritmo de detección. Uno de ``'louvain'``,
             ``'label_prop'``, ``'greedy_modularity'``.
+        random_state: Semilla entera para reproducibilidad de Louvain
+            (solo se usa cuando ``method='louvain'``).  Si es ``None``,
+            Louvain corre sin semilla (no reproducible).
 
     Returns:
         Dict nodo → id de comunidad (int).
@@ -127,7 +140,9 @@ def detect_communities(g: _Graph, method: str = "louvain") -> dict[Any, int]:
                 "detect_communities(method='louvain') requiere el paquete "
                 "'python-louvain'. Instalalo con: uv add python-louvain"
             ) from None
-        partition: dict[Any, int] = community_louvain.best_partition(g)
+        partition: dict[Any, int] = community_louvain.best_partition(
+            g, random_state=random_state
+        )
         return partition
 
     elif method == "label_prop":

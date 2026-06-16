@@ -12,6 +12,18 @@ R1 (ADR 0023):
 - ``_parse_provenance``: falla ruidoso ante JSON corrupto (usa
   ``ProvenanceEvent.parse_list``); ya no traga silencioso.
 - Construcción del evento de curación usa ``ProvenanceEvent``.
+
+R2 (ADR 0017 enmendado):
+- ``compute_corpus_hash``: excluye ``provenance`` del hash; la identidad
+  es del *qué* (contenido bibliográfico), no del *cuándo* (auditoría).
+- ``_apply_curation_to_rows``: acepta ``decided_at: str | None``; el
+  núcleo **no** llama ``datetime.now()``. El timestamp se inyecta desde
+  la frontera (CLI) o se omite pasando ``None`` (lo que activa el
+  fallback ``datetime.now(UTC)`` como conveniencia para uso como librería).
+  Mecanismo elegido: parámetro opcional ``decided_at`` en lugar de un
+  ``clock: Callable`` porque (a) simplifica la firma, (b) los tests
+  inyectan el timestamp exacto sin construir closures, y (c) mantiene
+  ergonomía para uso como librería (sin argumento → fallback razonable).
 """
 
 from __future__ import annotations
@@ -51,17 +63,23 @@ _CURATION_PRIORITY: dict[str, int] = {
 
 
 def compute_corpus_hash(table: pa.Table) -> str:
-    """Computa el hash order-independent del contenido de la tabla (D2).
+    """Computa el hash order-independent del **contenido bibliográfico** (D2, R2).
 
-    Algoritmo: convertir a lista de dicts, ordenar por ``id``, dentro de cada
-    fila ordenar las listas de strings, serializar con JSON determinista y
-    aplicar SHA-256.
+    R2 (ADR 0017 enmendado): la columna ``provenance`` (log de auditoría con
+    timestamps de curación) se **excluye** del hash.  Dos corridas que aceptan
+    los mismos ids en instantes distintos producen el **mismo** hash porque el
+    hash es del *qué* (contenido), no del *cuándo* (procedencia).  La
+    procedencia sigue persistiendo como log append-only fuera de la identidad.
+
+    Algoritmo: convertir a lista de dicts **sin** la columna ``provenance``,
+    ordenar por ``id``, dentro de cada fila ordenar las listas de strings,
+    serializar con JSON determinista y aplicar SHA-256.
 
     Args:
         table: Tabla Arrow del Corpus.
 
     Returns:
-        Hexdigest SHA-256 del contenido.
+        Hexdigest SHA-256 del contenido bibliográfico (sin provenance).
     """
     rows = table.to_pylist()
     rows.sort(key=lambda r: r.get("id") or "")
@@ -69,6 +87,9 @@ def compute_corpus_hash(table: pa.Table) -> str:
     for row in rows:
         norm_row: dict[str, object] = {}
         for k, v in row.items():
+            if k == Col.PROVENANCE:
+                # R2: excluir provenance del hash (es auditoría, no identidad)
+                continue
             if isinstance(v, list):
                 norm_row[k] = sorted(str(x) for x in v if x is not None)
             else:
@@ -268,20 +289,29 @@ def _apply_curation_to_rows(
     ids: list[str],
     action: str,
     by: str,
+    decided_at: str | None = None,
 ) -> list[dict[str, object]]:
     """Aplica la acción de curación en la lista de filas y devuelve la nueva lista.
+
+    R2 (ADR 0017 enmendado): el timestamp ``decided_at`` se recibe como
+    parámetro inyectado desde la frontera (CLI).  Si es ``None``, se genera
+    ``datetime.now(UTC)`` como conveniencia para uso como librería.  El núcleo
+    **no** llama al reloj salvo como fallback cuando el caller no lo provee.
 
     Args:
         rows: Filas actuales del corpus.
         ids: Ids a actualizar.
         action: ``'accepted'`` o ``'rejected'``.
         by: Identificador de quien decide.
+        decided_at: Timestamp ISO8601 UTC de la decisión.  Si es ``None``,
+            se usa ``datetime.now(UTC).isoformat()`` como conveniencia
+            (uso como librería sin frontera CLI).
 
     Returns:
         Nueva lista de filas con la curación aplicada.
     """
     id_set = set(ids)
-    decided_at = datetime.now(UTC).isoformat()
+    resolved_at: str = decided_at if decided_at is not None else datetime.now(UTC).isoformat()
     evento = ProvenanceEvent(
         action=action,
         equation_id=None,
@@ -289,7 +319,7 @@ def _apply_curation_to_rows(
         source=None,
         fetched_at=None,
         decided_by=by,
-        decided_at=decided_at,
+        decided_at=resolved_at,
     )
     updated: list[dict[str, object]] = []
     for row in rows:
@@ -398,18 +428,26 @@ class InMemoryBackend:
         *,
         action: str,
         by: str,
+        decided_at: str | None = None,
     ) -> InMemoryBackend:
         """Aplica accept/reject a los ids indicados y devuelve una nueva instancia.
+
+        R2: ``decided_at`` se inyecta desde la frontera (CLI).  Si es ``None``,
+        ``_apply_curation_to_rows`` usa ``datetime.now(UTC)`` como fallback.
 
         Args:
             ids: Lista de ``id`` a actualizar.
             action: ``'accepted'`` o ``'rejected'``.
             by: Identificador de quien decide.
+            decided_at: Timestamp ISO8601 UTC de la decisión (inyectado desde
+                la frontera CLI; ``None`` = fallback a ``datetime.now(UTC)``).
 
         Returns:
             Nueva instancia con la curación aplicada.
         """
-        updated = _apply_curation_to_rows(self._table.to_pylist(), ids, action, by)
+        updated = _apply_curation_to_rows(
+            self._table.to_pylist(), ids, action, by, decided_at
+        )
         return InMemoryBackend(_rows_to_table(updated))
 
     def filter_view(self, view: Literal["seeds", "candidates", "accepted"]) -> pa.Table:

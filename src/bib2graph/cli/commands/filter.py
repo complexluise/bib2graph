@@ -6,6 +6,7 @@ Transiciona el LoopState a FILTERED tras persistir con éxito.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -76,7 +77,11 @@ def run_filter(
     store = open_store(store_path)
     corpus = store.load()
 
-    filtered_corpus, steps = apply_filters(corpus, criteria)
+    # R2: el reloj se inyecta en la frontera (ADR 0017 enmendado); el núcleo
+    # no llama datetime.now(). Un único timestamp para todos los pasos de
+    # filtrado de esta invocación.
+    now = datetime.now(UTC)
+    filtered_corpus, steps = apply_filters(corpus, criteria, decided_at=now)
     store.persist(filtered_corpus)
     store.backend.set_loop_state(LoopState.FILTERED)
 

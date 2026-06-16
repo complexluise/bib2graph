@@ -18,6 +18,7 @@ Ver docs/API.md §convenciones (CLI ``filter``).
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
@@ -132,7 +133,10 @@ def _count_not_rejected(corpus: Corpus) -> int:
 
 
 def apply_filter(
-    corpus: Corpus, criterion: FilterCriterion
+    corpus: Corpus,
+    criterion: FilterCriterion,
+    *,
+    decided_at: datetime | None = None,
 ) -> tuple[Corpus, FilterStep]:
     """Aplica un criterio de filtro, marcando rejected los papers que no pasan.
 
@@ -142,9 +146,15 @@ def apply_filter(
     Los papers rechazados siguen en la tabla con ``curation_status='rejected'``
     (NUNCA se borran; flujo PRISMA).
 
+    R2 (ADR 0017 enmendado): ``decided_at`` se inyecta desde la frontera
+    (CLI) para que el núcleo no llame al reloj.  Si es ``None``, el backend
+    usa ``datetime.now(UTC)`` como conveniencia para uso como librería.
+
     Args:
         corpus: Corpus a filtrar (no muta).
         criterion: Criterio a aplicar.
+        decided_at: Instante de la decisión.  Si es ``None``, el backend
+            usa ``datetime.now(UTC)`` como fallback (ergonomía de librería).
 
     Returns:
         Tupla ``(corpus_nuevo, FilterStep)`` con los conteos PRISMA.
@@ -160,7 +170,11 @@ def apply_filter(
     ]
 
     label = f"filter:{criterion.field}{criterion.op}{criterion.value}"
-    new_corpus = corpus.reject(ids_to_reject, by=label) if ids_to_reject else corpus
+    new_corpus = (
+        corpus.reject(ids_to_reject, by=label, decided_at=decided_at)
+        if ids_to_reject
+        else corpus
+    )
 
     count_after = _count_not_rejected(new_corpus)
 
@@ -176,6 +190,8 @@ def apply_filter(
 def apply_filters(
     corpus: Corpus,
     criteria: list[FilterCriterion],
+    *,
+    decided_at: datetime | None = None,
 ) -> tuple[Corpus, list[FilterStep]]:
     """Encadena varios criterios de filtro y sella ``Manifest.filters``.
 
@@ -183,9 +199,15 @@ def apply_filters(
     resultado del anterior.  Al final, ``Manifest.filters`` se actualiza
     con todos los pasos.
 
+    R2 (ADR 0017 enmendado): ``decided_at`` se inyecta desde la frontera
+    (CLI) para que el núcleo no llame al reloj.  Si es ``None``, el backend
+    usa ``datetime.now(UTC)`` como conveniencia para uso como librería.
+
     Args:
         corpus: Corpus inicial (no muta).
         criteria: Lista de criterios a aplicar en orden.
+        decided_at: Instante de la decisión compartido por todos los pasos.
+            Si es ``None``, el backend usa ``datetime.now(UTC)`` como fallback.
 
     Returns:
         Tupla ``(corpus_final, [FilterStep, ...])`` con todos los pasos.
@@ -194,7 +216,7 @@ def apply_filters(
     current = corpus
 
     for criterion in criteria:
-        current, step = apply_filter(current, criterion)
+        current, step = apply_filter(current, criterion, decided_at=decided_at)
         steps.append(step)
 
     # Sellar el Manifest.filters con todos los pasos
