@@ -589,6 +589,102 @@ class OpenAlexSource:
             rows.append(row)
         return rows
 
+    def fetch_dois_for(self, ids: list[str]) -> dict[str, str]:
+        """Resuelve una lista de IDs de OpenAlex a sus DOIs.
+
+        Batchea la consulta en lotes de hasta 100 IDs por request, usando el
+        filtro ``openalex_id:W1|W2|...`` con ``select=id,doi``.  Reutiliza el
+        retry/backoff de ``_fetch_all_with_retry`` para resiliencia ante 429/5xx.
+
+        Diseñado para el ``OpenAlexEnricher`` (Hito 8a): mantiene la frontera
+        núcleo/costura — el Source hace la I/O; el Enricher orquesta.
+
+        Hito 8b (futuro): el mismo patrón sirve para resolver
+        ``cited_by_id``; el Enricher solo necesita un método distinto o un
+        argumento adicional.
+
+        Args:
+            ids: Lista de IDs cortos de OpenAlex (p. ej. ``["W12345", "W67890"]``).
+                Se acepta con o sin prefijo URL; se normalizan a ID corto.
+
+        Returns:
+            Dict ``{openalex_id: doi}`` con los DOIs encontrados.  Los IDs
+            sin DOI en OpenAlex simplemente no aparecen en el resultado.
+        """
+        if not ids:
+            return {}
+
+        # Normalizar IDs a la forma corta (W...) por si vienen como URL
+        normalized = [_oa_id_short(i) or i for i in ids]
+
+        resultado: dict[str, str] = {}
+        batch_size = 100
+
+        for start in range(0, len(normalized), batch_size):
+            lote = normalized[start : start + batch_size]
+            # Filtro OR de OpenAlex: openalex_id:W1|W2|...
+            filter_str = "openalex_id:" + "|".join(lote)
+
+            # Usamos el cliente directamente con select acotado (id + doi)
+            # en lugar de _fetch_all para no traer todos los campos.
+            works = self._fetch_batch_select(filter_str, select="id,doi")
+
+            for work in works:
+                raw_id = work.get("id")
+                raw_doi = work.get("doi")
+                if raw_id and raw_doi:
+                    short_id = _oa_id_short(raw_id)
+                    doi = _normalize_doi(raw_doi)
+                    if short_id and doi:
+                        resultado[short_id] = doi
+
+        return resultado
+
+    def _fetch_batch_select(
+        self, filter_str: str, *, select: str
+    ) -> list[dict[str, Any]]:
+        """Recupera works de OpenAlex con un ``select`` acotado y retry/backoff.
+
+        A diferencia de ``_fetch_all``, no pagina por cursor: está pensado
+        para lotes de IDs (≤100) donde la respuesta cabe en una sola página.
+        Reutiliza el retry/backoff via la lógica interna de ``_fetch_all_with_retry``
+        adaptada para el parámetro ``select`` personalizado.
+
+        Args:
+            filter_str: Valor del parámetro ``filter`` de la API.
+            select: Campos a traer (p. ej. ``"id,doi"``).
+
+        Returns:
+            Lista de objetos JSON retornados por la API.
+
+        Raises:
+            httpx.HTTPStatusError: Si se agotan los reintentos.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(_RETRY_MAX_ATTEMPTS):
+            try:
+                with self._client() as client:
+                    resp = client.get(
+                        "/works",
+                        params={
+                            "filter": filter_str,
+                            "select": select,
+                            "per_page": 100,
+                        },
+                    )
+                    resp.raise_for_status()
+                    data: dict[str, Any] = resp.json()
+                    return data.get("results") or []
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in _RETRY_STATUS_CODES:
+                    last_exc = exc
+                    wait = _RETRY_BACKOFF_BASE * (2**attempt)
+                    time.sleep(wait)
+                else:
+                    raise
+        assert last_exc is not None
+        raise last_exc
+
     def load(self, path: str) -> Corpus:
         """Carga un export JSON de OpenAlex como ``Corpus``.
 

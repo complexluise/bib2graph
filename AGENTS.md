@@ -27,8 +27,8 @@
   (`DuckDBStore`), `sources/` (`OpenAlexSource`, `BibtexSource`), `foraging/` (`Forager`,
   scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/` con 12 subcomandos en `cli/commands/`, no un
-  placeholder—. **327 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+  El **CLI `b2g` es real** —paquete `cli/` con 13 subcomandos en `cli/commands/`, no un
+  placeholder—. **341 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
 - **Tanda de remediación R1–R5 COMPLETA** (v0.3, 2026-06-16). Tras el red-team del AS-BUILT
   ([`docs/Notas/06-critica-as-built-v0.2.md`](docs/Notas/06-critica-as-built-v0.2.md)) el PO bloqueó
   un **modelo nuevo** (ADR [0022](docs/decisiones/0022-producto-sin-ia-generativa.md)/
@@ -211,14 +211,15 @@ src/bib2graph/
   preprocessors/       # normalize + thesaurus multilingüe DETERMINISTA, sin fallback LLM (núcleo);
                        # dedup fuzzy DETERMINISTA en [dedup]
   filters/             # filtros de inclusión/exclusión con conteo PRISMA (núcleo)
-  enrichers/           # FUTURO (Hito 8): OpenAlexEnricher opt-in (refs→DOI, 2º nivel); S2 ([s2])
+  enrichers/           # OpenAlexEnricher opt-in, NÚCLEO (refs→DOI = Ciclo 8a ✅; cited_by_id/2º nivel = 8b);
+                       # Enricher Protocol; S2 ([s2]) reservado para señal adicional, NO el Enricher (ADR 0025)
   networks/            # Projector, Analyzer, NetworkSpec, NetworkArtifact, Networks
   exporters/           # GraphML, CSV
   stores/              # DuckDBStore (núcleo, por defecto: biblioteca viva);
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
-                       # cli/commands/ = 12 subcomandos (incl. monitor, FSM→MONITORED). CLI = API
+                       # cli/commands/ = 13 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI). CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
 tests/
   unit/                # tests puros, sin red ni I/O (default)

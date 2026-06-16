@@ -87,11 +87,13 @@ OIDC), no el push de tags. Cortes acordados:
 - **v0.2 — forrajeo + CLI agente-native (Hitos 5–6) · ✅ CAPACIDADES COMPLETAS (2026-06-15):**
   chaining rankeado, `Preprocessor`, filtros PRISMA (comando **`filter`**), `b2g status`
   (`LoopState`) y el CLI `b2g` con `--json`. **El forrajeo, el `Preprocessor` y los filtros (Hito 5)
-  y el CLI agente-native (Hito 6) están construidos.** El CLI expone **12 subcomandos** (`seed`,
+  y el CLI agente-native (Hito 6) están construidos.** El CLI expone **13 subcomandos** (`seed`,
   `chain`, `filter`, `build`, `export`, `snapshot`, `status`, `inspect`, `validate`, `accept`,
-  `reject`, **`monitor`**) con envelope `--json` versionado y exit codes 0–5 (ADR
+  `reject`, **`monitor`**, **`enrich`**) con envelope `--json` versionado y exit codes 0–5 (ADR
   [0021](../decisiones/0021-cli-agente-native-contrato.md)). El 12° **`monitor`** (cleanup pre-v0.3)
-  re-chequea citantes nuevos del corpus y transiciona a `MONITORED`. El `accept`/`reject` programático
+  re-chequea citantes nuevos del corpus y transiciona a `MONITORED`; el 13° **`enrich`** (Ciclo 8a,
+  ADR [0025](../decisiones/0025-enricher-cocitacion-openalex.md)) resuelve refs→DOI y **no
+  transiciona** el ciclo. El `accept`/`reject` programático
   sobrevive (ahora como subcomando CLI); la curación interactiva rica (`curate`) y la GUI son
   futuro. Acá se cumple el criterio "V1 hecha" del PRD §9 a nivel de *capacidades* (el número de
   versión sigue en 0.y). **Tag `v0.2.0`** creado el 2026-06-15, **publicado en `origin`**.
@@ -199,5 +201,5 @@ limpio y actual; el cuerpo de cada hito vive en su archivo:
 | D3 asortatividad + composición + proxy | 2 | |
 | D4 export GraphML/CSV | 2 | |
 | E1 snapshot reproducible | 1 + 6 ✅ | `Corpus.snapshot` + `b2g snapshot` |
-| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) + cleanup pre-v0.3 ✅ (`monitor`) | `b2g` **12 subcomandos** (Hito 6 entregó 11; `monitor` se sumó en el cleanup pre-v0.3 → `MONITORED`), envelope `--json` versionado, exit 0–5 (ADR 0021) |
+| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) + cleanup pre-v0.3 ✅ (`monitor`) + 8a ✅ (`enrich`) | `b2g` **13 subcomandos** (Hito 6 entregó 11; `monitor` se sumó en el cleanup pre-v0.3 → `MONITORED`; `enrich` en el Ciclo 8a, ADR 0025, sin transición), envelope `--json` versionado, exit 0–5 (ADR 0021) |
 

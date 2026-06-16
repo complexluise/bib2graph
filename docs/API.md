@@ -49,6 +49,12 @@
 > [0021](decisiones/0021-cli-agente-native-contrato.md)). **Con el Hito 6, las capacidades de v0.2
 > (Hitos 5–6) quedan completas** (ver [`ROADMAP.md`](ROADMAP/README.md)). *(El 12° subcomando `monitor`
 > —AS-BUILT del cleanup pre-v0.3— cierra el paso 8 del ciclo: `MONITORED` ahora es alcanzable.)*
+>
+> **Sincronizado con el Ciclo 8a (2026-06-16):** la costura **`Enricher`** está **construida** (§3) y
+> suma el **13° subcomando `enrich`** (refs→DOI sobre OpenAlex, núcleo; **NO** transiciona el
+> `CycleState`). El Enricher vive en el **núcleo sobre OpenAlex**, no en `[s2]` (ADR
+> [0025](decisiones/0025-enricher-cocitacion-openalex.md)). La **co-citación end-to-end** (poblar
+> `cited_by_id`) queda para el **Ciclo 8b** (pendiente).
 
 ## Convenciones
 
@@ -67,9 +73,10 @@ subcomando lleva `--json` (envelope estable/versionado) y exit codes (`0` éxito
 datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado). **Sin estado entre
 invocaciones:** el estado vive en el archivo `.duckdb` (opción global `--store`).
 
-**Set de 12 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+**Set de 13 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
 y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
-pre-v0.3):
+pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
+[0025](decisiones/0025-enricher-cocitacion-openalex.md)):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -90,6 +97,13 @@ pre-v0.3):
   fijo, que **siempre** tiene `fetch_citing` (asimetría deliberada con `chain`, que acepta
   `--direction` variable y sí pre-chequea). Errores accionables: sin corpus/estado previo →
   `DataError` (exit 2). Con `monitor`, **`MONITORED` deja de ser inalcanzable**.
+- **`enrich`** (Ciclo 8a, ADR [0025](decisiones/0025-enricher-cocitacion-openalex.md)): corre el
+  `OpenAlexEnricher` (§3) sobre la biblioteca viva. **8a (hecho):** resuelve `references_id`→
+  `references_doi` (batching por OR) y registra el `EnricherRef` en el `Manifest` (idempotente).
+  Flags: `--email` (polite pool), `--api-key` (opcional), `--json`. `data` =
+  `{enriched, references_resolved, ...}`. **NO transiciona el `CycleState`** (ortogonal al lazo):
+  se puede enriquecer en cualquier estado sin perturbar el FSM. `build` sigue puro/sin red. La
+  co-citación end-to-end (poblar `cited_by_id`, 2º nivel) es el **Ciclo 8b (pendiente)**.
 
 **`--store` global (obligatoria).** Va en el grupo `b2g`, **antes** del subcomando:
 `b2g --store mi.duckdb seed --equation "..."`. Una investigación = un archivo `.duckdb` (ADR
@@ -102,7 +116,8 @@ transición).
 
 **Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`, `chain`→`FORAGED`,
 `filter`→`FILTERED`, `build`→`BUILT`, **`monitor`→`MONITORED`** (cleanup pre-v0.3);
-`accept`/`reject`/`export`/`snapshot`/`status`/`inspect`/`validate` **no transicionan**. El estado
+`accept`/`reject`/`export`/`snapshot`/`status`/`inspect`/`validate`/**`enrich`** **no transicionan**
+(`enrich` es ortogonal al lazo, ADR 0025). El estado
 destino lo dicta `bib2graph.cycle.apply_transition`
 (fuente única de verdad; los comandos no hardcodean el destino). `seed` con **estado previo** se trata
 como **`reseed`** (loop-back a `SEEDED`, ronda++, acumula sobre lo curado).
@@ -465,19 +480,23 @@ en v0.1 (función pura sobre `pa.Table`), sin cablearse vacío (lección 5).
 
 Con OpenAlex como backbone, refs y citantes **ya vienen en el corpus** (ADR 0007). El `Enricher`
 deja de ser el camino para co-citación; queda opt-in para **resolver `references` a DOI** y el
-**segundo nivel de fetch** (citantes con sus citas).
+**segundo nivel de fetch** (citantes con sus citas ≡ `cited_by_id` compartido — ver decisión F en
+ADR [0025](decisiones/0025-enricher-cocitacion-openalex.md)). El `Enricher` vive en el **núcleo,
+sobre OpenAlex** (ADR 0025, decisión B), **no** en el extra `[s2]` (ese DoD pre-giro queda superado;
+`[s2]` se reserva para un futuro `SemanticScholarEnricher` de señal adicional).
 
 ```python
+@runtime_checkable
 class Enricher(Protocol):
     """Config (API keys) INYECTADA, nunca embebida. Sin ramas muertas. Rate limit/reintentos
-    sin perder papers. Idempotente."""
+    sin perder papers. Idempotente. NO transiciona el CycleState (ortogonal al lazo, ADR 0025)."""
     def enrich(self, corpus: Corpus) -> Corpus: ...
 ```
 
 | Implementación | Estado | Aporta |
 |----------------|--------|--------|
-| `OpenAlexEnricher` | **v1, opt-in** | resuelve `references_id`→`references_doi`; 2º nivel de citantes → habilita co-citación completa |
-| `SemanticScholarEnricher` | futuro | señal de citas adicional |
+| `OpenAlexEnricher` | **v1, opt-in (Ciclo 8a construido)** | **refs→DOI hecho:** reúne los `references_id` únicos, los resuelve **batcheando por OR** (lotes ≤100, `openalex_id:W1\|W2\|...`, `select=id,doi`) y rellena `references_doi` por lookup; registra `EnricherRef(name="openalex_references_doi", …)` en el `Manifest` (idempotente: reemplaza por nombre, no duplica). **`cited_by_id` / co-citación end-to-end = Ciclo 8b pendiente** (poblará solo `cited_by_id`, sin crecer el corpus; decisión A) |
+| `SemanticScholarEnricher` | futuro | señal de citas adicional (reserva del `[s2]`, no estructural) |
 | `CrossRefEnricher` / `ScopusEnricher` | futuro | No implementados. |
 
 ---
@@ -758,9 +777,11 @@ completo** (crítica #2). La **co-citación** es la más cara (segundo nivel de 
 - **Tipo de nodo** (D2): co-autoría / instituciones / co-word → la **entidad** es el nodo
   (`authors_id` / `institutions_id` / `keywords_id`); acoplamiento / co-citación → el **paper**
   (`id`) es el nodo.
-- **Co-citación en Hito 2:** el `CoCitationProjector` proyecta desde `cited_by_id` con scope
-  `seeds_only`; es válido para los citantes ya presentes en el corpus, pero la co-citación
-  **completa** requiere el 2º nivel de fetch del `OpenAlexEnricher` (Hito 8, ADR 0007).
+- **Co-citación en Hito 2:** el `CoCitationProjector` **no cambia** (decisión F, ADR 0025): cuenta
+  **`cited_by_id` compartido** = los **citantes compartidos** de la metodología (la frase "citantes
+  con sus citas" ≡ `cited_by_id` compartido). Proyecta con scope `seeds_only`; es válido para los
+  citantes ya presentes en el corpus, pero la co-citación **completa** requiere el 2º nivel de fetch
+  del `OpenAlexEnricher` (poblar `cited_by_id`), que es el **Ciclo 8b** (ADR 0007/0025).
 
 ---
 
@@ -875,7 +896,8 @@ versionable.
 
 - **`Networks.quick` arma 4 redes** (coupling `full`, co-autoría, institución, co-word) y **omite
   la co-citación**, avisándolo por log (D3): la co-citación completa requiere el 2º nivel de fetch
-  del `OpenAlexEnricher` (Hito 8). El `CoCitationProjector` queda disponible vía
+  del `OpenAlexEnricher` (poblar `cited_by_id`, **Ciclo 8b**; ADR 0025). El `CoCitationProjector`
+  queda disponible vía
   `Networks.build(corpus, NetworkSpec(kind="cocitation"))`.
 - **`NetworkSpec` es un hook mínimo en v1** (modelo Pydantic ya consumido por `build`/`quick`); la
   carga desde YAML y la validación avanzada son del Hito 9. El símbolo público re-exportado desde
