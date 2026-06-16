@@ -11,6 +11,15 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.3.2](https://github.com/complexluise/bib2graph/compare/v0.3.1...v0.3.2) (2026-06-16)
+
+
+### Documentation
+
+* **arch:** ADR 0024 (orden D3 vía _seq) + saneamiento de coherencia ([e6f0e51](https://github.com/complexluise/bib2graph/commit/e6f0e5124bf3da8f1e900ed75128e06198e839d0))
+* **contributing:** documentar el flujo GitFlow-lite (dev/main) + CI en dev ([665988c](https://github.com/complexluise/bib2graph/commit/665988cd6e84fd6523779c280d3245e5156ca43d))
+* **contributing:** flujo GitFlow-lite (dev/main) + CI en dev ([1e17869](https://github.com/complexluise/bib2graph/commit/1e17869e81e9d2ddf932d4baacdd542fe5051155))
+
 ## [0.3.1](https://github.com/complexluise/bib2graph/compare/v0.3.0...v0.3.1) (2026-06-16)
 
 
