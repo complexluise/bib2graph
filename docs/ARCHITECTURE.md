@@ -84,7 +84,8 @@ biblioteca viva en DuckDB es el sustrato que lo sostiene entre corridas.
                         ┌─────────────┐       └────────────┘
                         │ DuckDBBackend│  BACKEND POR DEFECTO del CORPUS (biblioteca viva,
                         │  del CORPUS  │  ADR 0015): stateful, acepta/rechaza, crece entre
-                        │  (stateful)  │  corridas, log de procedencia + LoopState (ADR 0016).
+                        │  (stateful)  │  corridas, log de procedencia + estado del ciclo
+                        │              │  (CycleState + ronda; dominio en cycle.py, ADR 0016).
                         │ DuckDBStore  │  Snapshot = export sellado. 1 archivo = 1 escritor
                         │  = fachada   │  (single-writer, ADR 0019). Store/Zotero(1.1)/Neo4j
                         │ Store→Zotero │  = costura externa opt-in, NO la persistencia primaria.
@@ -292,31 +293,35 @@ la biblioteca viva existe para que ese lazo no pierda lo acumulado (PRD §1–§
 
 La no-linealidad se modela como una **máquina de estados explícita** (ADR
 [0016](decisiones/0016-maquina-estados-lazo.md) enmendado). Es un **concepto de dominio puro y
-testeable** (`cycle.py`): el modelo de estados + las reglas de transición viven en el núcleo; el
-**backend solo lo persiste**.
+testeable** — el módulo **`bib2graph.cycle`**: el modelo de estados + las reglas de transición viven
+en el núcleo; el **backend solo lo persiste** (**AS-BUILT R3, 2026-06-16**).
 
-- **`AS-BUILT v0.2`:** `LoopState = SEEDED → FORAGED → FILTERED → BUILT`, **lineal**, enterrado en
-  `backends/duckdb.py` (definición del enum dentro del backend). La curación (`accept`/`reject`) **no
-  transiciona** y **no aparece** en `transitions_available` de `status` — el humano no ve en el mapa
-  lo único irreductiblemente humano.
-- **`TARGET`:** FSM **cíclico** fiel a la [Nota 05](Notas/05-ciclo-investigacion-humano.md):
+`cycle.py` expone `CycleState` (`SEEDED/FORAGED/FILTERED/BUILT/MONITORED`),
+`apply_transition(state, action, round) → (state, round)`, `available_transitions(state)` y
+`CURATION_ACTIONS`. El enum de estados **dejó de vivir** en `backends/duckdb.py` (que mantiene un
+alias transicional `LoopState = CycleState`, a retirar pre-1.0); el backend persiste el estado y la
+**ronda** en `loop_state_log` (`loop_round()` / `set_loop_state`).
 
-  ```
-  SEEDED ──chain──► FORAGED ──filter──► FILTERED ──build──► BUILT ──monitor──► MONITORED
-     ▲                                                                              │
-     └──────────────────────── reseed (la idea muta) ◄──────────────────────────────┘
-                       (loop-back a SEEDED; incrementa el contador de RONDA;
-                        acumula sobre lo curado — la no-linealidad es del sistema)
-  ```
+FSM **cíclico** fiel a la [Nota 05](Notas/05-ciclo-investigacion-humano.md):
 
-  - **`reseed` es transición de primera clase** ("la idea muta"): vuelve a `SEEDED`, **incrementa el
-    contador de ronda** y acumula sobre lo curado. Es lo que el ADR 0016 prometía y el AS-BUILT no
-    cumplía (era solo "transición permisiva").
-  - **`MONITORED`** modela el paso 8 del ciclo (monitoreo). *(El comando que lo dispara puede ser
-    futuro; el estado existe en el modelo.)*
-  - **La curación es TRANSVERSAL:** `accept`/`reject` están disponibles **en cualquier estado**, **no
-    transicionan**, pero `status` **debe** mostrarlas como acción siempre-disponible (hoy las
-    oculta). Ver ROADMAP **Hito R3**.
+```
+SEEDED ──chain──► FORAGED ──filter──► FILTERED ──build──► BUILT ──monitor──► MONITORED
+   ▲                                                                              │
+   └──────────────────────── reseed (la idea muta) ◄──────────────────────────────┘
+                     (loop-back a SEEDED; incrementa el contador de RONDA;
+                      acumula sobre lo curado — la no-linealidad es del sistema)
+```
+
+- **`reseed` es transición de primera clase** ("la idea muta"): `apply_transition(state, "reseed", r)
+  = (SEEDED, r+1)`. Lo cablea `seed.py`: si hay estado previo, la siembra es un re-sembrado (ronda++,
+  acumula sobre lo curado). Es lo que el ADR 0016 prometía y el AS-BUILT lineal no cumplía.
+- **Fuente única de verdad:** `chain`/`filter`/`build` **derivan** su estado destino de
+  `apply_transition` (no de un literal); un test domain-tied lo ata.
+- **`MONITORED`** modela el paso 8 del ciclo (monitoreo). El estado y la regla existen, pero
+  **ningún comando lo dispara** todavía (futuro).
+- **La curación es TRANSVERSAL:** `accept`/`reject` están disponibles **en cualquier estado**, **no
+  transicionan**; `b2g status` las muestra **siempre** en `curation_available` (separado de
+  `transitions_available`) y expone el contador de `round`.
 
 El estado del lazo vive en el backend persistente (`DuckDBBackend`), no en el `Corpus` efímero, y se
 expone con `b2g status`: humanos e IAs comparten el mismo mapa del lazo. El **reloj se inyecta en la

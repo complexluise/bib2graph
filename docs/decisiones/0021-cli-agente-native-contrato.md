@@ -143,6 +143,20 @@ exploratorio). `status` lee y presenta el estado actual + las transiciones dispo
 > Windows** (`cli/_envelope.py:67`: `ensure_ascii=False` sin forzar UTF-8 en stdout → acentos
 > corruptos, rompe el contrato agente-native) se corrige en ROADMAP **Hito R5**.
 
+> **Implementado en R3 (2026-06-16):** el envelope `--json` de `status` (sección C) suma dos campos
+> en `data`, **aditivos** y que **mantienen `schema="1"`** (decisión del PO 2026-06-16: campos nuevos
+> no rompen a los agentes, no se bumpea la versión del contrato):
+> - **`curation_available`**: `["accept", "reject"]` **siempre** (curación transversal — disponible en
+>   cualquier estado, no transiciona). Antes de R3 `transitions_available` nunca las listaba (bug
+>   cerrado); ahora viven en un campo propio, separado de las transiciones del lazo.
+> - **`round`**: contador de ronda (`0` sin estado · `1` primera ronda · `2+` re-sembrados).
+>
+> Además, `transitions_available` ahora se deriva de `bib2graph.cycle.available_transitions` (no de la
+> tabla `_TRANSITIONS` local, retirada) y **refleja el ciclo**: incluye `reseed` cuando hay estado
+> previo. La tabla F (transiciones automáticas por comando) **sigue vigente**; `seed` agrega la
+> semántica `reseed` (estado previo → ronda++) cablada en `seed.py`. `MONITORED` está en el modelo
+> pero **ningún comando lo dispara** aún. El bug UTF-8 sigue pendiente (Hito R5).
+
 ## Consecuencias
 
 - **Un agente orquesta todo el flujo de 10 minutos por subprocess + JSON** sin escribir Python:

@@ -32,9 +32,14 @@ commits.
   `decided_at`), con un **fallback `datetime.now(UTC)`** para uso como librería (no afecta la
   identidad); Louvain corre con `random_state` derivado del content-hash → **snapshot reproducible
   bit a bit**. (`resolution` de Louvain **diferido a Hito 9**, NetworkSpec.)
-- **Ciclo = FSM cíclico de dominio** (`cycle.py`, ADR 0016 enmendado): `SEEDED→FORAGED→FILTERED→
-  BUILT→MONITORED` con **`reseed`** (loop-back a `SEEDED` + contador de ronda, acumula) de primera
-  clase; **curación transversal** visible en `b2g status` (ADR 0021 enmendado) (Hito R3).
+- **Ciclo = FSM cíclico de dominio** (`cycle.py`, ADR 0016 enmendado, **Hito R3 ✅ 2026-06-16**):
+  `SEEDED→FORAGED→FILTERED→BUILT→MONITORED` con **`reseed`** (loop-back a `SEEDED` + contador de
+  **ronda**, acumula) de primera clase. El enum de estados **sale del backend** a `bib2graph.cycle`
+  (dominio puro; el backend solo persiste — columna `round` en `loop_state_log`; alias transicional
+  `LoopState = CycleState`, a retirar pre-1.0); `seed` con estado previo se trata como `reseed`;
+  `chain`/`filter`/`build` derivan su destino de `apply_transition` (fuente única). **Curación
+  transversal** visible en `b2g status`: campos `curation_available`/`round` **aditivos** que mantienen
+  `schema="1"` (ADR 0021 enmendado). `MONITORED` está en el modelo, sin comando que lo dispare aún.
 - **Capa base de vocabulario + modelos** (ADR 0023): `constants.py` (`Col`/`CurationStatus`/
   `NetworkKind`) como fuente única de literales; `ProvenanceEvent(BaseModel)` con parseo que **falla
   ruidoso**; `PaperRow` ⇄ `CORPUS_SCHEMA` de una sola fuente (Hito R1).

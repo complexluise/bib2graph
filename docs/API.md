@@ -71,10 +71,11 @@ y dejaba `accept`/`reject` como "solo programático"):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
-  transiciones disponibles y conteos por `curation_status`). **TARGET (Hito R3):** el ciclo es el FSM
-  cíclico `SEEDED/FORAGED/FILTERED/BUILT/MONITORED` con **`reseed`**/contador de ronda, y `status`
-  **muestra `accept`/`reject` como acción siempre-disponible** (curación transversal) + la ronda — hoy
-  las oculta. `inspect`, `validate`.
+  transiciones disponibles y conteos por `curation_status`). **AS-BUILT R3 (2026-06-16):** el ciclo
+  es el FSM cíclico `SEEDED/FORAGED/FILTERED/BUILT/MONITORED` (dominio en `bib2graph.cycle`) con
+  **`reseed`**/contador de ronda; `status` **muestra `accept`/`reject` como acción siempre-disponible**
+  (`curation_available`, curación transversal) + la **ronda** (`round`), campos aditivos que mantienen
+  `schema="1"`. `inspect`, `validate`.
 - **`accept`** / **`reject`** (decisión del PO, ADR 0021 §A): curación programática por `--ids`,
   ahora **subcomandos CLI de primera clase** (no solo API de librería), para que un agente cure la
   biblioteca viva por subprocess (historia C4). La **curación interactiva rica (`curate`) y la GUI
@@ -89,9 +90,11 @@ y dejaba `accept`/`reject` como "solo programático"):
 `export --format graphml|csv --out-dir ...` **relee** esos artefactos y los serializa (sin
 transición).
 
-**Transiciones automáticas de `LoopState`** (ADR 0021 §F): `seed`→`SEEDED`, `chain`→`FORAGED`,
+**Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`, `chain`→`FORAGED`,
 `filter`→`FILTERED`, `build`→`BUILT`; `accept`/`reject`/`export`/`snapshot`/`status`/`inspect`/
-`validate` **no transicionan**.
+`validate` **no transicionan**. El estado destino lo dicta `bib2graph.cycle.apply_transition`
+(fuente única de verdad; los comandos no hardcodean el destino). `seed` con **estado previo** se trata
+como **`reseed`** (loop-back a `SEEDED`, ronda++, acumula sobre lo curado).
 
 **Envelope JSON común y versionado** (ADR 0021 §C): en modo `--json`, cada subcomando emite **un
 objeto JSON** con `schema="1"`:
@@ -520,32 +523,45 @@ class DuckDBStore:
 ```python
 class DuckDBBackend:
     # ... cumple TabularBackend (§1.4) ...
-    def loop_state(self) -> "LoopState | None": ...      # estado actual del lazo (None si no hubo transiciones)
-    def set_loop_state(self, state: "LoopState") -> None: ...  # registra una transición (log append-only, permisiva)
+    def loop_state(self) -> "CycleState | None": ...     # estado actual del ciclo (None si no hubo transiciones)
+    def loop_round(self) -> int: ...                     # contador de ronda (0 sin estado; 1 primera; 2+ re-sembrados)
+    def set_loop_state(self, state: "CycleState", *, cycle_round: int | None = None) -> None: ...
+                                                         # registra una transición + ronda (log append-only, permisiva)
     def query(self, sql: str) -> pa.Table: ...           # consulta SQL de SOLO lectura sobre el corpus
-
-class LoopState(StrEnum):   # AS-BUILT v0.2 — vive en bib2graph.backends.duckdb (lineal)
-    SEEDED = "SEEDED"; FORAGED = "FORAGED"; FILTERED = "FILTERED"; BUILT = "BUILT"
 ```
 
-`LoopState` se persiste en la tabla `loop_state_log` (append-only; estado actual = última fila);
-las transiciones son **permisivas** (ADR 0016: no se bloquea ningún salto, p. ej. re-sembrar tras
-`BUILT`). El comando `b2g status` (Hito 6) consume `loop_state()`.
+**El ciclo es un concepto de dominio puro** (`bib2graph.cycle`, **AS-BUILT R3, 2026-06-16**); el
+backend **solo lo persiste**:
 
-> **TARGET (FSM cíclico de dominio, ADR [0016](decisiones/0016-maquina-estados-lazo.md) enmendado /
-> [0021](decisiones/0021-cli-agente-native-contrato.md) enmendado, Hito R3):** el enum y las reglas de
-> transición **salen del backend** a un módulo de dominio puro **`bib2graph.cycle`** (el backend
-> **solo lo persiste**); el ciclo gana el estado **`MONITORED`** y la transición **`reseed`** de
-> primera clase (loop-back a `SEEDED` + **contador de ronda**, acumula sobre lo curado). La **curación
-> es transversal**: `accept`/`reject` están disponibles **en cualquier estado**, **no transicionan**,
-> pero **`b2g status` debe mostrarlas como acción siempre-disponible** (hoy las oculta) y exponer la
-> ronda. Ver ROADMAP **Hito R3**.
+```python
+# bib2graph/cycle.py — dominio puro, sin DuckDB (ADR 0016 enmendado, R3)
+class CycleState(StrEnum):
+    SEEDED = "SEEDED"; FORAGED = "FORAGED"; FILTERED = "FILTERED"; BUILT = "BUILT"; MONITORED = "MONITORED"
+
+def apply_transition(state: CycleState | None, action: str, round: int) -> tuple[CycleState, int]: ...
+    # reseed → (SEEDED, round+1); seed/chain/filter/build/monitor → estado de cadena, misma ronda
+def available_transitions(state: CycleState | None) -> list[str]: ...   # transiciones de ciclo desde el estado
+CURATION_ACTIONS: list[str] = ["accept", "reject"]                      # transversal: siempre disponible, no transiciona
+```
+
+El estado + la **ronda** se persisten en `loop_state_log` (append-only; estado actual = última fila;
+columna `round`); las transiciones son **permisivas** (ADR 0016: no se bloquea ningún salto). `reseed`
+es de **primera clase** (loop-back a `SEEDED` + ronda++, acumula sobre lo curado); `seed.py` lo cablea
+cuando hay estado previo. **Fuente única de verdad:** `chain`/`filter`/`build` derivan su destino de
+`apply_transition`, no de un literal. **`MONITORED`** existe en el modelo pero **ningún comando lo
+dispara** todavía (futuro). El comando `b2g status` consume `loop_state()`/`loop_round()`/
+`available_transitions()` y expone `curation_available`/`round` (ver §convenciones CLI).
+
+> **Alias transicional:** `backends/duckdb.py` mantiene `LoopState = CycleState` por compatibilidad de
+> imports históricos. **A retirar pre-1.0** (los call-sites deben migrar a `CycleState`).
 
 > **Carga perezosa (PEP 562):** `DuckDBBackend` y `DuckDBStore` se exponen vía `__getattr__` en
 > `bib2graph/__init__.py`, de modo que **`import bib2graph` NO importa `duckdb`** (el núcleo
 > permanece puro y testeable sin DuckDB). Solo `bib2graph.DuckDBBackend` / `bib2graph.DuckDBStore`
-> cargan el módulo bajo demanda. `LoopState` y `StoreLockedError` se importan desde
-> `bib2graph.backends.duckdb` (o desde `bib2graph.stores.duckdb`).
+> cargan el módulo bajo demanda. `CycleState` (y su alias `LoopState`) y `StoreLockedError` se
+> importan desde `bib2graph.backends.duckdb` (o `bib2graph.stores.duckdb`); `bib2graph.cycle`
+> (`CycleState`/`apply_transition`/`available_transitions`/`CURATION_ACTIONS`) es **núcleo puro**, sin
+> DuckDB.
 
 ---
 
@@ -915,7 +931,7 @@ b2g --store biblioteca.duckdb filter --year-gte 2010 --language en --language es
 b2g --store biblioteca.duckdb accept --ids oa:abc123 --ids oa:def456 --json
 b2g --store biblioteca.duckdb build --json
 b2g --store biblioteca.duckdb export --format graphml --out-dir redes/ --json
-b2g --store biblioteca.duckdb status --json     # LoopState + conteos por curation_status
+b2g --store biblioteca.duckdb status --json     # CycleState + round + curation_available + conteos
 ```
 
 El **modo declarativo** (`b2g ... --spec redes.yaml`, `NetworkSpec` desde YAML) es del **Hito 9**

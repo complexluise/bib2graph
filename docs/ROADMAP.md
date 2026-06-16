@@ -786,12 +786,26 @@ ser falsa. El forrajeo/curación/análisis son deterministas de punta a punta.
 
 ---
 
-## Hito R3 — Ciclo: FSM cíclico de dominio (`cycle.py`) + `reseed`/ronda + curación transversal · ⏳ PENDIENTE
+## Hito R3 — Ciclo: FSM cíclico de dominio (`cycle.py`) + `reseed`/ronda + curación transversal · ✅ TERMINADO (2026-06-16)
 
 > Tercero porque el ciclo se apoya en los cimientos (R1) y conviene que la identidad ya sea estable
 > (R2) antes de modelar `reseed`/acumulación. Cierra la RAÍZ 1 (la parte del lazo) de la
 > [Nota 06](Notas/06-critica-as-built-v0.2.md) y la enmienda 2026-06-15 de los ADR
 > [0016](decisiones/0016-maquina-estados-lazo.md)/[0021](decisiones/0021-cli-agente-native-contrato.md).
+>
+> ✅ **As-built (2026-06-16):** `src/bib2graph/cycle.py` es el **dominio puro** (sin DuckDB):
+> `CycleState` (`SEEDED/FORAGED/FILTERED/BUILT/MONITORED`), `apply_transition(state, action, round)
+> → (state, round)`, `available_transitions(state)`, `CURATION_ACTIONS`. El enum de estados **salió**
+> del backend; `backends/duckdb.py` solo persiste (columna `round` en `loop_state_log` por migración
+> liviana; `loop_round()` / `set_loop_state(state, *, cycle_round=...)`) y mantiene el **alias
+> transicional `LoopState = CycleState`** (a retirar pre-1.0). `reseed` es de primera clase
+> (loop-back a `SEEDED` + ronda++): lo cablea `seed.py` (estado previo ⇒ re-sembrado, acumula).
+> **Fuente única de verdad:** `chain`/`filter`/`build` **derivan** su estado destino de
+> `apply_transition` (gap del verifier cerrado; test domain-tied en `test_r3_commands_domain.py`).
+> `status` expone `curation_available`/`round` **aditivos** manteniendo `schema="1"`. `MONITORED`
+> está en el modelo pero **sin comando que lo dispare** (futuro). **275 tests** verdes (R3 + 9
+> domain-tied del fix), mypy strict / ruff limpios. Decisiones de implementación de la IA en
+> [`decisiones/registro-ia.md`](decisiones/registro-ia.md) (Hito R3).
 
 **Alcance**
 

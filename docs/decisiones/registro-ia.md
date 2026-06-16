@@ -282,3 +282,42 @@
 > y mover el fallback a un helper de frontera (p. ej. `corpus.accept(ids)` resolviendo `now()` antes
 > de delegar). Hoy **no es necesario**: el objetivo de R2 (hash determinista) ya está cumplido porque
 > el hash excluye provenance, y el fallback es una conveniencia de librería legítima.
+
+---
+
+## 2026-06-16 — Hito R3 (Ciclo: FSM cíclico de dominio `cycle.py` + `reseed`/ronda + curación transversal)
+
+> Implementa la enmienda 2026-06-15 de los ADR
+> [0016](0016-maquina-estados-lazo.md)/[0021](0021-cli-agente-native-contrato.md) (RAÍZ 1 de la Nota
+> 06, la parte del lazo). El **modelo** (FSM cíclico de dominio, `reseed` de primera clase, curación
+> transversal, backend solo persiste) es **del PO/ADR**; lo de abajo son las decisiones **de
+> implementación** que tomó la IA al construirlo. El verifier **APRUEBA CON RESERVAS**; la reserva
+> principal (chain/filter/build no pasaban por el dominio) **ya se cerró** con el fix posterior (filas
+> R3.4 + test domain-tied). Verifier final: **275 tests** verdes (R3 + 9 del fix), mypy strict / ruff
+> limpios; núcleo sigue importando sin `duckdb`. El steering arquitectónico (2026-06-16) confirma la
+> **coherencia** con el ADR 0016 enmendado / ARCHITECTURE.md / Nota 05.
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| R3.1 | **Diseño de `cycle.py` (dominio puro): `apply_transition(state, action, round) → (state, round)` + `available_transitions(state)` + `CURATION_ACTIONS`**, con transiciones **permisivas** (la acción nombrada lleva a su estado de cadena; no se bloquean saltos) y `reseed` como única acción que incrementa la ronda. El enum `CycleState` (5 estados) sale del backend al núcleo | El ADR 0016 enmendado §1 manda el ciclo como **concepto de dominio puro y testeable**; una función pura `(estado, ronda, acción) → (estado, ronda)` lo hace verificable **sin** DuckDB y deja al backend como mero persistidor. `available_transitions` mapea cada estado a sus acciones lógicas (mapa, no guardia) | Media: cambiar la forma de la función toca los call-sites (`seed`/`chain`/`filter`/`build`/`status`) | Sí (PO proxy / ADR 0016; verifier PASA) |
+| R3.2 | **Alias transicional `LoopState = CycleState`** en `backends/duckdb.py` (no se borró `LoopState` de golpe) | Evita romper imports históricos (`from bib2graph.backends.duckdb import LoopState` en `stores/duckdb.py`, tests, docs) en el mismo commit que mueve el dominio; el rename completo es un barrido aparte | Alta: borrar el alias es mecánico (migrar call-sites a `CycleState`). **Queda como recomendación: retirar pre-1.0** | Sí (PO proxy; verifier PASA) |
+| R3.3 | **Persistencia de `round` por migración liviana** (columna `round INTEGER DEFAULT 0` en `loop_state_log`; `ALTER TABLE … ADD COLUMN` envuelto en `contextlib.suppress(CatalogException)` para bases pre-R3; `loop_round()` devuelve 0 si NULL/sin filas; `set_loop_state(state, *, cycle_round=None)` conserva la ronda si no se pasa) | El contador de ronda necesita persistirse junto al estado (log append-only ya existente, ADR 0016/decisión 3.b). DuckDB no admite `ADD COLUMN NOT NULL`, así que nullable + default 0; la migración es segura pre-1.0 (sin datos reales en uso). `_clone()` copia también `round` | Alta: la columna es aditiva; revertir exigiría dropearla (sin datos en producción) | Sí (PO proxy; verifier PASA) |
+| R3.4 | **`chain`/`filter`/`build` DERIVAN su estado destino de `apply_transition`** (no de un literal `LoopState.X`): `current = loop_state(); round = loop_round(); new_state, new_round = apply_transition(current, action, round); set_loop_state(new_state, cycle_round=new_round)`. **Cierra el gap que marcó el verifier.** Atado por `tests/unit/test_r3_commands_domain.py` (parametrizado, 9 casos) | El verifier observó que el AS-BUILT inicial dejaba los comandos hardcodeando el estado destino, duplicando la verdad del dominio. Enrutar por `apply_transition` hace de `cycle.py` la **fuente única**: si cambian las reglas, los comandos las siguen y el test lo detecta | Media: revertir a literales re-abre el gap (test rojo) | **Sí — fix posterior al verifier** (steering: gap cerrado) |
+| R3.5 | **`seed` cablea `reseed` cuando hay estado previo** (estado previo ⇒ `apply_transition(prev, "reseed", round)` → `SEEDED`, ronda++; sin estado previo ⇒ `apply_transition(None, "seed", round)`); el payload de `seed` suma `round` y `reseeded` | "La idea muta" (Bates, Nota 05 §3): re-sembrar sobre la biblioteca viva debe **acumular** (el merge ya lo hace) y **contar la ronda**, no ser una corrida tirada. Es lo que el ADR 0016 prometía (historia A5) | Alta: la rama es local a `seed.py`; los campos del payload son aditivos | Sí (PO proxy / ADR 0016; verifier PASA) |
+| R3.6 | **`status` expone `curation_available=["accept","reject"]` SIEMPRE + `round`** (campos **aditivos** en `data`, **manteniendo `schema="1"`**); `transitions_available` pasa a derivarse de `available_transitions` (tabla local `_TRANSITIONS` retirada) e incluye `reseed`; `accept.py`/`reject.py` documentan "curación transversal, no transiciona" | La enmienda del ADR 0016/0021 manda que el mapa del lazo **no oculte** lo único irreductiblemente humano (Nota 05 §4). Mantener `schema="1"` es **decisión del PO** (2026-06-16: campos nuevos no rompen a los agentes — solo agregan; bumpear sería ruido). Derivar de `available_transitions` mata el drift entre la tabla de `status` y el dominio | Media: quitar los campos sí bumpearía el schema; mantenerlos es contrato | **Sí — decisión del PO** (`schema="1"` aditivo) |
+| R3.7 | **Cosmético `round` → `cycle_round`** en el kwarg de `set_loop_state` (`set_loop_state(state, *, cycle_round=None)`), no `round=` | Evita sombrear el builtin `round()` y la columna SQL `round` en la firma pública del backend; el verifier lo marcó como cosmético y quedó resuelto | Alta: rename local del kwarg | Sí (PO proxy; verifier PASA) |
+
+> **Reservas del verifier:** la principal (chain/filter/build fuera del dominio) **quedó cerrada**
+> (R3.4 + test domain-tied); el cosmético (`round`→`cycle_round`) **resuelto** (R3.7). **No hay
+> reservas de código abiertas.**
+>
+> **Recomendaciones de código (no implementadas — quedan al PO):** (a) **retirar el alias
+> `LoopState = CycleState` pre-1.0** (migrar `stores/duckdb.py`, tests y docs a `CycleState`); (b) si
+> alguna vez se construye el paso 8 del ciclo, agregar un comando **`b2g monitor`** que dispare la
+> transición a `MONITORED` (hoy el estado existe en el modelo pero ningún comando lo alcanza).
+>
+> **Reconciliación de docs (arquitecto, 2026-06-16):** ADR 0016 (nota "implementado en R3"), ADR 0021
+> (envelope de `status` con `curation_available`/`round` aditivos, `schema="1"`), ROADMAP (Hito R3 ✅ +
+> banner as-built), ARCHITECTURE.md (§5.5 FSM → `cycle.py` AS-BUILT R3), API.md (§convenciones CLI +
+> bloque `cycle.py`), CHANGELOG (R3 marcado). La [Nota 05](../Notas/05-ciclo-investigacion-humano.md)
+> ya describía el ciclo correcto y **no requirió cambios** (R3 la **implementa**, no la corrige).

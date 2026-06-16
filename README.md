@@ -118,7 +118,7 @@ b2g --store biblioteca.duckdb chain --direction both --max-candidates 300   # ca
 b2g --store biblioteca.duckdb filter --year-gte 2010 --language en --language es   # PRISMA: marca rejected, no borra
 b2g --store biblioteca.duckdb build                                          # Networks.quick → artefactos
 b2g --store biblioteca.duckdb export --format graphml --out-dir redes/       # serializa GraphML/CSV
-b2g --store biblioteca.duckdb status --json                                  # LoopState + conteos por curation_status
+b2g --store biblioteca.duckdb status --json                                  # estado del ciclo + ronda + curación + conteos
 ```
 
 Subcomandos: `seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`, `inspect`,

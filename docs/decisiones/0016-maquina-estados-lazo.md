@@ -99,3 +99,30 @@ cuenta las rondas; (c) muestra la curación. **Recomendación para el `coder`:**
 R3** (extraer `cycle.py`; `cli/commands/status.py:19-34` debe incluir `accept`/`reject` como
 siempre-disponibles; `cli/commands/accept.py:104` ya no transiciona — eso queda, pero `status` debe
 exponerlas).
+
+### Implementado en R3 (2026-06-16)
+
+La enmienda está **construida** (ROADMAP Hito R3 ✅). As-built:
+
+- **`src/bib2graph/cycle.py` es la sede del dominio** (puro, sin DuckDB): `CycleState`
+  (`SEEDED`/`FORAGED`/`FILTERED`/`BUILT`/`MONITORED`), `apply_transition(state, action, round)
+  → (state, round)`, `available_transitions(state)` y `CURATION_ACTIONS = ["accept", "reject"]`.
+  El enum de estados **salió** de `backends/duckdb.py`; el backend solo persiste (columna `round`
+  añadida a `loop_state_log` por migración liviana; `loop_round()` / `set_loop_state(state, *,
+  cycle_round=...)`).
+- **`reseed` es de primera clase:** `apply_transition(state, "reseed", r) = (SEEDED, r+1)`. Lo
+  cablea `seed.py`: si hay estado previo, la siembra se trata como `reseed` (ronda++, acumula sobre
+  lo curado); si no, primera siembra (`seed` → `SEEDED`, ronda→1).
+- **Fuente única de verdad:** `chain.py`/`filter.py`/`build.py` **derivan** su estado destino de
+  `apply_transition`, no de un literal (cierra el gap que el verifier marcó). Un test domain-tied
+  (`tests/unit/test_r3_commands_domain.py`) lo ata: si cambian las reglas en `cycle.py`, los comandos
+  las siguen.
+- **Curación transversal:** `accept.py`/`reject.py` documentan "no transiciona"; `status.py` expone
+  `curation_available=["accept","reject"]` **siempre** + `round`, usando `available_transitions`.
+- **Alias transicional:** `backends/duckdb.py` mantiene `LoopState = CycleState` por
+  compatibilidad de imports. **A retirar pre-1.0** (recomendación de código abierta).
+- **`MONITORED`** existe en el modelo y en las reglas de transición, pero **ningún comando lo
+  dispara todavía** (futuro; un eventual `b2g monitor`).
+
+Verifier: **APRUEBA** (275 tests; mypy strict / ruff limpios). La reserva del verifier
+(chain/filter/build no pasaban por el dominio) quedó **cerrada** con el fix posterior.
