@@ -20,5 +20,10 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         with:
+          # Si existe el secret RELEASE_PLEASE_TOKEN (un PAT), el PR de release lo
+          # crea ese token y SÍ dispara el CI (los commits del GITHUB_TOKEN no
+          # disparan workflows). Sin el secret, cae al GITHUB_TOKEN y el PR de
+          # release se mergea con bypass de admin. Ver VERSIONING.md.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
