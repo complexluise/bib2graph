@@ -40,7 +40,7 @@ else:
 
 logger = logging.getLogger(__name__)
 
-# Tipos de red disponibles en Networks.quick (D3: sin co-citación)
+# Tipos de red base en Networks.quick (sin co-citación; esta se añade condicionalmente)
 # Derivado de NetworkKind — fuente única (R1, ADR 0023)
 _QUICK_KINDS: list[str] = [
     NetworkKind.BIBLIOGRAPHIC_COUPLING,
@@ -48,6 +48,24 @@ _QUICK_KINDS: list[str] = [
     NetworkKind.INSTITUTION_COLLAB,
     NetworkKind.KEYWORD_COOCCURRENCE,
 ]
+
+
+def _has_cited_by_data(corpus: Corpus) -> bool:
+    """Devuelve ``True`` si algún paper del corpus tiene ``cited_by_id`` no vacío.
+
+    Se usa para decidir si incluir la red de co-citación en ``Networks.quick``
+    (Hito 8b): si la columna está vacía en todo el corpus, la co-citación
+    produciría 0 nodos/aristas y se omite silenciosamente.
+
+    Args:
+        corpus: Corpus a inspeccionar.
+
+    Returns:
+        ``True`` si al menos un paper tiene ``cited_by_id`` con ≥1 elemento.
+    """
+    table = corpus.to_arrow()
+    col = table.column("cited_by_id")
+    return any(val for val in col.to_pylist())
 
 
 def _louvain_seed_from_hash(corpus_hash: str) -> int:
@@ -176,30 +194,35 @@ class Networks:
 
     @staticmethod
     def quick(corpus: Corpus) -> list[NetworkArtifact]:
-        """Construye las 4 redes principales con configuración razonable.
+        """Construye las redes principales con configuración razonable.
 
         Arma specs para: acoplamiento bibliográfico (full), co-autoría,
         colaboración institucional y co-ocurrencia de keywords.
 
-        La co-citación se OMITE intencionalmente en ``quick`` porque requiere
-        el segundo nivel de fetch del ``OpenAlexEnricher`` (Hito 8). El
-        ``CoCitationProjector`` sí está implementado y disponible vía
-        ``Networks.build(corpus, NetworkSpec(kind='cocitation'))``.
+        **Co-citación (Hito 8b):** se incluye si el corpus tiene ``cited_by_id``
+        poblado en al menos un paper (es decir, si pasó por el
+        ``OpenAlexEnricher`` con la pasada 2).  Si ``cited_by_id`` está vacío
+        en todo el corpus, la co-citación se omite sin error (avisa por log).
 
         Args:
             corpus: Corpus de origen.
 
         Returns:
-            Lista de 4 ``NetworkArtifact`` (coupling, co-autoría, institución,
-            co-word).
+            Lista de 4 o 5 ``NetworkArtifact`` (coupling, co-autoría,
+            institución, co-word y, condicionalmente, co-citación).
         """
-        logger.info(
-            "Networks.quick: construyendo 4 redes (coupling, co-autoría, "
-            "institución, co-word). La co-citación se omite en quick porque "
-            "requiere el 2º nivel de fetch del OpenAlexEnricher (Hito 8). "
-            "Usa Networks.build(corpus, NetworkSpec(kind='cocitation')) para "
-            "proyectar co-citación con los citantes disponibles en el corpus."
-        )
+        kinds = list(_QUICK_KINDS)
 
-        specs = [NetworkSpec(kind=k) for k in _QUICK_KINDS]
+        if _has_cited_by_data(corpus):
+            logger.info("Networks.quick: cited_by_id poblado — incluyendo co-citación.")
+            kinds.append(NetworkKind.COCITATION)
+        else:
+            logger.info(
+                "Networks.quick: cited_by_id vacío — co-citación omitida. "
+                "Ejecutá 'b2g enrich' para poblar cited_by_id de las semillas "
+                "aceptadas, o usá Networks.build(corpus, NetworkSpec(kind='cocitation')) "
+                "para proyectar con los citantes disponibles."
+            )
+
+        specs = [NetworkSpec(kind=k) for k in kinds]
         return [_build_artifact(corpus, spec) for spec in specs]

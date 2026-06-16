@@ -685,6 +685,165 @@ class OpenAlexSource:
         assert last_exc is not None
         raise last_exc
 
+    def fetch_citing_batch(
+        self, ids: list[str], *, max_per_paper: int | None = None
+    ) -> dict[str, list[str]]:
+        """Trae en lote los citantes de varios papers usando ``cites:W1|W2|...``.
+
+        Reemplaza N llamadas individuales a ``fetch_citing`` (patrón N+1) por una
+        sola request por lote (≤50 IDs, límite empírico de OpenAlex para OR en
+        ``cites:``).  Preserva el retry/backoff de ``_fetch_all_with_retry``.
+
+        **Presupuesto por semilla (anti-starvation):** pagina con cursor sobre el
+        filtro OR del lote y, página a página, atribuye cada citante a las semillas
+        objetivo cruzando ``references_id`` del citante con el set de IDs.  Lleva
+        un contador por semilla y deja de paginar cuando TODAS las semillas del
+        lote alcanzaron ``max_per_paper`` citantes (o se agota la paginación).
+        Así la semilla más citada no consume el presupuesto de las demás.
+
+        El filtro ``cites:W1|W2`` es un OR válido en la API de OpenAlex: devuelve
+        todos los works que citan al menos uno de los IDs listados.
+
+        Args:
+            ids: Lista de IDs cortos de OpenAlex (p. ej. ``["W111", "W222"]``).
+                Se normalizan a ID corto internamente.
+            max_per_paper: Presupuesto máximo de citantes a recolectar por semilla.
+                ``None`` = sin tope (pagina todo).  Acota el fetch: cuando todas
+                las semillas del lote alcanzan el tope, se detiene la paginación.
+
+        Returns:
+            Dict ``{seed_id: [citer_id, ...]}``.  Los citantes de cada semilla
+            ya están atribuidos (cruzando ``references_id`` del citante) y
+            acotados a ``max_per_paper``.  Los IDs de citantes son los IDs cortos
+            de OpenAlex.  Orden determinista (alfabético).
+        """
+        if not ids:
+            return {}
+
+        normalized = [_oa_id_short(i) or i for i in ids]
+        batch_size = 50  # límite empírico de OpenAlex para OR en cites:
+
+        result: dict[str, list[str]] = {}
+
+        for start in range(0, len(normalized), batch_size):
+            lote = normalized[start : start + batch_size]
+            lote_set = set(lote)
+            # Acumulador de sets para idempotencia interna (elimina dupes entre páginas)
+            batch_acc: dict[str, set[str]] = {tid: set() for tid in lote}
+
+            # Filtro OR: cites:W1|W2 es un OR válido en OpenAlex (devuelve works que
+            # citan al menos uno de los IDs; no requiere repetir el predicado por ID).
+            filter_str = "cites:" + "|".join(lote)
+
+            # Paginar con cursor, atribuyendo página a página con presupuesto por semilla
+            cursor: str = "*"
+            with self._client() as client:
+                while True:
+                    # Verificar si todas las semillas del lote ya están satisfechas
+                    if max_per_paper is not None and all(
+                        len(batch_acc[tid]) >= max_per_paper for tid in lote
+                    ):
+                        break
+
+                    # Fetch con retry/backoff
+                    page_works = self._fetch_page_with_retry(
+                        client, filter_str, cursor=cursor
+                    )
+                    if page_works is None:
+                        # Error irrecuperable tras reintentos (ya propagado)
+                        break  # pragma: no cover
+
+                    works_list, next_cursor = page_works
+
+                    # Atribuir cada citante de la página a los seeds que realmente cita
+                    for work in works_list:
+                        citer_oa_id = _oa_id_short(work.get("id"))
+                        if not citer_oa_id:
+                            continue
+                        ref_urls: list[str] = work.get("referenced_works") or []
+                        citer_refs: set[str] = {
+                            short
+                            for r in ref_urls
+                            if r and (short := _oa_id_short(r)) is not None
+                        }
+                        # Intersección: seeds que este citante realmente cita
+                        for tid in lote_set & citer_refs:
+                            if (
+                                max_per_paper is None
+                                or len(batch_acc[tid]) < max_per_paper
+                            ):
+                                batch_acc[tid].add(citer_oa_id)
+
+                    if not next_cursor or not works_list:
+                        break
+                    cursor = next_cursor
+
+            # Consolidar en el resultado global (orden determinista: alfabético)
+            for tid in lote:
+                existing = set(result.get(tid) or [])
+                merged = existing | batch_acc[tid]
+                if max_per_paper is not None:
+                    result[tid] = sorted(merged)[:max_per_paper]
+                else:
+                    result[tid] = sorted(merged)
+
+        return result
+
+    def _fetch_page_with_retry(
+        self,
+        client: httpx.Client,
+        filter_str: str,
+        *,
+        cursor: str,
+        per_page: int = 100,
+    ) -> tuple[list[dict[str, Any]], str | None] | None:
+        """Recupera una página de works con retry/backoff ante 429/5xx.
+
+        Comparte la lógica de retry de ``_RETRY_MAX_ATTEMPTS`` y
+        ``_RETRY_BACKOFF_BASE`` sin reimplementar el bucle de backoff.
+
+        Args:
+            client: Cliente httpx ya abierto (reutilizado para conexión persistente).
+            filter_str: Valor del parámetro ``filter`` de la API.
+            cursor: Cursor de paginación (``"*"`` para la primera página).
+            per_page: Tamaño de página (máx. 100 en OpenAlex).
+
+        Returns:
+            Tupla ``(works, next_cursor)`` si la página se obtuvo correctamente,
+            o ``None`` si se agotaron los reintentos (este caso no debería ocurrir
+            porque re-raise al agotar reintentos).
+
+        Raises:
+            httpx.HTTPStatusError: Si se agotan los reintentos.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(_RETRY_MAX_ATTEMPTS):
+            try:
+                resp = client.get(
+                    "/works",
+                    params={
+                        "filter": filter_str,
+                        "select": _FIELDS,
+                        "per_page": per_page,
+                        "cursor": cursor,
+                    },
+                )
+                resp.raise_for_status()
+                data: dict[str, Any] = resp.json()
+                works: list[dict[str, Any]] = data.get("results") or []
+                meta: dict[str, Any] = data.get("meta") or {}
+                next_cursor: str | None = meta.get("next_cursor")
+                return works, next_cursor
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in _RETRY_STATUS_CODES:
+                    last_exc = exc
+                    wait = _RETRY_BACKOFF_BASE * (2**attempt)
+                    time.sleep(wait)
+                else:
+                    raise
+        assert last_exc is not None
+        raise last_exc
+
     def load(self, path: str) -> Corpus:
         """Carga un export JSON de OpenAlex como ``Corpus``.
 
