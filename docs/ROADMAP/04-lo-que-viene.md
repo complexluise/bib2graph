@@ -5,20 +5,30 @@
 > **Tras la remediación R1–R5.** Estos hitos son los opcionales/de cierre hacia v1.0, ya
 > reconciliados con el modelo nuevo (sin IA generativa, scent bibliométrico, FSM cíclico).
 
-## Hito 7 — Deduplicación fuzzy (extra `[dedup]`)
+## Hito 7 — Deduplicación fuzzy (extra `[dedup]`) — **COMPLETO ✅**
+
+> **Hito 7 COMPLETO ✅ (2026-06-16, ADR [0026](../decisiones/0026-dedup-fuzzy-determinista.md)):**
+> `deduplicate_authors`/`deduplicate_keywords` con **`rapidfuzz`** (determinista), **autores +
+> keywords** (instituciones **diferidas** — `institutions_id` no está normalizada
+> determinísticamente hoy). **Función de librería, sin subcomando CLI** (decisión del PO). `splink`
+> (probabilístico/pesado) **diferido a post-V1**.
 
 **Alcance**
 
-- `deduplicate_authors` / `deduplicate_keywords` (lo fuzzy; el determinístico ya está en el
-  `Preprocessor` del Hito 5; API.md §11).
+- `deduplicate_authors(corpus, *, threshold=0.92)` / `deduplicate_keywords(corpus, *,
+  threshold=0.90)` (lo fuzzy; el determinístico ya está en el `Preprocessor` del Hito 5; API.md §11).
+  Operan sobre `_id` (no `_raw`), después de normalize → thesaurus.
 
-**Historias:** refina **C1** (autores/instituciones limpios de duplicados aproximados) y **C2**
-(keywords fuera del thesaurus).
+**Historias:** refina **C1** (autores limpios de duplicados aproximados; instituciones diferidas) y
+**C2** (keywords fuera del thesaurus).
 
 **Criterios de aceptación (DoD)**
 
-- Combina variantes por similitud por encima de un `threshold` configurable; idempotente.
-- Importación **perezosa** del extra `[dedup]`: sin él, error claro que apunta al extra.
+- **✅** Combina variantes por similitud por encima de un `threshold` **por-campo** configurable;
+  **determinista** (`token_sort_ratio` + Union-Find + canónico más-frecuente/desempate-id) e
+  idempotente.
+- **✅** Importación **perezosa** del extra `[dedup]` (= `rapidfuzz`): sin él, `ImportError` claro que
+  apunta al extra (`uv sync --extra dedup`).
 
 **Tests (TDD — los justos)**
 
@@ -170,7 +180,7 @@ No se prometen ni se cablean clientes que no se usan.
 > "inserción de IA nº2") **ya no son costuras futuras: se borran**. El producto **no usa IA
 > generativa**; el extra `[llm]` se elimina (Hito R4). El sensemaking de tensiones es **humano**,
 > asistido por las redes. El **dedup fuzzy del thesaurus** que sí queda (Hito 7) es **determinista**
-> (`rapidfuzz`/`splink`, extra `[dedup]`), no semántico/LLM. La única "inteligencia" que asiste es el
+> (`rapidfuzz`, extra `[dedup]`; Hito 7 ✅), no semántico/LLM. La única "inteligencia" que asiste es el
 > **scent bibliométrico** (Hito R4), que no es IA.
 
 ---
