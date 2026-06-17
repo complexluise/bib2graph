@@ -34,7 +34,7 @@
   El **CLI `b2g` es real** —paquete `cli/` con 17 subcomandos en `cli/commands/`, no un
   placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9; el 17° `b2g restore`
   rehidrata un corpus curado sin red, Ciclo 9a, abajo)—.
-  **564 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
+  **571 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
   (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2). **`b2g snapshot`/`b2g export` resuelven por
@@ -58,8 +58,20 @@
   <parquet>`** (`cli/commands/restore.py`): rehidrata un corpus **ya curado sin red** (inverso de
   `snapshot`; `CORPUS_SCHEMA` → `Corpus.from_arrow` → merge+persist), preserva la curación y
   transiciona a **`FILTERED`** (reusa la transición permisiva `filter`, ADR 0016). **No** hay
-  `seed --from-corpus` (es `restore`) ni `seed --from-bib` (diferido). **9b pendiente:** workspace de
-  ejemplo `examples/valoraciones/` + gate de reproducibilidad R2. Ver `docs/API.md` §2 + §convenciones CLI.
+  `seed --from-corpus` (es `restore`) ni `seed --from-bib` (diferido, issue #50). Ver `docs/API.md`
+  §2 + §convenciones CLI.
+- **Ciclo 9b — corpus de ejemplo + gate R2 · #33 CERRADO** (AS-BUILT 2026-06-17, ADR
+  [0030](docs/decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)): se construye la convención
+  **`examples/`** (corpus curado congelado por carpeta: `corpus.parquet` + `equation.yaml` de
+  procedencia + `README.md` + script determinista de regeneración; ver `docs/API.md` §2.1) y su primer
+  ejemplo, **`examples/valoraciones/`** (137 filas: 7 `accepted`, 130 `candidate`, 107 seeds; corpus
+  real del PO reducido determinísticamente, CC0/OpenAlex). Excepción acotada al `.gitignore` (`!examples/`
+  + regla defensiva `examples/**/*.duckdb`). El **gate R2** (`tests/unit/test_example_r2_gate.py`,
+  7 tests) corre `restore --from-corpus` → `build` → `networks` **sin red** sobre el corpus real y
+  asserta `corpus_hash` estable + composición de comunidades Louvain estable entre corridas (cierra el
+  agujero R2 de la [Nota 09](docs/Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). Con esto **#33
+  queda cerrado** (caso real reproducible = gate de la epic GUI #34); `seed --from-bib` y
+  `examples/bibtex/` siguen diferidos (issue #50). Ver `docs/API.md` §2.1.
 - **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
   [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
   núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
@@ -91,8 +103,10 @@
   Ver `docs/ROADMAP/` (Hitos R1–R5). Tras la remediación se construyeron el **Hito 8** (Enricher
   OpenAlex: refs→DOI + co-citación end-to-end) y el **Hito 7 ✅** (dedup fuzzy determinista
   `rapidfuzz`, extra `[dedup]`: `deduplicate_authors`/`deduplicate_keywords`, función de librería sin
-  CLI; ADR [0026](docs/decisiones/0026-dedup-fuzzy-determinista.md)). **PRÓXIMO:
-  Hito 9** (`NetworkSpec` YAML). El entorno se levanta con `uv sync`.
+  CLI; ADR [0026](docs/decisiones/0026-dedup-fuzzy-determinista.md)), el **Hito 9 ✅** (`NetworkSpec`
+  YAML) y el **Ciclo #33 ✅** (ecuación declarativa + `restore` + corpus de ejemplo, 9a+9b). Con #33
+  cerrado, **todo el terreno pre-GUI está completo**; lo que sigue es la epic GUI #34. El entorno se
+  levanta con `uv sync`.
 - **Fundación workspace COMPLETA** (ADR
   [0029](docs/decisiones/0029-workspace-por-investigacion.md), AS-BUILT 2026-06-16; issues
   [#32](https://github.com/complexluise/bib2graph/issues/32)/

@@ -1,8 +1,9 @@
 # 0030 — Ecuación declarativa (`equation.yaml`) + `restore` de corpus curado + corpus de ejemplo commiteado
 
-- **Estado:** Propuesta — **9a AS-BUILT** (`restore` + `equation.yaml` cargable construidos,
-  2026-06-17); **9b pendiente** (workspace de ejemplo `examples/valoraciones/` + gate de
-  reproducibilidad R2).
+- **Estado:** **Aceptada — AS-BUILT ✅** (9a + 9b completos, 2026-06-17). 9a: `restore` +
+  `equation.yaml` cargable; **9b: workspace de ejemplo `examples/valoraciones/` (corpus 137 filas)
+  + gate de reproducibilidad R2** (7 tests). Cierra el Ciclo #33. `seed --from-bib` y
+  `examples/bibtex/` siguen **diferidos** (issue #50). Ver §AS-BUILT 9b abajo.
 - **Fecha:** 2026-06-17
 - **Enmienda (de este ADR):** [0029](0029-workspace-por-investigacion.md) — el workspace
   (carpeta autocontenida) gana una variante **commiteable** como **caso real reproducible**:
@@ -112,16 +113,16 @@ encuadrados pero **diferidos / pendientes de 9b** (ver "Estado / fasing"):
 Y se **resuelve el hueco de diseño** de cómo el corpus congelado entra a un workspace sin red
 (ver sub-decisión "Reproducción sin red").
 
-### Estado / fasing (9a hecho · 9b pendiente · diferido)
+### Estado / fasing (9a hecho · 9b hecho · diferido)
 
 | Pieza | Estado |
 |-------|--------|
 | `EquationSpec` + `load_equation_spec` (`sources/equation.py`) | **9a AS-BUILT ✅** |
 | `b2g seed --spec equation.yaml` (2º modo de `seed`) | **9a AS-BUILT ✅** |
 | `b2g restore --from-corpus <parquet>` (17º subcomando) | **9a AS-BUILT ✅** |
-| `examples/valoraciones/` (corpus + `equation.yaml` + README) + gate R2 | **9b pendiente** |
-| `b2g seed --from-bib <archivo.bib>` (2º camino de seed) | **Diferido** (issue futuro propio) |
-| `examples/bibtex/` (ejemplo del camino BibTeX) | **Diferido** (va con `--from-bib`) |
+| `examples/valoraciones/` (corpus + `equation.yaml` + README) + gate R2 | **9b AS-BUILT ✅** |
+| `b2g seed --from-bib <archivo.bib>` (2º camino de seed) | **Diferido** (issue [#50](https://github.com/complexluise/bib2graph/issues/50)) |
+| `examples/bibtex/` (ejemplo del camino BibTeX) | **Diferido** (va con `--from-bib`, #50) |
 
 ### Sub-decisiones resueltas
 
@@ -316,3 +317,40 @@ previa que había documentado lo contrario):
    este ADR.
 4. **`examples/bibtex/` se DIFIERE** (va con `--from-bib`). El único ejemplo de este ciclo es
    **`examples/valoraciones/`**, que se construye en **9b**.
+
+## AS-BUILT — Ciclo 9b (2026-06-17): convención `examples/` + gate R2 ✅
+
+Cierra lo que 9a había dejado pendiente. El cuerpo histórico de arriba no cambia; esto registra
+lo construido. **Gate verde, 571 tests; el verifier pasa.**
+
+- **`examples/valoraciones/` — el caso real reproducible (gate #33).** Carpeta autocontenida de
+  propósito único (no mezcla tipos de artefacto):
+  - **`corpus.parquet`** (137 filas, 452 KB): reducción **determinista** del corpus real del PO
+    (CC0/OpenAlex). Composición: **7 `accepted`, 130 `candidate`, 107 seeds**. (Los 7 `accepted`
+    son los únicos de los 44 `accepted` del CSV de curación que existían en el corpus fuente; el
+    README lo aclara para que no parezca contradicción.)
+  - **`equation.yaml`**: cargable con `EquationSpec`; documenta que `min_year`/`max_year` están
+    declarados pero **no filtran aún**.
+  - **`README.md`**: receta reproducible (`init` → `restore --from-corpus` → `build` →
+    `clusters.csv`), procedencia y limitaciones conocidas.
+  - **`build_corpus.py`**: script determinista de procedencia (su fuente es data local del PO,
+    `*.bak`/`valoraciones_*` gitignoreados; **no corre en CI**, no toca red).
+- **`.gitignore`:** excepción **`!examples/`** (trackea el ejemplo) + regla defensiva
+  **`examples/**/*.duckdb`** (un `.duckdb` nunca al repo, ni dentro de `examples/`). El resto de la
+  política de datos de usuario (`*.bak`, `valoraciones_*`, `prueba/`, `redes/`) **no cambia**:
+  `examples/` es la única excepción, curada y reducida.
+- **Gate de reproducibilidad R2** (`tests/unit/test_example_r2_gate.py`, **7 tests**): sobre el
+  corpus REAL de 137 filas asserta que el **`corpus_hash` es estable** (`91740646…`) y que la
+  **composición de comunidades es estable entre corridas** (Louvain seeded); redes no vacías
+  (coupling 132/3897, author_collab 327/729, institution_collab 136/300, keyword 483/5350;
+  co-citación vacía omitida graceful porque `cited_by_id` está en blanco). **Cierra el agujero R2
+  que la [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md) dejó abierto** sobre la
+  estabilidad de la composición de comunidades.
+- **Bifurcación residual del PO resuelta (opción mínima):** `examples/valoraciones/` commitea
+  **solo el corpus + `equation.yaml` + README + script**, no un `workspace.json`/`library.duckdb`
+  (el store se materializa al correr `restore --from-corpus` en un workspace temporal). Es lo que
+  el ADR recomendaba.
+
+Con 9b, **#33 queda cerrado**: existe un caso real reproducible sin red por CLI, que sirve de gate
+para la epic GUI #34. `seed --from-bib` y `examples/bibtex/` siguen **diferidos** (issue #50), sin
+reabrir la decisión.
