@@ -33,8 +33,9 @@ def run_monitor(
 ) -> dict[str, Any]:
     """Re-chequea OpenAlex por nuevos citantes del corpus y transiciona a MONITORED.
 
-    Usa forward chaining (``Forager`` con ``direction="forward"``, que llama a
-    ``fetch_citing`` del source) para encontrar nuevos papers que citan al corpus.
+    Usa forward chaining (``Forager`` con ``direction="forward"``, que usa
+    ``fetch_citing_batch`` del source, batcheado y con cap por semilla) para
+    encontrar nuevos papers que citan al corpus.
     Mergea los candidatos nuevos a la biblioteca viva y transiciona el estado a
     MONITORED vía ``apply_transition(current_state, "monitor", current_round)``.
 

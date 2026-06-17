@@ -30,13 +30,19 @@
   scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
   El **CLI `b2g` es real** —paquete `cli/` con 14 subcomandos en `cli/commands/`, no un
-  placeholder—. **416 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+  placeholder—. **422 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
 - **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
   [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
   núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
   trayendo los citantes de las semillas aceptadas vía `OpenAlexSource.fetch_citing_batch` (batcheo OR
   ≤50 con presupuesto por semilla) y los une (idempotente, sin crecer el corpus). `b2g enrich` con
   `--max-citing` (tope por semilla); `Networks.quick` → 4 o 5 redes según haya `cited_by_id`.
+- **Forward chaining del `Forager` batcheado** (#21, 2026-06-16): el forward del `Forager`
+  (`b2g chain`/`b2g monitor`) **ya no es N+1** — reusa `OpenAlexSource.fetch_citing_batch` (batcheo OR
+  + cap por semilla `max_citing_per_paper`/`--max-citing`, default 50) con preview sin red. **Opera
+  sobre `is_seed=True`** (todas las semillas, **sin** filtrar `curation_status`): el chaining precede a
+  la curación; la restricción a `accepted` es del **Enricher** (Hito 8b), no del Forager. Ver
+  `docs/API.md` §5 y ADR [0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) AS-BUILT #21.
 - **Tanda de remediación R1–R5 COMPLETA** (v0.3, 2026-06-16). Tras el red-team del AS-BUILT
   ([`docs/Notas/06-critica-as-built-v0.2.md`](docs/Notas/06-critica-as-built-v0.2.md)) el PO bloqueó
   un **modelo nuevo** (ADR [0022](docs/decisiones/0022-producto-sin-ia-generativa.md)/
@@ -63,7 +69,7 @@
   **14° subcomando `b2g init`**. `--store` pasó a **opcional** y se agregó **`--workspace`** (ambos
   opcionales, mutuamente excluyentes) con **resolución ambiente** (flag > env `B2G_WORKSPACE` >
   walk-up del cwd buscando `workspace.json`). El `.duckdb` suelto sigue válido (workspace degenerado).
-  `b2g status` suma `workspace: {root, source}`; `b2g build` sella `networks/.corpus_hash`. **416
+  `b2g status` suma `workspace: {root, source}`; `b2g build` sella `networks/.corpus_hash`. **422
   tests verdes**, 14 subcomandos. Flujo: `b2g init <name>` → trabajar **dentro** de la carpeta sin
   `--store`.
 - Toda la información del producto, la arquitectura, los contratos y la secuencia de

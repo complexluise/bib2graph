@@ -26,6 +26,7 @@ def run_chain(
     direction: Literal["backward", "forward", "both"] = "both",
     depth: int = 1,
     max_candidates: int | None = None,
+    max_citing_per_paper: int | None = 50,
     email: str | None = None,
     transport: Any = None,
 ) -> dict[str, Any]:
@@ -36,6 +37,8 @@ def run_chain(
         direction: Dirección del chaining (``backward``, ``forward``, ``both``).
         depth: Profundidad del chaining (solo 1 soportado; >1 → NotImplementedError).
         max_candidates: Tope de candidatos (None = sin límite).
+        max_citing_per_paper: Presupuesto de citantes por semilla en forward
+            chaining (default 50; None = sin tope).
         email: Email para el polite pool de OpenAlex.
         transport: Transport inyectable para tests.
 
@@ -63,19 +66,27 @@ def run_chain(
     source = OpenAlexSource(email=email, transport=transport)
 
     # Pre-check explícito: si la dirección requiere forward y el source no
-    # tiene ``fetch_citing``, fallamos antes de entrar al Forager — así un
-    # ``AttributeError`` genuino que surja dentro de chain/merge/_fetch_forward
-    # no queda disfrazado de "source no soporta forward" (exit 3).
-    if direction in ("forward", "both") and not hasattr(source, "fetch_citing"):
+    # tiene ``fetch_citing_batch`` (ni ``fetch_citing`` como fallback), fallamos
+    # antes de entrar al Forager — así un ``AttributeError`` genuino que surja
+    # dentro de chain/merge/_fetch_forward no queda disfrazado de "source no
+    # soporta forward" (exit 3).
+    if direction in ("forward", "both") and not (
+        hasattr(source, "fetch_citing_batch") or hasattr(source, "fetch_citing")
+    ):
         raise DependencyError(
             f"El source {type(source).__name__!r} no soporta forward chaining: "
-            "no tiene el método ``fetch_citing``. "
+            "no tiene el método ``fetch_citing_batch`` ni ``fetch_citing``. "
             "Usá un source compatible (p. ej. OpenAlexSource) o cambiá "
             "--direction a 'backward'."
         )
 
     try:
-        forager = Forager(source, depth=depth, max_candidates=max_candidates)
+        forager = Forager(
+            source,
+            depth=depth,
+            max_candidates=max_candidates,
+            max_citing_per_paper=max_citing_per_paper,
+        )
         ranked = forager.chain(corpus, direction=direction)
     except NotImplementedError as exc:
         raise DependencyError(
@@ -132,6 +143,14 @@ def run_chain(
     help="Tope de candidatos (sin límite por defecto).",
 )
 @click.option(
+    "--max-citing",
+    "max_citing_per_paper",
+    type=int,
+    default=50,
+    show_default=True,
+    help="Presupuesto de citantes por semilla en forward chaining.",
+)
+@click.option(
     "--email",
     default=None,
     help="Email para el polite pool de OpenAlex.",
@@ -150,6 +169,7 @@ def chain_cmd(
     direction: str,
     depth: int,
     max_candidates: int | None,
+    max_citing_per_paper: int,
     email: str | None,
     json_output: bool,
 ) -> None:
@@ -163,6 +183,7 @@ def chain_cmd(
         direction=direction,  # type: ignore[arg-type]
         depth=depth,
         max_candidates=max_candidates,
+        max_citing_per_paper=max_citing_per_paper,
         email=email,
     )
 

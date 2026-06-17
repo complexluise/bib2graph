@@ -103,7 +103,8 @@ pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
   biblioteca viva por subprocess (historia C4). La **curación interactiva rica (`curate`) y la GUI
   siguen siendo futuro** (no en v0.2). Ver [`ROADMAP.md`](ROADMAP/README.md) Hito 6.
 - **`monitor`** (cleanup pre-v0.3): re-chequea OpenAlex por **citantes nuevos** del corpus (forward
-  chaining), mergea los candidatos nuevos a la biblioteca viva y **transiciona a `MONITORED`** vía
+  chaining **batcheado**, AS-BUILT #21: reusa `fetch_citing_batch` con cap por semilla, scope
+  `is_seed`), mergea los candidatos nuevos a la biblioteca viva y **transiciona a `MONITORED`** vía
   `apply_transition(state, "monitor", round)` (paso 8 del ciclo, Ellis). `data` =
   `{new_candidates, total_papers, loop_state, round}`; `--email` para el polite pool; `--json` con
   `schema="1"`. **Sin pre-check de capacidad** (a diferencia de `chain`): instancia `OpenAlexSource`
@@ -688,15 +689,19 @@ class Forager:
     bibliométrico (co-citación backward / citación directa forward, ADR 0008/0020/0022).
     El scent consume el primitivo de proyectores. Solo el Forager toca la red; el núcleo
     de scent es puro."""
-    def __init__(self, source: Source, *, depth: int = 1, max_candidates: int | None = None) -> None:
+    def __init__(self, source: Source, *, depth: int = 1, max_candidates: int | None = None,
+                 max_citing_per_paper: int = 50) -> None:
         """depth=1 por defecto; depth>1 lanza NotImplementedError (futuro v0.3+).
-        max_candidates = tope configurable del ranking (None = sin límite)."""
+        max_candidates = tope configurable del ranking (None = sin límite).
+        max_citing_per_paper = tope de citantes POR SEMILLA en el forward batcheado (default 50;
+        acota el fetch vía fetch_citing_batch; CLI `--max-citing`). AS-BUILT #21 (2026-06-16)."""
 
     def preview(self, corpus: Corpus, *, direction: Direction = "both") -> "GrowthPreview":
         """'Esta expansión sumaría ~N papers' SIN traerlos. Opera SOLO localmente, SIN red.
         Backward: estimación EXACTA local desde references_id. Forward: NO estimable sin red
-        (cited_by_id está vacío tras el seed) → by_direction['forward']=0 y
-        forward_requires_fetch=True; el conteo real solo llega con chain(). NO muta el corpus."""
+        (cited_by_id está vacío tras el seed) → estima el nº de SEMILLAS a forrajear (is_seed,
+        SIN filtrar curation_status) con by_direction['forward']=0 y forward_requires_fetch=True;
+        el conteo de citantes reales solo llega con chain(). NO muta el corpus."""
 
     def chain(self, corpus: Corpus, *, direction: Direction = "both") -> "RankedCandidates":
         """Computa candidatos (curation_status='candidate', is_seed=False) rankeados por scent.
@@ -721,17 +726,32 @@ class RankedCandidates(BaseModel):
 
 **Notas de contrato** (Hito 5, ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)):
 
-- **Forward chaining requiere `source.fetch_citing(openalex_id) -> list[dict]`** (`GET
-  works?filter=cites:`). **R5:** el **comando `chain` hace un pre-check `hasattr(source,
-  "fetch_citing")`** y lanza `DependencyError` accionable (exit 3) si el source no lo soporta —el
-  forager queda agnóstico de la capa CLI/`_errors`; un `AttributeError` genuino dentro del chaining ya
-  no se disfraza de "source sin forward". **No se amplió el Protocol `Source`** (§2) — `fetch_citing`
-  es capacidad de `OpenAlexSource`, no contrato universal. Una `Source` de solo-mínimo (ADR 0018) no
+- **Forward chaining requiere `source.fetch_citing_batch(ids, *, max_per_paper)`** (§2). **R5:** el
+  **comando `chain` hace un pre-check `hasattr(source, "fetch_citing")`** y lanza `DependencyError`
+  accionable (exit 3) si el source no lo soporta —el forager queda agnóstico de la capa
+  CLI/`_errors`; un `AttributeError` genuino dentro del chaining ya no se disfraza de "source sin
+  forward". **No se amplió el Protocol `Source`** (§2) — `fetch_citing`/`fetch_citing_batch` son
+  capacidad de `OpenAlexSource`, no contrato universal. Una `Source` de solo-mínimo (ADR 0018) no
   habilita forward chaining.
-- **R5 — `fetch_citing` con retry/backoff** ante 429/5xx (`_fetch_all_with_retry`: exponential
-  backoff, 3 intentos). Sin esto, un rate-limit de OpenAlex hacía fallar el forward de un corpus
-  mediano. *(El **batching por OR** queda diferido —mejora de performance—: el N+1 de requests
-  persiste, pero ahora es resiliente al rate-limit. Ver ROADMAP Hito R5.)*
+- **AS-BUILT (#21, 2026-06-16) — forward chaining batcheado + cap por semilla, scope `is_seed`.** El
+  `Forager.chain(direction="forward"/"both")` **ya no hace N+1** (`fetch_citing` por fila): **reusa
+  `OpenAlexSource.fetch_citing_batch`** (§2 — batcheo OR ≤50 + presupuesto por semilla + retry/backoff),
+  matando el N+1 de requests. El `Forager.__init__` toma **`max_citing_per_paper`** (tope de citantes
+  **por semilla**, default **50**); el CLI lo expone como **`--max-citing`** en `b2g chain`. **El
+  alcance del forward es `is_seed=True`** —**todas** las semillas sembradas, **SIN** filtrar por
+  `curation_status`— porque el chaining corre **antes** de la curación (ciclo
+  `SEEDED→FORAGED→…`→ curación transversal; las semillas nacen `candidate`; ADR
+  [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md), Nota 09). **La restricción a
+  semillas `accepted` NO es del Forager — es del `Enricher`** (Hito 8b, §3, post-curación). No
+  confundir: el Forager expande la frontera (pre-curación, sobre `is_seed`); el Enricher pobla
+  `cited_by_id` para la co-citación (post-curación, sobre `accepted`). *(El drift inverso —documentar
+  el Forager forrajeando solo `accepted`— fue la causa del bug que este AS-BUILT cierra.)*
+- **`preview` del forward sin red (#21):** estima el **nº de semillas a forrajear** (`is_seed`) sin
+  emitir requests, manteniendo `forward_requires_fetch=True` (el conteo de citantes reales solo llega
+  con `chain`). `b2g monitor` usa este mismo forward batcheado.
+- **`fetch_citing` (singular) con retry/backoff** ante 429/5xx (`_fetch_all_with_retry`: exponential
+  backoff, 3 intentos) sigue disponible; el forward del Forager lo consume ahora vía la variante
+  **batcheada** `fetch_citing_batch`.
 - **Candidatos backward = stubs id-only**: título placeholder `[candidate:{id}]`, `openalex_id`
   poblado, resto nulo, `is_seed=False`, `curation_status='candidate'`, `provenance` con
   `chaining_hop=1`. No contaminan las redes; son curables/enriquecibles después (gap conocido).
@@ -1065,7 +1085,7 @@ JSON por comando:
 b2g init ied                                    # crea ./ied/ (workspace.json + library.duckdb + networks/…)
 cd ied                                           # a partir de acá el workspace se resuelve por cwd
 b2g seed --equation '"unequal ecological exchange"' --email luis@sostaina.com --json
-b2g chain --direction both --max-candidates 300 --json
+b2g chain --direction both --max-candidates 300 --max-citing 50 --json
 b2g filter --year-gte 2010 --language en --language es --json
 b2g accept --ids oa:abc123 --ids oa:def456 --json
 b2g build --json                                 # escribe networks/ + sella networks/.corpus_hash
