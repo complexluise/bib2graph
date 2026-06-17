@@ -417,4 +417,53 @@ supersede el §Diferido.
 Con el Ciclo 10, **#50 queda cerrado** y `seed` tiene su segundo camino de datos (BibTeX
 institucional tras paywall, ADR 0007/0018). Queda pendiente el **Ciclo B** (rework CLI-puro de
 `examples/valoraciones/` + regen del parquet + ajuste del gate R2), que materializa el principio
-CLI-puro sobre el ejemplo de valoraciones.
+CLI-puro sobre el ejemplo de valoraciones (ver §AS-BUILT Ciclo B al final).
+
+## AS-BUILT — Ciclo B (2026-06-17): `examples/valoraciones/` rehecho 100% por CLI ✅
+
+Materializa el principio **CLI-puro** del PO (corte Ciclo 10, decisión 2: "el flujo de armar/
+reproducir un workspace debe ser 100% por CLI, sin escribir código") sobre el ejemplo de
+valoraciones. El cuerpo histórico de 9a/9b/Ciclo 10 **no cambia**; esto registra lo construido y
+**actualiza la convención `examples/`** (la procedencia ya no exige un script). **Gate verde, 598
+tests por defecto** (+2 `network` fuera del gate; el verifier pasa).
+
+### Decisión del PO que materializa (CLI-puro)
+
+El script de procedencia `build_corpus.py` **se elimina**. El flujo de armar/reproducir el ejemplo
+es **100% por CLI**, sin código: `b2g seed --spec equation.yaml` (`max_results: 80`) →
+`b2g curate --from-csv curacion.csv` → `b2g enrich --max-citing 25` → `b2g snapshot`. La procedencia
+de un ejemplo deja de ser un *script* y pasa a ser la **receta CLI documentada en el README** +
+los artefactos declarativos congelados.
+
+### Convención `examples/` ACTUALIZADA (procedencia = receta CLI, no script)
+
+La regla de 9b/§2.1 que listaba un **"script de procedencia (`build_corpus.py`)"** como artefacto
+requerido **queda superada**. Una carpeta de ejemplo de corpus contiene:
+
+- **`corpus.parquet`** — corpus curado y congelado (schema `CORPUS_SCHEMA`; parquet, NUNCA `.duckdb`).
+- **`equation.yaml`** — parámetros de búsqueda (procedencia de la ecuación, cargable con `EquationSpec`).
+- **`curacion.csv`** — **artefacto congelado nuevo (B1):** las decisiones de curación versionadas
+  que `b2g curate --from-csv` consume → **receta determinista** de curación (aplicar este CSV al
+  corpus sembrado produce el mismo estado de curación, independiente de cuándo se corra).
+- **`README.md`** — la **receta CLI** (armado con red + reproducción offline) que es la procedencia.
+
+**No** hay script de regeneración. La procedencia es la receta CLI + `equation.yaml` + `curacion.csv`.
+
+### Lo construido (AS-BUILT)
+
+- **`examples/valoraciones/` regenerado 100% por CLI.** Corpus = **80 filas** (70 `candidate` +
+  10 `accepted`), parquet 168 KB. Secuencia: `seed --spec equation.yaml` (`max_results 80`) →
+  `curate --from-csv curacion.csv` (10 `accepted`, los de mayor `references_id`) →
+  `enrich --max-citing 25` (pobla `cited_by_id` en los 10 `accepted`) → `snapshot`.
+- **`build_corpus.py` ELIMINADO** (principio CLI-puro).
+- **`curacion.csv` congelado (B1)** — receta determinista de curación.
+- **Co-citación PRESENTE (B3)** aunque rala (2 nodos / 1 arista, `weight=9` real); las otras 4 redes
+  sustanciales: coupling 50/157, author_collab 191/454, institution_collab 99/164,
+  keyword_cooccurrence 287/3907.
+- **Gate R2 ajustado** (`tests/unit/test_example_r2_gate.py`): piso `n>=50` (antes 100); nuevo
+  `test_cocitacion_con_datos` afirma **5 redes** (la co-citación ya no se omite graceful);
+  estabilidad de `corpus_hash`/comunidades Louvain intacta.
+- **README reescrito** a recetas `b2g` (armado con red + reproducción offline), sin referencia a script.
+
+Este Ciclo B **supersede** el AS-BUILT 9b en lo que respecta a la composición del corpus (137 →
+80 filas), la co-citación (vacía → presente) y la procedencia (script → receta CLI).

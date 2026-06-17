@@ -1,15 +1,17 @@
-"""Gate de reproducibilidad R2 — Ciclo 9b (ADR 0030).
+"""Gate de reproducibilidad R2 — Ciclo B (ADR 0030, actualiza 9b).
 
 Cierra el agujero de la Nota 09 §"No se validó la reproducibilidad del output":
 el corpus.parquet de ``examples/valoraciones/`` sirve de gate end-to-end sin red.
+
+Ciclo B (rework CLI-puro): corpus regenerado con ~80 filas, 10 accepted con
+``cited_by_id`` poblado (``b2g enrich --max-citing 25``), co-citación NO vacía.
 
 Casos cubiertos:
 1. El parquet existe y carga con el schema canónico.
 2. El ``corpus_hash`` es estable entre dos cargas independientes del mismo parquet
    (reproducibilidad R2: el hash es del contenido, no de timestamps).
-3. ``Networks.quick`` produce redes con nodos y aristas (ninguna de las 4 redes
-   principales está vacía).
-4. La co-citación está vacía (``cited_by_id`` no poblado) y se omite graceful.
+3. ``Networks.quick`` produce 5 redes con nodos y aristas, incluyendo co-citación.
+4. La co-citación tiene datos (``cited_by_id`` poblado en los 10 accepted).
 5. La composición de comunidades es estable entre dos corridas del mismo corpus
    (Louvain seeded con corpus_hash → partición determinista).
 6. ``run_restore`` a un store temporal carga el corpus sin red y transiciona a FILTERED.
@@ -56,24 +58,28 @@ def _load_corpus_from_parquet() -> Corpus:
 def test_parquet_existe_y_carga() -> None:
     """El corpus.parquet del ejemplo existe y carga con el schema canónico.
 
-    Si este test falla, verificá que ``examples/valoraciones/build_corpus.py``
-    haya sido ejecutado (genera el parquet desde los datos locales del PO).
+    Si este test falla, regenerá el parquet siguiendo la receta CLI
+    (§Armado desde cero en ``examples/valoraciones/README.md``): seed --spec
+    → curate --from-csv → enrich → snapshot. El parquet va commiteado.
     """
     assert _EXAMPLES_PARQUET.exists(), (
         f"No se encontró el parquet del ejemplo en {_EXAMPLES_PARQUET}. "
-        "Ejecutá: uv run python examples/valoraciones/build_corpus.py"
+        "El parquet debe estar commiteado en examples/valoraciones/. "
+        "Para regenerarlo (con red): ver §Armado desde cero en examples/valoraciones/README.md."
     )
 
     corpus = _load_corpus_from_parquet()
     n = len(corpus)
 
-    assert n >= 100, (
-        f"El corpus tiene solo {n} filas; se esperan ≥100. "
-        "Revisá los criterios de reducción en build_corpus.py."
+    assert n >= 50, (
+        f"El corpus tiene solo {n} filas; se esperan ≥50. "
+        "Regenerá el corpus con: b2g seed --spec examples/valoraciones/equation.yaml "
+        "(con red) + b2g curate --from-csv examples/valoraciones/curacion.csv "
+        "+ b2g enrich --max-citing 25 + b2g snapshot."
     )
     assert n <= 200, (
         f"El corpus tiene {n} filas; se esperan ≤200 (corpus reducido). "
-        "Revisá los criterios de reducción en build_corpus.py."
+        "Revisá el equation.yaml (max_results: 80)."
     )
 
 
@@ -113,14 +119,12 @@ def test_corpus_hash_estable_entre_cargas() -> None:
 
 @pytest.mark.unit
 def test_redes_principales_no_vacias() -> None:
-    """Networks.quick produce redes con nodos y aristas (redes no vacías).
+    """Networks.quick produce 5 redes con nodos y aristas (co-citación incluida).
 
-    Las 4 redes principales (bibliographic_coupling, author_collab,
-    institution_collab, keyword_cooccurrence) deben tener al menos 1 nodo
-    y 1 arista con el corpus de ejemplo (137 filas).
-
-    La co-citación se omite graceful (cited_by_id vacío) y se verifica en
-    el test siguiente.
+    El corpus del Ciclo B tiene 10 accepted con cited_by_id poblado
+    (b2g enrich --max-citing 25), por lo que las 5 redes deben estar presentes:
+    bibliographic_coupling, author_collab, institution_collab,
+    keyword_cooccurrence y cocitation.
     """
     from bib2graph.constants import NetworkKind
     from bib2graph.networks.facade import Networks
@@ -128,7 +132,6 @@ def test_redes_principales_no_vacias() -> None:
     corpus = _load_corpus_from_parquet()
     artifacts = Networks.quick(corpus)
 
-    # Debe haber exactamente 4 artefactos (co-citación omitida, cited_by vacío)
     kinds = [a.spec.kind for a in artifacts]
     assert NetworkKind.BIBLIOGRAPHIC_COUPLING in kinds, (
         "bibliographic_coupling ausente — verificá que el corpus tiene referencias."
@@ -138,6 +141,10 @@ def test_redes_principales_no_vacias() -> None:
     )
     assert NetworkKind.KEYWORD_COOCCURRENCE in kinds, (
         "keyword_cooccurrence ausente — verificá que el corpus tiene keywords_id."
+    )
+    assert NetworkKind.COCITATION in kinds, (
+        "cocitation ausente — verificá que cited_by_id está poblado (b2g enrich). "
+        "El corpus del Ciclo B debe tener 10 accepted con cited_by_id."
     )
 
     # Verificar que cada red tiene nodos y aristas
@@ -155,39 +162,47 @@ def test_redes_principales_no_vacias() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 4. Co-citación vacía y omitida graceful
+# 4. Co-citación con datos (cited_by_id poblado en los accepted)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_cocitacion_vacia_omitida_graceful() -> None:
-    """cited_by_id está vacío → co-citación omitida graceful por Networks.quick.
+def test_cocitacion_con_datos() -> None:
+    """cited_by_id está poblado en los 10 accepted → co-citación tiene datos.
 
-    El corpus original no pasó por el Enricher de co-citación (Hito 8b),
-    así que cited_by_id está en blanco para todos los papers. Networks.quick
-    debe omitir la co-citación sin error (solo un aviso informativo en el log).
+    Ciclo B (B3): el corpus se generó con b2g enrich --max-citing 25 sobre
+    10 seeds aceptados. cited_by_id debe estar poblado en esos 10 papers
+    y Networks.quick debe incluir la red de co-citación.
     """
     from bib2graph.constants import NetworkKind
     from bib2graph.networks.facade import Networks
 
     corpus = _load_corpus_from_parquet()
 
-    # Verificar precondición: cited_by_id vacío en todo el corpus
+    # Verificar precondición: cited_by_id poblado en al menos algunos papers
     table = corpus.to_arrow()
     cited_col = table.column("cited_by_id").to_pylist()
-    assert not any(cited_col), (
-        "Se esperaba cited_by_id vacío en todo el corpus. "
-        "Si el corpus fue enriquecido, actualizar este test."
+    papers_with_cited = sum(1 for v in cited_col if v)
+    assert papers_with_cited > 0, (
+        "Se esperaba cited_by_id poblado en al menos un paper (los accepted). "
+        "Regenerá el corpus con: b2g enrich --max-citing 25 "
+        "(requiere red; el corpus.parquet commiteado ya tiene cited_by_id)."
     )
 
     artifacts = Networks.quick(corpus)
     kinds = [a.spec.kind for a in artifacts]
 
-    # Co-citación no debe estar en la lista
-    assert NetworkKind.COCITATION not in kinds, (
-        "Se esperaba que co-citación fuera omitida (cited_by_id vacío). "
-        f"Redes presentes: {kinds}"
+    # Co-citación debe estar presente
+    assert NetworkKind.COCITATION in kinds, (
+        "Se esperaba que co-citación estuviera presente (cited_by_id poblado). "
+        f"Redes presentes: {kinds}. "
+        "Verificá que el corpus.parquet commiteado proviene del Ciclo B."
     )
+
+    # La red de co-citación debe tener datos
+    cocit = next(a for a in artifacts if a.spec.kind == NetworkKind.COCITATION)
+    assert cocit.graph.number_of_nodes() > 0, "La red de co-citación no tiene nodos."
+    assert cocit.graph.number_of_edges() > 0, "La red de co-citación no tiene aristas."
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +253,7 @@ def test_run_restore_desde_parquet_ejemplo(tmp_path: Path) -> None:
 
     Usa un slice de 10 filas del parquet para mantener el test ágil
     (el comportamiento de run_restore es independiente del tamaño del corpus;
-    la cobertura de 137 filas se verifica en los tests 1-5 más arriba).
+    la cobertura de las ~80 filas se verifica en los tests 1-5 más arriba).
     """
     import pyarrow.parquet as pq
 
