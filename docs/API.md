@@ -344,6 +344,17 @@ comunidades detectadas (listas con separador `|`); en el envelope `--json`, cada
 `data["networks"]` suma `clusters_csv` (ruta del archivo) **condicionalmente** —solo cuando ese
 archivo se generó—.
 
+**`build --corpus-scope [all|accepted|seeds_only]` (AS-BUILT #56):** filtra el corpus por estado de
+curación **antes** de proyectar (vía `Corpus.scoped`, §1.2). **Default `all`** = corpus completo
+(opt-in, sin cambio de comportamiento). `accepted` = semillas (`is_seed=True`) + papers aceptados;
+`seeds_only` = solo semillas. El `networks/.corpus_hash` se sella con el hash del corpus **FILTRADO**
+(no del vivo completo), y `clusters.csv`/`decorate` reflejan exactamente ese subset (sin drift). Si el
+scope deja **0 papers**: **exit 0** + `warning` accionable ("corré `b2g curate`… o usá
+`--corpus-scope=all`") — **no** es error; escribe `networks/` vacío con `.corpus_hash` vacío. El
+envelope `--json` suma `data["corpus_scope"]` (y `warnings`). **NO confundir con `NetworkSpec.scope`
+(§10):** ejes distintos. `--corpus-scope` filtra el **corpus entero** por curación (un input al
+`build`); `NetworkSpec.scope` (`full`/`seeds_only`) es **por-red declarativa** sobre `is_seed`.
+
 **`snapshot` (AS-BUILT #32, 2026-06-17):** `b2g snapshot` sella una foto reproducible del estado vivo
 (parquet + `manifest.json`, ADR 0017). **`--out-dir` pasó a override OPCIONAL** — sin él, escribe en
 **`<workspace>/snapshots/`** (resolución ambiente vía `resolve_workspace`, igual que `build`); en modo
@@ -525,6 +536,17 @@ class Corpus:
     def seeds(self) -> pa.Table:        """Vista is_seed == True."""
     def candidates(self) -> pa.Table:   """Vista curation_status == 'candidate'."""
     def accepted(self) -> pa.Table:     """Vista curation_status == 'accepted' (la biblioteca curada)."""
+
+    def scoped(self, scope: str) -> "Corpus":
+        """Vista PURA por estado de curación: devuelve un Corpus NUEVO con el subconjunto de filas
+        (no muta el original). Valores: `'all'` = corpus completo; `'accepted'` = `is_seed == True`
+        OR `curation_status == 'accepted'`; `'seeds_only'` = `is_seed == True`. Scope inválido →
+        `ValueError` accionable. Determinista: dos llamadas con el mismo scope dan corpora con el
+        mismo `corpus_hash` (subset estable). `'all'` reusa el backend; los otros materializan el
+        filtro en un `InMemoryBackend`. Lo usa `b2g build --corpus-scope` para sellar el hash del
+        corpus FILTRADO. Issue #56. **NO confundir con `NetworkSpec.scope`** (§10): aquel es un
+        eje por-red (`full`/`seeds_only`) sobre `is_seed`; `scoped()` filtra el corpus entero por
+        curación antes de proyectar."""
 
     def with_manifest(self, manifest: Manifest) -> "Corpus":
         """Devuelve un Corpus nuevo con el MISMO contenido y otro Manifest (semántica de valor:
@@ -1291,6 +1313,11 @@ es la única capa que sabe de labels.
 corpus para producir **una fila de resumen por comunidad**. Es el insumo tabular de la composición de
 clusters (quién/qué/cuándo cae en cada comunidad), legible offline (Excel/Calc) y la base del
 `clusters.csv` que escribe `b2g build` (§convenciones CLI).
+
+> **Con `b2g build --corpus-scope` (#56):** el `clusters.csv` se computa sobre el corpus **FILTRADO**,
+> así que sus filas/conteos reflejan **solo** los nodos del subset (`accepted` / `seeds_only`), no el
+> corpus vivo completo. `build` pasa el mismo corpus filtrado a `cluster_table`, por lo que `size` y
+> los `*_count` cuadran con los nodos del grafo (sin drift).
 
 ```python
 def cluster_table(table: pa.Table, artifact: NetworkArtifact) -> list[dict[str, Any]]:

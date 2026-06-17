@@ -156,6 +156,7 @@ def run_build(
     store_path: str | Path,
     *,
     out_dir: str | Path | None = None,
+    corpus_scope: str = "all",
 ) -> dict[str, Any]:
     """Computa redes bibliométricas y escribe artefactos a disco.
 
@@ -163,27 +164,33 @@ def run_build(
     institución, co-word). Escribe GraphML + metrics.json por red.
     Para redes de paper con comunidades detectadas escribe también clusters.csv
     (tabla de resumen de comunidades, issue #31).
-    Sella ``networks/.corpus_hash`` con el hash del corpus que las produjo.
+    Sella ``networks/.corpus_hash`` con el hash del corpus **filtrado** que las
+    produjo (no del corpus vivo completo).
     Transiciona a BUILT tras escribir con éxito.
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
         out_dir: Directorio base de salida. Default: ``<store_dir>/networks/``.
+        corpus_scope: Filtro de curación aplicado antes de construir las redes.
+            ``'all'`` (default) = corpus completo; ``'accepted'`` = semillas +
+            aceptados; ``'seeds_only'`` = solo semillas.
 
     Returns:
-        Dict con ``networks_built``, ``artifacts_dir``, ``corpus_hash``
-        y lista de redes.
+        Dict con ``networks_built``, ``artifacts_dir``, ``corpus_hash``,
+        ``corpus_scope`` y lista de redes.
 
     Raises:
         DependencyError: Si falta ``python-louvain``.
         StoreError: Si el store está bloqueado.
     """
+    import warnings as _warnings
+
     from bib2graph.cycle import apply_transition
     from bib2graph.networks.facade import Networks
 
     store = open_store(store_path)
     try:
-        corpus = store.load()
+        corpus_full = store.load()
 
         # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
         # no un literal en el comando (ADR 0016 enmendado §1).
@@ -197,6 +204,32 @@ def run_build(
         else:
             artifacts_dir = Path(out_dir)
 
+        # Filtrar el corpus según el scope ANTES de construir redes (#56).
+        # El corpus filtrado también es el que se pasa a _write_artifacts para que
+        # clusters.csv cuadre con los nodos del grafo (sin drift).
+        corpus = corpus_full.scoped(corpus_scope)
+
+        # Caso de 0 nodos: no es error, pero sí merece un warning accionable.
+        build_warnings: list[str] = []
+        if len(corpus) == 0:
+            msg = (
+                f"scope='{corpus_scope}' dejó 0 papers; "
+                "corré `b2g curate` para aceptar papers o usá `--corpus-scope=all`."
+            )
+            _warnings.warn(msg, stacklevel=2)
+            build_warnings.append(msg)
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+            (artifacts_dir / ".corpus_hash").write_text("", encoding="utf-8")
+            store.backend.set_loop_state(new_state, cycle_round=new_round)
+            return {
+                "networks_built": 0,
+                "artifacts_dir": str(artifacts_dir),
+                "corpus_hash": "",
+                "corpus_scope": corpus_scope,
+                "networks": [],
+                "warnings": build_warnings,
+            }
+
         try:
             artifacts = Networks.quick(corpus)
         except ImportError as exc:
@@ -207,9 +240,8 @@ def run_build(
 
         networks_info = _write_artifacts(artifacts, corpus, artifacts_dir)
 
-        # ADR 0029 — sellar con corpus_hash para detección de staleness.
-        # El hash ya lo tiene el corpus vía Manifest/CorpusSnapshot; lo derivamos
-        # del corpus cargado usando la misma función que usa Manifest.
+        # ADR 0029 — sellar con corpus_hash del corpus FILTRADO (no del vivo completo).
+        # Esto garantiza que el hash refleja exactamente lo que produjo las redes.
         from bib2graph.backends.memory import compute_corpus_hash
 
         corpus_hash = compute_corpus_hash(corpus.to_arrow())
@@ -225,7 +257,9 @@ def run_build(
         "networks_built": len(artifacts),
         "artifacts_dir": str(artifacts_dir),
         "corpus_hash": corpus_hash,
+        "corpus_scope": corpus_scope,
         "networks": networks_info,
+        "warnings": build_warnings,
     }
 
 
@@ -244,6 +278,20 @@ def run_build(
     ),
 )
 @click.option(
+    "--corpus-scope",
+    "corpus_scope",
+    type=click.Choice(["all", "accepted", "seeds_only"]),
+    default="all",
+    show_default=True,
+    help=(
+        "Filtra el corpus antes de construir las redes. "
+        "'all' = corpus completo (default, sin cambio de comportamiento); "
+        "'accepted' = semillas (is_seed=True) + papers aceptados por curación; "
+        "'seeds_only' = solo semillas (is_seed=True). "
+        "Si el scope deja 0 papers, termina con exit 0 y un warning accionable."
+    ),
+)
+@click.option(
     "--json",
     "json_output",
     is_flag=True,
@@ -255,12 +303,13 @@ def run_build(
 def build_cmd(
     ctx: click.Context,
     out_dir: str | None,
+    corpus_scope: str,
     json_output: bool,
 ) -> None:
     """Computa las 4 redes con Networks.quick y escribe artefactos.
 
     Tras el build, el estado del lazo transiciona a BUILT.
-    El directorio networks/ queda sellado con .corpus_hash.
+    El directorio networks/ queda sellado con .corpus_hash del corpus filtrado.
     """
     # ADR 0029: usar networks_dir del workspace si no se especifica --out-dir
     ws = resolve_workspace(ctx.obj)
@@ -268,7 +317,9 @@ def build_cmd(
     if effective_out_dir is None:
         effective_out_dir = ws.networks_dir
 
-    data = run_build(ws.library_path, out_dir=effective_out_dir)
+    data = run_build(
+        ws.library_path, out_dir=effective_out_dir, corpus_scope=corpus_scope
+    )
 
     if json_output:
         envelope = build_envelope(
@@ -276,9 +327,12 @@ def build_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=data.get("warnings"),
         )
         emit(envelope)
     else:
+        for w in data.get("warnings", []):
+            emit_human(f"ADVERTENCIA: {w}")
         emit_human(f"Redes construidas: {data['networks_built']}")
         emit_human(f"Artefactos en: {data['artifacts_dir']}")
         emit_human(f"corpus_hash: {data['corpus_hash']}")
