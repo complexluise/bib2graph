@@ -72,3 +72,27 @@ proyección** (puro); el núcleo no depende de la costura. La curación sigue si
 verdes, mypy/ruff limpios. Las fórmulas de método (backward = co-citación; forward = citación directa;
 centralidad diferida) se documentan en el AS-BUILT del ADR
 [0020](0020-metodo-forrajeo-scent-filtros-reject.md); **ninguna usa IA**.
+
+## Enmienda — 2026-06-17 (la curación automatizada `[auto-vN]` es opt-in y excepción, NO default · #65)
+
+La [Nota 13](../Notas/13-continuacion-sesion-valoraciones.md) (sesión de QA con el caso
+`valoraciones`) usó **curación automatizada por heurísticas de keywords** sobre
+título/abstract/keywords para cerrar el ciclo de QA sin esperar la CLI de curación (#22/#26).
+Cada decisión del clasificador quedó marcada con un tag de auditoría (`[auto-v1]`/`[auto-v3]`/
+`[auto-v4]`) en la columna `notes` del CSV.
+
+Esto **NO modifica la decisión de este ADR.** La regla **"la curación es 100% humana"** sigue
+**vigente**. Para que no se lea esa sesión como permiso o precedente:
+
+1. La curación automatizada con tags `[auto-vN]` es **una excepción documentada y acotada a esa
+   sesión de QA**, **NO un patrón ni un default**. Fue una decisión de método del PO para cerrar el
+   ciclo de prueba, no un cambio de producto.
+2. Las heurísticas son **deterministas** (substring / keywords, sin LLM ni embeddings): coherentes
+   con el §Decisión de este ADR. No introducen IA generativa.
+3. **El default de la CLI nunca aplica curación automática.** Si en el futuro se implementa curación
+   asistida heurística, debe ser **opt-in explícito** y quedar **marcada como tal** (tags de
+   auditoría + reversibilidad humana); el humano sigue siendo quien acepta o revierte. Esa sería una
+   **decisión nueva** (enmienda o ADR nuevo), no un comportamiento por defecto.
+
+Referencia: [Nota 13 — Continuación de la sesión QA](../Notas/13-continuacion-sesion-valoraciones.md)
+§"La excepción a la regla 'curación 100% humana'".
