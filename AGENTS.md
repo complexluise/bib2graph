@@ -29,8 +29,8 @@
   (`DuckDBStore`), `sources/` (`OpenAlexSource`, `BibtexSource`), `foraging/` (`Forager`,
   scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/` con 14 subcomandos en `cli/commands/`, no un
-  placeholder—. **437 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+  El **CLI `b2g` es real** —paquete `cli/` con 15 subcomandos en `cli/commands/`, no un
+  placeholder—. **459 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
 - **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
   [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
   núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
@@ -77,6 +77,18 @@
   `b2g status` suma `workspace: {root, source}`; `b2g build` sella `networks/.corpus_hash`. **422
   tests verdes**, 14 subcomandos. Flujo: `b2g init <name>` → trabajar **dentro** de la carpeta sin
   `--store`.
+- **Curación a escala vía CSV** (#22 + #26, 2026-06-16): nuevo **15° subcomando `b2g curate`**
+  (`cli/commands/curate.py`) con dos modos mutuamente excluyentes — **`--dump`** escribe
+  `curacion.csv` (default `<workspace>/exports/`; `--out` override; `--all` para todo el corpus, default
+  solo candidatos) para revisión offline en Excel/Calc, y **`--from-csv`** aplica las decisiones en
+  lote (`accepted`→accept / `rejected`→reject / `undecided`→no-op), **idempotente** (reimportar = mismo
+  `corpus_hash`; `decided_at` inyectado en la frontera, R2) y con **validación accionable** + reporte de
+  **IDs huérfanos** (`not_found_count`, cierra el no-op silencioso). `note` advisory (round-trip,
+  ignorado al importar); `scent_score` best-effort, `cluster` diferido. **Curación transversal** (NO
+  transiciona el `CycleState`). Cierra el hueco de la
+  [Nota 09](docs/Notas/09-sesion-qa-prueba-ecologia-valoraciones.md) B4/B5/P1 (sin dump CSV ni reimport
+  en lote, la curación a escala no era viable). **459 tests verdes**, 15 subcomandos. Ver
+  `docs/API.md` §convenciones CLI.
 - Toda la información del producto, la arquitectura, los contratos y la secuencia de
   construcción está en `docs/`. **Leer `docs/ROADMAP/` antes de tocar nada**: cada hito declara
   qué historias del PRD §7 cumple, sus criterios de aceptación (DoD) y los tests TDD que se
@@ -254,8 +266,8 @@ src/bib2graph/
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
-                       # cli/commands/ = 14 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
-                       # init scaffold de workspace —ADR 0029). CLI = API
+                       # cli/commands/ = 15 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
+                       # init scaffold de workspace —ADR 0029, curate dump/import CSV —#22+#26). CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
   workspace.py         # Workspace (init/open/resolve) + WorkspaceManifest (ADR 0029): la carpeta es la
                        # unidad de persistencia; resolución ambiente; import perezoso de DuckDBStore

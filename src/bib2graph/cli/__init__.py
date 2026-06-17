@@ -8,7 +8,7 @@ Entry point en ``pyproject.toml``:
 
 Subcomandos:
     init, seed, chain, filter, build, enrich, monitor, export, snapshot,
-    status, inspect, validate, accept, reject.
+    status, inspect, validate, accept, reject, curate.
 
 Cada subcomando lleva:
   - ``--json``: salida JSON estructurada (envelope versionado, §API.md).
@@ -39,6 +39,7 @@ import click
 from bib2graph.cli.commands.accept import accept_cmd
 from bib2graph.cli.commands.build import build_cmd
 from bib2graph.cli.commands.chain import chain_cmd
+from bib2graph.cli.commands.curate import curate_cmd
 from bib2graph.cli.commands.enrich import enrich_cmd
 from bib2graph.cli.commands.export import export_cmd
 from bib2graph.cli.commands.filter import filter_cmd
@@ -105,7 +106,7 @@ def b2g(ctx: click.Context, workspace: str | None, store: str | None) -> None:
     error accionable (exit 1) que sugiere 'b2g init' o '--workspace'.
 
     Subcomandos: init, seed, chain, filter, build, enrich, monitor, export,
-    snapshot, status, inspect, validate, accept, reject.
+    snapshot, status, inspect, validate, accept, reject, curate.
 
     Ejemplo con workspace:
         b2g init mi-investigacion
@@ -121,7 +122,7 @@ def b2g(ctx: click.Context, workspace: str | None, store: str | None) -> None:
     ctx.obj["store"] = store
 
 
-# Registrar los 14 subcomandos
+# Registrar los 15 subcomandos
 b2g.add_command(init_cmd)
 b2g.add_command(seed_cmd)
 b2g.add_command(chain_cmd)
@@ -136,6 +137,7 @@ b2g.add_command(inspect_cmd)
 b2g.add_command(validate_cmd)
 b2g.add_command(accept_cmd)
 b2g.add_command(reject_cmd)
+b2g.add_command(curate_cmd)
 
 
 def main() -> int:

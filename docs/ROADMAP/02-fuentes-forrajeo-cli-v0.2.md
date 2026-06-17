@@ -170,8 +170,10 @@ keywords multilingües y curar con trazabilidad PRISMA.
   PRISMA (año/tipo/idioma/mínimo de citas) **con conteo en cada paso** → `Manifest.filters`. Es el
   nombre v0.2 de lo que antes se llamaba `curate`.
 - El **`accept`/`reject` programático sobrevive** (vía `Corpus`/backend, para agentes y la
-  biblioteca viva — historia C4). La **curación interactiva rica (`curate`) y la GUI son futuro**:
-  ahí empieza la GUI, **no** en v0.2.
+  biblioteca viva — historia C4). **AS-BUILT #22/#26 (2026-06-16):** la **curación a escala** sí se
+  resolvió con un subcomando `curate` de **dump/import CSV** (no interactivo); la **curación
+  interactiva rica y la GUI siguen siendo futuro**: ahí empieza la GUI, **no** en v0.2. Ver
+  [LO QUE VIENE](04-lo-que-viene.md) §Backlog y `API.md` §convenciones CLI.
 - **`status`** expone el `LoopState` (ADR [0016](../decisiones/0016-maquina-estados-lazo.md)):
   estado actual (`SEEDED/FORAGED/FILTERED/BUILT`), transiciones disponibles y conteos por
   `curation_status`. Humanos e IAs comparten el mismo mapa del lazo.

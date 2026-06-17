@@ -205,6 +205,22 @@ No se prometen ni se cablean clientes que no se usan.
   ([#34](https://github.com/complexluise/bib2graph/issues/34),
   [Nota 07](../Notas/07-frontend-tool-for-thought.md)). **Fuera de este corte:** `snapshot`/`export`
   aún con `--out-dir` explícito; staleness solo sella el hash (sin aviso/regeneración automática).
+- **Curación a escala vía CSV (#22 dump + #26 import) · ✅ HECHO (2026-06-16):** marcar papers de a
+  uno con `accept`/`reject --ids` no escala (síntomas B4/B5/P1 de la
+  [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). Se agregó el **15° subcomando
+  `b2g curate`** (`cli/commands/curate.py`) con dos modos mutuamente excluyentes: **`--dump`** escribe
+  `curacion.csv` (default `<workspace>/exports/`; `--out` override; `--all` para todo el corpus, default
+  solo candidatos) para revisar offline en Excel/Calc, y **`--from-csv`** aplica las decisiones en lote
+  (`accepted`→accept / `rejected`→reject / `undecided`→no-op). Columnas: `id, openalex_id, title, year,
+  authors, scent_score, cluster, decision, note` (solo `decision`/`note` editables). **Idempotente**
+  (reimportar = mismo `corpus_hash`; `decided_at` inyectado en la frontera, R2/ADR
+  [0017](../decisiones/0017-reproducibilidad-historia-snapshot.md)), **validación accionable** y reporte
+  de **IDs huérfanos** (`not_found_count`, cierra el no-op silencioso). **Curación transversal** (NO
+  transiciona el `CycleState`; ADR [0016](../decisiones/0016-maquina-estados-lazo.md) enmendado R3).
+  **Fuera de este corte:** `note` es **advisory** (round-trip en el dump, ignorada al importar —
+  `ProvenanceEvent` no tiene campo de anotación; persistirla sería un ADR futuro); `scent_score`
+  best-effort (vacío hasta que el Forager guarde scent en provenance) y `cluster` diferido (integración
+  con redes). Gate verde, **459 tests**. Ver `API.md` §convenciones CLI.
 
 > **RETIRADO del producto (ADR [0022](../decisiones/0022-producto-sin-ia-generativa.md), 2026-06-15):**
 > el **fallback fuzzy/semántico del thesaurus por LLM** y la **"máquina de tensiones"** (la antigua
