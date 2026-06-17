@@ -38,5 +38,16 @@ snapshots/*.parquet
 # Datos de usuario / artefactos de investigación — NUNCA al repo
 # (bibliotecas vivas, workspaces de prueba locales, redes exportadas)
 *.duckdb
+*.duckdb.*.bak
 prueba/
 redes/
+valoraciones_*
+
+# Excepción: corpus de ejemplo commiteado (ADR 0030, Ciclo 9b)
+# examples/ contiene el corpus congelado, equation.yaml y README — sí van al repo.
+# Los archivos fuente del PO (*.bak, valoraciones_*) siguen gitignoreados arriba.
+!examples/
+!examples/**
+# Defensivo: un .duckdb (estado vivo no determinista) NUNCA va al repo, ni
+# siquiera dentro de un workspace de ejemplo (ADR 0030 §Convención lo prohíbe).
+examples/**/*.duckdb

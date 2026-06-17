@@ -110,6 +110,18 @@
 > `restore`) ni `seed --from-bib` (diferido a un issue futuro, ADR 0030 §Diferido). Ver §2 +
 > §convenciones CLI.
 >
+> **Sincronizado con el corpus de ejemplo + gate R2 — #33 / Ciclo 9b (AS-BUILT, 2026-06-17):**
+> se materializa la convención **`examples/`** (§convención `examples/`) y se construye el primer
+> ejemplo, **`examples/valoraciones/`** (corpus curado congelado de 137 filas + `equation.yaml` de
+> procedencia + `README.md` + script de regeneración), excepción acotada al `.gitignore` de datos
+> de usuario. Es el **caso real reproducible sin red** del gate #33: se rehidrata con
+> `b2g restore --from-corpus examples/valoraciones/corpus.parquet` → `build` → `networks`/`clusters`.
+> Un **gate R2** (`tests/unit/test_example_r2_gate.py`, 7 tests) verifica `corpus_hash` estable +
+> composición de comunidades Louvain estable entre corridas (cierra el agujero R2 de la
+> [Nota 09](Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). **#33 cerrado / 9a+9b completos**;
+> `seed --from-bib` y `examples/bibtex/` siguen diferidos (issue #50). Ver
+> [ADR 0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md) §AS-BUILT 9b.
+>
 > **Sincronizado con los remanentes del modelo workspace — #32 (AS-BUILT, 2026-06-17):** cierra lo
 > que el ADR [0029](decisiones/0029-workspace-por-investigacion.md) dejó "fuera de corte".
 > **`b2g snapshot` y `b2g export`** se resuelven por ambiente: `--out-dir` pasó de obligatorio a
@@ -188,7 +200,8 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
   `max(loop_round(), 1)` (evita ronda 0 en bases legacy pre-R3). `data` = `{papers_loaded,
   total_papers, state, round}`; `--json` con `schema="1"`. Errores accionables: parquet inexistente o
   con schema no canónico → `DataError` (exit 2). **No** es semilla: es restaurar estado terminado (por
-  eso vive aparte de `seed`).
+  eso vive aparte de `seed`). El caso real reproducible que rehidrata `restore` es el corpus
+  congelado bajo **`examples/valoraciones/`** (ver §convención `examples/` abajo).
 - **`accept`** / **`reject`** (decisión del PO, ADR 0021 §A): curación programática por `--ids`,
   ahora **subcomandos CLI de primera clase** (no solo API de librería), para que un agente cure la
   biblioteca viva por subprocess (historia C4). **AS-BUILT #22/#26:** la curación **a escala** ya no es
@@ -706,6 +719,35 @@ seed/source, mide % de refs resueltas, % con DOI, distribución idioma/región y
 enriquecimiento. Alimenta el juicio humano de **cuándo cambiar de Source** y acota la
 incertidumbre del ranking por *information scent* sobre datos parciales. Se declara como contrato
 en v0.1 (función pura sobre `pa.Table`), sin cablearse vacío (lección 5).
+
+### 2.1 Convención `examples/` — corpus de ejemplo commiteado (AS-BUILT #33 / 9b, 2026-06-17)
+
+`examples/` es la **única** excepción al `.gitignore` de datos de usuario (ADR
+[0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)): un corpus real, curado y reducido
+(CC0/OpenAlex) commiteado al árbol para servir de **caso real reproducible sin red** (gate #33 →
+epic GUI #34). Reglas:
+
+- **Un ejemplo = una carpeta de propósito ÚNICO** (`examples/<nombre>/`), autocontenida; no se
+  mezclan tipos de artefacto. Cada carpeta lleva:
+  - **`corpus.parquet`** — corpus curado y congelado (con `decision`/`curation_status`/`is_seed`
+    ya marcados), schema canónico `CORPUS_SCHEMA`. **Parquet/CSV, NUNCA `.duckdb`** (la biblioteca
+    viva es estado mutable no determinista; el parquet es export sellado y diff-friendly, ADR
+    0006/0009/0017).
+  - **`equation.yaml`** — la ecuación de procedencia (cargable con `EquationSpec`, §2). Documenta
+    "de qué búsqueda salió este corpus"; **no** es el comando del gate.
+  - **`README.md`** — qué demuestra y con qué comando se corre.
+  - **script de procedencia** (p. ej. `build_corpus.py`) — regeneración determinista del parquet
+    desde la data fuente local. Su fuente es data del PO gitignoreada; **no corre en CI**, no toca
+    red.
+- **Cómo se restaura:** `b2g restore --from-corpus examples/<nombre>/corpus.parquet` (§2.`restore`)
+  rehidrata el corpus **sin red** en el `library.duckdb` de un workspace temporal, preserva la
+  curación y transiciona a `FILTERED`; luego `build` → `networks`/`clusters` corren localmente.
+- **`.gitignore`:** `!examples/` trackea el ejemplo; `examples/**/*.duckdb` lo protege de que un
+  store vivo se cuele. El resto de la política de datos de usuario no cambia.
+- **Ejemplo existente:** **`examples/valoraciones/`** (137 filas: 7 `accepted`, 130 `candidate`,
+  107 seeds). Verificado por el gate R2 `tests/unit/test_example_r2_gate.py` (`corpus_hash` estable
+  + comunidades Louvain estables entre corridas). **`examples/bibtex/` queda diferido** (acompaña a
+  `seed --from-bib`, issue #50).
 
 ---
 

@@ -233,10 +233,10 @@ No se prometen ni se cablean clientes que no se usan.
   corpus vivo (**avisa, NO regenera**: invalidación por hash, no build-system). `Workspace` ganó
   `read_networks_corpus_hash()`/`is_networks_cache_stale()`. **El modelo workspace queda COMPLETO**
   (sin remanentes). Gate verde, **534 tests**.
-- **Caso real reproducido: ecuación declarativa + `restore` (#33, ADR
-  [0030](../decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)) · Ciclo 9a ✅ HECHO (2026-06-17) ·
-  9b PENDIENTE:** prerequisito del gate de la epic GUI [#34](https://github.com/complexluise/bib2graph/issues/34)
-  (un tercero reproduce el lazo end-to-end sobre un corpus real, **sin red**).
+- **Caso real reproducido: ecuación declarativa + `restore` + corpus de ejemplo (#33, ADR
+  [0030](../decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)) · ✅ HECHO (9a+9b, 2026-06-17) ·
+  #33 CERRADO:** prerequisito del gate de la epic GUI [#34](https://github.com/complexluise/bib2graph/issues/34)
+  (un tercero reproduce el lazo end-to-end sobre un corpus real, **sin red**) — **cubierto**.
   - **9a ✅ HECHO (2026-06-17):** **(1)** capa declarativa de la ecuación — `EquationSpec` +
     `load_equation_spec` (`sources/equation.py`, Pydantic `extra="forbid"`, clave raíz `equation:`,
     errores accionables como `load_specs`) y **2º modo de `b2g seed`: `--spec equation.yaml`**
@@ -249,15 +249,19 @@ No se prometen ni se cablean clientes que no se usan.
     transición permisiva `filter`, ADR [0016](../decisiones/0016-maquina-estados-lazo.md); deja correr
     `build`/`networks` sin re-forrajeo). Ronda normalizada con `max(loop_round(), 1)` (evita ronda 0 en
     bases legacy pre-R3). Gate verde, **564 tests**. Ver `API.md` §2 + §convenciones CLI.
-  - **9b PENDIENTE:** **workspace de ejemplo `examples/valoraciones/`** (corpus curado congelado en
-    parquet + `equation.yaml` de procedencia + `README.md` + script de regeneración) como **excepción
-    al `.gitignore`** de datos de usuario, y el **gate de reproducibilidad R2** que corre
-    `restore --from-corpus` → `build` → `networks`/`clusters` **sin red** y verifica `corpus_hash`
-    estable + comunidades Louvain deterministas (cierra el agujero R2 de la
-    [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)).
-  - **Diferido (reabrible, fuera del ADR 0030):** **`b2g seed --from-bib <archivo.bib>`** (2º camino de
-    seed por BibTeX — cablear el `BibtexSource.load` ya existente al CLI; issue futuro propio) y su
-    ejemplo **`examples/bibtex/`**.
+  - **9b ✅ HECHO (2026-06-17):** **workspace de ejemplo `examples/valoraciones/`** (corpus curado
+    congelado en `corpus.parquet`, **137 filas: 7 `accepted` / 130 `candidate` / 107 seeds**, reducción
+    determinista del corpus real del PO CC0/OpenAlex + `equation.yaml` de procedencia + `README.md` +
+    `build_corpus.py` de regeneración) como **excepción al `.gitignore`** de datos de usuario
+    (`!examples/` + regla defensiva `examples/**/*.duckdb`). El **gate de reproducibilidad R2**
+    (`tests/unit/test_example_r2_gate.py`, 7 tests) corre `restore --from-corpus` → `build` →
+    `networks`/`clusters` **sin red** sobre el corpus real y verifica **`corpus_hash` estable** +
+    **comunidades Louvain deterministas entre corridas** (cierra el agujero R2 de la
+    [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). **Con 9b, #33 queda CERRADO** y
+    el gate de #34 cubierto. Gate verde, **571 tests**. Ver `API.md` §2.1.
+  - **Diferido (reabrible, fuera del ADR 0030; issue #50):** **`b2g seed --from-bib <archivo.bib>`**
+    (2º camino de seed por BibTeX — cablear el `BibtexSource.load` ya existente al CLI) y su ejemplo
+    **`examples/bibtex/`**.
 - **Curación a escala vía CSV (#22 dump + #26 import) · ✅ HECHO (2026-06-16):** marcar papers de a
   uno con `accept`/`reject --ids` no escala (síntomas B4/B5/P1 de la
   [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). Se agregó el **15° subcomando

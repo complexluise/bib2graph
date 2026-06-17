@@ -124,6 +124,13 @@ OIDC), no el push de tags. Cortes acordados:
 - **v0.4+ — opcionales (Hitos 7–9) · ✅ COMPLETOS:** dedup fuzzy (**Hito 7 ✅**), `Enricher` de
   co-citación (**Hito 8 ✅**: refs→DOI + co-citación end-to-end), `NetworkSpec` YAML (**Hito 9 ✅**,
   2026-06-17). Con esto **Hitos 1–9 están construidos**.
+- **Caso real reproducido (#33, ADR [0030](../decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md))
+  · ✅ CERRADO (9a+9b, 2026-06-17):** ecuación declarativa (`EquationSpec` + `b2g seed --spec`),
+  `b2g restore --from-corpus` (rehidratación sin red) y el **corpus de ejemplo `examples/valoraciones/`**
+  (137 filas) con **gate de reproducibilidad R2** (`corpus_hash` estable + comunidades Louvain
+  deterministas). Es el **gate de la epic GUI #34** (un tercero reproduce el lazo end-to-end sin red);
+  con #33 cerrado, **todo el terreno pre-GUI está completo**. `seed --from-bib` + `examples/bibtex/`
+  quedan diferidos (issue #50). Ver [04 · Lo que viene](04-lo-que-viene.md) §Backlog.
 - **Reevaluación 2026-06-17 (pre-GUI):** **Hito 10 (viz) → DIFERIDO/absorbido en la epic GUI #34**
   (la GUI es la capa de lectura visual; el export visual pre-GUI ya lo cubren `decorate` #25 / `clusters.csv`
   #31). **Hito 11 (Zotero/Neo4j) → DESCARTADO (decisión del PO, 2026-06-17):** no se hace, no es

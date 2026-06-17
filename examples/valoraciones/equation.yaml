@@ -1,0 +1,62 @@
+# equation.yaml — Ecuación de búsqueda v3 del caso "valoraciones en educación"
+#
+# Caso: ecología de valoraciones en educación y pedagogía, con foco en cómo el
+# pensamiento complejo piensa la evaluación, notas y calificaciones.
+# Anclas conceptuales: Morin, Freire, transdisciplinariedad, pensamiento complejo.
+#
+# Procedencia: ecuación corrida el 2026-06-16 contra OpenAlex, produciendo el
+# corpus de 800 filas (485 seeds, 315 candidatos por chaining) que vive en
+# valoraciones_v3.duckdb.contaminado.bak (gitignoreado, local del PO).
+# El corpus.parquet commiteado es la reducción curada de ese corpus.
+#
+# Uso para reproducir la búsqueda (requiere red y acceso a OpenAlex):
+#   b2g seed --spec examples/valoraciones/equation.yaml
+#
+# Para reproducir el ejemplo offline (sin red), usar restore:
+#   b2g restore --from-corpus examples/valoraciones/corpus.parquet
+#
+# NOTA: min_year / max_year están declarados pero aún no filtran contra
+# OpenAlex (trabajo futuro — ADR 0030 §Schema de equation.yaml).
+#
+# equation_id de procedencia: eq-20260616T225800
+
+equation:
+  # Anclas conceptuales: pensamiento complejo (Morin), pedagogía crítica (Freire),
+  # transdisciplinariedad, evaluación educativa compleja.
+  # La query combina los marcos teóricos nucleares con el dominio de evaluación/
+  # calificaciones en educación.
+  query: >-
+    ("pensamiento complejo" OR "complex thinking" OR "complexity thinking"
+     OR "Edgar Morin" OR "Paulo Freire" OR "transdisciplinarity"
+     OR "transdisciplinariedad" OR "pedagogía crítica" OR "critical pedagogy")
+    AND
+    ("evaluación" OR "evaluation" OR "assessment" OR "calificación"
+     OR "grading" OR "valoración" OR "valuation" OR "notas escolares"
+     OR "student evaluation" OR "educational assessment")
+
+  # Negaciones quirúrgicas: ruido detectado en la sesión de QA (Nota 09, §P3):
+  # - Ruido médico: "lupus", "inflamación" matchan por "sistémico"/"saberes"
+  # - Ruido ML: papers de machine learning/algoritmos sin contexto pedagógico
+  # - Ruido financiero: "stock exchange" matchaba por "exchange"
+  exclude:
+    - "machine learning"
+    - "deep learning"
+    - "neural network"
+    - "algorithm"
+    - "lupus"
+    - "inflammation"
+    - "rheumatology"
+    - "stock exchange"
+    - "financial"
+
+  # Tope de resultados: 200 (default de OpenAlexSource; el corpus original
+  # se sembró con este tope, produciendo 485 seeds en la ronda inicial).
+  max_results: 200
+
+  # native: false — la ecuación usa sintaxis WoS-style (comillas, OR, AND),
+  # que el Source traduce a la sintaxis nativa de OpenAlex.
+  native: false
+
+  # Rango temporal del caso de estudio (declarado, no filtra aún — ADR 0030).
+  min_year: 1990
+  max_year: 2026
