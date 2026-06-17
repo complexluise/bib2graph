@@ -246,3 +246,35 @@ semántica.
 > **Decidido por:** **steering arquitectónico (2026-06-16)** — backward=co-citación ratificado,
 > forward=citación-directa (revierte el acoplamiento puro del AS-BUILT), centralidad diferida.
 > Reconciliado con el DoD del ROADMAP Hito R4.
+
+## AS-BUILT — 2026-06-16 (#21: forward chaining batcheado + cap por semilla, scope `is_seed`)
+
+> El cuerpo del ADR (decisión **B**) describía el forward chaining sobre `Source.fetch_citing(openalex_id)`
+> **singular** —una request por paper (N+1)— y no fijaba un tope de citantes por semilla ni el scope
+> exacto sobre el que opera. Esta nota anexa el AS-BUILT verificado (gate verde, 422 tests); **no
+> reescribe** el cuerpo histórico.
+
+1. **Forward ya no hace N+1: reusa `OpenAlexSource.fetch_citing_batch`.** El
+   `Forager.chain(direction="forward"/"both")` agrupa los `cites:` en queries `cites:W1|W2|...` (lotes
+   ≤50) con **presupuesto por semilla** (sin starvation) + retry/backoff, en vez de una request por
+   fila. Es el mismo primitivo que el Enricher usa en 8b (ADR
+   [0025](0025-enricher-cocitacion-openalex.md)); el batching-por-OR diferido en R5 queda así también
+   cubierto para el Forager. `fetch_citing` singular sigue existiendo, pero el forward lo consume vía
+   la variante batcheada.
+2. **Cap por semilla `max_citing_per_paper` (default 50).** Nuevo parámetro de `Forager.__init__`,
+   expuesto en el CLI como **`--max-citing`** en `b2g chain`. Acota el *fetch* (no solo la columna)
+   por semilla.
+3. **Scope = `is_seed=True` (todas las semillas sembradas, SIN filtrar `curation_status`).** El
+   chaining corre **antes** de la curación (ciclo `SEEDED→FORAGED→…`→ curación transversal; las
+   semillas nacen `candidate`, Nota 09). **La restricción a semillas `accepted` NO es del Forager —
+   es del `Enricher`** (Hito 8b, post-curación): el Forager **expande la frontera** sobre `is_seed`,
+   el Enricher **pobla `cited_by_id`** sobre `accepted`. Documentar el Forager forrajeando solo
+   `accepted` fue el **drift que causó el bug** que este AS-BUILT cierra.
+4. **`preview` del forward sin red** estima el nº de semillas a forrajear (`is_seed`) sin requests,
+   manteniendo `forward_requires_fetch=True`. `b2g monitor` usa este mismo forward batcheado.
+
+**Lo que NO cambia:** backward = co-citación con el corpus (puro/local), filtros `rejected` (C),
+`apply_thesaurus` (D), `depth=1`, desempate por `id`, y la frontera "solo el Forager toca la red".
+
+> **Decidido por:** AS-BUILT verificado del #21 (2026-06-16, rama `feat/forager-cap-batching`); gate
+> verde, 422 tests. Ver `API.md` §5 y §2 (`fetch_citing_batch`).

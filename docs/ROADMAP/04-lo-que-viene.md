@@ -59,8 +59,15 @@
   **2º nivel de fetch de este hito** lo materializa: **`OpenAlexSource.fetch_citing_batch`** agrupa
   varios `cites:` en una query `cites:W1|W2|...` (lotes ≤50) con **presupuesto por semilla**, matando
   el N+1 de requests (mejora de performance, no de correctitud: el N+1 ya era resiliente al
-  rate-limit). `fetch_citing` singular (Forager) no cambió. Ver registro-ia R5.3 y "Cleanup
-  pre-v0.3" C-seguimientos.
+  rate-limit). Ver registro-ia R5.3 y "Cleanup pre-v0.3" C-seguimientos.
+- **Forward chaining del `Forager` batcheado (#21) · ✅ HECHO (2026-06-16):** el forward del
+  **`Forager`** (`b2g chain`/`b2g monitor`) también dejó de hacer N+1 — **reusa
+  `fetch_citing_batch`** (mismo primitivo del 8b), suma **cap por semilla**
+  `max_citing_per_paper`/**`--max-citing`** (default 50) y **preview sin red** (estima nº de semillas
+  a forrajear). **Scope = `is_seed=True`** (todas las semillas, **sin** filtrar `curation_status`): el
+  chaining precede a la curación; la restricción a `accepted` es del **Enricher** (8b), no del Forager
+  (ADR [0020](../decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) AS-BUILT #21; API.md §5).
+  Gate verde, **422 tests**.
 
 **Historias:** completa **D1** para la red de **co-citación** end-to-end (la más cara) y la
 interoperabilidad de referencias cross-source (OpenAlex ↔ `.bib`).

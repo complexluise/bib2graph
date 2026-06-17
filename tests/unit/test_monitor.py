@@ -46,7 +46,13 @@ def _make_row(
     title: str = "Test",
     curation_status: str = "candidate",
 ) -> dict[str, Any]:
-    """Fila mínima con schema completo."""
+    """Fila mínima con schema completo.
+
+    El default de ``curation_status`` es ``'candidate'`` porque así nacen
+    las semillas al sembrarse (``b2g seed``).  El forward chaining del Forager
+    opera sobre ``is_seed=True`` independientemente del ``curation_status``;
+    la restricción a ``accepted`` es del Enricher (post-curación).
+    """
     return {
         "id": id,
         "openalex_id": openalex_id,
