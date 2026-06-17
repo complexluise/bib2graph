@@ -96,9 +96,9 @@ def _translate(
     - Comodín ``*``: comportamiento distinto al de WoS.
     - Tags de campo WoS (``TS=``, ``AB=``, ``AU=``…): no mapean 1:1.
 
-    Las exclusiones (``exclude``) añaden cláusulas
-    ``AND NOT title_and_abstract.search:"<término>"`` al final del filtro y
-    se reportan en el translation_report para transparencia (PRD §4).
+    Las exclusiones (``exclude``) añaden cláusulas ``AND NOT "<término>"``
+    dentro de la expresión ``title_and_abstract.search:(...)`` y se reportan
+    en el translation_report para transparencia (PRD §4).
 
     El filtro de año (``min_year``/``max_year``) agrega cláusulas
     ``from_publication_date:<min_year>-01-01`` y/o
@@ -109,8 +109,9 @@ def _translate(
         query: Ecuación de búsqueda.
         native: Si es ``True``, no traducir; usar query cruda.
         exclude: Lista de términos a excluir de título/abstract.  Cada uno
-            genera una cláusula ``AND NOT title_and_abstract.search:"…"``.
-            ``None`` o lista vacía = sin exclusiones.
+            genera una cláusula ``AND NOT "…"`` dentro del paréntesis de
+            ``title_and_abstract.search``.  ``None`` o lista vacía = sin
+            exclusiones.
         min_year: Año mínimo de publicación (inclusive).  Genera
             ``from_publication_date:<min_year>-01-01``.  ``None`` = sin límite.
         max_year: Año máximo de publicación (inclusive).  Genera
@@ -141,23 +142,27 @@ def _translate(
             "mapean 1:1 en OpenAlex; se descartaron del filtro de campo."
         )
 
-    # Envolver en el filtro de OpenAlex (PASSTHROUGH)
-    executed = f"title_and_abstract.search:({query})"
-
-    # Negaciones: cada término excluido agrega una cláusula AND NOT (#30).
+    # Negaciones: cada término excluido agrega una cláusula AND NOT dentro del
+    # paréntesis de title_and_abstract.search (#30, fix bug).
+    # OpenAlex interpreta el filtro como predicados separados por coma; repetir
+    # el nombre del campo fuera del paréntesis produce 0 resultados.
     # Las comillas internas se eliminan para no romper la frase entrecomillada
     # en el filtro de OpenAlex (un `"` embebido cierra la frase antes de tiempo).
     terms = [t.strip().replace('"', "") for t in (exclude or []) if t and t.strip()]
+
+    # Construir el cuerpo interno: (query) [AND NOT "t1" AND NOT "t2" ...]
+    body = f"({query})"
     if terms:
-        not_clauses = " ".join(
-            f'AND NOT title_and_abstract.search:"{t}"' for t in terms
-        )
-        executed = f"{executed} {not_clauses}"
+        not_clauses = " ".join(f'AND NOT "{t}"' for t in terms)
+        body = f"{body} {not_clauses}"
         report.append(
             f"Exclusiones aplicadas ({len(terms)}): "
             + ", ".join(f'"{t}"' for t in terms)
             + ". Cláusulas AND NOT añadidas al filtro de OpenAlex."
         )
+
+    # Envolver UNA sola vez en el campo de OpenAlex (PASSTHROUGH)
+    executed = f"title_and_abstract.search:{body}"
 
     # Filtro de año: sintaxis idiomática de rango de OpenAlex.
     # Las cláusulas se combinan con AND junto al resto del filtro.
@@ -516,7 +521,8 @@ class OpenAlexSource:
             query: Ecuación de búsqueda (WoS-style o nativa OpenAlex).
             native: Si es ``True``, pasa la query cruda sin traducción.
             exclude: Lista de términos a excluir de título/abstract (#30).
-                Cada término genera ``AND NOT title_and_abstract.search:"…"``.
+                Cada término genera ``AND NOT "…"`` dentro del paréntesis de
+                ``title_and_abstract.search``.
             min_year: Año mínimo de publicación (filtro de rango OpenAlex).
                 Genera ``from_publication_date:<min_year>-01-01``.
                 ``None`` = sin límite inferior.

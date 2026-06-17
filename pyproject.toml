@@ -179,10 +179,13 @@ addopts = [
     "--strict-config",
     "--cov=bib2graph",
     "--cov-report=term-missing",
+    "-m",
+    "not network",
 ]
 markers = [
     "unit: tests puros, sin red ni I/O (default)",
-    "integration: tests con red, servicios externos, o Testcontainers",
+    "integration: tests con I/O local (duckdb/store); corren en el gate",
+    "network: tests que requieren red real (p.ej. OpenAlex); excluidos del gate por defecto (correr con -m network)",
 ]
 
 [tool.coverage.run]
