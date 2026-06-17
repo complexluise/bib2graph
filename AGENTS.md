@@ -34,7 +34,7 @@
   El **CLI `b2g` es real** —paquete `cli/` con 17 subcomandos en `cli/commands/`, no un
   placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9; el 17° `b2g restore`
   rehidrata un corpus curado sin red, Ciclo 9a, abajo)—.
-  **636 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
+  **645 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
   (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2). **`b2g snapshot`/`b2g export` resuelven por
@@ -97,6 +97,17 @@
   trayendo los citantes de las semillas aceptadas vía `OpenAlexSource.fetch_citing_batch` (batcheo OR
   ≤50 con presupuesto por semilla) y los une (idempotente, sin crecer el corpus). `b2g enrich` con
   `--max-citing` (tope por semilla); `Networks.quick` → 4 o 5 redes según haya `cited_by_id`.
+- **Forward chaining materializa metadata REAL** (#78, 2026-06-17, AS-BUILT CERRADO): el forward del
+  `Forager` (`b2g chain`) **ya no persiste placeholders `[candidate:W...]`** — materializa filas reales
+  (título/año/autores). Causa raíz: `fetch_citing_batch` traía la metadata completa (`_FIELDS`) y la
+  descartaba; el fix A1 (cero red extra) la conserva vía el método nuevo
+  **`OpenAlexSource.fetch_citing_batch_with_works(ids, *, max_per_paper) -> (attribution, works_map)`**
+  (`fetch_citing_batch` queda intacto, thin wrapper). `_build_forward_candidate_row` eliminado; `_work_to_row`
+  ganó `chaining_hop`/`source_tag` (defaults backward-compat). **Asimetría deliberada** con el backward
+  (#54): el backward observa sin materializar, el forward materializa (citantes pocos, acotados, se curan,
+  metadata ya en la request). Con #78, el materializador on-demand #71 queda **solo para backward**.
+  **645 tests verdes**, verifier PASA. Ver `docs/API.md` §2 (`fetch_citing_batch_with_works`)/§5 y ADR
+  [0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) §AS-BUILT #78.
 - **Backward chaining sin placeholders** (#54, 2026-06-17): el backward del `Forager`
   (`b2g chain`) **ya no persiste filas-fantasma `[candidate:W...]` en el corpus** (revierte el
   comportamiento de Hito 5 — la promesa de "no contaminan" era **falsa**: los stubs llegaron a ser
@@ -105,8 +116,7 @@
   **`referenced_but_not_fetched`** (`backends/base.py` Protocol + `DuckDBBackend`/`InMemoryBackend`:
   `add_referenced_refs`/`referenced_refs_count`/`referenced_refs`), **fuera del `corpus_hash`** (arregla
   la contaminación previa). `b2g status` suma `referenced_not_fetched`; `b2g chain` suma
-  `observed_refs_count`. **El forward arrastra el MISMO footgun** (placeholder de título), abierto como
-  **#78** — NO está limpio. Materializador on-demand diferido a #71. **636 tests verdes.** Ver
+  `observed_refs_count`. **El forward arrastraba el MISMO footgun**, **cerrado en #78** (arriba). Ver
   `docs/API.md` §5/§4 y ADR [0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)
   §AS-BUILT #54.
 - **Forward chaining del `Forager` batcheado** (#21, 2026-06-16): el forward del `Forager`

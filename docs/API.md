@@ -762,6 +762,13 @@ def load_equation_spec(path: str | Path) -> EquationSpec:
 | `ScieloSource` / `RedalycSource` / `LaReferenciaSource` | futuro | Fuentes regionales, mínimo universal. Declaradas, no implementadas (ADR 0018). |
 | `RisSource` / `CsvSource` | futuro | No implementados. |
 
+> **AS-BUILT #78 (2026-06-17) — el forward materializa metadata REAL (ADR
+> [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) §AS-BUILT #78).** Se agrega
+> `OpenAlexSource.fetch_citing_batch_with_works` (abajo): el forward chaining (§5) deja de persistir
+> placeholders `[candidate:W...]` y materializa filas reales conservando la metadata que
+> `fetch_citing_batch` ya traía y descartaba (**cero red extra**). `fetch_citing_batch` queda intacto
+> (thin wrapper). Gate verde, 645 tests.
+
 **Capacidades de `OpenAlexSource` fuera del Protocol `Source`** (específicas del backbone, no
 contrato universal; las consumen el `Forager` y el `Enricher`):
 
@@ -773,7 +780,18 @@ contrato universal; las consumen el `Forager` y el `Enricher`):
   página a página** (cruza `referenced_works` del citante con el set objetivo, por short-id). Con
   **presupuesto por semilla**: corta la paginación cuando **todas** las semillas del lote alcanzan
   `max_per_paper` (acota el *fetch*, no solo la columna; **sin starvation** entre semillas; mata el
-  N+1 diferido de R5). Lo consume el `OpenAlexEnricher` (§3) para poblar `cited_by_id`.
+  N+1 diferido de R5). Lo consume el `OpenAlexEnricher` (§3) para poblar `cited_by_id`. **AS-BUILT
+  #78 (2026-06-17): firma y contrato INTACTOS** —sigue devolviendo solo el mapeo de atribución— pero
+  internamente es un **thin wrapper** sobre `_fetch_citing_pages` que **descarta `works_map`** (la
+  metadata que ya viaja en la misma request). El Enricher 8b no cambia.
+- **`fetch_citing_batch_with_works(ids, *, max_per_paper) -> tuple[dict[seed_id, list[citer_id]], dict[citer_id, work]]`**
+  (#78, 2026-06-17, Forager forward chaining): la **variante que conserva la metadata**. Misma red,
+  mismo batcheo/atribución/presupuesto que `fetch_citing_batch` (comparten `_fetch_citing_pages`),
+  pero devuelve además el `works_map` (`citer_id → work JSON con _FIELDS`) que `fetch_citing_batch`
+  tira. **Cero red extra**: la metadata ya venía en la query de citantes y antes se descartaba. La
+  consume `Forager._fetch_forward` para materializar filas REALES (título/año/autores) en vez de
+  placeholders `[candidate:W...]`. Ver §5 y ADR
+  [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) §AS-BUILT #78.
 - **`fetch_dois_for(ids) -> dict`** (Hito 8a): resuelve `references_id`→DOI batcheando por OR (lotes
   ≤100, `select=id,doi`).
 - **`fetch_works_by_ids(ids) -> Corpus`** (#55): materializa works arbitrarios desde sus IDs OpenAlex,
@@ -782,8 +800,11 @@ contrato universal; las consumen el `Forager` y el `Enricher`):
   inexistentes se **omiten sin error**; orden **determinista** (filas ordenadas por `id` canónico);
   lista vacía → `Corpus` vacío **sin tocar la red**. Es el primitivo que materializa lo observado por
   el backward chaining (ver #54). Reusa `_work_to_row` parametrizado (`is_seed`/`action`), que centraliza
-  el mapeo JSON→Arrow para `seed`/`fetch_citing`/`fetch_works_by_ids` (sin duplicar). *(Validado contra
-  OpenAlex real vía test `@pytest.mark.network`.)*
+  el mapeo JSON→Arrow para `seed`/`fetch_citing`/`fetch_works_by_ids`/forward chaining (sin duplicar).
+  **AS-BUILT #78 (2026-06-17): `_work_to_row` ganó `chaining_hop: int | None = None` y
+  `source_tag: str = "openalex"`** (defaults backward-compat → los callers viejos no cambian); el
+  forward chaining lo invoca con `chaining_hop=1, source_tag="chaining:forward"` para materializar
+  citantes reales. *(Validado contra OpenAlex real vía test `@pytest.mark.network`.)*
 
 **Reporte de cobertura/calidad** (concepto declarado, concreto **v0.2+**; ADR 0018): por
 seed/source, mide % de refs resueltas, % con DOI, distribución idioma/región y completitud del
@@ -981,6 +1002,16 @@ El comando `b2g status` consume `loop_state()`/`loop_round()`/`available_transit
 > El **forward arrastra el mismo footgun** (placeholder de título), abierto como **#78** — NO está
 > limpio. Materializador on-demand diferido a #71. Gate verde, 636 tests.
 
+> **AS-BUILT #78 (2026-06-17) — ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)
+> §AS-BUILT #78:** el **forward chaining ya NO persiste placeholders** `[candidate:W...]` — materializa
+> **filas REALES** (título/año/autores) con la metadata que `fetch_citing_batch` ya traía de la red y
+> descartaba (opción A1, **cero red extra**, vía el método nuevo `fetch_citing_batch_with_works`, §2).
+> `_build_forward_candidate_row` eliminado. **Asimetría deliberada** (no incoherencia): el backward
+> *observa sin materializar* (refs numerosas, no curadas, sin metadata local → `referenced_but_not_fetched`),
+> el forward *materializa* (citantes pocos, acotados por cap, **se curan**, metadata ya en la request).
+> Regla común: **el corpus nunca contiene placeholders**. Con esto, el materializador on-demand #71
+> queda **solo para backward**. Gate verde, **645 tests**, verifier PASA.
+
 El *information scent* es **estructura bibliométrica de cita con el corpus** (ADR
 [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md), AS-BUILT R4). Es una **función pura**
 sobre el primitivo `collect_item_to_papers` (índice `{ref → corpus-papers que lo citan}`):
@@ -1036,7 +1067,8 @@ class GrowthPreview(BaseModel):
 
 class RankedCandidates(BaseModel):
     corpus: Corpus                     # SOLO los candidatos nuevos (no mergeado con el corpus semilla).
-                                       # Forward: materializa filas (placeholder de título, ver #78).
+                                       # Forward (#78): materializa filas con metadata REAL (título/año/
+                                       # autores), NO placeholders — vía fetch_citing_batch_with_works.
                                        # Backward (#54): NO materializa filas — observa, ver observed_refs.
     ranking: list[tuple[str, float]]   # (id, information_scent), desc scent / asc id
     observed_refs: list[str] = []      # AS-BUILT #54 (2026-06-17): IDs observados por el backward SIN
@@ -1086,10 +1118,11 @@ class RankedCandidates(BaseModel):
   backward salen por **`RankedCandidates.observed_refs: list[str]`** (orden de ranking, respeta
   `max_candidates`) y `b2g chain` los persiste en la tabla hermana **`referenced_but_not_fetched`**
   (§4), **fuera** del `corpus` y del `corpus_hash`. La materialización on-demand (rehidratar un
-  observado a fila real vía `fetch_works_by_ids`, #55) está **diferida a #71**. El **forward sí sigue
-  materializando** filas en `.corpus` —y con el MISMO footgun de placeholder de título
-  `[candidate:W...]` (IDs de citantes sin metadata completa): **el forward NO está limpio**, abierto
-  como **#78**—.
+  observado a fila real vía `fetch_works_by_ids`, #55) está **diferida a #71** (con #78 cerrado, #71
+  queda **solo para backward**). El **forward sí materializa** filas en `.corpus` —y **con #78
+  (2026-06-17) lo hace con metadata REAL** (título/año/autores), **ya no** con placeholders
+  `[candidate:W...]`: la metadata viaja en la misma request de citantes (`fetch_citing_batch_with_works`,
+  §2). Asimetría deliberada: el backward observa, el forward materializa (ver §AS-BUILT #78 arriba).
 - **`preview` y `chain` no mutan** el corpus de entrada (semántica de valor).
 
 ---
@@ -1551,7 +1584,7 @@ prev = forager.preview(seed.corpus)                     # backward exacto; forwa
 print(prev.estimated_new, prev.forward_requires_fetch)  # p. ej. 142  True
 ranked = forager.chain(seed.corpus)                     # forward fetchea citantes
 # AS-BUILT #54: el backward observa sin materializar → ranked.observed_refs (no van a ranked.corpus);
-# el forward sí materializa filas (placeholder de título, #78). Ver §5.
+# AS-BUILT #78: el forward materializa filas con metadata REAL (no placeholders). Ver §5.
 
 # 3') Curar lo forrajeado, normalizar y aplicar el thesaurus multilingüe determinista
 corpus = seed.corpus.merge(ranked.corpus).accept(ids=[...]).reject(ids=[...])

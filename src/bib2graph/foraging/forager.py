@@ -19,6 +19,10 @@ Solo él toca la red (a través del ``Source`` inyectado).  El núcleo de
 scent es puro.  ``explain_candidate`` fue **eliminado** (R4, ADR 0022).
 ``_build_backward_candidate_row`` fue **eliminado** (#54): ya no se fabrica
 ninguna fila-fantasma para candidatos backward.
+``_build_forward_candidate_row`` fue **eliminado** (#78, opción A1): el forward
+materializa metadata real vía ``fetch_citing_batch_with_works`` +
+``_work_to_row`` (cero red extra: los works viajan en las mismas páginas de
+atribución).
 
 ``depth > 1`` lanza ``NotImplementedError`` claro (decisión e=A, ADR 0008).
 
@@ -42,14 +46,15 @@ from typing import Any
 
 import pyarrow as pa
 
-from bib2graph.constants import Col, CurationStatus
+from bib2graph.constants import Col
 from bib2graph.corpus import Corpus, _rows_with_ids
 from bib2graph.foraging.base import Direction, GrowthPreview, RankedCandidates
 from bib2graph.foraging.scent import (
     compute_backward_scent,
     rank_candidates,
 )
-from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
+from bib2graph.schemas import CORPUS_SCHEMA
+from bib2graph.sources.openalex import _work_to_row
 
 
 def _make_empty_corpus() -> Corpus:
@@ -86,65 +91,6 @@ def _extract_seed_ids(corpus_rows: list[dict[str, Any]]) -> list[str]:
         if row.get(Col.IS_SEED) and row.get(Col.OPENALEX_ID):
             result.append(str(row[Col.OPENALEX_ID]))
     return result
-
-
-def _build_forward_candidate_row(
-    citer_id: str,
-    *,
-    seed_ids_cited: list[str],
-    fetched_at: str,
-) -> dict[str, Any]:
-    """Construye una fila mínima para un candidato forward.
-
-    A diferencia del candidato backward (que tiene solo el id), el candidato
-    forward incorpora en ``references_id`` los IDs de las semillas que él cita
-    (atribuidos por ``fetch_citing_batch``).  Esto permite calcular el score
-    por intersección con ``corpus_ids`` sin re-fetchear los datos de red.
-
-    Args:
-        citer_id: ID corto de OpenAlex del citante (p. ej. ``W99999``).
-        seed_ids_cited: IDs de las semillas del corpus que este citante cita,
-            según la re-atribución de ``fetch_citing_batch``.
-        fetched_at: Timestamp ISO del fetch.
-
-    Returns:
-        Dict con las columnas mínimas del schema canónico.
-    """
-    provenance_event = ProvenanceEvent(
-        action="fetched",
-        equation_id=None,
-        chaining_hop=1,
-        source="chaining:forward",
-        fetched_at=fetched_at,
-        decided_by=None,
-        decided_at=None,
-    )
-    return {
-        Col.OPENALEX_ID: citer_id,
-        Col.DOI: None,
-        Col.TITLE: f"[candidate:{citer_id}]",
-        Col.YEAR: None,
-        Col.ABSTRACT: None,
-        Col.SOURCE: None,
-        Col.LANGUAGE: None,
-        Col.PUBLISHER: None,
-        Col.RESEARCH_AREAS: None,
-        Col.IS_SEED: False,
-        Col.CURATION_STATUS: CurationStatus.CANDIDATE,
-        Col.PROVENANCE: ProvenanceEvent.dump_list([provenance_event]),
-        Col.AUTHORS_RAW: None,
-        Col.AUTHORS_ID: None,
-        Col.AUTHORS_AFFILIATIONS: None,
-        Col.KEYWORDS_RAW: None,
-        Col.KEYWORDS_ID: None,
-        Col.INSTITUTIONS_RAW: None,
-        Col.INSTITUTIONS_ID: None,
-        # references_id incluye los seeds citados para que compute_forward_scent
-        # pueda calcular el score por intersección con corpus_ids.
-        Col.REFERENCES_ID: seed_ids_cited or None,
-        Col.REFERENCES_DOI: None,
-        Col.CITED_BY_ID: None,
-    }
 
 
 class Forager:
@@ -382,16 +328,24 @@ class Forager:
     ) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
         """Trae citantes via batcheo y calcula scent forward.
 
-        Usa ``fetch_citing_batch`` del source (batcheo OR ≤50 IDs por request,
-        presupuesto por semilla, retry/backoff incluidos) en lugar del loop N+1.
+        Usa ``fetch_citing_batch_with_works`` del source (batcheo OR ≤50 IDs
+        por request, presupuesto por semilla, retry/backoff incluidos) para
+        materializar filas con metadata real (título/año/autores/etc.) en vez
+        de placeholders ``[candidate:W...]`` (#78, opción A1).  CERO red extra:
+        los works ya viajan en las mismas páginas que se usan para la atribución.
+
         Opera sobre todas las semillas (``is_seed=True``), independientemente
         del ``curation_status`` — el chaining corre antes de la curación.
 
-        El scent forward se computa desde la re-atribución que ya realiza
-        ``fetch_citing_batch``: para cada citante, los seed IDs que él cita
-        están en el dict resultado; con eso se construye una fila mínima con
-        ``references_id=seed_ids_citados`` y el score se calcula por
-        intersección con ``corpus_ids``.
+        El scent forward se calcula directamente desde la re-atribución que
+        devuelve ``fetch_citing_batch_with_works``: para cada citante, los
+        seed IDs que cita ya están en el ``attribution`` dict.  El score es
+        la intersección de esos seeds con ``corpus_ids`` (trivial: seed_ids ⊆
+        corpus_ids porque son los openalex_id de las semillas).
+
+        Cada fila candidata se construye con ``_work_to_row`` (el mapeador
+        canónico), con ``is_seed=False``, ``chaining_hop=1`` y
+        ``source_tag='chaining:forward'``.
 
         Args:
             corpus_rows: Filas del corpus actual.
@@ -399,8 +353,8 @@ class Forager:
 
         Returns:
             Tupla ``(scent_map, candidate_rows)`` donde ``candidate_rows``
-            tiene la fila mínima de cada candidato forward (con
-            ``references_id`` = seeds citadas, para el scent).
+            tiene la fila completa (con metadata real) de cada candidato
+            forward con score > 0.
 
         Raises:
             AttributeError: Si el ``source`` no tiene ``fetch_citing_batch``.
@@ -418,7 +372,7 @@ class Forager:
             return {}, {}
 
         # corpus_ids: ids y openalex_ids de todos los papers del corpus
-        # (para compute_forward_scent y para excluir candidatos ya presentes)
+        # (para excluir candidatos ya presentes y calcular el score)
         corpus_ids: set[str] = set()
         for row in corpus_rows:
             id_val = row.get(Col.ID)
@@ -428,31 +382,43 @@ class Forager:
             if oa_id_val:
                 corpus_ids.add(str(oa_id_val))
 
-        # Batcheo: fetch_citing_batch hace ≤50 IDs por request, presupuesto
-        # por semilla y retry/backoff.  Devuelve {seed_id: [citer_id]}.
-        # tqdm es dependencia del núcleo; el import perezoso evita efectos de módulo.
+        # Batcheo: trae atribución Y works JSON en un solo ciclo de páginas.
+        # tqdm es dependencia del núcleo; import perezoso para evitar efectos de módulo.
+        use_with_works = hasattr(self._source, "fetch_citing_batch_with_works")
+        citing_dict: dict[str, list[str]]
+        works_map: dict[str, dict[str, Any]]
+
         try:
             from tqdm import tqdm as _tqdm
 
-            # Barra de progreso: una iteración por llamada batch (no por semilla)
             with _tqdm(
                 total=1,
                 desc="forward chaining",
                 unit="lote",
                 leave=False,
             ) as pbar:
+                if use_with_works:
+                    citing_dict, works_map = self._source.fetch_citing_batch_with_works(
+                        seed_ids, max_per_paper=self._max_citing_per_paper
+                    )
+                else:
+                    citing_dict = self._source.fetch_citing_batch(
+                        seed_ids, max_per_paper=self._max_citing_per_paper
+                    )
+                    works_map = {}
+                pbar.update(1)
+        except ImportError:
+            if use_with_works:
+                citing_dict, works_map = self._source.fetch_citing_batch_with_works(
+                    seed_ids, max_per_paper=self._max_citing_per_paper
+                )
+            else:
                 citing_dict = self._source.fetch_citing_batch(
                     seed_ids, max_per_paper=self._max_citing_per_paper
                 )
-                pbar.update(1)
-        except ImportError:
-            # tqdm no disponible: continuar sin barra de progreso
-            citing_dict = self._source.fetch_citing_batch(
-                seed_ids, max_per_paper=self._max_citing_per_paper
-            )
+                works_map = {}
 
         # Invertir: {citer_id → [seed_ids que este citante cita]}
-        # para construir las filas mínimas y calcular el scent.
         citer_to_seeds: dict[str, list[str]] = {}
         for seed_id, citer_ids in citing_dict.items():
             for citer_id in citer_ids:
@@ -462,21 +428,67 @@ class Forager:
         if not citer_to_seeds:
             return {}, {}
 
-        # Construir filas mínimas de candidatos (con references_id = seeds citadas)
-        # y calcular scent forward directamente desde la re-atribución.
-        # score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
-        # Como seed_ids ⊆ corpus_ids (openalex_id de las semillas), la
-        # intersección es trivial: score = len(seed_ids_citados por Y).
+        # Construir filas con metadata real (vía _work_to_row) cuando el source
+        # proveyó los works; el score es len(seeds_citados ∩ corpus_ids).
         candidate_rows: dict[str, dict[str, Any]] = {}
         scent_map: dict[str, float] = {}
         for citer_id, seeds_cited in citer_to_seeds.items():
             score = float(sum(1 for s in seeds_cited if s in corpus_ids))
             if score > 0:
                 scent_map[citer_id] = score
-                candidate_rows[citer_id] = _build_forward_candidate_row(
-                    citer_id,
-                    seed_ids_cited=seeds_cited,
-                    fetched_at=fetched_at,
-                )
+                work = works_map.get(citer_id)
+                if work is not None:
+                    # Metadata real disponible: construir fila canónica completa.
+                    row = _work_to_row(
+                        work,
+                        equation_id="chaining:forward",
+                        fetched_at=fetched_at,
+                        is_seed=False,
+                        action="fetched",
+                        chaining_hop=1,
+                        source_tag="chaining:forward",
+                    )
+                else:
+                    # Fallback (source sin fetch_citing_batch_with_works): fila
+                    # con solo las seeds citadas en references_id para el score.
+                    # No debería ocurrir con OpenAlexSource (#78 A1 requiere works).
+                    from bib2graph.schemas import ProvenanceEvent
+
+                    prov = ProvenanceEvent(
+                        action="fetched",
+                        equation_id=None,
+                        chaining_hop=1,
+                        source="chaining:forward",
+                        fetched_at=fetched_at,
+                        decided_by=None,
+                        decided_at=None,
+                    )
+                    from bib2graph.constants import CurationStatus
+
+                    row = {
+                        Col.OPENALEX_ID: citer_id,
+                        Col.DOI: None,
+                        Col.TITLE: f"[candidate:{citer_id}]",
+                        Col.YEAR: None,
+                        Col.ABSTRACT: None,
+                        Col.SOURCE: None,
+                        Col.LANGUAGE: None,
+                        Col.PUBLISHER: None,
+                        Col.RESEARCH_AREAS: None,
+                        Col.IS_SEED: False,
+                        Col.CURATION_STATUS: CurationStatus.CANDIDATE,
+                        Col.PROVENANCE: ProvenanceEvent.dump_list([prov]),
+                        Col.AUTHORS_RAW: None,
+                        Col.AUTHORS_ID: None,
+                        Col.AUTHORS_AFFILIATIONS: None,
+                        Col.KEYWORDS_RAW: None,
+                        Col.KEYWORDS_ID: None,
+                        Col.INSTITUTIONS_RAW: None,
+                        Col.INSTITUTIONS_ID: None,
+                        Col.REFERENCES_ID: seeds_cited or None,
+                        Col.REFERENCES_DOI: None,
+                        Col.CITED_BY_ID: None,
+                    }
+                candidate_rows[citer_id] = row
 
         return scent_map, candidate_rows
