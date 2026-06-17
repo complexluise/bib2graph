@@ -265,6 +265,17 @@ No se prometen ni se cablean clientes que no se usan.
     (`sample.bib` + README CLI-puro) + **filtro de año real** (`min_year`/`max_year` → `from_publication_date`/
     `to_publication_date`, flags en `--equation` + campos del YAML). Ya **no** es "diferido". Gate verde,
     **594 tests**. Ver `API.md` §2 y ADR 0030 §AS-BUILT Ciclo 10.
+  - **Ciclo B · ✅ HECHO (2026-06-17):** **`examples/valoraciones/` rehecho 100% por CLI** (principio
+    CLI-puro del PO, sin escribir código). `build_corpus.py` **eliminado**; el ejemplo se arma y se
+    reproduce **por CLI**: `seed --spec equation.yaml` (`max_results: 80`) → `curate --from-csv
+    curacion.csv` (10 `accepted`) → `enrich --max-citing 25` → `snapshot`. Corpus = **~80 filas**
+    (70 `candidate` + 10 `accepted` enriquecidos), parquet 168 KB. **`curacion.csv` nuevo artefacto
+    congelado** (receta determinista de curación). **Co-citación presente** (rala: 2 nodos / 1 arista)
+    + coupling/author/institution/keyword sustanciales (5 redes). Gate R2 ajustado: piso `n>=50` (antes
+    100) + `test_cocitacion_con_datos` (5 redes), estabilidad de hash/comunidades intacta. La
+    **procedencia de un ejemplo deja de ser un script y pasa a ser la receta CLI del README** +
+    `equation.yaml` + `curacion.csv` (supersede la convención de 9b/§2.1). Gate verde, **598 tests**
+    por defecto (+2 `network` fuera del gate). Ver `API.md` §2.1 y ADR 0030 §AS-BUILT Ciclo B.
 - **Curación a escala vía CSV (#22 dump + #26 import) · ✅ HECHO (2026-06-16):** marcar papers de a
   uno con `accept`/`reject --ids` no escala (síntomas B4/B5/P1 de la
   [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). Se agregó el **15° subcomando

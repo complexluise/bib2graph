@@ -50,6 +50,17 @@
   `_write_artifacts` (mismos GraphML + metrics.json + clusters.csv que `build`); **NO** transiciona el
   `CycleState` ni sella `.corpus_hash` (transversal al lazo, como `enrich`/`curate`). `pyyaml` pasó a
   dependencia del núcleo (import perezoso). **516 tests verdes**. Ver `docs/API.md` §10.
+- **Ciclo B — `examples/valoraciones/` rehecho 100% por CLI (AS-BUILT 2026-06-17, ADR
+  [0030](docs/decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md) §Ciclo B):** materializa el
+  principio **CLI-puro** del PO. `build_corpus.py` **eliminado**; el ejemplo se arma y reproduce
+  **por CLI** (`seed --spec equation.yaml` `max_results 80` → `curate --from-csv curacion.csv` 10
+  `accepted` → `enrich --max-citing 25` → `snapshot`). Corpus = **~80 filas, 10 `accepted`
+  enriquecidas, co-citación presente** (rala) — antes 137 filas / co-citación vacía (9b). Nuevo
+  artefacto congelado **`curacion.csv`** (receta determinista de curación). Gate R2 ajustado (piso
+  `n>=50`, `test_cocitacion_con_datos` con 5 redes). **La procedencia de un ejemplo deja de ser un
+  script y pasa a ser la receta CLI del README + `equation.yaml` + `curacion.csv`** (supersede la
+  convención de 9b). **598 tests por defecto** (los 2 `network` quedan fuera del gate). Ver
+  `docs/API.md` §2.1.
 - **Ciclo 10 — `seed --from-bib` + filtro de año real (AS-BUILT 2026-06-17, ADR
   [0030](docs/decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md) §Ciclo 10, cierra #50):**
   `b2g seed` pasa a **3 modos** mutuamente excluyentes (`--equation` / `--spec` / **`--from-bib

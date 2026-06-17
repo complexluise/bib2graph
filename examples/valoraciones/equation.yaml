@@ -15,10 +15,8 @@
 # Para reproducir el ejemplo offline (sin red), usar restore:
 #   b2g restore --from-corpus examples/valoraciones/corpus.parquet
 #
-# NOTA: min_year / max_year están declarados pero aún no filtran contra
-# OpenAlex (trabajo futuro — ADR 0030 §Schema de equation.yaml).
-#
-# equation_id de procedencia: eq-20260616T225800
+# equation_id de procedencia: eq-20260616T225800 (corpus original v3)
+# Ciclo B (2026-06-17): max_results bajado a 80, corpus regenerado con enrich.
 
 equation:
   # Anclas conceptuales: pensamiento complejo (Morin), pedagogía crítica (Freire),
@@ -49,14 +47,13 @@ equation:
     - "stock exchange"
     - "financial"
 
-  # Tope de resultados: 200 (default de OpenAlexSource; el corpus original
-  # se sembró con este tope, produciendo 485 seeds en la ronda inicial).
-  max_results: 200
+  # Tope de resultados: 80 (corpus chico para el ejemplo — Ciclo B, B2).
+  max_results: 80
 
   # native: false — la ecuación usa sintaxis WoS-style (comillas, OR, AND),
   # que el Source traduce a la sintaxis nativa de OpenAlex.
   native: false
 
-  # Rango temporal del caso de estudio (declarado, no filtra aún — ADR 0030).
+  # Rango temporal del caso de estudio (filtran contra OpenAlex — Ciclo 10).
   min_year: 1990
   max_year: 2026

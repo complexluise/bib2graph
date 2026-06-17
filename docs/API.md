@@ -135,6 +135,18 @@
 > + README con receta 100% CLI) que demuestra el camino BibTeX. Ver §2 + §convenciones CLI + §convención
 > `examples/`.
 >
+> **Sincronizado con `examples/valoraciones/` rehecho CLI-puro — Ciclo B (AS-BUILT, 2026-06-17):**
+> materializa el principio **CLI-puro** del PO (ADR
+> [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md) §AS-BUILT Ciclo B). `build_corpus.py`
+> **eliminado**: el ejemplo se arma y reproduce **100% por CLI** (`seed --spec equation.yaml`
+> `max_results 80` → `curate --from-csv curacion.csv` 10 `accepted` → `enrich --max-citing 25` →
+> `snapshot`). Corpus = **~80 filas** (70 `candidate` + 10 `accepted` enriquecidas), **co-citación
+> presente** (rala) — antes 137 filas / co-citación vacía (9b). Nuevo artefacto congelado
+> **`curacion.csv`** (receta determinista de curación). Gate R2 ajustado (piso `n>=50`,
+> `test_cocitacion_con_datos` con 5 redes). **La procedencia de un ejemplo deja de ser un script y
+> pasa a ser la receta CLI del README + `equation.yaml` + `curacion.csv`** (supersede la convención de
+> 9b/§2.1). Ver §convención `examples/` (§2.1).
+>
 > **Sincronizado con los remanentes del modelo workspace — #32 (AS-BUILT, 2026-06-17):** cierra lo
 > que el ADR [0029](decisiones/0029-workspace-por-investigacion.md) dejó "fuera de corte".
 > **`b2g snapshot` y `b2g export`** se resuelven por ambiente: `--out-dir` pasó de obligatorio a
@@ -752,7 +764,7 @@ enriquecimiento. Alimenta el juicio humano de **cuándo cambiar de Source** y ac
 incertidumbre del ranking por *information scent* sobre datos parciales. Se declara como contrato
 en v0.1 (función pura sobre `pa.Table`), sin cablearse vacío (lección 5).
 
-### 2.1 Convención `examples/` — corpus de ejemplo commiteado (AS-BUILT #33 / 9b, 2026-06-17)
+### 2.1 Convención `examples/` — corpus de ejemplo commiteado (AS-BUILT #33 / 9b · CLI-puro Ciclo B, 2026-06-17)
 
 `examples/` es la **única** excepción al `.gitignore` de datos de usuario (ADR
 [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)): un corpus real, curado y reducido
@@ -767,19 +779,24 @@ epic GUI #34). Reglas:
     0006/0009/0017).
   - **`equation.yaml`** — la ecuación de procedencia (cargable con `EquationSpec`, §2). Documenta
     "de qué búsqueda salió este corpus"; **no** es el comando del gate.
-  - **`README.md`** — qué demuestra y con qué comando se corre.
-  - **script de procedencia** (p. ej. `build_corpus.py`) — regeneración determinista del parquet
-    desde la data fuente local. Su fuente es data del PO gitignoreada; **no corre en CI**, no toca
-    red.
+  - **`curacion.csv`** *(cuando el ejemplo pasa por curación)* — las decisiones de curación
+    congeladas que `b2g curate --from-csv` consume: **receta determinista** de curación (aplicarlo
+    al corpus sembrado produce el mismo estado, independiente de cuándo se corra).
+  - **`README.md`** — qué demuestra y con qué comandos se arma/reproduce. **Es la procedencia:**
+    la **receta CLI** documentada (armado con red + reproducción offline), no un script.
 - **Cómo se restaura:** `b2g restore --from-corpus examples/<nombre>/corpus.parquet` (§2.`restore`)
   rehidrata el corpus **sin red** en el `library.duckdb` de un workspace temporal, preserva la
   curación y transiciona a `FILTERED`; luego `build` → `networks`/`clusters` corren localmente.
 - **`.gitignore`:** `!examples/` trackea el ejemplo; `examples/**/*.duckdb` lo protege de que un
   store vivo se cuele. El resto de la política de datos de usuario no cambia.
 - **Ejemplos existentes:**
-  - **`examples/valoraciones/`** (137 filas: 7 `accepted`, 130 `candidate`, 107 seeds). Verificado por
+  - **`examples/valoraciones/`** (Ciclo B, AS-BUILT 2026-06-17): **~80 filas** (70 `candidate` +
+    10 `accepted` enriquecidos), armado **100% por CLI** (sin script): `seed --spec equation.yaml`
+    (`max_results: 80`) → `curate --from-csv curacion.csv` → `enrich --max-citing 25` → `snapshot`.
+    **Co-citación presente** (rala) + coupling/author/institution/keyword sustanciales. Verificado por
     el gate R2 `tests/unit/test_example_r2_gate.py` (`corpus_hash` estable + comunidades Louvain
-    estables entre corridas). Se rehidrata con `b2g restore --from-corpus`.
+    estables entre corridas; piso `n>=50`, las 5 redes con datos). Se rehidrata con
+    `b2g restore --from-corpus`. Procedencia = receta CLI del README + `equation.yaml` + `curacion.csv`.
   - **`examples/bibtex/`** (Ciclo 10, AS-BUILT 2026-06-17): un `sample.bib` chico (10 entradas, con
     variedad deliberada de campos faltantes para ejercitar el parser defensivo) + `README.md` con la
     receta 100% CLI (`b2g init` → `b2g seed --from-bib examples/bibtex/sample.bib` → `b2g build`).
