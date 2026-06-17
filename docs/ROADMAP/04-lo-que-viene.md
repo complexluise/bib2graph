@@ -140,13 +140,26 @@ qué se calcula). Abre la puerta a un GUI (editor de `NetworkSpec`).
 
 ---
 
-## Hito 10 — Visualización (extra `[viz]`)
+## Hito 10 — Visualización (extra `[viz]`) — **REEVALUADO: DIFERIDO (absorbido por la epic GUI #34)**
 
-**Alcance**
+> **Reevaluación 2026-06-17 (architect, encuadre pre-GUI):** este hito —figuras estáticas
+> `matplotlib`/`seaborn` por red— **se difiere y se absorbe en la epic GUI
+> [#34](https://github.com/complexluise/bib2graph/issues/34)**. Razón: la GUI es **exactamente**
+> la capa de lectura visual de la estructura intelectual (historia D), y su MVP es **read-only
+> visualizar** (Nota 10/T-MVP). Construir ahora figuras estáticas separadas sería trabajo
+> tirado o duplicado cuando llegue la SPA. **No es "terreno pre-GUI".** La **capa de export
+> visual** que sí es separable (layout determinista, atributos de nodo para herramientas
+> externas) **ya existe**: `networks/decorate.py` (#25 ✅, `label`/`year`/`is_seed`/`community`/
+> `degree_centrality`) + `clusters.csv` (#31 ✅) hacen que el GraphML abra legible en
+> Gephi/VOSviewer/Cytoscape **sin código**. Es decir, el "core/export" de viz pre-GUI **ya está
+> cubierto**; lo que queda (render propio) es la GUI. **Verdadero alcance restante = render
+> dentro de #34**, no un extra `[viz]` aparte.
+
+**Alcance (original — diferido)**
 
 - Figuras de redes/comunidades con `matplotlib`/`seaborn`, fuera del núcleo liviano.
 
-**Historias:** apoyo visual a **D** (lectura de la estructura intelectual).
+**Historias:** apoyo visual a **D** (lectura de la estructura intelectual) — **cubierto por #34**.
 
 **Criterios de aceptación (DoD)**
 
@@ -158,27 +171,13 @@ qué se calcula). Abre la puerta a un GUI (editor de `NetworkSpec`).
 
 ---
 
-## Hito 11 — Costuras externas de biblioteca/persistencia (post-V1)
+## Hito 11 — Costuras externas de biblioteca/persistencia (Zotero/Neo4j) — **DESCARTADO (decisión del PO, 2026-06-17)**
 
-**Alcance**
-
-- **`ZoteroStore`** (extra `[zotero]`, **V1.1**): sincronizar la biblioteca viva con una
-  colección Zotero (leer semillas / devolver lo aceptado). Costura opt-in, no el corazón (ADR
-  0009).
-- **`Neo4jStore`** (extra `[neo4j]`, post-V1.2): adaptador tabla→grafo para consultas Cypher.
-  **Ya no es sustrato** (ADR 0002).
-
-**Historias:** extiende **C4** (biblioteca viva sincronizable con Zotero) como costura opt-in.
-
-**Criterios de aceptación (DoD)**
-
-- Round-trip Zotero (leer semillas / escribir aceptados) contra cliente mockeado; `integration`
-  contra Neo4j efímera (Testcontainers) para el adaptador.
-
-**Tests (TDD — los justos)**
-
-- Round-trip Zotero sobre cliente mock.
-- `Neo4jStore` marcado `integration` (Testcontainers o driver mockeado), fuera del gate `unit`.
+> **Decisión del PO (2026-06-17):** **no se hace.** Ni `ZoteroStore` ni `Neo4jStore` son
+> necesarios. La biblioteca viva propia (DuckDB) es el corazón de V1.0 (ADR 0009/0002) y la GUI
+> se construye **sobre el workspace local**, no sobre integraciones externas. Se retira del
+> ROADMAP; si en el futuro aparece demanda real (p.ej. round-trip con un Zotero existente), se
+> reabrirá como un hito nuevo con su propio encuadre. No bloquea nada.
 
 ---
 
