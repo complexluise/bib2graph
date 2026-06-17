@@ -4,6 +4,7 @@ Reexporta los símbolos públicos del paquete de redes:
   - Proyectores (5 implementaciones + constante MIN_WEIGHT_DEFAULT).
   - Analizadores (funciones puras + QualityThresholds).
   - ``NetworkArtifact`` y ``Networks`` (facade de alto nivel).
+  - ``decorate`` / ``decorate_graph`` (capa de decoración de nodos, issue #25).
 
 Ver API.md §7-10.
 """
@@ -19,6 +20,7 @@ from bib2graph.networks.analyzer import (
     detect_communities,
     network_metrics,
 )
+from bib2graph.networks.decorate import decorate, decorate_graph
 from bib2graph.networks.facade import Networks
 from bib2graph.networks.projectors import (
     MIN_WEIGHT_DEFAULT,
@@ -47,6 +49,8 @@ __all__ = [
     "cocitation_quality_report",
     "collect_item_to_papers",
     "community_composition",
+    "decorate",
+    "decorate_graph",
     "detect_communities",
     "network_metrics",
 ]

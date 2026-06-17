@@ -58,6 +58,13 @@
 > `OpenAlexSource.fetch_citing_batch`, §2) y `Networks.quick` devuelve **4 o 5 redes** según haya
 > `cited_by_id` (§10). Flag `--max-citing`. **Hito 8 completo.**
 >
+> **Sincronizado con labels/decorate — #25 (AS-BUILT, 2026-06-16):** se agregó la **capa frontera
+> `decorate`** (§7.1, `networks/decorate.py`) entre los proyectores puros (§7) y el export/GUI:
+> inyecta `label` legible + atributos de nodo (`year`/`is_seed`/`curation_status`/`degree_centrality`/
+> `community`) en los nodos. `Networks.quick`/`build` devuelven artefactos **decorados** (cableado en
+> `facade.py:_build_artifact`); los proyectores **siguen puros** (ADR 0014). Cierra el hueco de la
+> Nota 09 B3 (redes con id crudo, ilegibles en Gephi/VOSviewer).
+>
 > **Sincronizado con el workspace — ADR [0029](decisiones/0029-workspace-por-investigacion.md)
 > (AS-BUILT, 2026-06-16):** la unidad de persistencia es un **workspace = carpeta** (`workspace.json`
 > + `library.duckdb` + `networks/`/`snapshots/`/`exports/`). `--store` pasó a **opcional** y se agregó
@@ -849,6 +856,62 @@ completo** (crítica #2). La **co-citación** es la más cara (segundo nivel de 
   **completa es end-to-end** (Hito 8 ✅): `b2g enrich` (8b) puebla `cited_by_id` con el 2º nivel de
   fetch del `OpenAlexEnricher` (ADR 0007/0025), y `Networks.quick` la incluye cuando esa columna
   está poblada (§10).
+- **Los proyectores siguen PUROS — NO setean atributos de nodo** (ADR 0014, AS-BUILT #25): producen
+  un `nx.Graph` con **ids crudos** como nodos (`oa:…`, `I185261750`, un ORCID), **sin** `label`. La
+  legibilidad (label + atributos) la inyecta la **capa `decorate` (§7.1)**, que es la **frontera**
+  entre la proyección pura y el export/GUI. Esta separación es deliberada (ADR 0014).
+
+---
+
+## 7.1 Frontera — `decorate` (label legible + atributos de nodo, v1, AS-BUILT #25)
+
+`bib2graph.networks.decorate` es la **capa de frontera** entre los proyectores puros (§7) y los
+exportadores (§9) / la GUI. Los proyectores devuelven grafos con **ids crudos** como nodos y **sin
+atributos**; `decorate` transforma esos ids en **labels legibles** e inyecta atributos de
+curación/comunidad/centralidad. Cierra el hueco de la Nota 09 B3 (las redes salían con `id` crudo,
+ilegibles en Gephi/VOSviewer/Cytoscape).
+
+```python
+LABEL_MAX_CHARS: int = 60   # tope del label de paper; título largo → truncado + "..."
+
+def decorate_graph(graph: nx.Graph, table: pa.Table, kind: str, *,
+                   communities: dict[Any, int] | None = None) -> None:
+    """Inyecta label + atributos en los nodos del grafo IN-PLACE (no copia; el llamador/
+    exporter copia si necesita preservar el original). No muta el corpus ni la tabla.
+    Determinista; no importa duckdb (núcleo puro)."""
+
+def decorate(artifact: NetworkArtifact, table: pa.Table) -> None:
+    """Atajo sobre decorate_graph: extrae kind y communities del NetworkArtifact.
+    Es el punto de integración en facade.py (_build_artifact)."""
+```
+
+`networks/__init__.py` re-exporta `decorate`/`decorate_graph`.
+
+**Atributos de nodo inyectados:**
+
+| Atributo | Kinds | Origen |
+|---|---|---|
+| `label` | todos | string legible (mapeo por kind, abajo) |
+| `degree_centrality` | todos | `float`, vía `nx.degree_centrality` |
+| `year` | paper (coupling/cocitation) | `int` (ausente si `None` en el corpus) |
+| `is_seed` | paper | `bool` |
+| `curation_status` | paper | `string` |
+| `community` | todos | `int`, **solo** si se provee `artifact.communities` |
+
+**Mapeo de `label` por `NetworkKind`:**
+
+| Kind | Nodo | `label` |
+|---|---|---|
+| `bibliographic_coupling` / `cocitation` | paper (`id`) | `"título (año)"`, truncado a `LABEL_MAX_CHARS` (60) + `"..."`; fallback al id crudo si no hay título |
+| `author_collab` | `authors_id` | `authors_raw` correlativo al `authors_id` (fallback al id) |
+| `institution_collab` | `institutions_id` | `institutions_raw` correlativo (fallback al id) |
+| `keyword_cooccurrence` | `keywords_id` | la keyword (ya legible) |
+| (kind desconocido) | — | fallback al id crudo (extensible, no falla) |
+
+**Cableado:** `decorate` se aplica en `facade.py:_build_artifact`, de modo que `Networks.quick` /
+`Networks.build` (§10) ya devuelven **artefactos decorados** y `b2g build`/`export` salen con `label`
+legible sin pasos extra. **Los proyectores (§7) NO se tocan** (siguen puros, ADR 0014): la decoración
+es la única capa que sabe de labels.
 
 ---
 
@@ -916,7 +979,8 @@ class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
 
 - **`CsvExporter`** escribe `aristas.csv` (`source,target,weight`) y `nodos.csv` (`id,label` +
   atributos de nodo + métricas de `results` —degree/betweenness/community— unidas por id). Orden
-  de filas determinista.
+  de filas determinista. El `label` (y `year`/`is_seed`/`curation_status`/`community`) lo inyecta la
+  capa `decorate` (§7.1) antes del export, no el exporter.
 - **`GraphMLExporter`** escribe esos atributos como node attributes, **omite** los atributos con
   valor `None` (Gephi / `nx.write_graphml` no los admiten) y **no muta** el grafo original (opera
   sobre una copia).
@@ -955,7 +1019,8 @@ class Networks:
         """Arma las specs razonables y devuelve sus artefactos (caso 'investigador, baja
         fricción'). Devuelve **4 o 5 redes**: coupling (full), co-autoría, institución, co-word
         siempre; la **co-citación** se incluye (→5) cuando el corpus tiene `cited_by_id` poblado
-        (tras `b2g enrich`, Hito 8b) y se **omite graceful** (log) si está vacío (→4)."""
+        (tras `b2g enrich`, Hito 8b) y se **omite graceful** (log) si está vacío (→4).
+        Los artefactos vienen **decorados** (label legible + atributos de nodo, §7.1)."""
 ```
 
 **Modo quick** (v1) cubre baja fricción; **modo spec** (v0.2, YAML) cubre el pipeline declarativo
@@ -972,6 +1037,10 @@ versionable.
 - **`NetworkSpec` es un hook mínimo en v1** (modelo Pydantic ya consumido por `build`/`quick`); la
   carga desde YAML y la validación avanzada son del Hito 9. El símbolo público re-exportado desde
   `bib2graph` es `NetworkArtifact` (no `NetworkSpec`, que se importa desde `bib2graph.networks`).
+- **AS-BUILT #25 — artefactos decorados:** `_build_artifact` (en `facade.py`) aplica `decorate`
+  (§7.1) sobre el grafo, así que `build`/`quick` devuelven artefactos con `label` legible + atributos
+  de nodo (`year`/`is_seed`/`curation_status`/`degree_centrality`/`community`) listos para el export
+  y la GUI. Los proyectores (§7) siguen puros (ADR 0014).
 
 ---
 
