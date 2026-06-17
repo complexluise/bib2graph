@@ -3,13 +3,13 @@
 > Documento de Requisitos de Producto de la **V1** de `bib2graph`. Reescribe el PRD anterior
 > (que describía una librería BibTeX→redes con Semantic Scholar como enricher estructural y
 > Neo4j como preocupación central) tras el **giro** documentado en `Notas/04`–`07` y la
-> demolición de [`critica-base.md`](critica-base.md). Fecha: 2026-06-15 (reconciliado con el 2º
+> demolición de [`critica-base.md`](Notas/critica-base.md). Fecha: 2026-06-15 (reconciliado con el 2º
 > giro).
 >
 > Documentos hermanos: la dirección "IA in the loop" en
 > [`Notas/04-direccion-ia-in-the-loop.md`](Notas/04-direccion-ia-in-the-loop.md), el ciclo de
 > investigación humano en [`Notas/05-ciclo-investigacion-humano.md`](Notas/05-ciclo-investigacion-humano.md),
-> el método bibliométrico en [`metodología.md`](metodología.md), y las decisiones en
+> el método bibliométrico en [`metodología.md`](Notas/metodología.md), y las decisiones en
 > [`decisiones/`](decisiones/) — en particular [ADR 0007](decisiones/0007-openalex-backbone.md)
 > (OpenAlex backbone).
 >
@@ -69,7 +69,7 @@ que **la colección vive** (berry growing).*
 
 La exploración bibliográfica humana es **iterativa, no lineal** (Kuhlthau, Ellis, Bates,
 Pirolli, Wohlin — ver [`Notas/05`](Notas/05-ciclo-investigacion-humano.md) y
-[`metodología.md`](metodología.md)): se siembra, se hace *chaining*, la query y la idea
+[`metodología.md`](Notas/metodología.md)): se siembra, se hace *chaining*, la query y la idea
 **mutan** al leer (berrypicking), y la colección **se cultiva** en el tiempo (berry growing). El
 snowballing manual es mecánico y agota; documentarlo con rigor (PRISMA / vom Brocke) es trabajo.
 
@@ -372,7 +372,7 @@ Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.
   end-to-end sobre 103 papers de OpenAlex, con 3/4 redes con estructura, thesaurus multilingüe y
   asimetría Norte–Sur medible (ver
   [`exploracion/informe_ied_lectura_2.md`](../exploracion/informe_ied_lectura_2.md)). El estudio
-  de semiconductores sigue como caso documentado en [`metodología.md`](metodología.md).
+  de semiconductores sigue como caso documentado en [`metodología.md`](Notas/metodología.md).
 - Agregar una nueva `Source` o `Store` no requiere modificar el núcleo.
 
 ## 11. Próximos pasos

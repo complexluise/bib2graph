@@ -1,7 +1,7 @@
 # Destrucción del concepto base — para rediseñar mejor
 
 > Red team adversarial del diseño **actual** de `bib2graph` (el de
-> [`PRD.md`](PRD.md) / [`ARCHITECTURE.md`](ARCHITECTURE.md)). El objetivo no es defender lo
+> [`PRD.md`](../PRD.md) / [`ARCHITECTURE.md`](../ARCHITECTURE.md)). El objetivo no es defender lo
 > escrito: es **romperlo a propósito** para que el rediseño nazca de una crítica honesta y no
 > de la inercia. Si un argumento aguanta, queda como restricción del nuevo diseño; si se cae,
 > mejor que se caiga ahora. Documento hermano: [`referentes.md`](referentes.md).
@@ -99,7 +99,7 @@ De *"librería que convierte BibTeX en redes, con co-citación como flagship y N
 todo para no repetir v0"* a *"herramienta agente-native y enseñable que va de una consulta
 OpenAlex a redes bibliométricas reproducibles (coupling/citación directa de primera), con una
 superficie diminuta por defecto"*. Validar este giro con el Product Owner antes de tocar
-[`PRD.md`](PRD.md) y [`ARCHITECTURE.md`](ARCHITECTURE.md); registrar la decisión "BibTeX vs
+[`PRD.md`](../PRD.md) y [`ARCHITECTURE.md`](../ARCHITECTURE.md); registrar la decisión "BibTeX vs
 OpenAlex como entrada de referencia" y "agente-native como columna" como ADRs nuevos.
 
 ## Referencias

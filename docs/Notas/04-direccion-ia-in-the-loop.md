@@ -4,7 +4,7 @@
 > "librería que convierte corpus en redes" a "sustrato de investigación que el humano cura y
 > sobre el que la IA interviene en puntos puntuales". Incluye una revisión de referentes del
 > **nuevo cluster** (asistentes de investigación con IA), que es distinto del cluster
-> bibliométrico de [`../referentes.md`](../referentes.md). No es diseño congelado: es material
+> bibliométrico de [`referentes.md`](referentes.md). No es diseño congelado: es material
 > para pensar. Fecha: 2026-06-14.
 >
 > ⚠️ **ESTADO HISTÓRICO — superado en parte por ADR
@@ -115,7 +115,7 @@ Frase de posicionamiento candidata (a validar):
    cita (caro, frontera de investigación) o se integra (Scite API paga / ContraCrow OSS)? Define
    cuánto del moat es propio.
 4. **OpenAlex vs. Semantic Scholar como backbone** (S2 tiene mejor señal de citas/contextos;
-   OpenAlex es más abierto). Hereda el debate de [`../critica-base.md`](../critica-base.md) §1.
+   OpenAlex es más abierto). Hereda el debate de [`critica-base.md`](critica-base.md) §1.
 
 ## 7. Próximo paso recomendado
 

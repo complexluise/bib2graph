@@ -3,7 +3,7 @@
 > Red team adversarial del **código construido** (no del diseño): v0.2, Hitos 0–6 + 1.5.
 > Cinco lentes —**arquitectura, producto, funcionamiento, rigor científico, fidelidad al
 > ciclo humano de la [Nota 05](05-ciclo-investigacion-humano.md)**— corridas contra el
-> repositorio tal cual está. Hermano de [`critica-base.md`](../critica-base.md) (que rompió el
+> repositorio tal cual está. Hermano de [`critica-base.md`](critica-base.md) (que rompió el
 > *diseño*) y de [`01-lecciones-v0.md`](01-lecciones-v0.md) (postmortem de v0). El objetivo es
 > el mismo: romper a propósito lo que tenemos para que la próxima vuelta nazca de una crítica
 > honesta. Las referencias `archivo:línea` apuntan al código de v0.2 verificado el 2026-06-15.
@@ -201,7 +201,7 @@ documentado para un paper sobre tu propia metodología?** Las señales apuntan a
   (`explain_candidate`) son stubs/futuros.
 - **Las barreras de adopción se apilan:** Python+CLI, sin GUI, sin viz, solo OpenAlex,
   GraphML→insight ajeno, alpha hecho-con-IA. "Enseñable en una tarde"
-  ([`referentes.md`](../referentes.md) §5) **contradice** "requiere Python/CLI" (PRD §3, L107).
+  ([`referentes.md`](referentes.md) §5) **contradice** "requiere Python/CLI" (PRD §3, L107).
 - **Riesgo OpenAlex tier-1 subestimado:** ya pide API key desde feb-2026; muta (de ahí el ADR
   0017); la co-citación da **0 aristas** con datos reales hasta el Hito 8.
 

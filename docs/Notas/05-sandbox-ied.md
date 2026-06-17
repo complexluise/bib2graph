@@ -12,7 +12,7 @@
 > **Documentos hermanos:**
 > - [`01-lecciones-v0.md`](01-lecciones-v0.md) — reglas que motivan el código
 > - [`arquitecturas-alternativas.md`](02-exploracion/arquitecturas-alternativas.md) — comparación de modelos del `Corpus`
-> - [`referentes.md`](../referentes.md) — mapa del campo
+> - [`referentes.md`](referentes.md) — mapa del campo
 > - [`04-direccion-ia-in-the-loop.md`](04-direccion-ia-in-the-loop.md) — giro de "librería" a "sustrato"
 > - [`ROADMAP.md`](../ROADMAP/README.md) — la secuencia de construcción vigente
 >

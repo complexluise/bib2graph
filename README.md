@@ -186,9 +186,9 @@ decisión, en los [ADRs](docs/decisiones/).
 | [`docs/ROADMAP/`](docs/ROADMAP/README.md) | Secuencia de construcción y mapa de releases (v0.1 → v1.0), con estado por hito. |
 | [`docs/decisiones/`](docs/decisiones/) | ADRs (decisiones de arquitectura y su porqué) + `registro-ia.md` (decisiones tomadas por la IA). |
 | [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md) | Estado experimental y declaración de uso de IA (AI-in-the-loop): cómo se construye y qué implica. |
-| [`docs/metodología.md`](docs/metodología.md) | Método bibliométrico (autoridad de dominio). |
-| [`docs/referentes.md`](docs/referentes.md) | Mapa del ecosistema (OpenAlex, bibliometrix, VOSviewer…) y dónde está el hueco. |
-| [`docs/critica-base.md`](docs/critica-base.md) · [`docs/Notas/`](docs/Notas/) | Red team del concepto, postmortem de v0, exploración y material de referencia. |
+| [`docs/Notas/metodología.md`](docs/Notas/metodología.md) | Método bibliométrico (autoridad de dominio). |
+| [`docs/Notas/referentes.md`](docs/Notas/referentes.md) | Mapa del ecosistema (OpenAlex, bibliometrix, VOSviewer…) y dónde está el hueco. |
+| [`docs/Notas/critica-base.md`](docs/Notas/critica-base.md) · [`docs/Notas/`](docs/Notas/) | Red team del concepto, postmortem de v0, exploración y material de referencia. |
 
 ## Licencia
 

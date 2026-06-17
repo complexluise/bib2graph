@@ -50,7 +50,7 @@ frente al "magic black box".
   exportadores. *El final siguen siendo las redes.*
 - **Cambia el front**: las semillas dejan de ser "importar un BibTeX" y pasan a ser
   **ecuación de búsqueda + chaining sobre OpenAlex**. Muere el Enricher-S2 estructural y
-  Neo4j-como-sustrato (ver [`../critica-base.md`](../critica-base.md)).
+  Neo4j-como-sustrato (ver [`../critica-base.md`](../Notas/critica-base.md)).
 
 ## 5. Historias de usuario
 

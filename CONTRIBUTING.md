@@ -186,7 +186,7 @@ cambio):
    mínimo a 1 — ahí la regla "al menos una aprobación" aplica.
 3. Si cambia un contrato público (`docs/API.md`), ADR nuevo en
    `docs/decisiones/` aprobado **antes** de mergear el código.
-4. Si toca el método bibliométrico, actualizar `docs/metodología.md` en el
+4. Si toca el método bibliométrico, actualizar `docs/Notas/metodología.md` en el
    mismo PR.
 
 > **Protección de rama:** `main` es **estricta** (la rama del PR debe estar
