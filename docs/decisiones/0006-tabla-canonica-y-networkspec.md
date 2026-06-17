@@ -10,6 +10,14 @@
   **supersedida por [0009](0009-biblioteca-viva-duckdb.md)** (biblioteca viva stateful en DuckDB;
   el snapshot pasa a ser un *export* derivable del estado vivo). El resto de este ADR (tabla
   canónica Arrow + Pydantic, `NetworkSpec`, versionado/tooling) **sigue vigente**.
+- **Enmienda AS-BUILT (2026-06-17, Hito 9 — capa declarativa NetworkSpec):** la `NetworkSpec` de
+  este ADR ganó su **carga declarativa desde YAML**. Construido: el loader **`load_specs(path)`**
+  (`networks/spec.py`, re-exportado desde `bib2graph.networks`) con **esquema raíz `networks:`** (lista
+  de entradas, cada una validada con `NetworkSpec(**entry)`); el campo **`resolution: float = 1.0`**
+  (resolución de Louvain, fuera del `corpus_hash`); **`model_config = ConfigDict(extra="forbid")`**
+  (campo desconocido → error accionable); el **16° subcomando `b2g networks --spec <yaml>`**; y
+  **`pyyaml`** promovido a dependencia del núcleo (import perezoso). El cuerpo histórico abajo
+  (`NetworkSpec` como hook mínimo) **sigue vigente**; esto solo registra el AS-BUILT. Ver API.md §10.
 - **Enmienda (2026-06-15, 2º giro):** el punto "el `Corpus` es un *wrapper* delgado sobre la
   tabla" (sección A) queda **enmendado por [0015](0015-corpus-tabular-backend.md)**: el `Corpus`
   ya no envuelve una `pa.Table` cruda con semántica de valor, sino un **`TabularBackend`

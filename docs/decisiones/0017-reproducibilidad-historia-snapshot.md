@@ -97,11 +97,13 @@ en fechas distintas no son comparables.
    `detect_communities(method="louvain")` se siembra con un `random_state` derivado del
    `corpus_hash` (`_louvain_seed_from_hash`, `facade.py`: `int(corpus_hash[:8], 16) % 2**31`),
    de modo que **mismo corpus → mismas comunidades** entre corridas.
-   **`resolution` diferido a Hito 9 (NetworkSpec):** la idea original incluía exponer el parámetro
-   `resolution` de Louvain; se difiere al Hito 9, donde `NetworkSpec` gana la carga declarativa
-   (YAML) y los parámetros por algoritmo. R2 entrega la pata que importa para la reproducibilidad
-   (el `random_state` seeded); `resolution` queda `python-louvain` default hasta entonces. El
-   diferimiento es aditivo (no rompe nada construido).
+   **`resolution` expuesta en Hito 9 ✅ (2026-06-17):** la idea original incluía exponer el parámetro
+   `resolution` de Louvain; se difirió al Hito 9 y ya está construido — `NetworkSpec.resolution: float
+   = 1.0`, propagado a `community_louvain.best_partition(..., resolution=...)`, **fuera del
+   `corpus_hash`** (param de spec, no de contenido), así que el seed de Louvain (`random_state`
+   derivado del `corpus_hash`) queda **intacto** y la reproducibilidad se mantiene. R2 entregó la pata
+   que importa para la reproducibilidad (el `random_state` seeded); la exposición de `resolution` es
+   aditiva (no rompe nada construido).
 
 **Consecuencia:** el snapshot vuelve a ser **reproducible bit a bit** (cumple la promesa original) y
 la pureza de `facade.py` ("mismo corpus + mismo spec → mismo `NetworkArtifact`") deja de estar rota.

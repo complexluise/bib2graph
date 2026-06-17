@@ -6,7 +6,8 @@
 > (Enricher OpenAlex: refs→DOI + co-citación end-to-end) **y Hito 7 COMPLETO** (dedup fuzzy
 > determinista `rapidfuzz`, extra `[dedup]`), tras el red-team de la Nota 06 y el modelo
 > nuevo (ADR 0022/0023; el producto **no usa IA generativa** — el desarrollo SÍ es asistido por IA,
-> pero el scent es bibliométrico determinista). **Próximo: Hito 9 (`NetworkSpec` YAML).** Ver
+> pero el scent es bibliométrico determinista) **y el Hito 9 COMPLETO** (capa declarativa
+> `NetworkSpec` YAML: `load_specs` + `resolution` + 16° subcomando `b2g networks`). Ver
 > `docs/ROADMAP/` y "Estado actual" abajo. El diseño objetivo vive en
 > `docs/ARCHITECTURE.md`; los contratos
 > públicos en `docs/API.md`; el producto en `docs/PRD.md`; las reglas que motivan este código en
@@ -29,11 +30,21 @@
   (`DuckDBStore`), `sources/` (`OpenAlexSource`, `BibtexSource`), `foraging/` (`Forager`,
   scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/` con 15 subcomandos en `cli/commands/`, no un
-  placeholder—. **498 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
+  El **CLI `b2g` es real** —paquete `cli/` con 16 subcomandos en `cli/commands/`, no un
+  placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9, abajo)—.
+  **516 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
   (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2).
+- **Hito 9 COMPLETO — capa declarativa `NetworkSpec` YAML** (AS-BUILT 2026-06-17): `NetworkSpec`
+  (`networks/spec.py`) suma el campo **`resolution: float = 1.0`** (resolución de Louvain, **fuera del
+  `corpus_hash`** → seed intacto) y **`extra="forbid"`**. Nueva función **`load_specs(path)`**
+  (re-exportada desde `networks/`; esquema raíz `networks:`, errores accionables citando archivo +
+  `red #<idx>` + campo). **16° subcomando `b2g networks --spec <yaml>`** (`cli/commands/networks.py`):
+  carga el YAML → `Networks.build` por red → escribe artefactos con el helper compartido
+  `_write_artifacts` (mismos GraphML + metrics.json + clusters.csv que `build`); **NO** transiciona el
+  `CycleState` ni sella `.corpus_hash` (transversal al lazo, como `enrich`/`curate`). `pyyaml` pasó a
+  dependencia del núcleo (import perezoso). **516 tests verdes**. Ver `docs/API.md` §10.
 - **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
   [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
   núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
@@ -270,14 +281,16 @@ src/bib2graph/
   filters/             # filtros de inclusión/exclusión con conteo PRISMA (núcleo)
   enrichers/           # OpenAlexEnricher opt-in, NÚCLEO (Hito 8 ✅: refs→DOI 8a + co-citación 8b → pobla cited_by_id);
                        # Enricher Protocol; S2 ([s2]) reservado para señal adicional, NO el Enricher (ADR 0025)
-  networks/            # Projector, Analyzer, NetworkSpec, NetworkArtifact, Networks, cluster_table (#31)
+  networks/            # Projector, Analyzer, NetworkSpec (resolution + extra="forbid"), load_specs (YAML, Hito 9),
+                       # NetworkArtifact, Networks, cluster_table (#31)
   exporters/           # GraphML, CSV
   stores/              # DuckDBStore (núcleo, por defecto: biblioteca viva);
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
-                       # cli/commands/ = 15 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
-                       # init scaffold de workspace —ADR 0029, curate dump/import CSV —#22+#26). CLI = API
+                       # cli/commands/ = 16 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
+                       # init scaffold de workspace —ADR 0029, curate dump/import CSV —#22+#26,
+                       # networks capa declarativa YAML —Hito 9). CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
   workspace.py         # Workspace (init/open/resolve) + WorkspaceManifest (ADR 0029): la carpeta es la
                        # unidad de persistencia; resolución ambiente; import perezoso de DuckDBStore
