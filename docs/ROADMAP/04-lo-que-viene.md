@@ -101,7 +101,18 @@ cross-source.
 
 ---
 
-## Hito 9 — Capa declarativa: `NetworkSpec` (v0.2)
+## Hito 9 — Capa declarativa: `NetworkSpec` (v0.2) — **COMPLETO ✅**
+
+> **Hito 9 COMPLETO ✅ (2026-06-17):** `NetworkSpec` gana **carga declarativa desde YAML** vía
+> **`load_specs(path)`** (`networks/spec.py`, re-exportada desde `bib2graph.networks`; esquema raíz
+> `networks:` = lista, cada entrada validada con `NetworkSpec(**entry)`, errores accionables citando
+> archivo + `red #<idx>` + campo). Suma el campo **`resolution: float = 1.0`** (resolución de Louvain,
+> propagada por `_build_artifact` a `best_partition(..., resolution=...)`; ignorada en `label_prop`/
+> `greedy_modularity`; **fuera del `corpus_hash`** → seed de Louvain intacto, R2) y
+> **`extra="forbid"`** (campo desconocido → error). Nuevo **16° subcomando `b2g networks --spec
+> <yaml>`** (escribe artefactos con el helper compartido `_write_artifacts`; mismo envelope que
+> `build`; **NO** transiciona el `CycleState` ni sella `.corpus_hash`). `pyyaml` promovido al núcleo
+> (import perezoso). Gate verde, **516 tests**. Ver API.md §10 + §convenciones CLI.
 
 **Alcance**
 
@@ -116,14 +127,14 @@ qué se calcula). Abre la puerta a un GUI (editor de `NetworkSpec`).
 
 **Criterios de aceptación (DoD)**
 
-- Un `redes.yaml` válido carga y valida; uno inválido falla con error accionable.
-- `Networks.build(corpus, spec)` desde YAML es **equivalente** a la spec correspondiente de
-  `Networks.quick`.
+- **✅** Un `redes.yaml` válido carga y valida; uno inválido falla con error accionable.
+- **✅** `Networks.build(corpus, spec)` desde YAML es **equivalente** a la spec correspondiente de
+  `Networks.quick` (nodos + aristas + comunidades).
 
 **Tests (TDD — los justos)**
 
-- Carga/validación de un YAML válido y uno inválido (2 casos).
-- Equivalencia `build(spec)` ≡ la spec de `quick` para una red.
+- **✅** Carga/validación de un YAML válido y uno inválido (2 casos).
+- **✅** Equivalencia `build(spec)` ≡ la spec de `quick` para una red.
 
 **Se vuelve posible:** pipelines reproducibles versionados en git. Abre la puerta a un GUI.
 

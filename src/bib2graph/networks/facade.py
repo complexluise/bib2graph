@@ -159,7 +159,10 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
                 corpus_hash = corpus._backend.corpus_hash()
                 random_state = _louvain_seed_from_hash(corpus_hash)
             communities = detect_communities(
-                g, method=spec.clustering, random_state=random_state
+                g,
+                method=spec.clustering,
+                random_state=random_state,
+                resolution=spec.resolution,
             )
         except ImportError:
             raise  # dep faltante: fallar fuerte (lección 7, AGENTS.md)

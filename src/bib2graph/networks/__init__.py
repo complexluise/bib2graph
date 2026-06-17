@@ -33,7 +33,7 @@ from bib2graph.networks.projectors import (
     KeywordCoOccurrenceProjector,
     collect_item_to_papers,
 )
-from bib2graph.networks.spec import NetworkArtifact, NetworkSpec
+from bib2graph.networks.spec import NetworkArtifact, NetworkSpec, load_specs
 
 __all__ = [
     "MIN_WEIGHT_DEFAULT",
@@ -55,5 +55,6 @@ __all__ = [
     "decorate",
     "decorate_graph",
     "detect_communities",
+    "load_specs",
     "network_metrics",
 ]

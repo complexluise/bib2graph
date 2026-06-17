@@ -20,9 +20,10 @@ Los artefactos se escriben en ``<networks_dir>/<kind>/``:
 
 from __future__ import annotations
 
+import csv as _csv
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 
@@ -30,69 +31,41 @@ from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DependencyError, handle_errors
 from bib2graph.cli._store import open_store, resolve_workspace
 
+if TYPE_CHECKING:
+    from bib2graph.corpus import Corpus
+    from bib2graph.networks.spec import NetworkArtifact
+
+
 # ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click)
+# Helper compartido: escritura de artefactos por red
 # ---------------------------------------------------------------------------
 
 
-def run_build(
-    store_path: str | Path,
-    *,
-    out_dir: str | Path | None = None,
-) -> dict[str, Any]:
-    """Computa redes bibliométricas y escribe artefactos a disco.
+def _write_artifacts(
+    artifacts: list[NetworkArtifact],
+    corpus: Corpus,
+    artifacts_dir: Path,
+) -> list[dict[str, Any]]:
+    """Escribe GraphML + metrics.json + clusters.csv por cada ``NetworkArtifact``.
 
-    Usa ``Networks.quick`` para las 4 redes principales (coupling, co-autoría,
-    institución, co-word). Escribe GraphML + metrics.json por red.
-    Para redes de paper con comunidades detectadas escribe también clusters.csv
-    (tabla de resumen de comunidades, issue #31).
-    Sella ``networks/.corpus_hash`` con el hash del corpus que las produjo.
-    Transiciona a BUILT tras escribir con éxito.
+    Helper reutilizable por ``run_build`` y ``run_networks``.  Contiene SOLO la
+    lógica de export de artefactos: NO transiciona ``CycleState`` ni sella
+    ``.corpus_hash`` (esas responsabilidades quedan en quien llame a esta función).
 
     Args:
-        store_path: Ruta al archivo ``.duckdb``.
-        out_dir: Directorio base de salida. Default: ``<store_dir>/networks/``.
+        artifacts: Lista de artefactos a exportar.
+        corpus: Corpus origen (se necesita para ``cluster_table``).
+        artifacts_dir: Directorio base donde se crean las subcarpetas ``<kind>/``.
 
     Returns:
-        Dict con ``networks_built``, ``artifacts_dir``, ``corpus_hash``
-        y lista de redes.
-
-    Raises:
-        DependencyError: Si falta ``python-louvain``.
-        StoreError: Si el store está bloqueado.
+        Lista de dicts con ``kind``, ``nodes``, ``edges``, ``graphml``,
+        ``metrics_json`` y (si aplica) ``clusters_csv``.
     """
-    import csv as _csv
-
-    from bib2graph.cycle import apply_transition
     from bib2graph.exporters.graphml import GraphMLExporter
     from bib2graph.networks.clusters import cluster_table
-    from bib2graph.networks.facade import Networks
-
-    store = open_store(store_path)
-    corpus = store.load()
-
-    # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
-    # no un literal en el comando (ADR 0016 enmendado §1).
-    current_state = store.backend.loop_state()
-    current_round = store.backend.loop_round()
-    new_state, new_round = apply_transition(current_state, "build", current_round)
-
-    store_path_obj = Path(store_path)
-    if out_dir is None:
-        artifacts_dir = store_path_obj.parent / "networks"
-    else:
-        artifacts_dir = Path(out_dir)
-
-    try:
-        artifacts = Networks.quick(corpus)
-    except ImportError as exc:
-        raise DependencyError(
-            f"Dependencia faltante para detectar comunidades: {exc}. "
-            "Instalá python-louvain: uv add python-louvain."
-        ) from exc
 
     exporter = GraphMLExporter()
-    networks_info = []
+    networks_info: list[dict[str, Any]] = []
 
     for art in artifacts:
         kind = art.spec.kind
@@ -170,6 +143,68 @@ def run_build(
         if clusters_path is not None:
             net_entry["clusters_csv"] = clusters_path
         networks_info.append(net_entry)
+
+    return networks_info
+
+
+# ---------------------------------------------------------------------------
+# Función núcleo (testeable, sin Click)
+# ---------------------------------------------------------------------------
+
+
+def run_build(
+    store_path: str | Path,
+    *,
+    out_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Computa redes bibliométricas y escribe artefactos a disco.
+
+    Usa ``Networks.quick`` para las 4 redes principales (coupling, co-autoría,
+    institución, co-word). Escribe GraphML + metrics.json por red.
+    Para redes de paper con comunidades detectadas escribe también clusters.csv
+    (tabla de resumen de comunidades, issue #31).
+    Sella ``networks/.corpus_hash`` con el hash del corpus que las produjo.
+    Transiciona a BUILT tras escribir con éxito.
+
+    Args:
+        store_path: Ruta al archivo ``.duckdb``.
+        out_dir: Directorio base de salida. Default: ``<store_dir>/networks/``.
+
+    Returns:
+        Dict con ``networks_built``, ``artifacts_dir``, ``corpus_hash``
+        y lista de redes.
+
+    Raises:
+        DependencyError: Si falta ``python-louvain``.
+        StoreError: Si el store está bloqueado.
+    """
+    from bib2graph.cycle import apply_transition
+    from bib2graph.networks.facade import Networks
+
+    store = open_store(store_path)
+    corpus = store.load()
+
+    # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
+    # no un literal en el comando (ADR 0016 enmendado §1).
+    current_state = store.backend.loop_state()
+    current_round = store.backend.loop_round()
+    new_state, new_round = apply_transition(current_state, "build", current_round)
+
+    store_path_obj = Path(store_path)
+    if out_dir is None:
+        artifacts_dir = store_path_obj.parent / "networks"
+    else:
+        artifacts_dir = Path(out_dir)
+
+    try:
+        artifacts = Networks.quick(corpus)
+    except ImportError as exc:
+        raise DependencyError(
+            f"Dependencia faltante para detectar comunidades: {exc}. "
+            "Instalá python-louvain: uv add python-louvain."
+        ) from exc
+
+    networks_info = _write_artifacts(artifacts, corpus, artifacts_dir)
 
     # ADR 0029 — sellar con corpus_hash para detección de staleness.
     # El hash ya lo tiene el corpus vía Manifest/CorpusSnapshot; lo derivamos

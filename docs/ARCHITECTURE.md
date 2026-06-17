@@ -438,8 +438,9 @@ trabajo posterior, pero la API se **diseña con estos principios desde el hito 1
    faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` mediante un
    **pre-check `hasattr` en el borde** (p. ej. `chain.py` antes del `Forager`). Ver ADR 0021 §D.
 
-Son **14 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
-`inspect`, `validate`, `accept`, `reject`, **`monitor`**, **`enrich`**, **`init`**); `build`/`export` están
+Son **16 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
+`inspect`, `validate`, `accept`, `reject`, **`monitor`**, **`enrich`**, **`init`**, **`curate`**,
+**`networks`**); `build`/`export` están
 **separados** y el `CycleState` transiciona automáticamente por comando (ADR 0021). El 12°
 **`monitor`** (cleanup pre-v0.3) re-chequea citantes nuevos del corpus (forward chaining) y
 transiciona a `MONITORED`. El 13° **`enrich`** (Hito 8 = Ciclos 8a + 8b, ADR
@@ -447,7 +448,11 @@ transiciona a `MONITORED`. El 13° **`enrich`** (Hito 8 = Ciclos 8a + 8b, ADR
 co-citación, flag `--max-citing`) y **no transiciona** el ciclo (ortogonal al lazo). El 14°
 **`init`** (AS-BUILT ADR [0029](decisiones/0029-workspace-por-investigacion.md)) hace scaffold de un
 workspace (carpeta + `workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/`exports/`;
-`b2g init .` inicializa el cwd) y **no transiciona** el ciclo. El error de uso (p. ej.
+`b2g init .` inicializa el cwd) y **no transiciona** el ciclo. El 15° **`curate`** (#22 + #26) hace
+curación a escala vía CSV (dump/import en lote, transversal: **no transiciona** el ciclo). El 16°
+**`networks`** (Hito 9, AS-BUILT 2026-06-17) construye redes desde un YAML declarativo
+(`b2g networks --spec <yaml>`, `load_specs` + `Networks.build` por red, helper compartido
+`_write_artifacts`) y **no transiciona** el ciclo ni sella `.corpus_hash` (transversal al lazo). El error de uso (p. ej.
 `--workspace` y `--store` juntos, o ningún store/workspace resoluble) sale **sin envelope** (Click
 aborta el parseo: stderr + exit 1).
 

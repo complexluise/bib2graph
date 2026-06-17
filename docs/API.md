@@ -85,6 +85,15 @@
 > transversal:** no transiciona el `CycleState`. Cierra el hueco de la
 > [Nota 09](Notas/09-sesion-qa-prueba-ecologia-valoraciones.md) B4/B5/P1 (no había dump CSV ni
 > reimport en lote: la curación a escala no era viable). Ver §convenciones CLI.
+>
+> **Sincronizado con la capa declarativa NetworkSpec — Hito 9 (AS-BUILT, 2026-06-17):** `NetworkSpec`
+> (§10) gana el campo **`resolution: float = 1.0`** (resolución de Louvain, fuera del `corpus_hash` —
+> seed intacto, R2) y **`extra="forbid"`** (campo desconocido en el YAML → error accionable). Nueva
+> función **`load_specs(redes.yaml)`** (carga/valida una lista de specs; clave raíz `networks:`) y el
+> **16° subcomando `b2g networks --spec`** (construye cada red con `Networks.build` y el helper
+> compartido `_write_artifacts`; mismo envelope que `build`; **NO** transiciona el `CycleState` ni
+> sella `.corpus_hash`). `pyyaml` pasó a dependencia del núcleo (import perezoso). Ver §10 +
+> §convenciones CLI.
 
 ## Convenciones
 
@@ -104,12 +113,12 @@ datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado).
 invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opciones globales
 **opcionales** `--workspace`/`--store`, ver abajo).
 
-**Set de 15 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+**Set de 16 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
 y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
 pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
 [0025](decisiones/0025-enricher-cocitacion-openalex.md); el 14° `init` con el workspace, ADR
 [0029](decisiones/0029-workspace-por-investigacion.md); el 15° `curate` con la curación a escala,
-#22 + #26):
+#22 + #26; el 16° `networks` con la capa declarativa YAML, Hito 9):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -180,6 +189,17 @@ pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
     que el Forager guarde `scent` en provenance) y **`cluster` siempre vacío** (integración con redes
     diferida). **Curación TRANSVERSAL: `curate` NO transiciona el `CycleState`** (disponible en cualquier
     estado del lazo, igual que `accept`/`reject`; ADR 0016 enmendado R3). `--json` con `schema="1"`.
+- **`networks`** (Hito 9, AS-BUILT 2026-06-17): **capa declarativa** — construye redes desde un YAML
+  versionable. **`b2g networks --spec <redes.yaml>`** carga la lista de specs con `load_specs` (§10;
+  clave raíz `networks:`), construye cada red con `Networks.build` y escribe artefactos con el helper
+  compartido **`_write_artifacts`** (extraído de `build.py`): mismos GraphML + `metrics.json` +
+  `clusters.csv` que `build`, en `<out-dir>/<kind>/`. **`--out-dir`** override (default
+  `<workspace>/networks/`); resolución de store/workspace idéntica a `build` (`resolve_workspace`).
+  `--json` con `schema="1"`, mismo formato que `build` (lista de redes en `data["networks"]`, con
+  `clusters_csv` condicional). **Ejecución ad-hoc transversal al lazo: NO transiciona el `CycleState`
+  ni sella `networks/.corpus_hash`** (mismo criterio que `enrich`/`curate`). Errores accionables:
+  YAML malformado / spec inválida → `DataError` (exit 2); falta `python-louvain` → `DependencyError`
+  (exit 3).
 
 **`--workspace` / `--store` globales (ambos OPCIONALES, mutuamente excluyentes).** Van en el grupo
 `b2g`, **antes** del subcomando. Una investigación = un **workspace** (carpeta marcada por
@@ -204,8 +224,9 @@ archivo se generó—.
 
 **Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`, `chain`→`FORAGED`,
 `filter`→`FILTERED`, `build`→`BUILT`, **`monitor`→`MONITORED`** (cleanup pre-v0.3);
-`accept`/`reject`/**`curate`**/`export`/`snapshot`/`status`/`inspect`/`validate`/**`enrich`** **no
-transicionan** (`curate` es curación transversal; `enrich` es ortogonal al lazo, ADR 0025). El estado
+`accept`/`reject`/**`curate`**/`export`/`snapshot`/`status`/`inspect`/`validate`/**`enrich`**/**`networks`**
+**no transicionan** (`curate` es curación transversal; `enrich` y `networks` son ortogonales al lazo,
+ADR 0025 / Hito 9). El estado
 destino lo dicta `bib2graph.cycle.apply_transition`
 (fuente única de verdad; los comandos no hardcodean el destino). `seed` con **estado previo** se trata
 como **`reseed`** (loop-back a `SEEDED`, ronda++, acumula sobre lo curado).
@@ -1098,10 +1119,12 @@ class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
 
 ---
 
-## 10. Capa declarativa — `NetworkSpec` (v0.2, hook desde v1)
+## 10. Capa declarativa — `NetworkSpec` (v0.2, capa declarativa AS-BUILT Hito 9)
 
 ```python
 class NetworkSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")   # Hito 9: campo desconocido en el YAML → error
+                                                 # accionable (no se ignora en silencio)
     kind: NetworkKind        # R5: enum de constants.py (fuente única, ADR 0023);
                              # antes era un Literal[...] duplicado (eliminado)
     min_weight: int = 1
@@ -1109,10 +1132,21 @@ class NetworkSpec(BaseModel):
     max_year: int | None = None
     scope: Literal["full", "seeds_only"] = "full"
     clustering: Literal["louvain", "label_prop", "greedy_modularity"] | None = "louvain"
-    # Louvain ya es reproducible (random_state derivado del corpus_hash, Hito R2). El parámetro
-    # `resolution` (y demás params por algoritmo) se exponen acá en el Hito 9 (diferido de R2).
+    resolution: float = 1.0  # Hito 9: resolución de Louvain (python-louvain best_partition).
+                             # Default 1.0 = comportamiento anterior. Ignorado en label_prop/
+                             # greedy_modularity (sin error). FUERA del corpus_hash (param de spec,
+                             # no de contenido — como min_weight/scope; el seed de Louvain sigue
+                             # siendo función pura del corpus_hash, R2).
     assortativity_attribute: str | None = None     # p. ej. "region"
     layout: Literal["spring", "kamada_kawai", "circular"] | None = None
+
+
+def load_specs(path: str | Path) -> list[NetworkSpec]:
+    """Carga y valida una lista de NetworkSpec desde YAML (Hito 9). Re-exportada desde
+    bib2graph.networks. Clave raíz `networks:` = lista; cada entrada se valida con
+    NetworkSpec(**entry) (no se redefine el schema). Errores accionables (ValueError):
+    YAML malformado, falta de raíz `networks:`, entrada no-dict, y ValidationError citando
+    archivo + `red #<idx>` (0-based) + campo."""
 
 class NetworkArtifact:
     graph: nx.Graph
@@ -1134,8 +1168,9 @@ class Networks:
         Los artefactos vienen **decorados** (label legible + atributos de nodo, §7.1)."""
 ```
 
-**Modo quick** (v1) cubre baja fricción; **modo spec** (v0.2, YAML) cubre el pipeline declarativo
-versionable.
+**Modo quick** (v1) cubre baja fricción; **modo spec** (Hito 9, YAML) cubre el pipeline declarativo
+versionable, vía `load_specs(redes.yaml)` + `Networks.build` por red (y el subcomando `b2g
+networks --spec`, §convenciones CLI).
 
 **Notas de contrato** (Hito 2, ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md)):
 
@@ -1145,9 +1180,32 @@ versionable.
   **omite avisándolo por log** (→4) si esa columna está vacía (no se corrió `enrich`). El
   `CoCitationProjector` también queda disponible vía
   `Networks.build(corpus, NetworkSpec(kind="cocitation"))`.
-- **`NetworkSpec` es un hook mínimo en v1** (modelo Pydantic ya consumido por `build`/`quick`); la
-  carga desde YAML y la validación avanzada son del Hito 9. El símbolo público re-exportado desde
-  `bib2graph` es `NetworkArtifact` (no `NetworkSpec`, que se importa desde `bib2graph.networks`).
+- **`NetworkSpec` es un hook mínimo en v1** (modelo Pydantic ya consumido por `build`/`quick`); el
+  símbolo público re-exportado desde `bib2graph` es `NetworkArtifact` (no `NetworkSpec`, que se
+  importa desde `bib2graph.networks`).
+- **AS-BUILT Hito 9 (2026-06-17) — capa declarativa YAML.** `NetworkSpec` gana `model_config =
+  ConfigDict(extra="forbid")` (campo desconocido → error) y el campo **`resolution: float = 1.0`**
+  (resolución de Louvain, propagada por `_build_artifact` a
+  `community_louvain.best_partition(..., resolution=...)`; **ignorada** en `label_prop`/
+  `greedy_modularity`). `resolution` queda **fuera del `corpus_hash`** (es param de spec, no de
+  contenido — como `min_weight`/`scope`), así que el seed de Louvain sigue siendo función pura del
+  `corpus_hash` (R2) y la reproducibilidad/equivalencia de comunidades se mantienen. **`load_specs`**
+  (en `networks/spec.py`, re-exportada desde `bib2graph.networks`) carga la lista de specs desde un
+  YAML con clave raíz `networks:`; cada entrada se valida con `NetworkSpec(**entry)`. Errores
+  accionables (`ValueError`): YAML malformado, falta de raíz `networks:`, entrada no-dict, y
+  `ValidationError` citando archivo + `red #<idx>` (0-based) + campo. Ejemplo `redes.yaml`:
+
+  ```yaml
+  networks:
+    - kind: bibliographic_coupling
+      min_weight: 2
+      resolution: 1.5
+    - kind: author_collab
+      clustering: label_prop
+  ```
+
+  Se ejecuta vía el subcomando **`b2g networks --spec redes.yaml`** (§convenciones CLI). DoD del
+  Hito 9 cubierto, incluida la **equivalencia build≡quick** (nodos + aristas + comunidades).
 - **AS-BUILT #25 — artefactos decorados:** `_build_artifact` (en `facade.py`) aplica `decorate`
   (§7.1) sobre el grafo, así que `build`/`quick` devuelven artefactos con `label` legible + atributos
   de nodo (`year`/`is_seed`/`curation_status`/`degree_centrality`/`community`) listos para el export
@@ -1278,10 +1336,14 @@ b2g status --json     # CycleState + round + curation_available + workspace + co
 Retrocompat: `b2g --store biblioteca.duckdb seed …` (sin `init`, `.duckdb` suelto = workspace
 degenerado) sigue siendo válido.
 
-El **modo declarativo** (`b2g ... --spec redes.yaml`, `NetworkSpec` desde YAML) es del **Hito 9**
-(v0.3+), **no construido todavía**:
+El **modo declarativo** (`b2g networks --spec redes.yaml`, `NetworkSpec` desde YAML) está
+**construido** (Hito 9, AS-BUILT 2026-06-17): un YAML versionable describe qué redes calcular.
 
 ```bash
-# Hito 9 (futuro): pipeline declarativo desde un YAML versionable (dentro del workspace)
-b2g networks --spec redes.yaml --json
+# Hito 9: pipeline declarativo desde un YAML versionable (dentro del workspace)
+b2g networks --spec redes.yaml --json   # carga load_specs(redes.yaml) → Networks.build por red →
+                                        # escribe networks/<kind>/ (GraphML + metrics.json + clusters.csv)
 ```
+
+`b2g networks` es **ad-hoc / transversal al lazo**: **NO** transiciona el `CycleState` ni sella
+`networks/.corpus_hash` (igual criterio que `enrich`/`curate`). Ver §convenciones CLI.

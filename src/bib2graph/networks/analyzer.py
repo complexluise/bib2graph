@@ -107,6 +107,7 @@ def detect_communities(
     method: str = "louvain",
     *,
     random_state: int | None = None,
+    resolution: float = 1.0,
 ) -> dict[Any, int]:
     """Detecta comunidades en el grafo con el método indicado.
 
@@ -122,6 +123,10 @@ def detect_communities(
         random_state: Semilla entera para reproducibilidad de Louvain
             (solo se usa cuando ``method='louvain'``).  Si es ``None``,
             Louvain corre sin semilla (no reproducible).
+        resolution: Parámetro de resolución para Louvain (``best_partition``).
+            Default 1.0 = comportamiento estándar de python-louvain.
+            Se ignora para ``label_prop`` y ``greedy_modularity`` (no es un error;
+            esos algoritmos no tienen parámetro de resolución equivalente).
 
     Returns:
         Dict nodo → id de comunidad (int).
@@ -141,7 +146,7 @@ def detect_communities(
                 "'python-louvain'. Instalalo con: uv add python-louvain"
             ) from None
         partition: dict[Any, int] = community_louvain.best_partition(
-            g, random_state=random_state
+            g, random_state=random_state, resolution=resolution
         )
         return partition
 
