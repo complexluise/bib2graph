@@ -1,6 +1,11 @@
 > ← Volver al [índice del ROADMAP](README.md)
 
-# LO QUE VIENE (Hitos 7–11, actualizados a la nueva realidad)
+# LO QUE VIENE (Hitos 7–9 HECHOS; 10 y 11 reevaluados)
+
+> **Estado (2026-06-17):** los **Hitos 7, 8 y 9 están COMPLETOS ✅** (dedup fuzzy, `Enricher`
+> de co-citación end-to-end, `NetworkSpec` YAML). Los Hitos 10 y 11 **dejaron de ser trabajo por
+> venir:** el **10 (viz)** se **absorbe en la epic GUI #34** (la GUI es la capa de lectura visual) y el
+> **11 (Zotero/Neo4j)** quedó **DESCARTADO** (decisión del PO, reabrible solo si aparece demanda real).
 
 > **Tras la remediación R1–R5.** Estos hitos son los opcionales/de cierre hacia v1.0, ya
 > reconciliados con el modelo nuevo (sin IA generativa, scent bibliométrico, FSM cíclico).
@@ -252,7 +257,8 @@ No se prometen ni se cablean clientes que no se usan.
   - **9b ✅ HECHO (2026-06-17):** **workspace de ejemplo `examples/valoraciones/`** (corpus curado
     congelado en `corpus.parquet`, **137 filas: 7 `accepted` / 130 `candidate` / 107 seeds**, reducción
     determinista del corpus real del PO CC0/OpenAlex + `equation.yaml` de procedencia + `README.md` +
-    `build_corpus.py` de regeneración) como **excepción al `.gitignore`** de datos de usuario
+    `build_corpus.py` de regeneración — *nota: el Ciclo B (más abajo) **superseded** este `build_corpus.py`;
+    la procedencia del ejemplo pasó a ser **receta CLI**, así que no leer esto como exigencia viva*) como **excepción al `.gitignore`** de datos de usuario
     (`!examples/` + regla defensiva `examples/**/*.duckdb`). El **gate de reproducibilidad R2**
     (`tests/unit/test_example_r2_gate.py`, 7 tests) corre `restore --from-corpus` → `build` →
     `networks`/`clusters` **sin red** sobre el corpus real y verifica **`corpus_hash` estable** +

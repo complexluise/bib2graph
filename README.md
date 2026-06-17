@@ -12,14 +12,17 @@ Kuhlthau): se siembra desde la ecuación, se forrajea (chaining rankeado por est
 cura, **la idea muta** y se vuelve a sembrar — acumulando sobre lo curado. La colección
 **vive y persiste** entre corridas en DuckDB.
 
-> **Estado: v0.3 construido (Hitos 0–6 + 1.5 + tanda de remediación R1–R5).** El flujo **de una
-> ecuación a las redes** ya corre sobre la biblioteca viva, **desde código Python y desde el CLI
-> `b2g`** (que **ya no es un placeholder**). Construido: el `Corpus` canónico sobre `TabularBackend`,
-> los proyectores/analizadores/exportadores, el backend DuckDB (biblioteca viva), las fuentes
-> `OpenAlexSource`/`BibtexSource`, el **forrajeo** (`Forager`, chaining rankeado por *information
-> scent*) + `Preprocessor`/thesaurus + filtros PRISMA, y la **CLI agente-native `b2g`** (12
-> subcomandos, `--json` versionado, exit codes; ADR
-> [0021](docs/decisiones/0021-cli-agente-native-contrato.md)). **327 tests** verdes.
+> **Estado: Hitos 1–9 construidos + remediación R1–R5 + workspace + ejemplos CLI-puros.** El flujo
+> **de una ecuación a las redes** corre sobre la biblioteca viva, **desde código Python y desde el CLI
+> `b2g`**. Construido: el `Corpus` canónico sobre `TabularBackend`, los proyectores/analizadores/
+> exportadores, el backend DuckDB (biblioteca viva), las fuentes `OpenAlexSource`/`BibtexSource`, el
+> **forrajeo** (`Forager`, chaining rankeado por *information scent*) + `Preprocessor`/thesaurus +
+> filtros PRISMA, el **dedup fuzzy** determinista (Hito 7, `rapidfuzz`), el **`Enricher` de co-citación
+> end-to-end** (Hito 8, refs→DOI + citantes vía `b2g enrich`), **`NetworkSpec` YAML** (Hito 9,
+> `b2g networks --spec`), el **workspace por investigación** (ADR
+> [0029](docs/decisiones/0029-workspace-por-investigacion.md): una investigación = una carpeta,
+> `b2g init`) y la **CLI agente-native `b2g`** (`--json` versionado, exit codes; ADR
+> [0021](docs/decisiones/0021-cli-agente-native-contrato.md)).
 >
 > **Remediación completa (Hitos R1–R5):** tras un red-team del código construido
 > ([Nota 06](docs/Notas/06-critica-as-built-v0.2.md)) el PO bloqueó un modelo nuevo (ADR
@@ -30,12 +33,12 @@ cura, **la idea muta** y se vuelve a sembrar — acumulando sobre lo curado. La 
 > snapshot se arregló con **content-hash determinista** identidad-vs-procedencia (R2); el ciclo es un
 > **FSM cíclico** de dominio (`cycle.py`) con `reseed`/ronda y curación visible (R3); se **eliminó**
 > `explain_candidate` + el extra `[llm]` (R4); y se endureció la robustez (bulk-load, UTF-8 en la
-> frontera, `except` acotados — R5). Ver el [roadmap](docs/ROADMAP/README.md) (tanda R1–R5, ✅ completa).
+> frontera, `except` acotados — R5). Ver el [roadmap](docs/ROADMAP/README.md).
 >
-> **Todavía no** (v0.4+ → v1.0, ya con la remediación cerrada): dedup fuzzy (Hito 7), `Enricher` de co-citación
-> end-to-end (Hito 8), `NetworkSpec` YAML (Hito 9), visualización (Hito 10) y costuras Zotero/Neo4j
-> (Hito 11). La **co-citación end-to-end** requiere un 2º nivel de fetch (Hito 8) — hoy da pocas/cero
-> aristas hasta enriquecer.
+> **Pendiente hacia v1.0:** la **GUI local** (epic [#34](https://github.com/complexluise/bib2graph/issues/34),
+> gateada: núcleo → caso real → GUI), que absorbe la visualización (ex-Hito 10). Las costuras
+> Zotero/Neo4j (ex-Hito 11) quedaron **descartadas** (decisión del PO; reabribles solo si aparece
+> demanda real). Ver el [roadmap](docs/ROADMAP/04-lo-que-viene.md).
 
 ## ⚠️ Experimental · construido con IA (AI-in-the-loop)
 
@@ -78,8 +81,8 @@ bib2graph es **un núcleo puro rodeado de costuras**. El núcleo opera sobre un 
 **no depende de DuckDB**, solo del contrato. Alrededor hay costuras enchufables: **`Source`**
 (sembrar — *OpenAlex por defecto* desde una ecuación; BibTeX secundaria), el **forrajeo/
 chaining** (expandir rankeando candidatos por *information scent*), **`Store`** (persistir —
-`DuckDBStore` fachada de la biblioteca viva; Zotero/Neo4j opt-in) y **`Enricher`** (señal
-extra opt-in, ya no estructural).
+`DuckDBStore` fachada de la biblioteca viva) y **`Enricher`** (señal extra opt-in, ya no
+estructural; co-citación end-to-end vía `b2g enrich`).
 
 El **estudio de intercambio ecológico desigual (IED)** es el **caso validador** (corrió el
 pipeline end-to-end sobre datos reales de OpenAlex); el de **semiconductores** queda como caso
@@ -99,32 +102,54 @@ uv run pre-commit install     # hooks de pre-commit
 ```
 
 Capacidades opcionales como extras (lección de v0: núcleo liviano): `uv sync --extra bibtex`
-(sembrar desde un `.bib`, **ya construido**, Hito 4). Los extras `--extra dedup` (Hito 7) /
-`--extra s2` (Hito 8) / `--extra viz` (Hito 10) / `--extra zotero`·`--extra neo4j` (Hito 11) están
-**declarados pero aún vacíos**: se poblarán a medida que se construya cada hito. *(El extra `[llm]`
-**se eliminó** en la remediación (R4): el producto no usa IA generativa — ADR
+(sembrar desde un `.bib`, Hito 4) y `uv sync --extra dedup` (dedup fuzzy `rapidfuzz`, Hito 7).
+*(El extra `[llm]` **se eliminó** en la remediación (R4): el producto no usa IA generativa — ADR
 [0022](docs/decisiones/0022-producto-sin-ia-generativa.md).)*
 
 ## Uso
 
-### Desde el CLI `b2g` (Hito 6 — construido)
+### Desde el CLI `b2g`
 
-De una ecuación a un GraphML, sobre la biblioteca viva, **sin escribir código**. `--store` es
-global (una investigación = un archivo `.duckdb`); cada comando acepta `--json` (envelope
+De una ecuación a un GraphML, sobre la biblioteca viva, **sin escribir código**. Una investigación
+= un **workspace** (carpeta autocontenida): se arranca con `b2g init <nombre>` (o `b2g init .`) y,
+trabajando **dentro** de ella, los comandos resuelven el store por ambiente (sin `--store`). El
+`.duckdb` suelto vía `--store` sigue válido (modo degenerado, retrocompat); ver ADR
+[0029](docs/decisiones/0029-workspace-por-investigacion.md). Cada comando acepta `--json` (envelope
 versionado) para orquestar desde un agente:
 
 ```bash
-b2g --store biblioteca.duckdb seed --equation '"unequal ecological exchange" OR "intercambio ecológico desigual"' --email vos@tucorreo.com
-b2g --store biblioteca.duckdb chain --direction both --max-candidates 300   # candidatos rankeados por scent
-b2g --store biblioteca.duckdb filter --year-gte 2010 --language en --language es   # PRISMA: marca rejected, no borra
-b2g --store biblioteca.duckdb build                                          # Networks.quick → artefactos
-b2g --store biblioteca.duckdb export --format graphml --out-dir redes/       # serializa GraphML/CSV
-b2g --store biblioteca.duckdb status --json                                  # estado del ciclo + ronda + curación + conteos
+b2g init mi-investigacion && cd mi-investigacion
+b2g seed --equation '"unequal ecological exchange" OR "intercambio ecológico desigual"' --email vos@tucorreo.com
+b2g chain --direction both --max-candidates 300   # candidatos rankeados por scent
+b2g filter --year-gte 2010 --language en --language es   # PRISMA: marca rejected, no borra
+b2g build                                          # Networks.quick → artefactos
+b2g export --format graphml --out-dir redes/       # serializa GraphML/CSV
+b2g status --json                                  # estado del ciclo + ronda + curación + conteos
 ```
 
-Subcomandos (12): `seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`, `inspect`,
-`validate`, `accept`, `reject`, `monitor`. Exit codes `0` éxito · `1` uso · `2` datos · `3` dependencia ·
-`4` red · `5` store bloqueado/corrupto.
+Los subcomandos disponibles (**fuente de verdad: `b2g --help`**):
+
+```
+accept    Marca papers como accepted en el corpus.
+build     Computa las 4 redes con Networks.quick y escribe artefactos.
+chain     Expande el corpus con candidatos rankeados por information scent.
+curate    Curación en lote: exporta papers a CSV y reimporta decisiones.
+enrich    Enriquece el corpus: references→DOI (8a) y cited_by_id (8b).
+export    Serializa artefactos de build al formato pedido (GraphML o CSV).
+filter    Aplica filtros PRISMA al corpus (marca rejected, no borra).
+init      Inicializa una carpeta como workspace de investigación.
+inspect   Inspecciona el manifest o un paper específico (read-only).
+monitor   Re-chequea OpenAlex por nuevos citantes del corpus.
+networks  Construye redes bibliométricas desde una especificación YAML.
+reject    Marca papers como rejected en el corpus.
+restore   Rehidrata el corpus desde un parquet curado sin tocar la red.
+seed      Siembra el corpus.
+snapshot  Exporta una foto sellada del corpus actual (parquet + manifest).
+status    Muestra el estado del lazo (CycleState) y conteos de curación.
+validate  Valida el schema y consistencia del store.
+```
+
+Exit codes `0` éxito · `1` uso · `2` datos · `3` dependencia · `4` red · `5` store bloqueado/corrupto.
 
 ### Desde código Python
 
@@ -151,7 +176,7 @@ for art in Networks.quick(store.load()):
 
 `Networks.quick` arma acoplamiento bibliográfico (corpus completo), co-autoría, instituciones
 y co-ocurrencia de keywords. La **co-citación** completa requiere un segundo nivel de fetch
-(la red más cara) y llega con el `Enricher` opt-in (Hito 8).
+(la red más cara): la cubre el `Enricher` opt-in vía `b2g enrich` (Hito 8, construido).
 
 ## Comandos de desarrollo
 
