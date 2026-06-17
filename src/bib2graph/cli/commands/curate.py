@@ -1,27 +1,44 @@
 """cli.commands.curate — Subcomando ``b2g curate``.
 
-Curación en lote (#22 dump + #26 import): permite revisar y marcar papers
-en una tabla externa (Excel/Calc) y reimportar las decisiones al corpus.
+Curación en lote (#22 dump + #26 import + #72 fix scope + #58 columnas):
+permite revisar y marcar papers en una tabla externa (Excel/Calc) y
+reimportar las decisiones al corpus.
 
 Flujo canónico:
-    b2g curate --dump                   # exporta <workspace>/exports/curacion.csv
-    b2g curate --dump --out mi.csv      # override de ruta de salida
-    b2g curate --dump --all             # incluye también aceptados y rechazados
-    b2g curate --from-csv mi.csv        # reimporta las decisiones del CSV
+    b2g curate --dump                       # exporta candidatos forrajeados
+    b2g curate --dump --scope seeds         # exporta semillas
+    b2g curate --dump --scope all           # exporta todo el corpus
+    b2g curate --dump --all                 # alias de --scope all (deprecado)
+    b2g curate --dump --out mi.csv          # override de ruta de salida
+    b2g curate --from-csv mi.csv            # reimporta las decisiones del CSV
 
 El CSV que ``--dump`` produce tiene exactamente las columnas que ``--from-csv``
 lee, lo que garantiza el round-trip sin fricción.
 
-Columnas:
-    id           — identificador canónico del paper (readonly)
-    openalex_id  — identificador OpenAlex (readonly)
-    title        — título (readonly)
-    year         — año de publicación (readonly)
-    authors      — lista de autores separada por \" | \" (readonly)
-    scent_score  — best-effort desde provenance del candidato; vacío si no hay
-    cluster      — reservado para futura integración de redes; siempre vacío hoy
-    decision     — editable: accepted | rejected | undecided
-    note         — editable: texto libre, advisory (round-trip solo)
+Columnas (readonly salvo decision/note):
+    id              — identificador canónico del paper (readonly)
+    openalex_id     — identificador OpenAlex (readonly)
+    title           — título (readonly)
+    year            — año de publicación (readonly)
+    authors         — lista de autores separada por \" | \" (readonly)
+    venue           — nombre de la revista/fuente (readonly)
+    doi             — DOI del paper (readonly)
+    keywords        — lista de keywords separada por \" | \" (readonly)
+    cited_by_count  — conteo de citaciones; vacío si no está en el corpus (readonly)
+    references_count— conteo de referencias; vacío si no está en el corpus (readonly)
+    is_seed         — True si es semilla original (readonly)
+    openalex_url    — URL directa a OpenAlex (derivada de openalex_id) (readonly)
+    scent_score     — best-effort desde provenance del candidato; vacío si no hay
+    cluster         — reservado para futura integración de redes; siempre vacío hoy
+    decision        — editable: accepted | rejected | undecided
+    note            — editable: texto libre, advisory (round-trip solo)
+
+Semántica de scope (#72 / #58):
+    candidates (default) — papers forrajeados a revisar:
+        curation_status == 'candidate' AND is_seed == False.
+        Excluye semillas (que nacen con is_seed=True y status=candidate).
+    seeds               — papers con is_seed == True.
+    all                 — todo el corpus (candidates + seeds + accepted + rejected).
 
 ``note`` es advisory:
     ``ProvenanceEvent`` no tiene un campo genérico de anotación. Registrar la
@@ -37,6 +54,15 @@ Columnas:
 ``cluster`` best-effort:
     Reservado para cuando los grafos de red estén disponibles. Siempre vacío
     en esta versión. No se falla por ausencia.
+
+``cited_by_count`` / ``references_count`` best-effort:
+    No están en el schema canónico de 23 columnas (no los almacena OpenAlex
+    pipeline). Se dejan vacíos; la columna existe para que el humano la llene
+    manualmente si quiere.
+
+``openalex_url`` derivada:
+    Si hay ``openalex_id`` (ej. ``W2741809807``), la URL es
+    ``https://openalex.org/<openalex_id>``. Si no hay id, queda vacío.
 
 Idempotencia:
     Reimportar el mismo CSV produce el mismo estado. ``accept``/``reject`` del
@@ -72,12 +98,20 @@ from bib2graph.constants import Col, CurationStatus
 CURATE_CSV_FILENAME = "curacion.csv"
 
 # Columnas del CSV: orden estable y conocido por el humano y la reimportación.
+# Las columnas readonly van primero; decision y note son las editables.
 CSV_COLUMNS = [
     "id",
     "openalex_id",
     "title",
     "year",
     "authors",
+    "venue",
+    "doi",
+    "keywords",
+    "cited_by_count",
+    "references_count",
+    "is_seed",
+    "openalex_url",
     "scent_score",
     "cluster",
     "decision",
@@ -100,6 +134,9 @@ _STATUS_TO_DECISION: dict[str, str] = {
     CurationStatus.ACCEPTED: "accepted",
     CurationStatus.REJECTED: "rejected",
 }
+
+# Scope válidos para --dump
+VALID_SCOPES = {"candidates", "seeds", "all"}
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +162,46 @@ def _authors_display(row: dict[str, Any]) -> str:
     ids = row.get(Col.AUTHORS_ID)
     if ids and isinstance(ids, list):
         return " | ".join(str(a) for a in ids if a)
+    return ""
+
+
+def _keywords_display(row: dict[str, Any]) -> str:
+    """Extrae las keywords de una fila del corpus y las une con ' | '.
+
+    Usa ``keywords_id`` si disponible (identificadores OpenAlex), con
+    ``keywords_raw`` como fallback. Mismo patrón que ``_authors_display``.
+    Devuelve cadena vacía si no hay datos.
+
+    Args:
+        row: Fila de la tabla Arrow convertida a dict.
+
+    Returns:
+        Cadena de keywords separada por \" | \" o cadena vacía.
+    """
+    ids = row.get(Col.KEYWORDS_ID)
+    if ids and isinstance(ids, list):
+        return " | ".join(str(k) for k in ids if k)
+    raw = row.get(Col.KEYWORDS_RAW)
+    if raw and isinstance(raw, list):
+        return " | ".join(str(k) for k in raw if k)
+    return ""
+
+
+def _openalex_url(row: dict[str, Any]) -> str:
+    """Deriva la URL de OpenAlex a partir del openalex_id de la fila.
+
+    Formato: ``https://openalex.org/<openalex_id>``.
+    Devuelve cadena vacía si no hay openalex_id.
+
+    Args:
+        row: Fila de la tabla Arrow convertida a dict.
+
+    Returns:
+        URL de OpenAlex o cadena vacía.
+    """
+    oa_id = row.get(Col.OPENALEX_ID)
+    if oa_id:
+        return f"https://openalex.org/{oa_id}"
     return ""
 
 
@@ -164,6 +241,14 @@ def _scent_score_display(row: dict[str, Any]) -> str:
 def _row_to_csv_dict(row: dict[str, Any]) -> dict[str, str]:
     """Convierte una fila del corpus al dict para el CSV de curación.
 
+    Incluye las columnas readonly enriquecidas (venue, doi, keywords,
+    cited_by_count, references_count, is_seed, openalex_url) además de
+    las columnas base (id, openalex_id, title, year, authors, scent_score,
+    cluster) y las columnas editables (decision, note).
+
+    ``cited_by_count`` y ``references_count`` no están en el schema canónico;
+    se dejan vacíos (best-effort).
+
     Args:
         row: Fila de la tabla Arrow convertida a dict.
 
@@ -172,6 +257,8 @@ def _row_to_csv_dict(row: dict[str, Any]) -> dict[str, str]:
     """
     status = str(row.get(Col.CURATION_STATUS, CurationStatus.CANDIDATE))
     decision = _STATUS_TO_DECISION.get(status, "undecided")
+    is_seed_val = row.get(Col.IS_SEED)
+    is_seed_str = str(is_seed_val) if is_seed_val is not None else ""
 
     return {
         "id": str(row.get(Col.ID) or ""),
@@ -179,11 +266,57 @@ def _row_to_csv_dict(row: dict[str, Any]) -> dict[str, str]:
         "title": str(row.get(Col.TITLE) or ""),
         "year": str(row.get(Col.YEAR) or ""),
         "authors": _authors_display(row),
+        "venue": str(row.get(Col.SOURCE) or ""),
+        "doi": str(row.get(Col.DOI) or ""),
+        "keywords": _keywords_display(row),
+        "cited_by_count": "",  # no está en el schema canónico; best-effort vacío
+        "references_count": "",  # no está en el schema canónico; best-effort vacío
+        "is_seed": is_seed_str,
+        "openalex_url": _openalex_url(row),
         "scent_score": _scent_score_display(row),
         "cluster": "",  # reservado para integración con redes
         "decision": decision,
         "note": "",
     }
+
+
+# ---------------------------------------------------------------------------
+# Helpers de filtrado por scope
+# ---------------------------------------------------------------------------
+
+
+def _filter_table_by_scope(table: Any, scope: str) -> Any:
+    """Filtra una tabla Arrow según el scope de dump.
+
+    Scope 'candidates': curation_status == 'candidate' AND is_seed == False.
+    Scope 'seeds':      is_seed == True.
+    Scope 'all':        sin filtro.
+
+    Se importa pyarrow.compute localmente para mantener el módulo libre de
+    efectos de import globales (AGENTS.md §Imports).
+
+    Args:
+        table: Tabla Arrow del corpus.
+        scope: Uno de 'candidates', 'seeds', 'all'.
+
+    Returns:
+        Tabla Arrow filtrada.
+    """
+    import pyarrow.compute as pc
+
+    if scope == "all":
+        return table
+    elif scope == "seeds":
+        mask = table.column(Col.IS_SEED)
+        return table.filter(mask)
+    else:
+        # candidates: status == candidate AND NOT is_seed
+        status_col = table.column(Col.CURATION_STATUS)
+        is_candidate = pc.equal(status_col, CurationStatus.CANDIDATE)  # type: ignore[attr-defined]
+        is_seed_col = table.column(Col.IS_SEED)
+        not_seed = pc.invert(is_seed_col)  # type: ignore[attr-defined]
+        mask = pc.and_(is_candidate, not_seed)  # type: ignore[attr-defined]
+        return table.filter(mask)
 
 
 # ---------------------------------------------------------------------------
@@ -195,46 +328,59 @@ def run_curate_dump(
     store_path: str | Path,
     *,
     out_path: Path,
+    scope: str = "candidates",
     include_all: bool = False,
 ) -> dict[str, Any]:
     """Exporta el corpus a un CSV para revisión offline.
 
-    Por defecto exporta solo los candidatos (``curation_status == 'candidate'``).
-    Con ``include_all=True`` exporta todos los papers del corpus.
+    Por defecto exporta solo los candidatos forrajeados (``scope='candidates'``:
+    ``curation_status == 'candidate'`` AND ``is_seed == False``), que excluye
+    semillas. Con ``scope='seeds'`` exporta las semillas; con ``scope='all'``
+    exporta todo el corpus.
 
-    Columnas del CSV: id, openalex_id, title, year, authors, scent_score,
-    cluster, decision, note. La columna ``decision`` refleja el
-    ``curation_status`` actual (candidate → undecided). Las columnas
-    ``decision`` y ``note`` son las editables por el humano.
+    El parámetro ``include_all`` es un alias deprecado de ``scope='all'``:
+    si es ``True``, equivale a forzar ``scope='all'``.
 
-    ``scent_score`` y ``cluster`` son best-effort: se incluyen si están
-    disponibles en el provenance; si no, quedan vacíos.
+    Columnas del CSV: id, openalex_id, title, year, authors, venue, doi,
+    keywords, cited_by_count, references_count, is_seed, openalex_url,
+    scent_score, cluster, decision, note.
+    Las columnas ``decision`` y ``note`` son las editables por el humano.
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
         out_path: Ruta completa del archivo CSV de salida.
-        include_all: Si True, incluye todos los papers; si False (default),
-            solo los candidatos.
+        scope: 'candidates' (default), 'seeds' o 'all'.
+            'candidates' = curation_status=='candidate' AND is_seed==False.
+            'seeds' = is_seed==True.
+            'all' = todo el corpus.
+        include_all: Alias deprecado de scope='all'. Si True, fuerza scope='all'.
 
     Returns:
         Dict con ``csv_path``, ``papers_exported``, ``columns``.
 
     Raises:
-        DataError: Si el corpus está vacío o no hay papers candidatos y
-            ``include_all`` es False.
+        DataError: Si el corpus está vacío o no hay papers en el scope dado
+            cuando el scope no es 'all'.
         StoreError: Si el store está bloqueado.
     """
+    # include_all es alias deprecado de scope='all'
+    effective_scope = "all" if include_all else scope
+
     store = open_store(store_path)
     corpus = store.load()
 
-    table = corpus.to_arrow() if include_all else corpus.candidates()
+    all_table = corpus.to_arrow()
+    table = _filter_table_by_scope(all_table, effective_scope)
 
     rows = table.to_pylist()
 
-    if not rows and not include_all:
+    if not rows and effective_scope != "all":
+        scope_label = (
+            "candidatos forrajeados" if effective_scope == "candidates" else "semillas"
+        )
         raise DataError(
-            "No hay papers candidatos para exportar. "
-            "Usá --all para exportar todo el corpus, o ejecutá "
+            f"No hay {scope_label} para exportar. "
+            "Usá --scope all para exportar todo el corpus, o ejecutá "
             "``b2g chain`` para agregar candidatos."
         )
 
@@ -269,6 +415,10 @@ def run_curate_from_csv(
 
     Lee el CSV producido por ``--dump`` (u otro CSV con columnas ``id`` y
     ``decision``), aplica las decisiones en lote e persiste.
+
+    Las columnas extra del CSV enriquecido (venue, doi, keywords, etc.) se
+    ignoran; solo se requieren ``id`` y ``decision``. Esto garantiza el
+    round-trip dump→from-csv aunque el CSV tenga más columnas que el mínimo.
 
     Mapeo de ``decision``:
       - ``accepted``  → ``Corpus.accept``
@@ -424,11 +574,27 @@ def run_curate_from_csv(
     ),
 )
 @click.option(
+    "--scope",
+    "scope",
+    default="candidates",
+    type=click.Choice(["candidates", "seeds", "all"]),
+    show_default=True,
+    help=(
+        "Con --dump: qué papers exportar. "
+        "'candidates' (default) = forrajeados a revisar (is_seed=False, status=candidate). "
+        "'seeds' = semillas originales. "
+        "'all' = todo el corpus."
+    ),
+)
+@click.option(
     "--all",
     "include_all",
     is_flag=True,
     default=False,
-    help=("Con --dump: incluye todos los papers del corpus, no solo los candidatos."),
+    help=(
+        "Con --dump: incluye todos los papers del corpus. "
+        "Alias deprecado de --scope all; tiene precedencia sobre --scope si ambos se pasan."
+    ),
 )
 @click.option(
     "--by",
@@ -450,6 +616,7 @@ def curate_cmd(
     do_dump: bool,
     from_csv: str | None,
     out_override: str | None,
+    scope: str,
     include_all: bool,
     by: str,
     json_output: bool,
@@ -459,13 +626,15 @@ def curate_cmd(
     Dos modos mutuamente excluyentes (exactamente uno requerido):
 
     \b
-      --dump          exporta candidatos a CSV para revisión offline.
+      --dump          exporta papers a CSV para revisión offline.
       --from-csv CSV  reimporta decisiones desde el CSV dado.
 
     Flujo típico:
 
     \b
-      b2g curate --dump                  # genera curacion.csv
+      b2g curate --dump                  # genera curacion.csv (solo candidatos forrajeados)
+      b2g curate --dump --scope seeds    # genera curacion.csv con semillas
+      b2g curate --dump --scope all      # genera curacion.csv con todo el corpus
       # (editar curacion.csv en Excel: columnas decision y note)
       b2g curate --from-csv curacion.csv  # aplica decisiones
 
@@ -491,7 +660,12 @@ def curate_cmd(
         else:
             out_path = ws.exports_dir / CURATE_CSV_FILENAME
 
-        data = run_curate_dump(store_path, out_path=out_path, include_all=include_all)
+        data = run_curate_dump(
+            store_path,
+            out_path=out_path,
+            scope=scope,
+            include_all=include_all,
+        )
 
         if json_output:
             envelope = build_envelope(

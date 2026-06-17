@@ -1,4 +1,4 @@
-"""Tests TDD para ``b2g curate`` (#22 dump + #26 from-csv).
+"""Tests TDD para ``b2g curate`` (#22 dump + #26 from-csv + #72 scope + #58 columnas).
 
 Casos cubiertos (tarea §Tests):
 
@@ -15,6 +15,19 @@ Casos cubiertos (tarea §Tests):
 11. Contrato --json del comando (forma estable).
 12. Mutuamente excluyente: --dump y --from-csv juntos → UsageError.
 13. Ningún modo → UsageError.
+14. dump --all incluye accepted y rejected además de candidate.
+15. dump sin --all solo candidatos (con is_seed=False).
+16. Autores en columna authors.
+17. CSV vacío (solo header) → from-csv no falla.
+18. CSV inexistente → DataError.
+19. IDs huérfanos → not_found_count, sin abort.
+--- nuevos (#72 / #58) ---
+20. Regresión #72: scope default (candidates) excluye semillas.
+21. scope='seeds' exporta solo is_seed=True.
+22. scope='all' exporta todo el corpus.
+23. --all (alias) exporta todo.
+24. Columnas nuevas existen en el CSV y traen valores correctos.
+25. Round-trip con columnas nuevas: --from-csv ignora columnas extra.
 
 Filosofía (AGENTS.md): se testea la FUNCIÓN detrás del comando, NO el parser
 Click. Marcador: ``unit`` (DuckDB en tmp_path, sin red).
@@ -45,27 +58,32 @@ def _make_corpus_row(
     curation_status: str = "candidate",
     openalex_id: str | None = None,
     authors_raw: list[str] | None = None,
+    is_seed: bool = False,
+    doi: str | None = None,
+    source: str | None = None,
+    keywords_raw: list[str] | None = None,
+    keywords_id: list[str] | None = None,
 ) -> dict[str, Any]:
     """Fila mínima con schema completo para tests."""
     return {
         "id": id,
         "openalex_id": openalex_id,
-        "doi": None,
+        "doi": doi,
         "title": title,
         "year": year,
         "abstract": None,
-        "source": None,
+        "source": source,
         "language": "en",
         "publisher": None,
         "research_areas": None,
-        "is_seed": False,
+        "is_seed": is_seed,
         "curation_status": curation_status,
         "provenance": None,
         "authors_raw": authors_raw,
         "authors_id": None,
         "authors_affiliations": None,
-        "keywords_raw": None,
-        "keywords_id": None,
+        "keywords_raw": keywords_raw,
+        "keywords_id": keywords_id,
         "institutions_raw": None,
         "institutions_id": None,
         "references_id": None,
@@ -800,3 +818,288 @@ def test_from_csv_ids_huerfanos_reporta_not_found_count(tmp_path: Path) -> None:
     all_ids = {r["id"] for r in corpus.to_arrow().to_pylist()}
     assert "P_FANTASMA" not in all_ids
     assert corpus.to_arrow().to_pylist()[0]["curation_status"] == "accepted"
+
+
+# ---------------------------------------------------------------------------
+# 20. Regresión #72: scope default excluye semillas (candidates = NOT is_seed)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_dump_scope_candidates_excluye_semillas(tmp_path: Path) -> None:
+    """Regresión #72: scope default 'candidates' exporta solo forrajeados (is_seed=False).
+
+    Un corpus de N seeds (is_seed=True, status=candidate) + M candidatos
+    (is_seed=False, status=candidate) debe exportar solo M filas en el dump
+    default, no N+M.
+    """
+    from bib2graph.cli.commands.curate import run_curate_dump
+
+    store_path = tmp_path / "test.duckdb"
+    # 3 semillas: is_seed=True, status=candidate
+    seeds = [
+        _make_corpus_row(id=f"S{i}", is_seed=True, curation_status="candidate")
+        for i in range(3)
+    ]
+    # 2 candidatos forrajeados: is_seed=False, status=candidate
+    candidates = [
+        _make_corpus_row(id=f"C{i}", is_seed=False, curation_status="candidate")
+        for i in range(2)
+    ]
+    _seed_store(store_path, seeds + candidates)
+
+    out = tmp_path / "curacion.csv"
+    data = run_curate_dump(store_path, out_path=out)
+
+    # Debe exportar solo los 2 candidatos forrajeados, no las 3 semillas
+    assert data["papers_exported"] == 2, (
+        f"Regresión #72: se esperaban 2 candidatos, se obtuvieron {data['papers_exported']}"
+    )
+    csv_rows = _read_csv(out)
+    exported_ids = {r["id"] for r in csv_rows}
+    assert "C0" in exported_ids
+    assert "C1" in exported_ids
+    # Ninguna semilla debe aparecer
+    assert "S0" not in exported_ids
+    assert "S1" not in exported_ids
+    assert "S2" not in exported_ids
+
+
+# ---------------------------------------------------------------------------
+# 21. scope='seeds' exporta solo semillas
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_dump_scope_seeds_exporta_solo_semillas(tmp_path: Path) -> None:
+    """scope='seeds' exporta solo los papers con is_seed=True."""
+    from bib2graph.cli.commands.curate import run_curate_dump
+
+    store_path = tmp_path / "test.duckdb"
+    rows = [
+        _make_corpus_row(id="S1", is_seed=True, curation_status="candidate"),
+        _make_corpus_row(id="S2", is_seed=True, curation_status="accepted"),
+        _make_corpus_row(id="C1", is_seed=False, curation_status="candidate"),
+    ]
+    _seed_store(store_path, rows)
+
+    out = tmp_path / "curacion.csv"
+    data = run_curate_dump(store_path, out_path=out, scope="seeds")
+
+    assert data["papers_exported"] == 2
+    csv_rows = _read_csv(out)
+    exported_ids = {r["id"] for r in csv_rows}
+    assert "S1" in exported_ids
+    assert "S2" in exported_ids
+    assert "C1" not in exported_ids
+
+
+# ---------------------------------------------------------------------------
+# 22. scope='all' exporta todo el corpus
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_dump_scope_all_exporta_todo(tmp_path: Path) -> None:
+    """scope='all' exporta todos los papers sin importar is_seed ni status."""
+    from bib2graph.cli.commands.curate import run_curate_dump
+
+    store_path = tmp_path / "test.duckdb"
+    rows = [
+        _make_corpus_row(id="S1", is_seed=True, curation_status="candidate"),
+        _make_corpus_row(id="C1", is_seed=False, curation_status="candidate"),
+        _make_corpus_row(id="A1", is_seed=False, curation_status="accepted"),
+        _make_corpus_row(id="R1", is_seed=False, curation_status="rejected"),
+    ]
+    _seed_store(store_path, rows)
+
+    out = tmp_path / "curacion.csv"
+    data = run_curate_dump(store_path, out_path=out, scope="all")
+
+    assert data["papers_exported"] == 4
+    csv_rows = _read_csv(out)
+    exported_ids = {r["id"] for r in csv_rows}
+    assert {"S1", "C1", "A1", "R1"} == exported_ids
+
+
+# ---------------------------------------------------------------------------
+# 23. --all (alias deprecado) equivale a scope='all'
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_dump_include_all_alias_scope_all(tmp_path: Path) -> None:
+    """include_all=True es alias de scope='all': exporta todo el corpus."""
+    from bib2graph.cli.commands.curate import run_curate_dump
+
+    store_path = tmp_path / "test.duckdb"
+    rows = [
+        _make_corpus_row(id="S1", is_seed=True, curation_status="candidate"),
+        _make_corpus_row(id="C1", is_seed=False, curation_status="candidate"),
+        _make_corpus_row(id="A1", is_seed=False, curation_status="accepted"),
+    ]
+    _seed_store(store_path, rows)
+
+    out = tmp_path / "curacion.csv"
+    # include_all=True debe producir el mismo resultado que scope='all'
+    data = run_curate_dump(store_path, out_path=out, include_all=True)
+
+    assert data["papers_exported"] == 3
+    csv_rows = _read_csv(out)
+    exported_ids = {r["id"] for r in csv_rows}
+    assert {"S1", "C1", "A1"} == exported_ids
+
+
+# ---------------------------------------------------------------------------
+# 24. Columnas nuevas existen en el CSV y traen valores correctos
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_dump_columnas_nuevas_existen_y_traen_datos(tmp_path: Path) -> None:
+    """venue, doi, keywords, is_seed y openalex_url aparecen en el CSV.
+
+    Verifica que las columnas enriquecidas (#58) se incluyen en el dump
+    con los valores correctos para una fila con metadatos conocidos.
+    """
+    from bib2graph.cli.commands.curate import run_curate_dump
+
+    store_path = tmp_path / "test.duckdb"
+    rows = [
+        _make_corpus_row(
+            id="P1",
+            openalex_id="W12345",
+            doi="10.1234/test",
+            source="Journal of Testing",
+            keywords_raw=["machine learning", "graphs"],
+            keywords_id=["KW001", "KW002"],
+            is_seed=False,
+        )
+    ]
+    _seed_store(store_path, rows)
+
+    out = tmp_path / "curacion.csv"
+    run_curate_dump(store_path, out_path=out, scope="candidates")
+
+    csv_rows = _read_csv(out)
+    assert len(csv_rows) == 1
+    row = csv_rows[0]
+
+    # venue (de Col.SOURCE)
+    assert row["venue"] == "Journal of Testing"
+    # doi
+    assert row["doi"] == "10.1234/test"
+    # keywords: usa keywords_id primero
+    assert row["keywords"] == "KW001 | KW002"
+    # is_seed
+    assert row["is_seed"] == "False"
+    # openalex_url derivada
+    assert row["openalex_url"] == "https://openalex.org/W12345"
+    # cited_by_count y references_count vacíos (no en schema)
+    assert row["cited_by_count"] == ""
+    assert row["references_count"] == ""
+
+
+@pytest.mark.unit
+def test_dump_keywords_fallback_a_raw(tmp_path: Path) -> None:
+    """keywords usa keywords_raw como fallback cuando keywords_id es None."""
+    from bib2graph.cli.commands.curate import run_curate_dump
+
+    store_path = tmp_path / "test.duckdb"
+    rows = [
+        _make_corpus_row(
+            id="P1",
+            keywords_raw=["ciencia abierta", "metadatos"],
+            keywords_id=None,
+            is_seed=False,
+        )
+    ]
+    _seed_store(store_path, rows)
+
+    out = tmp_path / "curacion.csv"
+    run_curate_dump(store_path, out_path=out)
+
+    csv_rows = _read_csv(out)
+    assert csv_rows[0]["keywords"] == "ciencia abierta | metadatos"
+
+
+@pytest.mark.unit
+def test_dump_openalex_url_vacio_sin_id(tmp_path: Path) -> None:
+    """openalex_url queda vacío si no hay openalex_id."""
+    from bib2graph.cli.commands.curate import run_curate_dump
+
+    store_path = tmp_path / "test.duckdb"
+    rows = [_make_corpus_row(id="P1", openalex_id=None)]
+    _seed_store(store_path, rows)
+
+    out = tmp_path / "curacion.csv"
+    run_curate_dump(store_path, out_path=out)
+
+    csv_rows = _read_csv(out)
+    assert csv_rows[0]["openalex_url"] == ""
+
+
+# ---------------------------------------------------------------------------
+# 25. Round-trip con columnas nuevas: --from-csv ignora columnas extra
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_round_trip_con_columnas_nuevas(tmp_path: Path) -> None:
+    """dump con columnas enriquecidas → from-csv aplica decisiones correctamente.
+
+    Verifica que run_curate_from_csv no se rompe con las columnas extra
+    introducidas en #58 (venue, doi, keywords, etc.). Solo requiere id y decision.
+    """
+    from bib2graph.cli.commands.curate import run_curate_dump, run_curate_from_csv
+    from bib2graph.stores.duckdb import DuckDBStore
+
+    store_path = tmp_path / "test.duckdb"
+    rows = [
+        _make_corpus_row(
+            id="PA",
+            openalex_id="W111",
+            doi="10.1/a",
+            source="Nature",
+            keywords_raw=["ecology"],
+            is_seed=False,
+        ),
+        _make_corpus_row(id="PB", is_seed=False),
+    ]
+    _seed_store(store_path, rows)
+
+    # dump genera CSV con columnas enriquecidas
+    out = tmp_path / "curacion.csv"
+    dump_data = run_curate_dump(store_path, out_path=out)
+    assert dump_data["papers_exported"] == 2
+
+    # Editar el CSV: PA → accepted, PB → rejected
+    csv_rows = _read_csv(out)
+    for row in csv_rows:
+        if row["id"] == "PA":
+            row["decision"] = "accepted"
+        elif row["id"] == "PB":
+            row["decision"] = "rejected"
+
+    # Reescribir el CSV con las columnas nuevas presentes
+    from bib2graph.cli.commands.curate import CSV_COLUMNS
+
+    with open(out, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+        writer.writeheader()
+        writer.writerows(csv_rows)
+
+    # from-csv no debe fallar por las columnas extra
+    now = datetime.now(UTC)
+    result = run_curate_from_csv(store_path, out, decided_at=now)
+
+    assert result["accepted_count"] == 1
+    assert result["rejected_count"] == 1
+    assert result["skipped_count"] == 0
+
+    # Verificar estado del corpus
+    store = DuckDBStore(store_path)
+    corpus = store.load()
+    by_id = {r["id"]: r for r in corpus.to_arrow().to_pylist()}
+    assert by_id["PA"]["curation_status"] == "accepted"
+    assert by_id["PB"]["curation_status"] == "rejected"

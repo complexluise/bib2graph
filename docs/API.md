@@ -280,12 +280,21 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
   viable con `accept`/`reject` por `--ids` uno a uno). **Dos modos mutuamente excluyentes** (exactamente
   uno; pasar ambos o ninguno → error de uso, exit 1):
   - **`--dump`** escribe un CSV revisable offline (Excel/Calc). Default
-    `<workspace>/exports/curacion.csv`; **`--out`** lo override. Por defecto solo los **candidatos**
-    (`curation_status == 'candidate'`); **`--all`** vuelca **todo** el corpus. Columnas (orden estable):
-    `id, openalex_id, title, year, authors, scent_score, cluster, decision, note`. **`id`/`openalex_id`/
-    `title`/`year`/`authors` son read-only**; el humano edita **`decision`** y **`note`**. `decision`
-    refleja el `curation_status` actual (`candidate`→`undecided`, `accepted`→`accepted`,
-    `rejected`→`rejected`). `data` = `{csv_path, papers_exported, columns}`.
+    `<workspace>/exports/curacion.csv`; **`--out`** lo override. **`--scope [candidates|seeds|all]`**
+    (default `candidates`) elige qué papers volcar: `candidates` = forrajeados a revisar
+    (`curation_status == 'candidate'` **AND** `is_seed == False`, **excluye semillas** —arregla #72,
+    donde el dump arrastraba seeds); `seeds` = semillas originales (`is_seed == True`); `all` = todo el
+    corpus. **`--all`** queda como **alias deprecado de `--scope all`** (tiene precedencia si se pasan
+    ambos). Sin candidatos (scope `candidates`/`seeds` vacío) → error accionable que sugiere `--scope all`
+    o `b2g chain`. Columnas (16, orden estable): `id, openalex_id, title, year, authors, venue, doi,
+    keywords, cited_by_count, references_count, is_seed, openalex_url, scent_score, cluster, decision,
+    note`. **Todas read-only salvo `decision` y `note`** (las editables por el humano). `venue` sale de
+    `source`; `keywords` se une con `" | "` (igual que `authors`); `openalex_url` se deriva del
+    `openalex_id` (`https://openalex.org/<id>`). **`cited_by_count`/`references_count` hoy salen vacías**:
+    no existen como escalares en el schema canónico de 23 columnas, así que la columna queda como
+    placeholder para llenado manual (limitación conocida, no falla). `decision` refleja el
+    `curation_status` actual (`candidate`→`undecided`, `accepted`→`accepted`, `rejected`→`rejected`).
+    `data` = `{csv_path, papers_exported, columns}`.
   - **`--from-csv <archivo>`** aplica las decisiones en lote y persiste: `accepted`→`accept`,
     `rejected`→`reject`, `undecided`→no-op (case-insensitive). **Idempotente** (reimportar el mismo CSV
     = mismo `corpus_hash`; el reloj `decided_at` se inyecta en la **frontera CLI**, R2/ADR 0017, fuera
