@@ -71,6 +71,13 @@
 > **`--workspace`** (ambos opcionales, mutuamente excluyentes) con **resolución ambiente** (flag > env
 > `B2G_WORKSPACE` > walk-up del cwd). Suma el **14° subcomando `init`**. El `.duckdb` suelto sigue
 > válido (workspace degenerado). Ver §convenciones CLI.
+>
+> **Sincronizado con la curación a escala — #22 + #26 (AS-BUILT, 2026-06-16):** suma el **15°
+> subcomando `curate`** (curación en lote vía CSV), con dos modos mutuamente excluyentes —`--dump`
+> (escribe `curacion.csv`) y `--from-csv` (aplica decisiones en lote, idempotente)—. **Curación
+> transversal:** no transiciona el `CycleState`. Cierra el hueco de la
+> [Nota 09](Notas/09-sesion-qa-prueba-ecologia-valoraciones.md) B4/B5/P1 (no había dump CSV ni
+> reimport en lote: la curación a escala no era viable). Ver §convenciones CLI.
 
 ## Convenciones
 
@@ -90,11 +97,12 @@ datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado).
 invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opciones globales
 **opcionales** `--workspace`/`--store`, ver abajo).
 
-**Set de 14 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+**Set de 15 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
 y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
 pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
 [0025](decisiones/0025-enricher-cocitacion-openalex.md); el 14° `init` con el workspace, ADR
-[0029](decisiones/0029-workspace-por-investigacion.md)):
+[0029](decisiones/0029-workspace-por-investigacion.md); el 15° `curate` con la curación a escala,
+#22 + #26):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -107,8 +115,9 @@ pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
   intacto. `inspect`, `validate`.
 - **`accept`** / **`reject`** (decisión del PO, ADR 0021 §A): curación programática por `--ids`,
   ahora **subcomandos CLI de primera clase** (no solo API de librería), para que un agente cure la
-  biblioteca viva por subprocess (historia C4). La **curación interactiva rica (`curate`) y la GUI
-  siguen siendo futuro** (no en v0.2). Ver [`ROADMAP.md`](ROADMAP/README.md) Hito 6.
+  biblioteca viva por subprocess (historia C4). **AS-BUILT #22/#26:** la curación **a escala** ya no es
+  uno-a-uno —el subcomando **`curate`** (abajo) hace dump/import CSV en lote—; la **curación
+  interactiva rica y la GUI siguen siendo futuro**. Ver [`ROADMAP.md`](ROADMAP/README.md) Hito 6.
 - **`monitor`** (cleanup pre-v0.3): re-chequea OpenAlex por **citantes nuevos** del corpus (forward
   chaining **batcheado**, AS-BUILT #21: reusa `fetch_citing_batch` con cap por semilla, scope
   `is_seed`), mergea los candidatos nuevos a la biblioteca viva y **transiciona a `MONITORED`** vía
@@ -133,6 +142,31 @@ pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
   `networks/`/`snapshots/`/`exports/`; **`b2g init .`** inicializa el cwd. Si la carpeta ya es un
   workspace → error (`WorkspaceExistsError`). **NO transiciona** el `CycleState`. `data` =
   `{root, name, ...}`; `--json` con `schema="1"`.
+- **`curate`** (#22 + #26, AS-BUILT 2026-06-16): **curación en lote vía CSV** —cierra el hueco de la
+  [Nota 09](Notas/09-sesion-qa-prueba-ecologia-valoraciones.md) B4/B5/P1 (la curación a escala no era
+  viable con `accept`/`reject` por `--ids` uno a uno). **Dos modos mutuamente excluyentes** (exactamente
+  uno; pasar ambos o ninguno → error de uso, exit 1):
+  - **`--dump`** escribe un CSV revisable offline (Excel/Calc). Default
+    `<workspace>/exports/curacion.csv`; **`--out`** lo override. Por defecto solo los **candidatos**
+    (`curation_status == 'candidate'`); **`--all`** vuelca **todo** el corpus. Columnas (orden estable):
+    `id, openalex_id, title, year, authors, scent_score, cluster, decision, note`. **`id`/`openalex_id`/
+    `title`/`year`/`authors` son read-only**; el humano edita **`decision`** y **`note`**. `decision`
+    refleja el `curation_status` actual (`candidate`→`undecided`, `accepted`→`accepted`,
+    `rejected`→`rejected`). `data` = `{csv_path, papers_exported, columns}`.
+  - **`--from-csv <archivo>`** aplica las decisiones en lote y persiste: `accepted`→`accept`,
+    `rejected`→`reject`, `undecided`→no-op (case-insensitive). **Idempotente** (reimportar el mismo CSV
+    = mismo `corpus_hash`; el reloj `decided_at` se inyecta en la **frontera CLI**, R2/ADR 0017, fuera
+    de la identidad). **Validación accionable** (exit 2): CSV sin `id`/`decision` → error que nombra las
+    columnas requeridas; `decision` con un valor fuera de `{accepted, rejected, undecided}` → error con
+    los valores válidos. **IDs huérfanos** (en el CSV pero no en el corpus) **NO se aplican** y se
+    reportan en `not_found_count` + aviso humano (cierra el no-op silencioso). `data` =
+    `{accepted_count, rejected_count, skipped_count, not_found_count, total_rows}` —los `*_count` de
+    accept/reject cuentan papers **efectivamente** encontrados y marcados, no filas del CSV.
+  - **`note` es advisory:** hace round-trip en el dump pero **se ignora al importar** (`ProvenanceEvent`
+    no tiene campo de anotación; persistirla → ADR futuro). **`scent_score` best-effort** (vacío hasta
+    que el Forager guarde `scent` en provenance) y **`cluster` siempre vacío** (integración con redes
+    diferida). **Curación TRANSVERSAL: `curate` NO transiciona el `CycleState`** (disponible en cualquier
+    estado del lazo, igual que `accept`/`reject`; ADR 0016 enmendado R3). `--json` con `schema="1"`.
 
 **`--workspace` / `--store` globales (ambos OPCIONALES, mutuamente excluyentes).** Van en el grupo
 `b2g`, **antes** del subcomando. Una investigación = un **workspace** (carpeta marcada por
@@ -153,8 +187,8 @@ transición).
 
 **Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`, `chain`→`FORAGED`,
 `filter`→`FILTERED`, `build`→`BUILT`, **`monitor`→`MONITORED`** (cleanup pre-v0.3);
-`accept`/`reject`/`export`/`snapshot`/`status`/`inspect`/`validate`/**`enrich`** **no transicionan**
-(`enrich` es ortogonal al lazo, ADR 0025). El estado
+`accept`/`reject`/**`curate`**/`export`/`snapshot`/`status`/`inspect`/`validate`/**`enrich`** **no
+transicionan** (`curate` es curación transversal; `enrich` es ortogonal al lazo, ADR 0025). El estado
 destino lo dicta `bib2graph.cycle.apply_transition`
 (fuente única de verdad; los comandos no hardcodean el destino). `seed` con **estado previo** se trata
 como **`reseed`** (loop-back a `SEEDED`, ronda++, acumula sobre lo curado).
