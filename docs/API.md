@@ -113,6 +113,12 @@ pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
   `schema="1"`. **AS-BUILT workspace (ADR 0029):** `status` suma el campo aditivo
   `workspace: {root, source}` (la raíz resuelta y de dónde salió — flag/env/cwd); `schema="1"`
   intacto. `inspect`, `validate`.
+- **`seed`** (flags ergonómicos, #14 + #30): **`--max-results INT`** propaga a
+  `OpenAlexSource(max_results=...)` —sin flag, el default del source = 200— para exploración con
+  muestras chicas (Nota 09 B1). **`--exclude TEXT`** (repetible) son **negaciones quirúrgicas**:
+  cada término agrega `AND NOT title_and_abstract.search:"<término>"` al filtro y queda en el
+  `translation_report` del `SeedResult` (ejercicio consciente, query visible). Ignorado con
+  `--native` (query cruda).
 - **`accept`** / **`reject`** (decisión del PO, ADR 0021 §A): curación programática por `--ids`,
   ahora **subcomandos CLI de primera clase** (no solo API de librería), para que un agente cure la
   biblioteca viva por subprocess (historia C4). **AS-BUILT #22/#26:** la curación **a escala** ya no es
@@ -520,22 +526,26 @@ class Source(Protocol):
     Debe entregar el MÍNIMO UNIVERSAL (id, title, year, authors_raw, keywords_raw); el
     enriquecimiento (refs/citantes/afiliaciones/instituciones) es OPCIONAL (ADR 0018)."""
 
-    def seed(self, query: str) -> "SeedResult":
+    def seed(self, query: str, *, exclude: list[str] | None = None) -> "SeedResult":
         """Siembra desde una ecuación de búsqueda. Devuelve el Corpus + la query ejecutada
         y el reporte de traducción (qué mapeó, qué se aproximó, qué se descartó).
-        Una Source que no siembra por ecuación (p. ej. BibtexSource) lanza NotImplementedError."""
+        `exclude` (negaciones quirúrgicas, opcional): cada término agrega
+        `AND NOT title_and_abstract.search:"<término>"` al filtro y se REPORTA en el
+        translation_report (query visible, ejercicio consciente). Las comillas internas del
+        término se sanean. Ignorado con `native=True` (query cruda). Una Source que no siembra
+        por ecuación (p. ej. BibtexSource) lanza NotImplementedError."""
     def load(self, path: str) -> Corpus:
         """Siembra desde un archivo (export/pearls). is_seed=True."""
 
 class SeedResult(BaseModel):
     corpus: Corpus
     executed_query: str        # la query OpenAlex EXACTA ejecutada (consciencia, ADR 0007)
-    translation_report: list[str]   # mapeos limpios / aproximados / descartados (p. ej. NEAR no soportado)
+    translation_report: list[str]   # mapeos limpios / aproximados / descartados (p. ej. NEAR no soportado) + negaciones aplicadas (exclude, #30)
 ```
 
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
-| `OpenAlexSource` | **v1 (construido, Hito 4)** | **Referencia/backbone**, sobre `httpx`. Entrega mínimo + enriquecimiento: refs inline + afiliaciones per-autor + instituciones; `cited_by_id` queda **diferido** al chaining/`Enricher` (no se trae en el seed). Traducción **passthrough** —envuelve la ecuación en `title_and_abstract.search:(...)` y **reporta** los límites WoS (NEAR/comodín/tags) sin traducirlos; el traductor WoS→OpenAlex es v0.2. Flag `native=True` (query cruda). Credenciales inyectadas (arg → `OPENALEX_API_KEY` → `~/.openalex/credentials` → polite pool; ADR 0012). Cursor paging con tope `max_results=200`. Puebla `Manifest.openalex_version` (header o fecha del fetch; ADR 0017). `transport` inyectable (tests con `MockTransport`, sin red en CI). |
+| `OpenAlexSource` | **v1 (construido, Hito 4)** | **Referencia/backbone**, sobre `httpx`. Entrega mínimo + enriquecimiento: refs inline + afiliaciones per-autor + instituciones; `cited_by_id` queda **diferido** al chaining/`Enricher` (no se trae en el seed). Traducción **passthrough** —envuelve la ecuación en `title_and_abstract.search:(...)` y **reporta** los límites WoS (NEAR/comodín/tags) sin traducirlos; el traductor WoS→OpenAlex es v0.2. Flag `native=True` (query cruda). **Negaciones (`exclude`, #30):** `seed(..., exclude=[...])` y `_translate(exclude=...)` agregan `AND NOT title_and_abstract.search:"<término>"` por término al filtro y lo **reportan en el `translation_report`** (query visible); comillas internas saneadas; **ignorado con `native=True`**. *(La sintaxis NOT no se validó contra la API real —mock—; es plausible/coherente con el passthrough.)* Credenciales inyectadas (arg → `OPENALEX_API_KEY` → `~/.openalex/credentials` → polite pool; ADR 0012). Cursor paging con tope `max_results` (param de `__init__`, default 200; **`b2g seed --max-results INT`** lo propaga para exploración con muestras chicas, Nota 09 B1). Puebla `Manifest.openalex_version` (header o fecha del fetch; ADR 0017). `transport` inyectable (tests con `MockTransport`, sin red en CI). |
 | `BibtexSource` | **v1, secundaria (construido, Hito 4)** | Sembrar desde *pearls* vía `load()`. Extra **`[bibtex]`** (import perezoso de `bibtexparser`, ADR 0005); acceso defensivo (fix del bug T1: campos faltantes sin `KeyError`). Mínimo universal. `seed()` lanza `NotImplementedError` (BibTeX no siembra por ecuación). **R5:** un `.bib` con error de parseo grave → `ValueError` accionable (antes lo tragaba en silencio); un `.bib` sin entradas válidas / con entradas omitidas por falta de título → `UserWarning` (no no-op silencioso). Carga bulk con `from_arrow`. |
 | `ScieloSource` / `RedalycSource` / `LaReferenciaSource` | futuro | Fuentes regionales, mínimo universal. Declaradas, no implementadas (ADR 0018). |
 | `RisSource` / `CsvSource` | futuro | No implementados. |
@@ -1187,7 +1197,9 @@ JSON por comando:
 ```bash
 b2g init ied                                    # crea ./ied/ (workspace.json + library.duckdb + networks/…)
 cd ied                                           # a partir de acá el workspace se resuelve por cwd
-b2g seed --equation '"unequal ecological exchange"' --email luis@sostaina.com --json
+b2g seed --equation '"unequal ecological exchange"' --max-results 50 \
+         --exclude "blockchain" --exclude "machine learning" \
+         --email luis@sostaina.com --json   # --max-results: muestra chica · --exclude (repetible): negaciones, quedan en el translation_report
 b2g chain --direction both --max-candidates 300 --max-citing 50 --json
 b2g filter --year-gte 2010 --language en --language es --json
 b2g accept --ids oa:abc123 --ids oa:def456 --json

@@ -30,7 +30,7 @@
   scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
   El **CLI `b2g` es real** —paquete `cli/` con 15 subcomandos en `cli/commands/`, no un
-  placeholder—. **459 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+  placeholder—. **476 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
 - **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
   [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
   núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
@@ -87,8 +87,15 @@
   ignorado al importar); `scent_score` best-effort, `cluster` diferido. **Curación transversal** (NO
   transiciona el `CycleState`). Cierra el hueco de la
   [Nota 09](docs/Notas/09-sesion-qa-prueba-ecologia-valoraciones.md) B4/B5/P1 (sin dump CSV ni reimport
-  en lote, la curación a escala no era viable). **459 tests verdes**, 15 subcomandos. Ver
+  en lote, la curación a escala no era viable). **476 tests verdes**, 15 subcomandos. Ver
   `docs/API.md` §convenciones CLI.
+- **Ergonomía de `b2g seed` (#14 + #30, 2026-06-16):** **`--max-results INT`** propaga a
+  `OpenAlexSource(max_results=...)` (sin flag = default 200) para explorar con muestras chicas;
+  **`--exclude TEXT`** (repetible) son negaciones quirúrgicas que agregan
+  `AND NOT title_and_abstract.search:"<término>"` por término al filtro y se **reportan en el
+  `translation_report`** del `SeedResult` (query visible, ignorado con `--native`). Cierra el síntoma
+  B1 de la [Nota 09](docs/Notas/09-sesion-qa-prueba-ecologia-valoraciones.md). **476 tests verdes**.
+  Ver `docs/API.md` §2 + §convenciones CLI.
 - Toda la información del producto, la arquitectura, los contratos y la secuencia de
   construcción está en `docs/`. **Leer `docs/ROADMAP/` antes de tocar nada**: cada hito declara
   qué historias del PRD §7 cumple, sus criterios de aceptación (DoD) y los tests TDD que se

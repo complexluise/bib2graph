@@ -31,6 +31,8 @@ def run_seed(
     native: bool = False,
     email: str | None = None,
     transport: Any = None,
+    max_results: int | None = None,
+    exclude: list[str] | None = None,
 ) -> dict[str, Any]:
     """Siembra el corpus desde OpenAlex y persiste en el store.
 
@@ -43,6 +45,10 @@ def run_seed(
         native: Si es ``True``, pasa la ecuación cruda a OpenAlex sin traducir.
         email: Email para el polite pool de OpenAlex.
         transport: Transport inyectable para tests (``httpx.MockTransport``).
+        max_results: Tope de resultados a traer de OpenAlex (#14).  ``None``
+            usa el default del source (200).
+        exclude: Términos a excluir del título/abstract vía ``AND NOT`` (#30).
+            ``None`` o lista vacía = sin exclusiones.
 
     Returns:
         Dict con ``executed_query``, ``translation_report``, ``papers_added``.
@@ -72,9 +78,14 @@ def run_seed(
         # Primera siembra
         new_state, new_round = apply_transition(None, "seed", current_round)
 
+    # Construir kwargs opcionales para OpenAlexSource
+    source_kwargs: dict[str, Any] = {"email": email, "transport": transport}
+    if max_results is not None:
+        source_kwargs["max_results"] = max_results
+
     try:
-        source = OpenAlexSource(email=email, transport=transport)
-        result = source.seed(equation, native=native)
+        source = OpenAlexSource(**source_kwargs)
+        result = source.seed(equation, native=native, exclude=exclude)
     except ImportError as exc:
         raise NetworkError(
             f"Error importando httpx: {exc}. Verificá la instalación del núcleo."
@@ -119,6 +130,22 @@ def run_seed(
     help="Email para el polite pool de OpenAlex (recomendado).",
 )
 @click.option(
+    "--max-results",
+    "max_results",
+    type=int,
+    default=None,
+    help="Tope de resultados a traer de OpenAlex (default: 200).",
+)
+@click.option(
+    "--exclude",
+    "exclude",
+    multiple=True,
+    help=(
+        "Término a excluir del título/abstract (repetible). "
+        'Cada valor agrega AND NOT title_and_abstract.search:"…" al filtro.'
+    ),
+)
+@click.option(
     "--json",
     "json_output",
     is_flag=True,
@@ -132,6 +159,8 @@ def seed_cmd(
     equation: str,
     native: bool,
     email: str | None,
+    max_results: int | None,
+    exclude: tuple[str, ...],
     json_output: bool,
 ) -> None:
     """Siembra el corpus desde una ecuación de búsqueda en OpenAlex.
@@ -139,7 +168,14 @@ def seed_cmd(
     Tras el seed, el estado del lazo transiciona a SEEDED.
     """
     store_path = resolve_library_path(ctx.obj)
-    data = run_seed(store_path, equation, native=native, email=email)
+    data = run_seed(
+        store_path,
+        equation,
+        native=native,
+        email=email,
+        max_results=max_results,
+        exclude=list(exclude) if exclude else None,
+    )
 
     if json_output:
         envelope = build_envelope(

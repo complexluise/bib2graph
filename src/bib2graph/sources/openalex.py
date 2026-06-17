@@ -78,19 +78,32 @@ _RETRY_BACKOFF_BASE: float = 1.0  # segundos; duplica por cada intento
 # ---------------------------------------------------------------------------
 
 
-def _translate(query: str, *, native: bool = False) -> tuple[str, list[str]]:
+def _translate(
+    query: str,
+    *,
+    native: bool = False,
+    exclude: list[str] | None = None,
+) -> tuple[str, list[str]]:
     """Traduce una ecuación WoS-style a una query OpenAlex ejecutable.
 
-    Si ``native=True`` pasa la query cruda sin ningún procesamiento.
+    Si ``native=True`` pasa la query cruda sin ningún procesamiento (las
+    exclusiones se ignoran en modo nativo).
 
     Detecta y reporta límites de OpenAlex (ADR 0007) sin abortar:
     - ``NEAR/n``: proximidad no soportada.
     - Comodín ``*``: comportamiento distinto al de WoS.
     - Tags de campo WoS (``TS=``, ``AB=``, ``AU=``…): no mapean 1:1.
 
+    Las exclusiones (``exclude``) añaden cláusulas
+    ``AND NOT title_and_abstract.search:"<término>"`` al final del filtro y
+    se reportan en el translation_report para transparencia (PRD §4).
+
     Args:
         query: Ecuación de búsqueda.
         native: Si es ``True``, no traducir; usar query cruda.
+        exclude: Lista de términos a excluir de título/abstract.  Cada uno
+            genera una cláusula ``AND NOT title_and_abstract.search:"…"``.
+            ``None`` o lista vacía = sin exclusiones.
 
     Returns:
         Tupla ``(executed_query, translation_report)``.
@@ -119,6 +132,22 @@ def _translate(query: str, *, native: bool = False) -> tuple[str, list[str]]:
 
     # Envolver en el filtro de OpenAlex (PASSTHROUGH)
     executed = f"title_and_abstract.search:({query})"
+
+    # Negaciones: cada término excluido agrega una cláusula AND NOT (#30).
+    # Las comillas internas se eliminan para no romper la frase entrecomillada
+    # en el filtro de OpenAlex (un `"` embebido cierra la frase antes de tiempo).
+    terms = [t.strip().replace('"', "") for t in (exclude or []) if t and t.strip()]
+    if terms:
+        not_clauses = " ".join(
+            f'AND NOT title_and_abstract.search:"{t}"' for t in terms
+        )
+        executed = f"{executed} {not_clauses}"
+        report.append(
+            f"Exclusiones aplicadas ({len(terms)}): "
+            + ", ".join(f'"{t}"' for t in terms)
+            + ". Cláusulas AND NOT añadidas al filtro de OpenAlex."
+        )
+
     return executed, report
 
 
@@ -437,7 +466,13 @@ class OpenAlexSource:
     # API pública
     # ------------------------------------------------------------------
 
-    def seed(self, query: str, *, native: bool = False) -> SeedResult:
+    def seed(
+        self,
+        query: str,
+        *,
+        native: bool = False,
+        exclude: list[str] | None = None,
+    ) -> SeedResult:
         """Siembra un ``Corpus`` desde una ecuación de búsqueda.
 
         ``cited_by_id`` queda ``[]`` en el corpus sembrado: OpenAlex no lo
@@ -447,11 +482,15 @@ class OpenAlexSource:
         Args:
             query: Ecuación de búsqueda (WoS-style o nativa OpenAlex).
             native: Si es ``True``, pasa la query cruda sin traducción.
+            exclude: Lista de términos a excluir de título/abstract (#30).
+                Cada término genera ``AND NOT title_and_abstract.search:"…"``.
 
         Returns:
             ``SeedResult`` con el corpus, la query ejecutada y el reporte.
         """
-        executed_query, translation_report = _translate(query, native=native)
+        executed_query, translation_report = _translate(
+            query, native=native, exclude=exclude
+        )
         equation_id = f"eq-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}"
         fetched_at = datetime.now(UTC).isoformat()
 
