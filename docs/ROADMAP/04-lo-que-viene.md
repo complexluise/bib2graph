@@ -222,6 +222,17 @@ No se prometen ni se cablean clientes que no se usan.
   best-effort (vacío hasta que el Forager guarde scent en provenance) y `cluster` diferido (integración
   con redes). Gate verde, **459 tests**. Ver `API.md` §convenciones CLI.
 
+- **Ergonomía de `b2g seed` (#14 `--max-results` + #30 `--exclude`) · ✅ HECHO (2026-06-16):** dos
+  flags que afinan el seed sin tocar el contrato `Source`. **`--max-results INT` (#14)** propaga a
+  `OpenAlexSource(max_results=...)` (sin flag = default del source, 200) para explorar con muestras
+  chicas (síntoma B1 de la [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)).
+  **`--exclude TEXT` repetible (#30)** son **negaciones quirúrgicas**: `seed(..., exclude=[...])` y
+  `_translate(exclude=...)` agregan `AND NOT title_and_abstract.search:"<término>"` por término al
+  filtro y las **reportan en el `translation_report`** del `SeedResult` (ejercicio consciente, query
+  visible); comillas internas saneadas; **ignorado con `native=True`**. *(La sintaxis NOT no se validó
+  contra la API real —mock—; plausible/coherente con el passthrough.)* Gate verde, **476 tests**. Ver
+  `API.md` §2 + §convenciones CLI.
+
 > **RETIRADO del producto (ADR [0022](../decisiones/0022-producto-sin-ia-generativa.md), 2026-06-15):**
 > el **fallback fuzzy/semántico del thesaurus por LLM** y la **"máquina de tensiones"** (la antigua
 > "inserción de IA nº2") **ya no son costuras futuras: se borran**. El producto **no usa IA

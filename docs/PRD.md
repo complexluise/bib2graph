@@ -135,7 +135,10 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 - **Consciente, no caja negra.** La ecuación de búsqueda es **ciudadana de primera clase**: se
   traduce a una query OpenAlex, se **muestra la query exacta ejecutada** y un **reporte de
   traducción** (qué mapeó limpio, qué se aproximó, qué se descartó). Eso *es* el ejercicio
-  bibliotecario y lo que hace el resultado reportable (PRISMA / vom Brocke).
+  bibliotecario y lo que hace el resultado reportable (PRISMA / vom Brocke). Las **exclusiones
+  quirúrgicas** (`b2g seed --exclude`, negaciones `AND NOT …` por término) son parte de ese
+  ejercicio consciente: quedan en el reporte de traducción, no se aplican en silencio. Para
+  exploración con muestras chicas, `--max-results` acota el fetch.
 - **Biblioteca viva, no mapa one-shot.** El corpus se cura y crece en el tiempo (berry growing),
   persistido en DuckDB. El investigador **posee** su colección.
 - **Forrajeo asistido.** Chaining backward/forward sobre OpenAlex, con candidatos **rankeados
@@ -170,7 +173,10 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   parciales y lo **reportan** (no fallan). El **reporte de cobertura/calidad** por seed/source se
   **declara** como contrato en V1 y se concreta en **v0.2+**.
 - **Traducción** de la ecuación a query OpenAlex con **query ejecutada visible + reporte de
-  traducción**, ambas **registradas** con la corrida.
+  traducción**, ambas **registradas** con la corrida. Incluye **negaciones quirúrgicas**
+  (`b2g seed --exclude`, repetible: `AND NOT title_and_abstract.search:"…"` por término) que se
+  **reportan en el reporte de traducción** (ejercicio consciente, no silencioso), y
+  **`--max-results`** para acotar el fetch en exploración con muestras chicas.
 - **Chaining asistido** backward/forward sobre OpenAlex; **profundidad 1 por defecto**, opt-in a
   2, con **preview de crecimiento** ("esta expansión sumaría ~N papers") y **tope** configurable.
 - **Ranking por estructura** (acoplamiento/co-citación, centralidad) de los candidatos —
