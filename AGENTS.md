@@ -29,10 +29,12 @@
   `backends/` (`TabularBackend` + `InMemoryBackend` + `DuckDBBackend`), `stores/`
   (`DuckDBStore`), `sources/` (`OpenAlexSource`, `BibtexSource`), `foraging/` (`Forager`,
   scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
-  `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/` con 16 subcomandos en `cli/commands/`, no un
-  placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9, abajo)—.
-  **534 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
+  `networks/` (proyectores, analyzer, spec, facade), `sources/equation.py` (capa declarativa de la
+  ecuación, 9a), `exporters/` (GraphML, CSV) y `cli/`.
+  El **CLI `b2g` es real** —paquete `cli/` con 17 subcomandos en `cli/commands/`, no un
+  placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9; el 17° `b2g restore`
+  rehidrata un corpus curado sin red, Ciclo 9a, abajo)—.
+  **564 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
   (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2). **`b2g snapshot`/`b2g export` resuelven por
@@ -48,6 +50,16 @@
   `_write_artifacts` (mismos GraphML + metrics.json + clusters.csv que `build`); **NO** transiciona el
   `CycleState` ni sella `.corpus_hash` (transversal al lazo, como `enrich`/`curate`). `pyyaml` pasó a
   dependencia del núcleo (import perezoso). **516 tests verdes**. Ver `docs/API.md` §10.
+- **Ciclo 9a — ecuación declarativa + `restore`** (AS-BUILT 2026-06-17, ADR
+  [0030](docs/decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)): **(1)** `b2g seed` tiene
+  **2 modos** (`--equation` / **`--spec equation.yaml`**) — `EquationSpec` + `load_equation_spec`
+  (`sources/equation.py`, Pydantic `extra="forbid"`; `min_year`/`max_year` están en el modelo pero
+  **aún no filtran** contra OpenAlex). **(2)** Nuevo **17° subcomando `b2g restore --from-corpus
+  <parquet>`** (`cli/commands/restore.py`): rehidrata un corpus **ya curado sin red** (inverso de
+  `snapshot`; `CORPUS_SCHEMA` → `Corpus.from_arrow` → merge+persist), preserva la curación y
+  transiciona a **`FILTERED`** (reusa la transición permisiva `filter`, ADR 0016). **No** hay
+  `seed --from-corpus` (es `restore`) ni `seed --from-bib` (diferido). **9b pendiente:** workspace de
+  ejemplo `examples/valoraciones/` + gate de reproducibilidad R2. Ver `docs/API.md` §2 + §convenciones CLI.
 - **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
   [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
   núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
@@ -278,7 +290,9 @@ src/bib2graph/
                        # models.py separado), parseo que falla ruidoso
   cycle.py             # FSM CÍCLICO de dominio puro (ADR 0016 enmendado, Hito R3): SEEDED→…→
                        # MONITORED + reseed/ronda. Sale del backend; el backend solo lo persiste.
-  sources/             # OpenAlexSource (núcleo, backbone); BibtexSource (secundaria);
+  sources/             # OpenAlexSource (núcleo, backbone); BibtexSource (secundaria, función de
+                       # librería —seed --from-bib diferido, ADR 0030); equation.py (EquationSpec +
+                       # load_equation_spec, capa declarativa de la ecuación —seed --spec, 9a);
                        # RIS, CSV (futuro, no publicar)
   backends/            # TabularBackend (Protocol) + InMemoryBackend (núcleo puro) +
                        # DuckDBBackend (biblioteca viva, carga perezosa de duckdb; persiste cycle)
@@ -296,9 +310,10 @@ src/bib2graph/
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
-                       # cli/commands/ = 16 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
+                       # cli/commands/ = 17 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
                        # init scaffold de workspace —ADR 0029, curate dump/import CSV —#22+#26,
-                       # networks capa declarativa YAML —Hito 9). CLI = API
+                       # networks capa declarativa YAML —Hito 9, restore rehidrata corpus curado sin
+                       # red →FILTERED —ADR 0030/9a). CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
   workspace.py         # Workspace (init/open/resolve; snapshots_dir/exports_dir/networks_dir;
                        # read_networks_corpus_hash/is_networks_cache_stale —staleness #32) +

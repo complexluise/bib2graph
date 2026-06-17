@@ -140,3 +140,18 @@ Dos seguimientos abiertos de R3 (arriba) quedan **CERRADOS**:
 - **El alias `LoopState = CycleState` se RETIRÓ** (la recomendación "a retirar pre-1.0"): el código usa
   **solo `CycleState`** (de `bib2graph.cycle`). Se eliminó de `backends/duckdb.py` y `stores/duckdb.py`;
   los call-sites migraron. No queda una segunda clase para el mismo concepto.
+
+### AS-BUILT — `restore` reusa la transición permisiva `filter` (2026-06-17, Ciclo 9a)
+
+> **No es una enmienda al modelo: es una nota de uso.** El comando `b2g restore --from-corpus`
+> (ADR [0030](0030-ecuacion-declarativa-corpus-ejemplo.md), 17° subcomando) **no introduce una
+> transición nueva** en la FSM. Rehidrata un corpus **ya curado** y necesita dejar el lazo en un estado
+> que habilite `build`/`networks` sin re-forrajeo; para eso **reusa la transición `filter` → `FILTERED`**
+> ya existente (`cycle.py:_CHAIN_TRANSITIONS`). La FSM es **permisiva** (este ADR, "transiciones
+> permisivas, no validación rígida"): `apply_transition(state, "filter", round)` es válida desde
+> cualquier estado actual, incluido un store vacío (`None`), donde `restore` sintetiza un `SEEDED`
+> ficticio antes de aplicar `filter`. La ronda se normaliza con `max(loop_round(), 1)` para no persistir
+> ronda 0 en bases legacy (pre-R3, `round=NULL`) ni en stores vacíos. Como la transición ya estaba
+> cubierta por la permisividad de la FSM, **no se modifica `cycle.py` ni el cuerpo de esta enmienda**;
+> esta nota solo deja registrado el reuso (el docstring de `restore.py` lo cita como "ADR 0016
+> enmendado §1"). Ver API.md §`restore` y §convenciones CLI.

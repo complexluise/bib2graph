@@ -95,6 +95,21 @@
 > sella `.corpus_hash`). `pyyaml` pasó a dependencia del núcleo (import perezoso). Ver §10 +
 > §convenciones CLI.
 >
+> **Sincronizado con la capa declarativa de ecuación + `restore` — #33 / Ciclo 9a (AS-BUILT, 2026-06-17):**
+> dos cambios de la capa declarativa (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)).
+> **(1)** `b2g seed` gana un 2º modo declarativo **`--spec equation.yaml`** (mutuamente excluyente con
+> `--equation`): carga la ecuación de un YAML con el modelo **`EquationSpec`** + loader
+> `load_equation_spec` (`sources/equation.py`, Pydantic `extra="forbid"`, mismo patrón de errores que
+> `load_specs`; §2). Los campos `min_year`/`max_year` **están en el modelo pero NO filtran contra
+> OpenAlex todavía** (filtro de año = trabajo futuro; no se promete capacidad inexistente). **(2)** Nuevo
+> **17° subcomando `b2g restore --from-corpus <parquet>`** (`cli/commands/restore.py`): rehidrata un
+> corpus **ya curado** desde un parquet **sin red** (inverso de `snapshot`; lee con `CORPUS_SCHEMA`,
+> `Corpus.from_arrow`, merge+persist), preserva la curación (`decision`/`curation_status`/`is_seed`) y
+> transiciona el `CycleState` a **`FILTERED`** (reusa la transición permisiva `filter`, ADR 0016; deja
+> correr `build`/`networks` sin re-forrajeo). **NO** existe `seed --from-corpus` (la rehidratación es
+> `restore`) ni `seed --from-bib` (diferido a un issue futuro, ADR 0030 §Diferido). Ver §2 +
+> §convenciones CLI.
+>
 > **Sincronizado con los remanentes del modelo workspace — #32 (AS-BUILT, 2026-06-17):** cierra lo
 > que el ADR [0029](decisiones/0029-workspace-por-investigacion.md) dejó "fuera de corte".
 > **`b2g snapshot` y `b2g export`** se resuelven por ambiente: `--out-dir` pasó de obligatorio a
@@ -125,12 +140,14 @@ datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado).
 invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opciones globales
 **opcionales** `--workspace`/`--store`, ver abajo).
 
-**Set de 16 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+**Set de 17 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
 y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
 pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
 [0025](decisiones/0025-enricher-cocitacion-openalex.md); el 14° `init` con el workspace, ADR
 [0029](decisiones/0029-workspace-por-investigacion.md); el 15° `curate` con la curación a escala,
-#22 + #26; el 16° `networks` con la capa declarativa YAML, Hito 9):
+#22 + #26; el 16° `networks` con la capa declarativa YAML, Hito 9; el 17° `restore` con la
+rehidratación de corpus curado sin red, Ciclo 9a, ADR
+[0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -143,12 +160,35 @@ pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
   intacto. **AS-BUILT #32 (2026-06-17):** suma también el campo aditivo `networks_cache_stale: bool`
   (+ `warnings` accionable cuando la cache de `networks/` quedó obsoleta respecto al corpus vivo;
   avisa, NO regenera — ver §`build`/`export`/`snapshot` abajo). `inspect`, `validate`.
-- **`seed`** (flags ergonómicos, #14 + #30): **`--max-results INT`** propaga a
-  `OpenAlexSource(max_results=...)` —sin flag, el default del source = 200— para exploración con
-  muestras chicas (Nota 09 B1). **`--exclude TEXT`** (repetible) son **negaciones quirúrgicas**:
+- **`seed`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md), Ciclo 9a): tiene
+  **exactamente DOS modos mutuamente excluyentes** (exactamente uno requerido; pasar ambos o ninguno
+  → error de uso, exit 1):
+  - **`--equation '<texto>'`** — ecuación cruda en la línea de comandos (modo OpenAlex directo).
+  - **`--spec equation.yaml`** — la misma siembra OpenAlex parametrizada por un YAML versionable
+    (clave raíz `equation:`; modelo `EquationSpec`, §2). Equivale a `--equation` + flags (mismo
+    `executed_query`).
+
+  **No existe `seed --from-corpus`** (la rehidratación de un parquet curado es `restore`, abajo) **ni
+  `seed --from-bib`** (segundo camino de seed por BibTeX, **diferido** a un issue futuro propio, ADR
+  0030 §Diferido). Flags ergonómicos (#14 + #30, **solo con `--equation`**): **`--max-results INT`**
+  propaga a `OpenAlexSource(max_results=...)` —sin flag, el default del source = 200— para exploración
+  con muestras chicas (Nota 09 B1); **`--exclude TEXT`** (repetible) son **negaciones quirúrgicas**:
   cada término agrega `AND NOT title_and_abstract.search:"<término>"` al filtro y queda en el
-  `translation_report` del `SeedResult` (ejercicio consciente, query visible). Ignorado con
-  `--native` (query cruda).
+  `translation_report` del `SeedResult` (ejercicio consciente, query visible); ignorado con `--native`
+  (query cruda). Con `--spec`, estos parámetros vienen del YAML.
+- **`restore`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md), Ciclo 9a, 17°
+  subcomando): **rehidrata un corpus ya curado desde un parquet, SIN red** — inverso de `snapshot`,
+  como `load` es a `dump`. **`--from-corpus <parquet>`** (requerido) lee el parquet con el schema
+  canónico (`CORPUS_SCHEMA`), lo hidrata con `Corpus.from_arrow`, hace merge con el corpus existente y
+  persiste; **cero llamadas a `OpenAlexSource`, cero red**. **Preserva la curación** del parquet
+  (`decision`/`curation_status`/`is_seed`: el merge respeta el `curation_status` más reciente, D3).
+  **Transiciona el `CycleState` a `FILTERED`** (el corpus ya pasó curación ⇒ `build`/`networks` corren
+  sin re-forrajeo ni re-filtrado; reusa la transición permisiva `filter` de la FSM, ADR 0016 — válida
+  desde cualquier estado, incluido un store vacío `None`). La ronda se normaliza con
+  `max(loop_round(), 1)` (evita ronda 0 en bases legacy pre-R3). `data` = `{papers_loaded,
+  total_papers, state, round}`; `--json` con `schema="1"`. Errores accionables: parquet inexistente o
+  con schema no canónico → `DataError` (exit 2). **No** es semilla: es restaurar estado terminado (por
+  eso vive aparte de `seed`).
 - **`accept`** / **`reject`** (decisión del PO, ADR 0021 §A): curación programática por `--ids`,
   ahora **subcomandos CLI de primera clase** (no solo API de librería), para que un agente cure la
   biblioteca viva por subprocess (historia C4). **AS-BUILT #22/#26:** la curación **a escala** ya no es
@@ -253,7 +293,9 @@ cache **no existe** (nunca se corrió `build`), **no** es stale. `status` **avis
 invalidación por hash, **no** un build-system (ADR [0029](decisiones/0029-workspace-por-investigacion.md)).
 
 **Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`, `chain`→`FORAGED`,
-`filter`→`FILTERED`, `build`→`BUILT`, **`monitor`→`MONITORED`** (cleanup pre-v0.3);
+`filter`→`FILTERED`, `build`→`BUILT`, **`monitor`→`MONITORED`** (cleanup pre-v0.3),
+**`restore`→`FILTERED`** (Ciclo 9a, ADR 0030: el corpus restaurado ya pasó curación; reusa la
+transición permisiva `filter`);
 `accept`/`reject`/**`curate`**/`export`/`snapshot`/`status`/`inspect`/`validate`/**`enrich`**/**`networks`**
 **no transicionan** (`curate` es curación transversal; `enrich` y `networks` son ortogonales al lazo,
 ADR 0025 / Hito 9). El estado
@@ -604,6 +646,38 @@ class SeedResult(BaseModel):
     executed_query: str        # la query OpenAlex EXACTA ejecutada (consciencia, ADR 0007)
     translation_report: list[str]   # mapeos limpios / aproximados / descartados (p. ej. NEAR no soportado) + negaciones aplicadas (exclude, #30)
 ```
+
+**Capa declarativa de la ecuación — `EquationSpec` + `load_equation_spec`** (Ciclo 9a, ADR
+[0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md); `src/bib2graph/sources/equation.py`).
+Empaqueta los parámetros de `b2g seed` en un YAML versionable (el artefacto "qué se busca"), **análogo
+a `NetworkSpec`/`load_specs`** del Hito 9. Clave raíz **`equation:`** (objeto, **no** lista — una
+ecuación por archivo). El modo `b2g seed --spec equation.yaml` (§convenciones CLI) carga la spec y la
+mapea a `run_seed`; equivale a `--equation` + flags.
+
+```python
+class EquationSpec(BaseModel):
+    """Configuración declarativa de una ecuación de búsqueda (ADR 0030).
+    model_config = ConfigDict(extra="forbid"): campo desconocido en el YAML → error accionable."""
+    query: str                          # requerido (no vacío) — la ecuación de búsqueda
+    exclude: list[str] = []             # #30 — AND NOT title_and_abstract.search:"…" por término
+    max_results: int | None = None      # #14 — tope (None → default del source, 200)
+    native: bool = False                # passthrough crudo a OpenAlex (sin traducción)
+    min_year: int | None = None         # DECLARADO, AÚN NO FILTRA (ver nota)
+    max_year: int | None = None         # DECLARADO, AÚN NO FILTRA (ver nota)
+
+def load_equation_spec(path: str | Path) -> EquationSpec:
+    """Carga/valida la EquationSpec desde un YAML (clave raíz `equation:`).
+    Errores accionables (mismo patrón que `load_specs`): YAML malformado → ValueError;
+    clave raíz ausente → ValueError; campo desconocido/tipo incorrecto → ValueError
+    citando archivo + campo. Importación perezosa de PyYAML."""
+```
+
+> **`min_year`/`max_year`: declarados pero NO filtran (v1; lección 5).** El AS-BUILT de 9a acepta
+> ambos campos en `EquationSpec` y los pasa por la firma de `run_seed` (compatibilidad futura), pero
+> **`OpenAlexSource.seed` NO los aplica todavía** como filtro de año contra OpenAlex. El **filtro de
+> año es trabajo futuro** (ADR 0030 §Diferido). Los demás campos
+> (`query`/`exclude`/`max_results`/`native`) sí mapean 1:1 al `run_seed` existente: la capa
+> declarativa **no agrega capacidad nueva al `Source`**, solo empaqueta los flags ya soportados.
 
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
