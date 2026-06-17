@@ -37,7 +37,7 @@ class ProvenanceEvent(BaseModel):
 
     Fields:
         action: Tipo de evento (``'fetched'``, ``'seeded'``, ``'accepted'``,
-            ``'rejected'``).
+            ``'rejected'``, ``'fetched_by_id'``).
         equation_id: ID de la ecuación de búsqueda que originó el paper, o
             ``None`` si no aplica.
         chaining_hop: Profundidad del chaining (1 = primera expansión), o

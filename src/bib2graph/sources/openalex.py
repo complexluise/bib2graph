@@ -251,6 +251,8 @@ def _work_to_row(
     *,
     equation_id: str,
     fetched_at: str,
+    is_seed: bool = True,
+    action: str = "fetched",
 ) -> dict[str, Any]:
     """Mapea un objeto JSON de OpenAlex a la fila del schema canónico.
 
@@ -262,6 +264,10 @@ def _work_to_row(
         work: Objeto JSON de un Work de OpenAlex.
         equation_id: ID de la ecuación que originó la búsqueda (para provenance).
         fetched_at: Timestamp ISO de la consulta.
+        is_seed: Si el paper es semilla (``True``) o candidato (``False``).
+            Default ``True`` (comportamiento histórico para ``seed``/``load``).
+        action: Tipo de evento de provenance (``'fetched'``, ``'fetched_by_id'``,
+            etc.).  Default ``'fetched'`` (comportamiento histórico).
 
     Returns:
         Dict con todas las columnas del schema canónico.
@@ -329,7 +335,7 @@ def _work_to_row(
 
     # --- Provenance (evento inicial) ---
     provenance_event = ProvenanceEvent(
-        action="fetched",
+        action=action,
         equation_id=equation_id,
         chaining_hop=None,
         source="openalex",
@@ -349,7 +355,7 @@ def _work_to_row(
         Col.LANGUAGE: work.get("language"),
         Col.PUBLISHER: None,
         Col.RESEARCH_AREAS: None,
-        Col.IS_SEED: True,
+        Col.IS_SEED: is_seed,
         Col.CURATION_STATUS: CurationStatus.CANDIDATE,
         Col.PROVENANCE: ProvenanceEvent.dump_list([provenance_event]),
         Col.AUTHORS_RAW: authors_raw or None,
@@ -649,9 +655,15 @@ class OpenAlexSource:
         works, _ = self._fetch_all_with_retry(filter_str)
         rows: list[dict[str, Any]] = []
         for work in works:
-            row = _work_to_row(work, equation_id=equation_id, fetched_at=fetched_at)
-            # Sobrescribir is_seed y provenance para forward chaining
-            row[Col.IS_SEED] = False
+            # is_seed=False: los citantes son candidatos, no semillas.
+            # La provenance se sobreescribe para agregar chaining_hop=1 (no
+            # soportado como parámetro de _work_to_row: es específico de fetch_citing).
+            row = _work_to_row(
+                work,
+                equation_id=equation_id,
+                fetched_at=fetched_at,
+                is_seed=False,
+            )
             provenance_event = ProvenanceEvent(
                 action="fetched",
                 equation_id=None,
@@ -723,6 +735,75 @@ class OpenAlexSource:
                         resultado[short_id] = doi
 
         return resultado
+
+    def fetch_works_by_ids(self, ids: list[str]) -> Corpus:
+        """Trae works completos de OpenAlex a partir de una lista de IDs.
+
+        Batchea la consulta en lotes de hasta 100 IDs por request, usando el
+        filtro ``openalex_id:W1|W2|...`` con ``select=_FIELDS`` (todos los
+        campos del schema canónico).  Reutiliza ``_fetch_batch_select`` y
+        el retry/backoff de la infraestructura existente.
+
+        Los works resultantes se marcan como ``is_seed=False`` (son candidatos,
+        no semillas de una ecuación) con ``curation_status=CANDIDATE`` y
+        ``provenance[action="fetched_by_id"]``.
+
+        IDs inexistentes en OpenAlex son simplemente omitidos sin error: el
+        filtro OR devuelve solo los works encontrados.
+
+        Las filas del ``Corpus`` retornado se ordenan por ``id`` canónico (D1)
+        para garantizar determinismo entre corridas (ADR 0017).
+
+        Args:
+            ids: Lista de IDs de OpenAlex (p. ej. ``["W12345", "W67890"]``).
+                Se acepta con o sin prefijo URL; se normalizan a ID corto.
+
+        Returns:
+            ``Corpus`` con los works encontrados.  ``is_seed=False``,
+            ``curation_status=CANDIDATE``, ``provenance[action="fetched_by_id"]``.
+            Vacío si ningún ID es encontrado.
+        """
+        if not ids:
+            table = pa.table(
+                {col: [] for col in CORPUS_SCHEMA.names},
+                schema=CORPUS_SCHEMA,
+            )
+            return Corpus.from_arrow(table)
+
+        # Normalizar IDs a la forma corta (W...) por si vienen como URL
+        normalized = [_oa_id_short(i) or i for i in ids]
+
+        fetched_at = datetime.now(UTC).isoformat()
+        all_rows: list[dict[str, Any]] = []
+        batch_size = 100
+
+        for start in range(0, len(normalized), batch_size):
+            lote = normalized[start : start + batch_size]
+            filter_str = "openalex_id:" + "|".join(lote)
+            works = self._fetch_batch_select(filter_str, select=_FIELDS)
+            for work in works:
+                row = _work_to_row(
+                    work,
+                    equation_id="fetched_by_id",
+                    fetched_at=fetched_at,
+                    is_seed=False,
+                    action="fetched_by_id",
+                )
+                all_rows.append(row)
+
+        rows_with_ids = _rows_with_ids(all_rows)
+
+        # Orden determinista por id canónico (ADR 0017)
+        rows_with_ids.sort(key=lambda r: str(r.get(Col.ID, "")))
+
+        if rows_with_ids:
+            table = pa.Table.from_pylist(rows_with_ids, schema=CORPUS_SCHEMA)
+        else:
+            table = pa.table(
+                {col: [] for col in CORPUS_SCHEMA.names},
+                schema=CORPUS_SCHEMA,
+            )
+        return Corpus.from_arrow(table)
 
     def _fetch_batch_select(
         self, filter_str: str, *, select: str
