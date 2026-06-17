@@ -182,41 +182,44 @@ def run_build(
     from bib2graph.networks.facade import Networks
 
     store = open_store(store_path)
-    corpus = store.load()
-
-    # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
-    # no un literal en el comando (ADR 0016 enmendado §1).
-    current_state = store.backend.loop_state()
-    current_round = store.backend.loop_round()
-    new_state, new_round = apply_transition(current_state, "build", current_round)
-
-    store_path_obj = Path(store_path)
-    if out_dir is None:
-        artifacts_dir = store_path_obj.parent / "networks"
-    else:
-        artifacts_dir = Path(out_dir)
-
     try:
-        artifacts = Networks.quick(corpus)
-    except ImportError as exc:
-        raise DependencyError(
-            f"Dependencia faltante para detectar comunidades: {exc}. "
-            "Instalá python-louvain: uv add python-louvain."
-        ) from exc
+        corpus = store.load()
 
-    networks_info = _write_artifacts(artifacts, corpus, artifacts_dir)
+        # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
+        # no un literal en el comando (ADR 0016 enmendado §1).
+        current_state = store.backend.loop_state()
+        current_round = store.backend.loop_round()
+        new_state, new_round = apply_transition(current_state, "build", current_round)
 
-    # ADR 0029 — sellar con corpus_hash para detección de staleness.
-    # El hash ya lo tiene el corpus vía Manifest/CorpusSnapshot; lo derivamos
-    # del corpus cargado usando la misma función que usa Manifest.
-    from bib2graph.backends.memory import compute_corpus_hash
+        store_path_obj = Path(store_path)
+        if out_dir is None:
+            artifacts_dir = store_path_obj.parent / "networks"
+        else:
+            artifacts_dir = Path(out_dir)
 
-    corpus_hash = compute_corpus_hash(corpus.to_arrow())
-    hash_file = artifacts_dir / ".corpus_hash"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-    hash_file.write_text(corpus_hash, encoding="utf-8")
+        try:
+            artifacts = Networks.quick(corpus)
+        except ImportError as exc:
+            raise DependencyError(
+                f"Dependencia faltante para detectar comunidades: {exc}. "
+                "Instalá python-louvain: uv add python-louvain."
+            ) from exc
 
-    store.backend.set_loop_state(new_state, cycle_round=new_round)
+        networks_info = _write_artifacts(artifacts, corpus, artifacts_dir)
+
+        # ADR 0029 — sellar con corpus_hash para detección de staleness.
+        # El hash ya lo tiene el corpus vía Manifest/CorpusSnapshot; lo derivamos
+        # del corpus cargado usando la misma función que usa Manifest.
+        from bib2graph.backends.memory import compute_corpus_hash
+
+        corpus_hash = compute_corpus_hash(corpus.to_arrow())
+        hash_file = artifacts_dir / ".corpus_hash"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        hash_file.write_text(corpus_hash, encoding="utf-8")
+
+        store.backend.set_loop_state(new_state, cycle_round=new_round)
+    finally:
+        store.close()
 
     return {
         "networks_built": len(artifacts),

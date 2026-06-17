@@ -89,54 +89,65 @@ def run_seed(
     if not equation or not equation.strip():
         raise DataError("La ecuación de búsqueda no puede estar vacía.")
 
+    merged_backend_close = None
     store = open_store(store_path)
-    existing = store.load()
-
-    # R3 — reseed: si ya había un estado previo, es un re-sembrado.
-    # apply_transition lleva la ronda al valor correcto.
-    current_state = store.backend.loop_state()
-    current_round = store.backend.loop_round()
-    if current_state is not None:
-        # Re-sembrado (la idea muta): reseed → SEEDED, ronda++
-        new_state, new_round = apply_transition(current_state, "reseed", current_round)
-    else:
-        # Primera siembra
-        new_state, new_round = apply_transition(None, "seed", current_round)
-
-    # Construir kwargs opcionales para OpenAlexSource
-    source_kwargs: dict[str, Any] = {"email": email, "transport": transport}
-    if max_results is not None:
-        source_kwargs["max_results"] = max_results
-
     try:
-        source = OpenAlexSource(**source_kwargs)
-        result = source.seed(
-            equation,
-            native=native,
-            exclude=exclude,
-            min_year=min_year,
-            max_year=max_year,
-        )
-    except ImportError as exc:
-        raise NetworkError(
-            f"Error importando httpx: {exc}. Verificá la instalación del núcleo."
-        ) from exc
-    # httpx.HTTPError y subclases (ConnectError, TimeoutException,
-    # RemoteProtocolError, TransportError, etc.) se dejan propagar: el
-    # decorador @handle_errors las captura por tipo y emite exit 4.
+        existing = store.load()
 
-    # Merge con el corpus existente (acumula sobre lo curado)
-    merged = existing.merge(result.corpus)
-    store.persist(merged)
-    store.backend.set_loop_state(new_state, cycle_round=new_round)
+        # R3 — reseed: si ya había un estado previo, es un re-sembrado.
+        # apply_transition lleva la ronda al valor correcto.
+        current_state = store.backend.loop_state()
+        current_round = store.backend.loop_round()
+        if current_state is not None:
+            # Re-sembrado (la idea muta): reseed → SEEDED, ronda++
+            new_state, new_round = apply_transition(
+                current_state, "reseed", current_round
+            )
+        else:
+            # Primera siembra
+            new_state, new_round = apply_transition(None, "seed", current_round)
 
-    papers_added = len(result.corpus)
+        # Construir kwargs opcionales para OpenAlexSource
+        source_kwargs: dict[str, Any] = {"email": email, "transport": transport}
+        if max_results is not None:
+            source_kwargs["max_results"] = max_results
+
+        try:
+            source = OpenAlexSource(**source_kwargs)
+            result = source.seed(
+                equation,
+                native=native,
+                exclude=exclude,
+                min_year=min_year,
+                max_year=max_year,
+            )
+        except ImportError as exc:
+            raise NetworkError(
+                f"Error importando httpx: {exc}. Verificá la instalación del núcleo."
+            ) from exc
+        # httpx.HTTPError y subclases (ConnectError, TimeoutException,
+        # RemoteProtocolError, TransportError, etc.) se dejan propagar: el
+        # decorador @handle_errors las captura por tipo y emite exit 4.
+
+        # Merge con el corpus existente (acumula sobre lo curado)
+        merged = existing.merge(result.corpus)
+        papers_added = len(result.corpus)
+        total_papers = len(merged)
+        merged_backend_close = getattr(merged._backend, "close", None)
+        store.persist(merged)
+        store.backend.set_loop_state(new_state, cycle_round=new_round)
+    finally:
+        # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
+        # para evitar segfault en Linux ante llamadas consecutivas al mismo archivo.
+        if merged_backend_close is not None:
+            merged_backend_close()
+        store.close()
 
     return {
         "executed_query": result.executed_query,
         "translation_report": result.translation_report,
         "papers_added": papers_added,
-        "total_papers": len(merged),
+        "total_papers": total_papers,
         "round": new_round,
         "reseeded": current_state is not None,
     }
@@ -189,36 +200,57 @@ def run_seed_from_bib(
             "Verificá la ruta al archivo .bib."
         )
 
+    merged_backend_close = None
     store = open_store(store_path)
-    existing = store.load()
-
-    # R3 — reseed: misma lógica que run_seed.
-    current_state = store.backend.loop_state()
-    current_round = store.backend.loop_round()
-    if current_state is not None:
-        new_state, new_round = apply_transition(current_state, "reseed", current_round)
-    else:
-        new_state, new_round = apply_transition(None, "seed", current_round)
-
     try:
-        source = BibtexSource()
-        corpus = source.load(str(resolved_bib))
-    except ImportError as exc:
-        raise DependencyError(
-            f"bibtexparser no está instalado: {exc}. "
-            "Instalá el extra: uv sync --extra bibtex "
-            '(o pip install "bib2graph[bibtex]").'
-        ) from exc
-    except ValueError as exc:
-        raise DataError(str(exc)) from exc
+        existing = store.load()
 
-    merged = existing.merge(corpus)
-    store.persist(merged)
-    store.backend.set_loop_state(new_state, cycle_round=new_round)
+        # R3 — reseed: misma lógica que run_seed.
+        current_state = store.backend.loop_state()
+        current_round = store.backend.loop_round()
+        if current_state is not None:
+            new_state, new_round = apply_transition(
+                current_state, "reseed", current_round
+            )
+        else:
+            new_state, new_round = apply_transition(None, "seed", current_round)
+
+        try:
+            source = BibtexSource()
+            corpus = source.load(str(resolved_bib))
+        except ImportError as exc:
+            raise DependencyError(
+                f"bibtexparser no está instalado: {exc}. "
+                "Instalá el extra: uv sync --extra bibtex "
+                '(o pip install "bib2graph[bibtex]").'
+            ) from exc
+        except ValueError as exc:
+            raise DataError(str(exc)) from exc
+
+        merged = existing.merge(corpus)
+        papers_added = len(corpus)
+        total_papers = len(merged)
+        # Capturá close() del backend clonado antes de persistir (puede no
+        # existir si el backend es InMemoryBackend).
+        merged_backend_close = getattr(merged._backend, "close", None)
+        store.persist(merged)
+        store.backend.set_loop_state(new_state, cycle_round=new_round)
+    finally:
+        # Cierra explícitamente TODAS las conexiones DuckDB de esta
+        # invocación.  En Linux DuckDB retiene el lock de archivo hasta
+        # close() explícito; depender del GC entre llamadas consecutivas
+        # sobre el mismo archivo causa segfault (exit 139).
+        #
+        # merged._backend es una conexión DuckDB CLONADA abierta por
+        # Corpus.merge() → DuckDBBackend._clone(); debe cerrarse antes de
+        # que la siguiente llamada abra el mismo archivo en disco.
+        if merged_backend_close is not None:
+            merged_backend_close()
+        store.close()
 
     return {
-        "papers_added": len(corpus),
-        "total_papers": len(merged),
+        "papers_added": papers_added,
+        "total_papers": total_papers,
         "round": new_round,
         "reseeded": current_state is not None,
     }

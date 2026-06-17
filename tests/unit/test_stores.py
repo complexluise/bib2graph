@@ -207,3 +207,86 @@ def test_query_sql_representativa(tmp_path: Path) -> None:
     )
     assert len(result) == 1
     assert result.to_pylist()[0]["id"] == "oa:aaaabbbb11112222"
+
+
+# ---------------------------------------------------------------------------
+# Tests de DuckDBStore.close() — fix segfault Linux (doble open)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_duckdb_store_close_es_idempotente(tmp_path: Path) -> None:
+    """close() no lanza error y puede llamarse múltiples veces sin romper nada."""
+    db_path = tmp_path / "lib.duckdb"
+    store = DuckDBStore(db_path)
+    store.persist(_make_corpus([_make_row(id="oa:test0000aaaa0000")]))
+
+    # Primera vez: no debe lanzar
+    store.close()
+    # Segunda vez: idempotente, no debe lanzar
+    store.close()
+
+
+@pytest.mark.integration
+def test_duckdb_store_doble_open_mismo_archivo_no_crashea(tmp_path: Path) -> None:
+    """Dos open_store consecutivos sobre el mismo archivo no crashean.
+
+    Reproduce el patrón que causaba segfault en CI Linux (exit 139): dos
+    invocaciones a run_seed_from_bib sobre el mismo store_path en el mismo
+    proceso.  Con close() explícito al final de cada invocación el lock se
+    libera y la segunda apertura es segura.
+    """
+    from bib2graph.cli._store import open_store
+
+    db_path = tmp_path / "lib.duckdb"
+    corpus_a = _make_corpus([_make_row(id="oa:aaaabbbb11112222", title="Paper A")])
+    corpus_b = _make_corpus([_make_row(id="oa:bbbbcccc22223333", title="Paper B")])
+
+    # Primera apertura: persist + close explícito
+    store1 = open_store(db_path)
+    merged1 = store1.load().merge(corpus_a)
+    merged1_close = getattr(merged1._backend, "close", None)
+    store1.persist(merged1)
+    if merged1_close is not None:
+        merged1_close()
+    store1.close()
+
+    # Segunda apertura sobre el mismo archivo: no debe segfaultear
+    store2 = open_store(db_path)
+    merged2 = store2.load().merge(corpus_b)
+    merged2_close = getattr(merged2._backend, "close", None)
+    store2.persist(merged2)
+    if merged2_close is not None:
+        merged2_close()
+    store2.close()
+
+    # Verificar que ambos papers persisten correctamente
+    store3 = open_store(db_path)
+    try:
+        loaded = store3.load()
+        ids = set(loaded.to_arrow().column("id").to_pylist())
+    finally:
+        store3.close()
+
+    assert "oa:aaaabbbb11112222" in ids
+    assert "oa:bbbbcccc22223333" in ids
+    assert len(ids) == 2
+
+
+@pytest.mark.integration
+def test_duckdb_backend_close_es_idempotente(tmp_path: Path) -> None:
+    """DuckDBBackend.close() es idempotente y no impide lecturas posteriores."""
+    from bib2graph.backends.duckdb import DuckDBBackend
+
+    db_path = tmp_path / "lib.duckdb"
+    backend = DuckDBBackend(path=db_path)
+
+    # close() no debe lanzar
+    backend.close()
+    # Segunda vez: idempotente
+    backend.close()
+
+    # Una nueva instancia sobre el mismo archivo sigue funcionando
+    backend2 = DuckDBBackend(path=db_path)
+    assert len(backend2) == 0
+    backend2.close()

@@ -640,6 +640,19 @@ class DuckDBBackend:
     # Extensión: query SQL libre
     # ------------------------------------------------------------------
 
+    def close(self) -> None:
+        """Cierra la conexión DuckDB subyacente y libera el lock de archivo.
+
+        Idempotente: llamarlo varias veces o sobre una conexión ya cerrada
+        no lanza error.  Necesario en contextos donde se abren múltiples
+        instancias sobre el mismo archivo en el mismo proceso (p. ej. dos
+        llamadas consecutivas a ``run_seed_from_bib`` sobre el mismo path):
+        Linux/DuckDB mantiene el lock de archivo hasta que la conexión se
+        cierra explícitamente; depender del GC causa segfault.
+        """
+        with contextlib.suppress(Exception):
+            self._con.close()
+
     def query(self, sql: str) -> pa.Table:
         """Ejecuta una consulta SQL sobre el backend y devuelve tabla Arrow.
 

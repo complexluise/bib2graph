@@ -80,6 +80,18 @@ class DuckDBStore:
     # Acceso al backend subyacente (CycleState, query SQL)
     # ------------------------------------------------------------------
 
+    def close(self) -> None:
+        """Cierra la conexión DuckDB y libera el lock de archivo.
+
+        Delega en ``DuckDBBackend.close()``.  Idempotente: llamarlo varias
+        veces no lanza error.  Debe llamarse explícitamente en comandos que
+        abren el store y terminan (``run_seed_from_bib``, ``run_seed``, etc.)
+        para garantizar que el lock se libera antes de la siguiente apertura
+        en el mismo proceso, especialmente en Linux donde DuckDB no libera
+        el lock al hacer GC del objeto.
+        """
+        self._backend.close()
+
     @property
     def backend(self) -> DuckDBBackend:
         """Acceso directo al ``DuckDBBackend`` subyacente.

@@ -56,49 +56,57 @@ def run_monitor(
     from bib2graph.foraging import Forager
     from bib2graph.sources.openalex import OpenAlexSource
 
+    merged_backend_close = None
     store = open_store(store_path)
-    current_state = store.backend.loop_state()
-    current_round = store.backend.loop_round()
+    try:
+        current_state = store.backend.loop_state()
+        current_round = store.backend.loop_round()
 
-    # Error accionable: monitor requiere un corpus previo sembrado.
-    if current_state is None:
-        raise DataError(
-            "No hay corpus ni estado previo en el store. "
-            "Iniciá la investigación con 'b2g seed' antes de monitorear."
-        )
+        # Error accionable: monitor requiere un corpus previo sembrado.
+        if current_state is None:
+            raise DataError(
+                "No hay corpus ni estado previo en el store. "
+                "Iniciá la investigación con 'b2g seed' antes de monitorear."
+            )
 
-    corpus = store.load()
-    if len(corpus) == 0:
-        raise DataError(
-            "El corpus está vacío. "
-            "Usá 'b2g seed' para sembrar papers antes de monitorear."
-        )
+        corpus = store.load()
+        if len(corpus) == 0:
+            raise DataError(
+                "El corpus está vacío. "
+                "Usá 'b2g seed' para sembrar papers antes de monitorear."
+            )
 
-    new_state, new_round = apply_transition(current_state, "monitor", current_round)
+        new_state, new_round = apply_transition(current_state, "monitor", current_round)
 
-    source = OpenAlexSource(email=email, transport=transport)
+        source = OpenAlexSource(email=email, transport=transport)
 
-    # Forward chaining: nuevos citantes del corpus.
-    forager = Forager(source, depth=1)
-    ranked = forager.chain(corpus, direction="forward")
+        # Forward chaining: nuevos citantes del corpus.
+        forager = Forager(source, depth=1)
+        ranked = forager.chain(corpus, direction="forward")
 
-    # Calcular cuántos son genuinamente nuevos (no estaban en el corpus).
-    existing_ids = set(corpus.to_arrow().column("id").to_pylist())
-    new_candidate_ids = [
-        id_
-        for id_ in ranked.corpus.to_arrow().column("id").to_pylist()
-        if id_ not in existing_ids
-    ]
-    new_candidates_count = len(new_candidate_ids)
+        # Calcular cuántos son genuinamente nuevos (no estaban en el corpus).
+        existing_ids = set(corpus.to_arrow().column("id").to_pylist())
+        new_candidate_ids = [
+            id_
+            for id_ in ranked.corpus.to_arrow().column("id").to_pylist()
+            if id_ not in existing_ids
+        ]
+        new_candidates_count = len(new_candidate_ids)
 
-    # Merge de candidatos nuevos y persistencia.
-    merged = corpus.merge(ranked.corpus)
-    store.persist(merged)
-    store.backend.set_loop_state(new_state, cycle_round=new_round)
+        # Merge de candidatos nuevos y persistencia.
+        merged = corpus.merge(ranked.corpus)
+        total_papers = len(merged)
+        merged_backend_close = getattr(merged._backend, "close", None)
+        store.persist(merged)
+        store.backend.set_loop_state(new_state, cycle_round=new_round)
+    finally:
+        if merged_backend_close is not None:
+            merged_backend_close()
+        store.close()
 
     return {
         "new_candidates": new_candidates_count,
-        "total_papers": len(merged),
+        "total_papers": total_papers,
         "loop_state": new_state.value,
         "round": new_round,
     }
