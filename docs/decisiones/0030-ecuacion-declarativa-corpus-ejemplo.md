@@ -1,6 +1,6 @@
 # 0030 — Ecuación declarativa (`equation.yaml`) + `restore` de corpus curado + corpus de ejemplo commiteado
 
-- **Estado:** **Aceptada — AS-BUILT ✅** (9a + 9b + Ciclo 10 completos, 2026-06-17). 9a: `restore` +
+- **Estado:** **Aceptada — AS-BUILT ✅** (9a + 9b + Ciclo 10 + Ciclo B completos, 2026-06-17). 9a: `restore` +
   `equation.yaml` cargable; **9b: workspace de ejemplo `examples/valoraciones/` (corpus 137 filas)
   + gate de reproducibilidad R2** (7 tests; cierra el Ciclo #33). **Ciclo 10: `seed --from-bib`
   (3er modo, sin red) + filtro de año real (`min_year`/`max_year`) + `examples/bibtex/`** (cierra

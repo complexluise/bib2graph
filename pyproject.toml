@@ -64,9 +64,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-zotero = []
+# zotero/neo4j: ex-Hito 11, DESCARTADO (PO 2026-06-17). Se reabrirían como hito
+# nuevo si hay demanda real; no se declaran como extras vacíos engañosos.
 s2 = []
-neo4j = []
 dedup = [
     "rapidfuzz>=3,<4",
 ]
