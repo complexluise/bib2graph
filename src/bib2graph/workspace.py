@@ -356,6 +356,40 @@ class Workspace:
             f"library={self._library_path!r}, source={self._source!r})"
         )
 
+    def read_networks_corpus_hash(self) -> str | None:
+        """Lee el ``corpus_hash`` sellado en ``networks/.corpus_hash``.
+
+        Devuelve ``None`` si el archivo no existe (cache no generada aún).
+
+        Returns:
+            El hash sellado como string, o ``None``.
+        """
+        hash_file = self.networks_dir / ".corpus_hash"
+        if not hash_file.exists():
+            return None
+        return hash_file.read_text(encoding="utf-8").strip()
+
+    def is_networks_cache_stale(self, live_corpus_hash: str) -> bool:
+        """Verifica si la cache de redes está desactualizada respecto al corpus vivo.
+
+        Compara el ``corpus_hash`` sellado en ``networks/.corpus_hash`` con el
+        ``live_corpus_hash`` del corpus actual.  Devuelve ``True`` si la cache
+        existe pero su hash no coincide (stale); ``False`` si coincide o si la
+        cache todavía no existe (no hay cache que invalidar).
+
+        Args:
+            live_corpus_hash: Hash del corpus vivo (calculado con
+                ``compute_corpus_hash``).
+
+        Returns:
+            ``True`` si la cache existe y su hash difiere del corpus vivo.
+            ``False`` en cualquier otro caso.
+        """
+        sealed = self.read_networks_corpus_hash()
+        if sealed is None:
+            return False
+        return sealed != live_corpus_hash
+
     def to_dict(self) -> dict[str, Any]:
         """Serializa el workspace a dict para el envelope JSON del CLI."""
         return {

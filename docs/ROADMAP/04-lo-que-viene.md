@@ -226,8 +226,13 @@ No se prometen ni se cablean clientes que no se usan.
   subcomando `b2g init`**, `--store` opcional + `--workspace` con resolución ambiente; el `.duckdb`
   suelto sigue válido (workspace degenerado). Prerequisito de la epic GUI local
   ([#34](https://github.com/complexluise/bib2graph/issues/34),
-  [Nota 07](../Notas/07-frontend-tool-for-thought.md)). **Fuera de este corte:** `snapshot`/`export`
-  aún con `--out-dir` explícito; staleness solo sella el hash (sin aviso/regeneración automática).
+  [Nota 07](../Notas/07-frontend-tool-for-thought.md)). **Remanentes cerrados · ✅ HECHO (2026-06-17,
+  #32):** `b2g snapshot`/`b2g export` ya resuelven por workspace (`--out-dir` pasó a override opcional
+  → `<workspace>/snapshots|exports/`; modo degenerado = dir hermano) y `b2g status` suma
+  `networks_cache_stale: bool` + `warnings` cuando el `networks/.corpus_hash` no coincide con el
+  corpus vivo (**avisa, NO regenera**: invalidación por hash, no build-system). `Workspace` ganó
+  `read_networks_corpus_hash()`/`is_networks_cache_stale()`. **El modelo workspace queda COMPLETO**
+  (sin remanentes). Gate verde, **534 tests**.
 - **Curación a escala vía CSV (#22 dump + #26 import) · ✅ HECHO (2026-06-16):** marcar papers de a
   uno con `accept`/`reject --ids` no escala (síntomas B4/B5/P1 de la
   [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). Se agregó el **15° subcomando

@@ -2,6 +2,12 @@
 
 Exporta una foto sellada del corpus actual (parquet + manifest.json).
 NO transiciona el CycleState.
+
+ADR 0029 — workspace:
+  El directorio de salida es ``<workspace>/snapshots/`` por defecto.
+  Si se pasa ``--out-dir`` explícito, se usa ese (override opcional).
+  Modo degenerado (``--store archivo.duckdb`` suelto): usa el dir hermano
+  ``snapshots/`` relativo al ``.duckdb``.
 """
 
 from __future__ import annotations
@@ -13,7 +19,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
-from bib2graph.cli._store import open_store, resolve_library_path
+from bib2graph.cli._store import open_store, resolve_workspace
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -61,8 +67,11 @@ def run_snapshot(
 @click.command("snapshot")
 @click.option(
     "--out-dir",
-    required=True,
-    help="Directorio destino del snapshot (se crea si no existe).",
+    default=None,
+    help=(
+        "Directorio destino del snapshot "
+        "(default: <workspace>/snapshots/ o <store_dir>/snapshots/)."
+    ),
 )
 @click.option(
     "--json",
@@ -75,15 +84,21 @@ def run_snapshot(
 @handle_errors("snapshot")
 def snapshot_cmd(
     ctx: click.Context,
-    out_dir: str,
+    out_dir: str | None,
     json_output: bool,
 ) -> None:
     """Exporta una foto sellada del corpus actual (parquet + manifest.json).
 
     No transiciona el CycleState.
+
+    El directorio de salida por defecto es ``<workspace>/snapshots/``.
+    Con ``--out-dir`` se puede especificar un directorio alternativo.
     """
-    store_path = resolve_library_path(ctx.obj)
-    data = run_snapshot(store_path, out_dir=out_dir)
+    # ADR 0029: usar snapshots_dir del workspace si no se especifica --out-dir
+    ws = resolve_workspace(ctx.obj)
+    effective_out_dir: Path = Path(out_dir) if out_dir is not None else ws.snapshots_dir
+
+    data = run_snapshot(ws.library_path, out_dir=effective_out_dir)
 
     if json_output:
         envelope = build_envelope(

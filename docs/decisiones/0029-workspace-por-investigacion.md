@@ -144,3 +144,30 @@ Implementado y verificado (gate verde, 416 tests). Lo construido en este corte:
   aviso de cache obsoleta ni regeneración automática cuando el `corpus_hash` deja de coincidir; se
   implementará cuando aparezca la necesidad (la invalidación por hash sigue siendo el modelo, no un
   build system — ver Consecuencias).
+
+## ADDENDUM AS-BUILT (2026-06-17) — remanentes del corte cerrados ([#32](https://github.com/complexluise/bib2graph/issues/32))
+
+Implementado y verificado (gate verde, 534 tests). Los **dos puntos** que el corte del 2026-06-16
+dejó explícitamente "fuera" (sección arriba) pasan a **CONSTRUIDOS**:
+
+- **`snapshot`/`export` redirigidos por ambiente.** `--out-dir` pasó de obligatorio a **override
+  OPCIONAL** en ambos comandos. Sin él, `b2g snapshot` escribe en **`<workspace>/snapshots/`** y
+  `b2g export` en **`<workspace>/exports/`** (resolución vía `resolve_workspace`, **el mismo path que
+  `build`**). `export` además resuelve la **fuente** de redes con `ws.networks_dir` (mismo path que
+  antes, en ambos modos). En **modo degenerado** (`--store` suelto) los artefactos caen en el dir
+  hermano del `.duckdb`, **sin regresión**.
+- **Aviso de staleness en `b2g status` por `corpus_hash`.** `status` suma el campo aditivo
+  `data["networks_cache_stale"]: bool` (`schema="1"` intacto) y un `warnings` accionable ("ejecutá
+  `b2g build`") cuando el `networks/.corpus_hash` **sellado** por el último `build` **no coincide** con
+  el `corpus_hash` del corpus vivo. El hash vivo se computa con el **mismo**
+  `compute_corpus_hash(corpus.to_arrow())` que `build` usa para sellar → **sin falsos positivos**. Si
+  la cache no existe (nunca se corrió `build`), no es stale. **Es un AVISO, NO regenera:** se respeta
+  la **invalidación por hash** decidida arriba — **no** un build-system, **no** un grafo de
+  dependencias. El snapshot sigue siendo lo reproducible; `networks/` es cache regenerable.
+
+**Capa `Workspace` (lo construido para esto):** se agregaron `read_networks_corpus_hash() -> str |
+None` (lee `networks/.corpus_hash`; `None` si no existe) e `is_networks_cache_stale(live_hash) -> bool`
+(`True` **solo** si el archivo existe Y difiere del hash vivo). Los accessors
+`snapshots_dir`/`exports_dir`/`networks_dir` (`_library_path.parent / "..."`, también en modo
+degenerado) **ya existían** desde el corte anterior. Con esto, la **fundación workspace queda
+completa**: no quedan remanentes del modelo en el backlog.

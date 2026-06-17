@@ -32,10 +32,13 @@
   `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
   El **CLI `b2g` es real** —paquete `cli/` con 16 subcomandos en `cli/commands/`, no un
   placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9, abajo)—.
-  **516 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
+  **534 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
-  (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2).
+  (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2). **`b2g snapshot`/`b2g export` resuelven por
+  workspace** (`--out-dir` override opcional → `<workspace>/snapshots|exports/`) y **`b2g status` avisa
+  de staleness** de la cache de redes (`networks_cache_stale`; avisa, no regenera) — remanentes del
+  modelo workspace cerrados (#32, AS-BUILT 2026-06-17; ver el bullet de workspace abajo).
 - **Hito 9 COMPLETO — capa declarativa `NetworkSpec` YAML** (AS-BUILT 2026-06-17): `NetworkSpec`
   (`networks/spec.py`) suma el campo **`resolution: float = 1.0`** (resolución de Louvain, **fuera del
   `corpus_hash`** → seed intacto) y **`extra="forbid"`**. Nueva función **`load_specs(path)`**
@@ -90,7 +93,12 @@
   walk-up del cwd buscando `workspace.json`). El `.duckdb` suelto sigue válido (workspace degenerado).
   `b2g status` suma `workspace: {root, source}`; `b2g build` sella `networks/.corpus_hash`. **422
   tests verdes**, 14 subcomandos. Flujo: `b2g init <name>` → trabajar **dentro** de la carpeta sin
-  `--store`.
+  `--store`. **Remanentes cerrados (#32, AS-BUILT 2026-06-17):** `b2g snapshot`/`b2g export` ya
+  resuelven por workspace (`--out-dir` pasó a override opcional → `<workspace>/snapshots|exports/`;
+  modo degenerado = dir hermano) y `b2g status` suma `networks_cache_stale: bool` + `warnings`
+  accionable cuando el `networks/.corpus_hash` no coincide con el corpus vivo (**avisa, NO regenera**:
+  invalidación por hash, no build-system). `Workspace` ganó `read_networks_corpus_hash()` /
+  `is_networks_cache_stale()`. Con esto el modelo workspace queda **completo** (no quedan remanentes).
 - **Curación a escala vía CSV** (#22 + #26, 2026-06-16): nuevo **15° subcomando `b2g curate`**
   (`cli/commands/curate.py`) con dos modos mutuamente excluyentes — **`--dump`** escribe
   `curacion.csv` (default `<workspace>/exports/`; `--out` override; `--all` para todo el corpus, default
@@ -292,8 +300,10 @@ src/bib2graph/
                        # init scaffold de workspace —ADR 0029, curate dump/import CSV —#22+#26,
                        # networks capa declarativa YAML —Hito 9). CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
-  workspace.py         # Workspace (init/open/resolve) + WorkspaceManifest (ADR 0029): la carpeta es la
-                       # unidad de persistencia; resolución ambiente; import perezoso de DuckDBStore
+  workspace.py         # Workspace (init/open/resolve; snapshots_dir/exports_dir/networks_dir;
+                       # read_networks_corpus_hash/is_networks_cache_stale —staleness #32) +
+                       # WorkspaceManifest (ADR 0029): la carpeta es la unidad de persistencia;
+                       # resolución ambiente; import perezoso de DuckDBStore
 tests/
   unit/                # tests puros, sin red ni I/O (default)
   integration/         # red / APIs externas / Neo4j; @pytest.mark.integration
