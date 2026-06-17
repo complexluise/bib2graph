@@ -217,8 +217,10 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   las redes** (comunidades/centralidad/acoplamiento). Era el candidato a *moat*
   ([`Notas/04`](Notas/04-direccion-ia-in-the-loop.md) §5); el diferenciador pasa a ser la **biblioteca
   viva curada + estructura bibliométrica de primera clase + flujo abierto**, no una capa de IA.
-- **Costura Zotero** (biblioteca viva externa) → **V1.1**, extra opt-in `[zotero]`. El **corazón
-  de la persistencia en V1.0 es DuckDB nativo**, no Zotero.
+- **Costura Zotero** (biblioteca viva externa) → **DESCARTADA (decisión del PO, 2026-06-17): no se
+  hace.** El **corazón de la persistencia en V1.0 es DuckDB nativo**, no Zotero; la GUI se construye
+  sobre el workspace local. No es backlog planificado: reabrible solo si aparece demanda real (p.ej.
+  round-trip con un Zotero existente), como hito nuevo con su propio encuadre.
 - **Monitoreo / alertas de literatura nueva** (paso 8 del ciclo, estilo Litmaps) → futuro;
   encaja sobre la biblioteca viva, pero no en V1.
 - **Matriz concepto×paper** (Webster & Watson, paso 5) → futuro; en V1 la organización es vía
@@ -235,7 +237,9 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 - **GUI / web / servicio gestionado** → fuera.
 - **WoS / Scopus / RIS / CSV / BibTeX como backbone** → OpenAlex primero; el resto, `Source`
   futura. BibTeX queda como `Source` **secundaria** para sembrar desde *pearls*.
-- **Neo4j** → adaptador `Store` opt-in post-V1; **ya no es sustrato**.
+- **Neo4j** → **DESCARTADO (decisión del PO, 2026-06-17): no se hace.** **Ya no es sustrato** y
+  tampoco se planifica como adaptador `Store` post-V1. Reabrible solo si aparece demanda real, como
+  hito nuevo.
 - **Enricher Semantic Scholar como camino para co-citación** → innecesario: las referencias y
   citantes vienen de OpenAlex ([ADR 0007](decisiones/0007-openalex-backbone.md)).
 - **Concurrencia multi-escritor** → **limitación conocida, no defecto** (ADR
@@ -310,8 +314,9 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   (estilo flujo PRISMA).
 - **C4** · Como investigador, quiero **aceptar/rechazar** candidatos y que lo aceptado quede en
   mi **biblioteca viva persistida en DuckDB**, que **crece entre corridas** con su log de
-  procedencia, para cultivar la colección (berry growing). *(La sincronización con Zotero llega
-  como costura opt-in en V1.1.)*
+  procedencia, para cultivar la colección (berry growing). *(La biblioteca viva es DuckDB nativo; la
+  sincronización con Zotero está descartada —decisión del PO, 2026-06-17— y solo se reabriría si hay
+  demanda real.)*
 
 ### Épica D — Proyectar a redes (el final sigue siendo las redes)
 - **D1** · Como investigador, quiero proyectar el corpus a **co-citación, acoplamiento
@@ -352,7 +357,8 @@ precisada por el ADR [0015](decisiones/0015-corpus-tabular-backend.md):
 - El **snapshot deja de ser el modelo de datos** y es un **export sellado derivable del estado
   vivo** (foto reproducible para reportar). **Reproducir = re-leer ese snapshot, no re-correr la
   ecuación** (ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)).
-- **Zotero** queda como **costura externa opt-in en V1.1**, no como la persistencia de 1.0.
+- **Zotero** queda **DESCARTADO (decisión del PO, 2026-06-17): no se hace**; nunca fue la
+  persistencia de 1.0 (DuckDB nativo lo es). Reabrible solo si aparece demanda real, como hito nuevo.
 
 Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.2), `API.md` (§1, §4) y
 `ROADMAP.md` (Hitos 1.5/3). El estado de construcción (Hitos 0–6 + 1.5 terminados; v0.2 cubre el
@@ -410,7 +416,12 @@ Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.
    v0.2 alcanza las capacidades del **flujo** `seed → … → export`. **El red-team de la
    [Nota 06](Notas/06-critica-as-built-v0.2.md) corrige el claim "capacidades completas":** falta la
    **tanda de remediación R1–R5** (modelo sin IA, identidad-vs-procedencia reproducible, FSM cíclico,
-   scent bibliométrico, robustez) **antes** de los Hitos 7–11. Tras R1–R5 se construyó el **Hito 8 ✅**
-   (`Enricher` OpenAlex: refs→DOI + co-citación end-to-end, `enrich --max-citing`); siguen pendientes
-   los Hitos 7 (dedup fuzzy), 9 (`NetworkSpec` YAML), 10 (viz) y 11 (Zotero/Neo4j). Estado vivo en el
-   [`ROADMAP.md`](ROADMAP/README.md).
+   scent bibliométrico, robustez) **antes** de los Hitos 7–11. Tras R1–R5 se construyeron el **Hito 7 ✅**
+   (dedup fuzzy `rapidfuzz`), el **Hito 8 ✅** (`Enricher` OpenAlex: refs→DOI + co-citación end-to-end,
+   `enrich --max-citing`) y el **Hito 9 ✅** (`NetworkSpec` YAML + `b2g networks --spec` + `resolution`
+   Louvain, 2026-06-17): **Hitos 1–9 construidos**. Los **Hitos 10 (viz) y 11 (Zotero/Neo4j) fueron
+   reevaluados (2026-06-17, encuadre pre-GUI):** 10 se **difiere/absorbe en la epic GUI #34** (la GUI es
+   la capa de lectura visual; el export visual pre-GUI ya lo cubren `decorate`/`clusters.csv`) y 11 queda
+   **DESCARTADO (decisión del PO, 2026-06-17): Zotero/Neo4j no se hacen** —no son backlog planificado—,
+   reabrible como hito nuevo solo si aparece demanda real; no bloquea la GUI. Estado vivo
+   en el [`ROADMAP.md`](ROADMAP/README.md).
