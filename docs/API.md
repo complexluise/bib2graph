@@ -757,6 +757,14 @@ contrato universal; las consumen el `Forager` y el `Enricher`):
   N+1 diferido de R5). Lo consume el `OpenAlexEnricher` (§3) para poblar `cited_by_id`.
 - **`fetch_dois_for(ids) -> dict`** (Hito 8a): resuelve `references_id`→DOI batcheando por OR (lotes
   ≤100, `select=id,doi`).
+- **`fetch_works_by_ids(ids) -> Corpus`** (#55): materializa works arbitrarios desde sus IDs OpenAlex,
+  batcheando por OR (`openalex_id:W1|W2|...`, lotes ≤100, reusa `_fetch_batch_select`). Devuelve un
+  `Corpus` con `is_seed=False`, `curation_status=CANDIDATE`, `provenance[action="fetched_by_id"]`. IDs
+  inexistentes se **omiten sin error**; orden **determinista** (filas ordenadas por `id` canónico);
+  lista vacía → `Corpus` vacío **sin tocar la red**. Es el primitivo que materializa lo observado por
+  el backward chaining (ver #54). Reusa `_work_to_row` parametrizado (`is_seed`/`action`), que centraliza
+  el mapeo JSON→Arrow para `seed`/`fetch_citing`/`fetch_works_by_ids` (sin duplicar). *(Validado contra
+  OpenAlex real vía test `@pytest.mark.network`.)*
 
 **Reporte de cobertura/calidad** (concepto declarado, concreto **v0.2+**; ADR 0018): por
 seed/source, mide % de refs resueltas, % con DOI, distribución idioma/región y completitud del
