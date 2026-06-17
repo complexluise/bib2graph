@@ -80,20 +80,28 @@ ya resuelta debajo*.
 
 ## 🔧 Tensiones a resolver (preguntas clave → issues)
 
-> Resolver cada tensión genera **issues concretos** para arreglar la superficie. Las decisiones del
-> PO se irán anotando acá y bajando a issues de GitHub. (Estado: **abiertas** al 2026-06-16.)
+> **RESUELTAS (2026-06-17, decisiones del PO).** Cada tensión bajó a issue(s). No se implementa
+> aún: lo cerrado son las **decisiones** y los **issues** (arreglar la superficie).
 
-- **T1 — audiencia/canal:** ¿quién es el no-técnico v1? ¿pip/uv aceptable o binario requisito?
-  ¿canal intermedio (pipx/instalador)?
-- **T2 — secuencia:** ¿se confirma "núcleo → caso real → GUI"? ¿cuál es el gate de "caso real
-  reproducido"?
-- **T3 — labels (#25):** ¿label por defecto por tipo de nodo? ¿qué atributos extra inyectar? ¿en
-  proyector o exporter?
-- **T4 — forrajeo (#21):** ¿política de cap/batching/preview/progreso/timeout? ¿defaults?
-- **T5 — curación (#22/#26):** ¿CSV dump+import entra junto al MVP? ¿formato? ¿`diagnose` (P2) sí/no?
-- **T6 — diferenciador:** ¿cuál es LA punta de lanza (no-linealidad/diff de rondas, transparencia
-  PRISMA, biblioteca viva)? ¿se comunica como integración?
-- **T7 — accesible sin perder local:** ¿onboarding/plantillas/workspace de ejemplo? ¿modo demo?
-- **Meta:** criterios de éxito/descarte de la dirección; quién valida (beta tester/docente).
+- **T1 — audiencia/canal:** v1 para **investigador motivado semi-técnico** (tesista/docente);
+  **pip/uv** aceptable en v1; **Tauri/binario diferido a v2**. v1 NO es para el no-técnico-de-verdad.
+- **T2 — secuencia:** confirmado **núcleo → caso real reproducido → recién GUI**. Gate = caso
+  valoraciones curado por el PO + verificado por **1 tercero** (criterio 1.0). → epic **#34**.
+- **T3 — labels (#25):** label por tipo (paper→`título (año)`, autor/inst→nombre, keyword→keyword)
+  + atributos `year/is_seed/curation_status/community/degree_centrality`, en capa `decorate()` en la
+  frontera (no en los proyectores puros). → **#25**.
+- **T4 — forrajeo (#21):** preview obligatorio + cap por semilla (default ~50, solo seeds aceptadas)
+  + batching-OR (reusar el del Enricher 8b) + progreso + timeout. → **#21** (urgente).
+- **T5 — curación (#22/#26):** CSV dump+import **junto/antes** del MVP (es el dolor real, y es CLI
+  barato). Columnas con `decision[accepted|rejected|undecided]`+`note`. `diagnose` (P2) **diferido**.
+  → **#22**, **#26**, **#29** (diagnose, baja).
+- **T6 — diferenciador:** punta de lanza = **diff de rondas / "git de la investigación"** sostenido
+  por la **biblioteca viva local**; se comunica como **integración**, no feature mágica. → **#34**.
+- **T7 — accesible sin perder local:** workspace de ejemplo + plantillas de ecuación + defaults;
+  adoptar el **workspace por investigación** (carpeta) antes de la GUI. → **#32** (workspace, ADR),
+  **#33** (onboarding/ejemplo).
+- **Meta — éxito/descarte + validación:** criterios y tester(s) reales registrados en el epic **#34**.
 
-Las respuestas y los issues derivados se registran en la próxima iteración de esta nota.
+Otros issues derivados de los patrones de la Nota 09: **#30** (negaciones en la ecuación, P3),
+**#31** (tabla de clusters a CSV, P4), **#14** (`--max-results`). Prioridad para "arreglar la
+superficie": **#21 → #25 → #22/#26 → #14**, luego el resto.
