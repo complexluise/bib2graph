@@ -240,9 +240,9 @@ No se prometen ni se cablean clientes que no se usan.
   - **9a ✅ HECHO (2026-06-17):** **(1)** capa declarativa de la ecuación — `EquationSpec` +
     `load_equation_spec` (`sources/equation.py`, Pydantic `extra="forbid"`, clave raíz `equation:`,
     errores accionables como `load_specs`) y **2º modo de `b2g seed`: `--spec equation.yaml`**
-    (mutuamente excluyente con `--equation`; mismo `executed_query`). `min_year`/`max_year` están en el
-    modelo pero **aún no filtran** contra OpenAlex (filtro de año = trabajo futuro; no se promete
-    capacidad inexistente). **(2)** **17° subcomando `b2g restore --from-corpus <parquet>`**
+    (mutuamente excluyente con `--equation`; mismo `executed_query`). `min_year`/`max_year` estaban en el
+    modelo pero **en 9a aún no filtraban** contra OpenAlex (filtro de año **construido en el Ciclo 10**,
+    abajo). **(2)** **17° subcomando `b2g restore --from-corpus <parquet>`**
     (`cli/commands/restore.py`): rehidrata un corpus **ya curado sin red** (inverso de `snapshot`;
     `CORPUS_SCHEMA` → `Corpus.from_arrow` → merge+persist), **preserva la curación**
     (`decision`/`curation_status`/`is_seed`) y transiciona el `CycleState` a **`FILTERED`** (reusa la
@@ -259,9 +259,12 @@ No se prometen ni se cablean clientes que no se usan.
     **comunidades Louvain deterministas entre corridas** (cierra el agujero R2 de la
     [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). **Con 9b, #33 queda CERRADO** y
     el gate de #34 cubierto. Gate verde, **571 tests**. Ver `API.md` §2.1.
-  - **Diferido (reabrible, fuera del ADR 0030; issue #50):** **`b2g seed --from-bib <archivo.bib>`**
-    (2º camino de seed por BibTeX — cablear el `BibtexSource.load` ya existente al CLI) y su ejemplo
-    **`examples/bibtex/`**.
+  - **Ciclo 10 · ✅ HECHO (2026-06-17, cierra #50):** **`b2g seed --from-bib <archivo.bib>`** (3er modo
+    de seed, BibTeX local **sin red** — cablea el `BibtexSource.load` ya existente; exit 3 si falta
+    `bibtexparser`, exit 1 si se combina con flags OpenAlex) + su ejemplo **`examples/bibtex/`**
+    (`sample.bib` + README CLI-puro) + **filtro de año real** (`min_year`/`max_year` → `from_publication_date`/
+    `to_publication_date`, flags en `--equation` + campos del YAML). Ya **no** es "diferido". Gate verde,
+    **594 tests**. Ver `API.md` §2 y ADR 0030 §AS-BUILT Ciclo 10.
 - **Curación a escala vía CSV (#22 dump + #26 import) · ✅ HECHO (2026-06-16):** marcar papers de a
   uno con `accept`/`reject --ids` no escala (síntomas B4/B5/P1 de la
   [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). Se agregó el **15° subcomando

@@ -352,27 +352,34 @@ def run_curate_from_csv(
     # undecided → no-op
     skipped = len(rows) - len(to_accept) - len(to_reject)
 
+    curated_backend_close = None
     store = open_store(store_path)
-    corpus = store.load()
+    try:
+        corpus = store.load()
 
-    # Detectar IDs huérfanos (no existen en el corpus).
-    # No se aborta: el flujo batch debe ser idempotente aunque el corpus haya
-    # cambiado entre el dump y el from-csv.  Se reporta ``not_found_count``
-    # para que el humano/agente detecte typos en el CSV.
-    existing_ids: set[str] = {
-        str(r.get(Col.ID, "")) for r in corpus.to_arrow().to_pylist()
-    }
-    to_accept_found = [id_ for id_ in to_accept if id_ in existing_ids]
-    to_reject_found = [id_ for id_ in to_reject if id_ in existing_ids]
-    not_found = [id_ for id_ in (to_accept + to_reject) if id_ not in existing_ids]
+        # Detectar IDs huérfanos (no existen en el corpus).
+        # No se aborta: el flujo batch debe ser idempotente aunque el corpus haya
+        # cambiado entre el dump y el from-csv.  Se reporta ``not_found_count``
+        # para que el humano/agente detecte typos en el CSV.
+        existing_ids: set[str] = {
+            str(r.get(Col.ID, "")) for r in corpus.to_arrow().to_pylist()
+        }
+        to_accept_found = [id_ for id_ in to_accept if id_ in existing_ids]
+        to_reject_found = [id_ for id_ in to_reject if id_ in existing_ids]
+        not_found = [id_ for id_ in (to_accept + to_reject) if id_ not in existing_ids]
 
-    # R2: decided_at ya viene inyectado desde la frontera CLI
-    if to_accept_found:
-        corpus = corpus.accept(to_accept_found, by=by, decided_at=decided_at)
-    if to_reject_found:
-        corpus = corpus.reject(to_reject_found, by=by, decided_at=decided_at)
+        # R2: decided_at ya viene inyectado desde la frontera CLI
+        if to_accept_found:
+            corpus = corpus.accept(to_accept_found, by=by, decided_at=decided_at)
+        if to_reject_found:
+            corpus = corpus.reject(to_reject_found, by=by, decided_at=decided_at)
 
-    store.persist(corpus)
+        curated_backend_close = getattr(corpus._backend, "close", None)
+        store.persist(corpus)
+    finally:
+        if curated_backend_close is not None:
+            curated_backend_close()
+        store.close()
 
     return {
         "accepted_count": len(to_accept_found),

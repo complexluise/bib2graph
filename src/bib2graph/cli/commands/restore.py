@@ -93,33 +93,46 @@ def run_restore(
             f"El parquet '{resolved}' no cumple el schema canónico: {exc}."
         ) from exc
 
+    merged_backend_close = None
     store = open_store(store_path)
-    existing = store.load()
+    try:
+        existing = store.load()
 
-    # Transición a FILTERED: el corpus restaurado ya pasó curación.
-    # apply_transition es permisiva — acepta "filter" desde cualquier estado
-    # actual del store (incluyendo None para un store vacío nuevo).
-    current_state = store.backend.loop_state()
-    # La ronda nunca debe ser < 1: loop_round() devuelve 0 para bases legacy
-    # (round=NULL, pre-R3) y para stores vacíos. max(..., 1) la normaliza en
-    # ambos branches para no persistir un estado con ronda 0 incoherente.
-    current_round = max(store.backend.loop_round(), 1)
-    # "filter" lleva a FILTERED; la ronda no cambia (no es reseed).
-    # Para un store vacío (current_state=None), arrancamos desde SEEDED ficticio.
-    if current_state is None:
-        new_state, new_round = apply_transition(
-            CycleState.SEEDED, "filter", current_round
-        )
-    else:
-        new_state, new_round = apply_transition(current_state, "filter", current_round)
+        # Transición a FILTERED: el corpus restaurado ya pasó curación.
+        # apply_transition es permisiva — acepta "filter" desde cualquier estado
+        # actual del store (incluyendo None para un store vacío nuevo).
+        current_state = store.backend.loop_state()
+        # La ronda nunca debe ser < 1: loop_round() devuelve 0 para bases legacy
+        # (round=NULL, pre-R3) y para stores vacíos. max(..., 1) la normaliza en
+        # ambos branches para no persistir un estado con ronda 0 incoherente.
+        current_round = max(store.backend.loop_round(), 1)
+        # "filter" lleva a FILTERED; la ronda no cambia (no es reseed).
+        # Para un store vacío (current_state=None), arrancamos desde SEEDED ficticio.
+        if current_state is None:
+            new_state, new_round = apply_transition(
+                CycleState.SEEDED, "filter", current_round
+            )
+        else:
+            new_state, new_round = apply_transition(
+                current_state, "filter", current_round
+            )
 
-    merged = existing.merge(incoming)
-    store.persist(merged)
-    store.backend.set_loop_state(new_state, cycle_round=new_round)
+        merged = existing.merge(incoming)
+        papers_loaded = len(incoming)
+        total_papers = len(merged)
+        merged_backend_close = getattr(merged._backend, "close", None)
+        store.persist(merged)
+        store.backend.set_loop_state(new_state, cycle_round=new_round)
+    finally:
+        # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
+        # para evitar segfault en Linux ante llamadas consecutivas al mismo archivo.
+        if merged_backend_close is not None:
+            merged_backend_close()
+        store.close()
 
     return {
-        "papers_loaded": len(incoming),
-        "total_papers": len(merged),
+        "papers_loaded": papers_loaded,
+        "total_papers": total_papers,
         "state": str(new_state),
         "round": new_round,
     }

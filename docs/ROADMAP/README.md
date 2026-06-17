@@ -129,8 +129,9 @@ OIDC), no el push de tags. Cortes acordados:
   `b2g restore --from-corpus` (rehidratación sin red) y el **corpus de ejemplo `examples/valoraciones/`**
   (137 filas) con **gate de reproducibilidad R2** (`corpus_hash` estable + comunidades Louvain
   deterministas). Es el **gate de la epic GUI #34** (un tercero reproduce el lazo end-to-end sin red);
-  con #33 cerrado, **todo el terreno pre-GUI está completo**. `seed --from-bib` + `examples/bibtex/`
-  quedan diferidos (issue #50). Ver [04 · Lo que viene](04-lo-que-viene.md) §Backlog.
+  con #33 cerrado, **todo el terreno pre-GUI está completo**. **Ciclo 10 (2026-06-17, cierra #50):**
+  `seed --from-bib` (3er modo BibTeX sin red), filtro de año real (`min_year`/`max_year`) y
+  `examples/bibtex/` — ya **no** diferidos. Ver [04 · Lo que viene](04-lo-que-viene.md) §Backlog.
 - **Reevaluación 2026-06-17 (pre-GUI):** **Hito 10 (viz) → DIFERIDO/absorbido en la epic GUI #34**
   (la GUI es la capa de lectura visual; el export visual pre-GUI ya lo cubren `decorate` #25 / `clusters.csv`
   #31). **Hito 11 (Zotero/Neo4j) → DESCARTADO (decisión del PO, 2026-06-17):** no se hace, no es

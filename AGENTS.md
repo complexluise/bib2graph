@@ -50,16 +50,24 @@
   `_write_artifacts` (mismos GraphML + metrics.json + clusters.csv que `build`); **NO** transiciona el
   `CycleState` ni sella `.corpus_hash` (transversal al lazo, como `enrich`/`curate`). `pyyaml` pasó a
   dependencia del núcleo (import perezoso). **516 tests verdes**. Ver `docs/API.md` §10.
+- **Ciclo 10 — `seed --from-bib` + filtro de año real (AS-BUILT 2026-06-17, ADR
+  [0030](docs/decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md) §Ciclo 10, cierra #50):**
+  `b2g seed` pasa a **3 modos** mutuamente excluyentes (`--equation` / `--spec` / **`--from-bib
+  <archivo.bib>`**, este último sin red vía `BibtexSource.load`; `SEEDED`/reseed; exit 3 si falta
+  `bibtexparser`; combinar `--from-bib` con flags OpenAlex → exit 1). `min_year`/`max_year`
+  **ahora filtran de verdad** contra OpenAlex (`from_publication_date`/`to_publication_date`;
+  flags `--min-year`/`--max-year` en `--equation` + campos del YAML en `--spec`). Nuevo ejemplo
+  **`examples/bibtex/`** (`sample.bib` + README CLI-puro). **594 tests verdes.** Ver `docs/API.md` §2.
 - **Ciclo 9a — ecuación declarativa + `restore`** (AS-BUILT 2026-06-17, ADR
-  [0030](docs/decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)): **(1)** `b2g seed` tiene
-  **2 modos** (`--equation` / **`--spec equation.yaml`**) — `EquationSpec` + `load_equation_spec`
-  (`sources/equation.py`, Pydantic `extra="forbid"`; `min_year`/`max_year` están en el modelo pero
-  **aún no filtran** contra OpenAlex). **(2)** Nuevo **17° subcomando `b2g restore --from-corpus
+  [0030](docs/decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)): **(1)** `b2g seed` tenía
+  entonces **2 modos** (`--equation` / **`--spec equation.yaml`**) — `EquationSpec` + `load_equation_spec`
+  (`sources/equation.py`, Pydantic `extra="forbid"`; `min_year`/`max_year` aún no filtraban en 9a;
+  **filtran desde el Ciclo 10**, arriba). **(2)** Nuevo **17° subcomando `b2g restore --from-corpus
   <parquet>`** (`cli/commands/restore.py`): rehidrata un corpus **ya curado sin red** (inverso de
   `snapshot`; `CORPUS_SCHEMA` → `Corpus.from_arrow` → merge+persist), preserva la curación y
   transiciona a **`FILTERED`** (reusa la transición permisiva `filter`, ADR 0016). **No** hay
-  `seed --from-corpus` (es `restore`) ni `seed --from-bib` (diferido, issue #50). Ver `docs/API.md`
-  §2 + §convenciones CLI.
+  `seed --from-corpus` (es `restore`); `seed --from-bib` estaba diferido en 9a y **se construyó en el
+  Ciclo 10** (arriba). Ver `docs/API.md` §2 + §convenciones CLI.
 - **Ciclo 9b — corpus de ejemplo + gate R2 · #33 CERRADO** (AS-BUILT 2026-06-17, ADR
   [0030](docs/decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)): se construye la convención
   **`examples/`** (corpus curado congelado por carpeta: `corpus.parquet` + `equation.yaml` de
@@ -304,10 +312,10 @@ src/bib2graph/
                        # models.py separado), parseo que falla ruidoso
   cycle.py             # FSM CÍCLICO de dominio puro (ADR 0016 enmendado, Hito R3): SEEDED→…→
                        # MONITORED + reseed/ronda. Sale del backend; el backend solo lo persiste.
-  sources/             # OpenAlexSource (núcleo, backbone); BibtexSource (secundaria, función de
-                       # librería —seed --from-bib diferido, ADR 0030); equation.py (EquationSpec +
-                       # load_equation_spec, capa declarativa de la ecuación —seed --spec, 9a);
-                       # RIS, CSV (futuro, no publicar)
+  sources/             # OpenAlexSource (núcleo, backbone); BibtexSource (secundaria, cableada al CLI
+                       # como seed --from-bib, 3er modo sin red —ADR 0030 Ciclo 10, #50);
+                       # equation.py (EquationSpec + load_equation_spec, capa declarativa de la
+                       # ecuación —seed --spec, 9a); RIS, CSV (futuro, no publicar)
   backends/            # TabularBackend (Protocol) + InMemoryBackend (núcleo puro) +
                        # DuckDBBackend (biblioteca viva, carga perezosa de duckdb; persiste cycle)
   foraging/            # Forager (chaining + ranking por scent BIBLIOMÉTRICO vía proyectores, Hito R4).

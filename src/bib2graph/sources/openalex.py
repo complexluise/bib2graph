@@ -83,6 +83,8 @@ def _translate(
     *,
     native: bool = False,
     exclude: list[str] | None = None,
+    min_year: int | None = None,
+    max_year: int | None = None,
 ) -> tuple[str, list[str]]:
     """Traduce una ecuación WoS-style a una query OpenAlex ejecutable.
 
@@ -98,12 +100,21 @@ def _translate(
     ``AND NOT title_and_abstract.search:"<término>"`` al final del filtro y
     se reportan en el translation_report para transparencia (PRD §4).
 
+    El filtro de año (``min_year``/``max_year``) agrega cláusulas
+    ``from_publication_date:<min_year>-01-01`` y/o
+    ``to_publication_date:<max_year>-12-31`` al filtro de OpenAlex (sintaxis
+    idiomática de rango; combinables con AND junto a los demás predicados).
+
     Args:
         query: Ecuación de búsqueda.
         native: Si es ``True``, no traducir; usar query cruda.
         exclude: Lista de términos a excluir de título/abstract.  Cada uno
             genera una cláusula ``AND NOT title_and_abstract.search:"…"``.
             ``None`` o lista vacía = sin exclusiones.
+        min_year: Año mínimo de publicación (inclusive).  Genera
+            ``from_publication_date:<min_year>-01-01``.  ``None`` = sin límite.
+        max_year: Año máximo de publicación (inclusive).  Genera
+            ``to_publication_date:<max_year>-12-31``.  ``None`` = sin límite.
 
     Returns:
         Tupla ``(executed_query, translation_report)``.
@@ -146,6 +157,26 @@ def _translate(
             f"Exclusiones aplicadas ({len(terms)}): "
             + ", ".join(f'"{t}"' for t in terms)
             + ". Cláusulas AND NOT añadidas al filtro de OpenAlex."
+        )
+
+    # Filtro de año: sintaxis idiomática de rango de OpenAlex.
+    # Las cláusulas se combinan con AND junto al resto del filtro.
+    year_clauses: list[str] = []
+    if min_year is not None:
+        year_clauses.append(f"from_publication_date:{min_year}-01-01")
+    if max_year is not None:
+        year_clauses.append(f"to_publication_date:{max_year}-12-31")
+    if year_clauses:
+        executed = executed + "," + ",".join(year_clauses)
+        parts = []
+        if min_year is not None:
+            parts.append(f"desde {min_year}")
+        if max_year is not None:
+            parts.append(f"hasta {max_year}")
+        report.append(
+            f"Filtro de año aplicado ({', '.join(parts)}): "
+            + ", ".join(year_clauses)
+            + "."
         )
 
     return executed, report
@@ -472,6 +503,8 @@ class OpenAlexSource:
         *,
         native: bool = False,
         exclude: list[str] | None = None,
+        min_year: int | None = None,
+        max_year: int | None = None,
     ) -> SeedResult:
         """Siembra un ``Corpus`` desde una ecuación de búsqueda.
 
@@ -484,12 +517,18 @@ class OpenAlexSource:
             native: Si es ``True``, pasa la query cruda sin traducción.
             exclude: Lista de términos a excluir de título/abstract (#30).
                 Cada término genera ``AND NOT title_and_abstract.search:"…"``.
+            min_year: Año mínimo de publicación (filtro de rango OpenAlex).
+                Genera ``from_publication_date:<min_year>-01-01``.
+                ``None`` = sin límite inferior.
+            max_year: Año máximo de publicación (filtro de rango OpenAlex).
+                Genera ``to_publication_date:<max_year>-12-31``.
+                ``None`` = sin límite superior.
 
         Returns:
             ``SeedResult`` con el corpus, la query ejecutada y el reporte.
         """
         executed_query, translation_report = _translate(
-            query, native=native, exclude=exclude
+            query, native=native, exclude=exclude, min_year=min_year, max_year=max_year
         )
         equation_id = f"eq-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}"
         fetched_at = datetime.now(UTC).isoformat()

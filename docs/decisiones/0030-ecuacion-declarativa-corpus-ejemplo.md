@@ -1,9 +1,10 @@
 # 0030 — Ecuación declarativa (`equation.yaml`) + `restore` de corpus curado + corpus de ejemplo commiteado
 
-- **Estado:** **Aceptada — AS-BUILT ✅** (9a + 9b completos, 2026-06-17). 9a: `restore` +
+- **Estado:** **Aceptada — AS-BUILT ✅** (9a + 9b + Ciclo 10 completos, 2026-06-17). 9a: `restore` +
   `equation.yaml` cargable; **9b: workspace de ejemplo `examples/valoraciones/` (corpus 137 filas)
-  + gate de reproducibilidad R2** (7 tests). Cierra el Ciclo #33. `seed --from-bib` y
-  `examples/bibtex/` siguen **diferidos** (issue #50). Ver §AS-BUILT 9b abajo.
+  + gate de reproducibilidad R2** (7 tests; cierra el Ciclo #33). **Ciclo 10: `seed --from-bib`
+  (3er modo, sin red) + filtro de año real (`min_year`/`max_year`) + `examples/bibtex/`** (cierra
+  issue #50; el §Diferido del corte 9a queda superado). Ver §AS-BUILT Ciclo 10 al final.
 - **Fecha:** 2026-06-17
 - **Enmienda (de este ADR):** [0029](0029-workspace-por-investigacion.md) — el workspace
   (carpeta autocontenida) gana una variante **commiteable** como **caso real reproducible**:
@@ -113,7 +114,11 @@ encuadrados pero **diferidos / pendientes de 9b** (ver "Estado / fasing"):
 Y se **resuelve el hueco de diseño** de cómo el corpus congelado entra a un workspace sin red
 (ver sub-decisión "Reproducción sin red").
 
-### Estado / fasing (9a hecho · 9b hecho · diferido)
+### Estado / fasing (9a hecho · 9b hecho · Ciclo 10 hecho)
+
+> **Actualizado 2026-06-17:** las dos piezas que 9a había dejado *diferidas* (`seed --from-bib`,
+> `examples/bibtex/`) se **construyeron en el Ciclo 10**, junto con el **filtro de año real**. El
+> §Diferido de más abajo es **historia superada** por el §AS-BUILT Ciclo 10 al final de este ADR.
 
 | Pieza | Estado |
 |-------|--------|
@@ -121,8 +126,9 @@ Y se **resuelve el hueco de diseño** de cómo el corpus congelado entra a un wo
 | `b2g seed --spec equation.yaml` (2º modo de `seed`) | **9a AS-BUILT ✅** |
 | `b2g restore --from-corpus <parquet>` (17º subcomando) | **9a AS-BUILT ✅** |
 | `examples/valoraciones/` (corpus + `equation.yaml` + README) + gate R2 | **9b AS-BUILT ✅** |
-| `b2g seed --from-bib <archivo.bib>` (2º camino de seed) | **Diferido** (issue [#50](https://github.com/complexluise/bib2graph/issues/50)) |
-| `examples/bibtex/` (ejemplo del camino BibTeX) | **Diferido** (va con `--from-bib`, #50) |
+| `b2g seed --from-bib <archivo.bib>` (3er modo de `seed`) | **Ciclo 10 AS-BUILT ✅** (cierra issue [#50](https://github.com/complexluise/bib2graph/issues/50)) |
+| `examples/bibtex/` (ejemplo del camino BibTeX) | **Ciclo 10 AS-BUILT ✅** |
+| `min_year`/`max_year` filtran de verdad contra OpenAlex | **Ciclo 10 AS-BUILT ✅** |
 
 ### Sub-decisiones resueltas
 
@@ -283,6 +289,9 @@ El `equation.yaml` del ejemplo es **autodescriptivo** (ecuación + corpus + READ
 
 ## Diferido (reabrible, fuera de este ADR)
 
+> **SUPERADO (2026-06-17):** los tres puntos de abajo fueron **revisados por el PO y construidos en
+> el Ciclo 10** (ver §AS-BUILT Ciclo 10 al final). Se conservan como historia del corte 9a.
+
 - **`b2g seed --from-bib <archivo.bib>` — segundo camino de seed (BibTeX).** Cablear el
   `BibtexSource.load` existente al CLI de siembra es trabajo legítimo (cierra el drift "BibTeX
   declarado como `Source` secundaria pero no en el CLI"; el investigador con acceso institucional
@@ -352,5 +361,60 @@ lo construido. **Gate verde, 571 tests; el verifier pasa.**
   el ADR recomendaba.
 
 Con 9b, **#33 queda cerrado**: existe un caso real reproducible sin red por CLI, que sirve de gate
-para la epic GUI #34. `seed --from-bib` y `examples/bibtex/` siguen **diferidos** (issue #50), sin
-reabrir la decisión.
+para la epic GUI #34. (En 9b, `seed --from-bib` y `examples/bibtex/` quedaban **diferidos** —issue #50—;
+ver §AS-BUILT Ciclo 10, donde el PO los des-difiere y se construyen.)
+
+## AS-BUILT — Ciclo 10 (2026-06-17): segundo camino de seed (BibTeX) + filtro de año real ✅
+
+El PO revisó el 2026-06-17 los puntos del §Diferido y **decidió construirlos** (revierte la
+postergación del corte 9a): `b2g seed` vuelve a tener un camino BibTeX. **Gate verde, 594 tests
+(571 base + 23 nuevos).** El cuerpo histórico de 9a/9b no cambia; esto registra lo construido y
+supersede el §Diferido.
+
+### Decisiones del PO (2026-06-17, corte Ciclo 10)
+
+1. **Se construye `b2g seed --from-bib <archivo.bib>` (cierra #50).** `seed` vuelve a **TRES modos
+   mutuamente excluyentes** (`--equation` / `--spec` / `--from-bib`). El parquet curado sigue siendo
+   `restore`, no `seed` (sin cambio respecto a 9a).
+2. **El flujo de armar/reproducir un workspace debe ser 100% por CLI, sin escribir código** (principio
+   CLI-puro). Materializa en el Ciclo B (rework de `examples/valoraciones/`); en este Ciclo A se
+   construye `examples/bibtex/` con receta CLI-pura.
+3. **`min_year`/`max_year` deben FILTRAR de verdad** contra OpenAlex (corrige la nota de 9a "declarados,
+   no filtran aún").
+
+### Lo construido (AS-BUILT)
+
+- **3er modo `b2g seed --from-bib <archivo.bib>` — siembra BibTeX local, sin red**
+  (`cli/commands/seed.py:run_seed_from_bib` + `seed_cmd`). Usa `BibtexSource.load` (`sources/bibtex.py`,
+  import perezoso de `bibtexparser`, extra `[bibtex]`), hace merge+persist y transiciona a `SEEDED`
+  (o reseed → ronda++ si ya había estado, misma lógica que `run_seed`). Papers con `is_seed=True` /
+  `curation_status='candidate'`. Envelope `--json` = `{papers_added, total_papers, round, reseeded}`
+  (**sin** `executed_query`/`translation_report`: no aplican a BibTeX).
+- **Frontera de errores (fallar fuerte, no en silencio):** `ImportError` de `bibtexparser` →
+  **`DependencyError` (exit 3)** —no `NetworkError`, que es para la ruta httpx de OpenAlex—; `.bib`
+  inexistente o mal formado → `DataError` (exit 2). Combinar `--from-bib` con **cualquier** flag de
+  OpenAlex (`--exclude`/`--max-results`/`--native`/`--email`/`--min-year`/`--max-year`) → `UsageError`
+  (exit 1): no se ignoran flags en silencio (AGENTS.md §Manejo de errores).
+- **Mutua exclusión a 3 modos:** `sum([equation, spec, from_bib]) != 1` → exit 1 (reusa el patrón
+  de 2 modos de 9a).
+- **Filtro de año real (`OpenAlexSource._translate` + `.seed`):** `min_year`/`max_year` agregan
+  `from_publication_date:<min_year>-01-01` y/o `to_publication_date:<max_year>-12-31` al `filter` de
+  OpenAlex (concatenados con coma — AND idiomático de filtros, **no** texto libre dentro de
+  `title_and_abstract.search:()`), y se reportan en el `translation_report`. Expuestos como **flags
+  `--min-year`/`--max-year` en `--equation`** y como **campos del YAML en `--spec`** (paridad 1:1, igual
+  que `--max-results`/`--exclude`). En modo `--native` no se aplican (nativo = sin traducción). Esto
+  corrige la nota del §Schema de `equation.yaml` ("declarados pero NO filtran aún"): **ahora filtran.**
+- **`examples/bibtex/` (segundo ejemplo de la convención `examples/`):** `sample.bib` (10 entradas,
+  variedad deliberada de campos faltantes —sin abstract/keywords/DOI/autores/año, capítulo con
+  `booktitle`— para ejercitar el parser defensivo / regresión T1) + `README.md` con receta **100% CLI**
+  (`b2g init` → `b2g seed --from-bib examples/bibtex/sample.bib` → `b2g build`). El `.bib` queda
+  trackeado por la excepción `!examples/` ya existente (9b); ningún cambio nuevo al `.gitignore`.
+- **Tests:** `tests/unit/test_seed_from_bib.py` (23 tests): siembra/persistencia/estado, campos
+  faltantes, entrada sin título omitida, exit 3 sin `bibtexparser`, `.bib` inexistente, reseed, mutua
+  exclusión de 3 modos, filtro de año verificado con `MockTransport` capturante (afirma sobre el
+  parámetro `filter` enviado), filtro vía `--spec`, envelope `--json`, carga del `sample.bib` real.
+
+Con el Ciclo 10, **#50 queda cerrado** y `seed` tiene su segundo camino de datos (BibTeX
+institucional tras paywall, ADR 0007/0018). Queda pendiente el **Ciclo B** (rework CLI-puro de
+`examples/valoraciones/` + regen del parquet + ajuste del gate R2), que materializa el principio
+CLI-puro sobre el ejemplo de valoraciones.
