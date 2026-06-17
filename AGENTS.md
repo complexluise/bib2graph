@@ -30,7 +30,7 @@
   scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
   El **CLI `b2g` es real** —paquete `cli/` con 14 subcomandos en `cli/commands/`, no un
-  placeholder—. **422 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+  placeholder—. **437 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
 - **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
   [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
   núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
@@ -43,6 +43,11 @@
   sobre `is_seed=True`** (todas las semillas, **sin** filtrar `curation_status`): el chaining precede a
   la curación; la restricción a `accepted` es del **Enricher** (Hito 8b), no del Forager. Ver
   `docs/API.md` §5 y ADR [0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) AS-BUILT #21.
+- **Labels legibles en las redes** (#25, 2026-06-16): las redes ahora salen con `label` legible
+  (más `year`/`is_seed`/`curation_status`/`degree_centrality`/`community`) vía la nueva **capa
+  frontera `decorate`** (`networks/decorate.py`), aplicada en `facade.py:_build_artifact`; `b2g
+  build`/`export` exportan grafos legibles en Gephi/VOSviewer. Los proyectores **siguen puros** (ADR
+  0014). Cierra el hueco de la Nota 09 B3 (redes con id crudo). Ver `docs/API.md` §7.1.
 - **Tanda de remediación R1–R5 COMPLETA** (v0.3, 2026-06-16). Tras el red-team del AS-BUILT
   ([`docs/Notas/06-critica-as-built-v0.2.md`](docs/Notas/06-critica-as-built-v0.2.md)) el PO bloqueó
   un **modelo nuevo** (ADR [0022](docs/decisiones/0022-producto-sin-ia-generativa.md)/

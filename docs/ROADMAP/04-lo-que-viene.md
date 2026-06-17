@@ -184,6 +184,16 @@ No se prometen ni se cablean clientes que no se usan.
 
 ## Backlog / ideas pendientes (sin hito ni DoD todavía)
 
+- **Labels legibles en los nodos de las redes (#25) · ✅ HECHO (2026-06-16):** las redes salían con
+  `id` crudo (`oa:…`, `I185261750`, un ORCID), ilegibles en Gephi/VOSviewer/Cytoscape (síntoma B3 de
+  la [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). Se agregó la **capa frontera
+  `decorate`** (`networks/decorate.py`: `decorate_graph`/`decorate`) entre los proyectores puros y el
+  export/GUI, aplicada en `facade.py:_build_artifact`: inyecta `label` legible (mapeo por
+  `NetworkKind`; paper → `"título (año)"` truncado a `LABEL_MAX_CHARS`=60) + atributos de nodo
+  (`year`/`is_seed`/`curation_status`/`degree_centrality`/`community`). `Networks.quick`/`build`
+  devuelven artefactos **decorados**; los proyectores **siguen puros** (ADR
+  [0014](../decisiones/0014-proyeccion-redes-pesos-asortatividad.md) AS-BUILT #25). Reemplaza el
+  workaround local `_label_for_kind` de `prueba/06_redes_y_grafos.py`. Ver API.md §7.1.
 - **Workspace por investigación · ✅ HECHO (2026-06-16, ADR
   [0029](../decisiones/0029-workspace-por-investigacion.md); issues #32/#38/#39):** cada investigación
   = una carpeta auto-contenida (`workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/
