@@ -19,7 +19,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
-from bib2graph.cli._store import open_store
+from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -113,7 +113,7 @@ def accept_cmd(
     Curación TRANSVERSAL: no transiciona el CycleState.  Disponible en
     cualquier estado del lazo (Nota 05 §4, ADR 0016 enmendado R3).
     """
-    store_path = ctx.obj["store"]
+    store_path = resolve_library_path(ctx.obj)
     data = run_accept(store_path, list(ids), by=by)
 
     if json_output:

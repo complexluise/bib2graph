@@ -18,7 +18,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
-from bib2graph.cli._store import open_store
+from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -137,7 +137,7 @@ def monitor_cmd(
     Requiere un corpus previo (ejecutar 'b2g seed' primero).
     Requiere --email para el polite pool de OpenAlex.
     """
-    store_path = ctx.obj["store"]
+    store_path = resolve_library_path(ctx.obj)
     data = run_monitor(store_path, email=email)
 
     if json_output:

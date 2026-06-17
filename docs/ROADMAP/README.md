@@ -95,7 +95,9 @@ OIDC), no el push de tags. Cortes acordados:
   [0021](../decisiones/0021-cli-agente-native-contrato.md)). El 12° **`monitor`** (cleanup pre-v0.3)
   re-chequea citantes nuevos del corpus y transiciona a `MONITORED`; el 13° **`enrich`** (Hito 8,
   ADR [0025](../decisiones/0025-enricher-cocitacion-openalex.md)) resuelve refs→DOI **+ co-citación
-  end-to-end** (`--max-citing`) y **no transiciona** el ciclo. El `accept`/`reject` programático
+  end-to-end** (`--max-citing`) y **no transiciona** el ciclo. *(Más tarde, la fundación workspace
+  sumó el 14° `init` —ADR [0029](../decisiones/0029-workspace-por-investigacion.md)—, fuera del corte
+  v0.2.)* El `accept`/`reject` programático
   sobrevive (ahora como subcomando CLI); la curación interactiva rica (`curate`) y la GUI son
   futuro. Acá se cumple el criterio "V1 hecha" del PRD §9 a nivel de *capacidades* (el número de
   versión sigue en 0.y). **Tag `v0.2.0`** creado el 2026-06-15, **publicado en `origin`**.
@@ -107,6 +109,12 @@ OIDC), no el push de tags. Cortes acordados:
   excluir timestamps; el `LoopState` se mueve a `cycle.py`), pero **no rompe el flujo de 10 minutos**
   ni el contrato `--json` externo. Sin esto, el claim de reproducibilidad y de "ciclo no lineal" no
   se sostiene (Nota 06, RAÍZ 1/2).
+- **Fundación workspace · ✅ HECHA (2026-06-16, ADR
+  [0029](../decisiones/0029-workspace-por-investigacion.md); issues #32/#38/#39):** una investigación
+  = un **workspace = carpeta** (`workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/
+  `exports/`). Suma el **14° subcomando `b2g init`**; `--store` pasó a opcional + nuevo `--workspace`
+  (resolución ambiente). El `.duckdb` suelto sigue válido (workspace degenerado). No fue un hito
+  numerado (prerequisito de la epic GUI #34). Ver [04 · Lo que viene](04-lo-que-viene.md) §Backlog.
 - **v0.4+ — opcionales (Hitos 7–9):** dedup fuzzy, `Enricher` de co-citación (**Hito 8 ✅**:
   refs→DOI + co-citación end-to-end), `NetworkSpec`.
 - **1.0.0:** API congelada + caso real (IED) reproducido por un usuario distinto del autor (Nota 06,
@@ -204,5 +212,5 @@ limpio y actual; el cuerpo de cada hito vive en su archivo:
 | D3 asortatividad + composición + proxy | 2 | |
 | D4 export GraphML/CSV | 2 | |
 | E1 snapshot reproducible | 1 + 6 ✅ | `Corpus.snapshot` + `b2g snapshot` |
-| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) + cleanup pre-v0.3 ✅ (`monitor`) + 8 ✅ (`enrich`) | `b2g` **13 subcomandos** (Hito 6 entregó 11; `monitor` se sumó en el cleanup pre-v0.3 → `MONITORED`; `enrich` en el Hito 8 —refs→DOI + co-citación, `--max-citing`—, ADR 0025, sin transición), envelope `--json` versionado, exit 0–5 (ADR 0021) |
+| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) + cleanup pre-v0.3 ✅ (`monitor`) + 8 ✅ (`enrich`) + workspace ✅ (`init`) | `b2g` **14 subcomandos** (Hito 6 entregó 11; `monitor` se sumó en el cleanup pre-v0.3 → `MONITORED`; `enrich` en el Hito 8 —refs→DOI + co-citación, `--max-citing`—, ADR 0025, sin transición; `init` con el workspace, ADR 0029), envelope `--json` versionado, exit 0–5 (ADR 0021) |
 

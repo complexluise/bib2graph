@@ -3,7 +3,15 @@
 Computa las redes bibliométricas con Networks.quick y escribe artefactos
 a disco. Transiciona el CycleState a BUILT tras persistir con éxito.
 
-Los artefactos se escriben en ``<store_dir>/networks/<kind>/``:
+ADR 0029 — workspace:
+  El directorio de artefactos es ``<workspace>/networks/`` por defecto.
+  Si se pasa ``--out-dir`` explícito, se usa ese.
+
+ADR 0029 — sellado por corpus_hash:
+  Escribe ``networks/.corpus_hash`` con el hash del corpus que produjo
+  las redes. Permite detectar staleness sin un build system completo.
+
+Los artefactos se escriben en ``<networks_dir>/<kind>/``:
   - ``network.graphml``: el grafo en formato GraphML.
   - ``metrics.json``: métricas de red calculadas.
 """
@@ -18,7 +26,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DependencyError, handle_errors
-from bib2graph.cli._store import open_store
+from bib2graph.cli._store import open_store, resolve_workspace
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -34,6 +42,7 @@ def run_build(
 
     Usa ``Networks.quick`` para las 4 redes principales (coupling, co-autoría,
     institución, co-word). Escribe GraphML + metrics.json por red.
+    Sella ``networks/.corpus_hash`` con el hash del corpus que las produjo.
     Transiciona a BUILT tras escribir con éxito.
 
     Args:
@@ -41,7 +50,8 @@ def run_build(
         out_dir: Directorio base de salida. Default: ``<store_dir>/networks/``.
 
     Returns:
-        Dict con ``networks_built``, ``artifacts_dir`` y lista de redes.
+        Dict con ``networks_built``, ``artifacts_dir``, ``corpus_hash``
+        y lista de redes.
 
     Raises:
         DependencyError: Si falta ``python-louvain``.
@@ -120,11 +130,22 @@ def run_build(
             }
         )
 
+    # ADR 0029 — sellar con corpus_hash para detección de staleness.
+    # El hash ya lo tiene el corpus vía Manifest/CorpusSnapshot; lo derivamos
+    # del corpus cargado usando la misma función que usa Manifest.
+    from bib2graph.backends.memory import compute_corpus_hash
+
+    corpus_hash = compute_corpus_hash(corpus.to_arrow())
+    hash_file = artifacts_dir / ".corpus_hash"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    hash_file.write_text(corpus_hash, encoding="utf-8")
+
     store.backend.set_loop_state(new_state, cycle_round=new_round)
 
     return {
         "networks_built": len(artifacts),
         "artifacts_dir": str(artifacts_dir),
+        "corpus_hash": corpus_hash,
         "networks": networks_info,
     }
 
@@ -138,7 +159,10 @@ def run_build(
 @click.option(
     "--out-dir",
     default=None,
-    help="Directorio base de artefactos (default: <store_dir>/networks/).",
+    help=(
+        "Directorio base de artefactos "
+        "(default: <workspace>/networks/ o <store_dir>/networks/)."
+    ),
 )
 @click.option(
     "--json",
@@ -157,9 +181,15 @@ def build_cmd(
     """Computa las 4 redes con Networks.quick y escribe artefactos.
 
     Tras el build, el estado del lazo transiciona a BUILT.
+    El directorio networks/ queda sellado con .corpus_hash.
     """
-    store_path = ctx.obj["store"]
-    data = run_build(store_path, out_dir=out_dir)
+    # ADR 0029: usar networks_dir del workspace si no se especifica --out-dir
+    ws = resolve_workspace(ctx.obj)
+    effective_out_dir: str | Path | None = out_dir
+    if effective_out_dir is None:
+        effective_out_dir = ws.networks_dir
+
+    data = run_build(ws.library_path, out_dir=effective_out_dir)
 
     if json_output:
         envelope = build_envelope(
@@ -172,5 +202,6 @@ def build_cmd(
     else:
         emit_human(f"Redes construidas: {data['networks_built']}")
         emit_human(f"Artefactos en: {data['artifacts_dir']}")
+        emit_human(f"corpus_hash: {data['corpus_hash']}")
         for net in data["networks"]:
             emit_human(f"  {net['kind']}: {net['nodes']} nodos, {net['edges']} aristas")

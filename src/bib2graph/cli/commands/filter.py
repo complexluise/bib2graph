@@ -14,7 +14,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
-from bib2graph.cli._store import open_store
+from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -156,7 +156,7 @@ def filter_cmd(
 
     Tras el filtro, el estado del lazo transiciona a FILTERED.
     """
-    store_path = ctx.obj["store"]
+    store_path = resolve_library_path(ctx.obj)
     data = run_filter(
         store_path,
         year_gte=year_gte,

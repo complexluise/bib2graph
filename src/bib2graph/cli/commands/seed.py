@@ -17,7 +17,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, NetworkError, handle_errors
-from bib2graph.cli._store import open_store
+from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -138,7 +138,7 @@ def seed_cmd(
 
     Tras el seed, el estado del lazo transiciona a SEEDED.
     """
-    store_path = ctx.obj["store"]
+    store_path = resolve_library_path(ctx.obj)
     data = run_seed(store_path, equation, native=native, email=email)
 
     if json_output:

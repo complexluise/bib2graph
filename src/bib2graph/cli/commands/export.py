@@ -14,6 +14,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
+from bib2graph.cli._store import resolve_library_path
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -154,7 +155,7 @@ def export_cmd(
 
     No transiciona el CycleState.
     """
-    store_path = ctx.obj["store"]
+    store_path = resolve_library_path(ctx.obj)
     data = run_export(
         store_path,
         format=fmt,  # type: ignore[arg-type]

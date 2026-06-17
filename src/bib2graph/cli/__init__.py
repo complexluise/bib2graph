@@ -1,19 +1,26 @@
-"""cli — CLI agente-native ``b2g`` (Hito 6).
+"""cli — CLI agente-native ``b2g`` (Hito 6 + ADR 0029 workspace).
 
-Arma el grupo Click principal, registra los 12 subcomandos y expone
+Arma el grupo Click principal, registra los 14 subcomandos y expone
 ``main()`` como entry point del paquete.
 
 Entry point en ``pyproject.toml``:
     b2g = "bib2graph.cli:main"
 
 Subcomandos:
-    seed, chain, filter, build, enrich, monitor, export, snapshot,
+    init, seed, chain, filter, build, enrich, monitor, export, snapshot,
     status, inspect, validate, accept, reject.
 
 Cada subcomando lleva:
   - ``--json``: salida JSON estructurada (envelope versionado, §API.md).
   - Exit codes 0-5 (ADR 0010).
-  - Sin estado entre invocaciones: el estado vive en ``--store``.
+  - Sin estado entre invocaciones: el estado vive en el workspace / --store.
+
+ADR 0029 — resolución ambiente:
+  Las opciones globales ``--workspace`` y ``--store`` son OPCIONALES.
+  Si no se pasa ninguna, los comandos resuelven el workspace activo vía
+  ``Workspace.resolve(...)`` (B2G_WORKSPACE env o cwd walk).
+  ``--store`` se conserva para retrocompatibilidad con el modo degenerado
+  (un ``.duckdb`` suelto).
 
 R5 — UTF-8 en la frontera:
   ``main()`` fuerza ``sys.stdout``/``sys.stderr`` a UTF-8 antes de que Click
@@ -35,6 +42,7 @@ from bib2graph.cli.commands.chain import chain_cmd
 from bib2graph.cli.commands.enrich import enrich_cmd
 from bib2graph.cli.commands.export import export_cmd
 from bib2graph.cli.commands.filter import filter_cmd
+from bib2graph.cli.commands.init import init_cmd
 from bib2graph.cli.commands.inspect import inspect_cmd
 from bib2graph.cli.commands.monitor import monitor_cmd
 from bib2graph.cli.commands.reject import reject_cmd
@@ -62,30 +70,59 @@ def _force_utf8() -> None:
 
 @click.group()
 @click.option(
-    "--store",
-    required=True,
+    "--workspace",
+    default=None,
     type=click.Path(),
-    help="Ruta al archivo .duckdb de la biblioteca viva. Una investigación = un archivo.",
+    help=(
+        "Carpeta del workspace activo. "
+        "Si no se pasa, se resuelve vía B2G_WORKSPACE o buscando workspace.json "
+        "hacia arriba desde el directorio actual (ADR 0029)."
+    ),
+)
+@click.option(
+    "--store",
+    default=None,
+    type=click.Path(),
+    help=(
+        "Ruta directa al archivo .duckdb (modo degenerado, retrocompat). "
+        "Mutuamente excluyente con --workspace; no uses ambos. "
+        "Preferí --workspace para investigaciones nuevas."
+    ),
 )
 @click.pass_context
-def b2g(ctx: click.Context, store: str) -> None:
+def b2g(ctx: click.Context, workspace: str | None, store: str | None) -> None:
     """b2g — bib2graph CLI agente-native.
 
     Transforma corpus bibliográficos en redes bibliométricas reproducibles.
-    El estado de la investigación vive en --store (archivo .duckdb).
 
-    Subcomandos: seed, chain, filter, build, enrich, monitor, export, snapshot,
-    status, inspect, validate, accept, reject.
+    El workspace activo se resuelve en este orden (ADR 0029):
+      1. --workspace <carpeta>  (forma canónica)
+      2. --store <archivo.duckdb>  (modo degenerado, retrocompat — mutuamente excluyente con --workspace)
+      3. Variable de entorno B2G_WORKSPACE
+      4. workspace.json encontrado subiendo desde el directorio actual
 
-    Ejemplo:
-        b2g --store mi_investigacion.duckdb seed --equation "unequal exchange"
-        b2g --store mi_investigacion.duckdb status --json
+    Si no hay ninguno, los comandos que necesitan la biblioteca emiten un
+    error accionable (exit 1) que sugiere 'b2g init' o '--workspace'.
+
+    Subcomandos: init, seed, chain, filter, build, enrich, monitor, export,
+    snapshot, status, inspect, validate, accept, reject.
+
+    Ejemplo con workspace:
+        b2g init mi-investigacion
+        cd mi-investigacion
+        b2g seed --equation "unequal exchange"
+        b2g status --json
+
+    Ejemplo legado (--store):
+        b2g --store mi.duckdb seed --equation "unequal exchange"
     """
     ctx.ensure_object(dict)
+    ctx.obj["workspace"] = workspace
     ctx.obj["store"] = store
 
 
-# Registrar los 13 subcomandos
+# Registrar los 14 subcomandos
+b2g.add_command(init_cmd)
 b2g.add_command(seed_cmd)
 b2g.add_command(chain_cmd)
 b2g.add_command(filter_cmd)
