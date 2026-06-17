@@ -405,4 +405,4 @@ Plantilla en [`docs/RELEASE_TEMPLATE.md`](docs/RELEASE_TEMPLATE.md).
 - Capa D / `NetworkSpec` → `docs/API.md` §10, se libera en v0.3+ (Hito 9).
 - Decisiones de dependencias / extras → `docs/decisiones/0005-...`.
 - Cambios al método bibliométrico (qué cuenta como co-citación, umbrales) →
-  `docs/metodología.md`.
+  `docs/Notas/metodología.md`.

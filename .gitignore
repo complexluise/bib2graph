@@ -34,3 +34,9 @@ Thumbs.db
 # bib2graph
 snapshots/*.parquet
 !snapshots/.gitkeep
+
+# Datos de usuario / artefactos de investigación — NUNCA al repo
+# (bibliotecas vivas, workspaces de prueba locales, redes exportadas)
+*.duckdb
+prueba/
+redes/

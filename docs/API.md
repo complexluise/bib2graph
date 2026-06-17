@@ -9,7 +9,7 @@
 > [0009](decisiones/0009-biblioteca-viva-duckdb.md) (biblioteca viva en DuckDB),
 > [0010](decisiones/0010-agente-native-columna.md) (agente-native),
 > [0011](decisiones/0011-thesaurus-multilingue.md) (thesaurus). Diseño de fondo en
-> [`ARCHITECTURE.md`](ARCHITECTURE.md); método en [`metodología.md`](metodología.md). El `Corpus`
+> [`ARCHITECTURE.md`](ARCHITECTURE.md); método en [`metodología.md`](Notas/metodología.md). El `Corpus`
 > sigue siendo una **tabla Arrow validada con Pydantic v2** (ADR 0006); `Paper`/`Author`/
 > `Keyword`/`Institution` son **vistas derivadas**, no tipos del modelo.
 >

@@ -106,7 +106,7 @@ releerlo. **Sin servidores, sin red.** La testabilidad que v0 nunca tuvo.
 - `Analyzer` (API.md §8): métricas, centralidad, comunidades (fallo explícito si falta
   `python-louvain`), **asortatividad** (atributo categórico configurable + grado) y **composición
   de comunidades** con **disclaimer de proxy**, informe de calidad
-  ([`metodología.md`](../metodología.md) §4) con umbrales **configurables** (`QualityThresholds`).
+  ([`metodología.md`](../Notas/metodología.md) §4) con umbrales **configurables** (`QualityThresholds`).
 - `Exporter` (GraphML, CSV). `Networks.build(corpus, spec)` (hook) y `Networks.quick(corpus)`.
 
 **Historias:** **D1** (las cinco proyecciones), **D2** (métricas y comunidades), **D3**

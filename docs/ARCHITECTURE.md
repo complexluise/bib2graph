@@ -12,7 +12,7 @@
 > [0009](decisiones/0009-biblioteca-viva-duckdb.md); **agente-native columna**
 > [0010](decisiones/0010-agente-native-columna.md); **thesaurus**
 > [0011](decisiones/0011-thesaurus-multilingue.md). El método bibliométrico está en
-> [`metodología.md`](metodología.md).
+> [`metodología.md`](Notas/metodología.md).
 >
 > **AS-BUILT vs TARGET (importante):** este doc describe el diseño **objetivo** tras el red-team
 > de la [Nota 06](Notas/06-critica-as-built-v0.2.md). Donde el código v0.2 difiere del objetivo,
@@ -180,7 +180,7 @@ Funciones puras sobre `networkx.Graph`:
   atributo. Las métricas que dependen de un **proxy** (p. ej. afiliación por-paper vs per-autor)
   se reportan **con el disclaimer del proxy** ("fácil pero consciente"). El atributo y sus
   categorías son **config del usuario**, no umbrales hardcodeados (crítica #5).
-- **Informe de calidad** de la co-citación según [`metodología.md`](metodología.md) §4, con
+- **Informe de calidad** de la co-citación según [`metodología.md`](Notas/metodología.md) §4, con
   umbrales **configurables**.
 
 ### 3.4 `Exporter` — resultados → archivos

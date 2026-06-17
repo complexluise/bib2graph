@@ -3,7 +3,7 @@
 > Autoridad de dominio sobre el **método bibliométrico** del AS-BUILT (v0.2). Reescrito al stack
 > real (**OpenAlex** como backbone, **DuckDB** biblioteca viva, **Arrow** como tabla canónica,
 > **networkx** para las redes) tras el red-team de la
-> [`Notas/06-critica-as-built-v0.2.md`](Notas/06-critica-as-built-v0.2.md). El material previo
+> [`06-critica-as-built-v0.2.md`](06-critica-as-built-v0.2.md). El material previo
 > (Neo4j/Cypher, Semantic Scholar/Scopus, BibTeX como entrada, estudio de semiconductores) se
 > conserva como **anexo histórico** al final (§A), **sin** reescribirlo. Fecha: 2026-06-15.
 
@@ -12,8 +12,8 @@
 bib2graph proyecta un **corpus** (tabla canónica Arrow, una fila por paper) a **cinco redes
 bibliométricas**, las analiza (métricas, centralidad, comunidades, asortatividad) y las exporta a
 GraphML/CSV. El método es **determinista y reproducible**: mismas entradas → mismas redes (ADR
-[0017](decisiones/0017-reproducibilidad-historia-snapshot.md), Louvain seeded). **No hay IA
-generativa** en el método (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)).
+[0017](../decisiones/0017-reproducibilidad-historia-snapshot.md), Louvain seeded). **No hay IA
+generativa** en el método (ADR [0022](../decisiones/0022-producto-sin-ia-generativa.md)).
 
 ## 2. Fundamento teórico de las redes
 
@@ -43,7 +43,7 @@ grafos.
 - **Acoplamiento bibliográfico** (`BibliographicCouplingProjector`): para cada par de papers cuenta
   las referencias compartidas (`references_id`). Es **barato** (las refs ya están en el corpus) y
   opera sobre el **corpus completo**, no solo las semillas → es **ciudadano de primera**
-  (`critica-base.md` §2, ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md)).
+  (`critica-base.md` §2, ADR [0014](../decisiones/0014-proyeccion-redes-pesos-asortatividad.md)).
 - **Co-citación** (`CoCitationProjector`): para cada par de papers cuenta los **citantes
   compartidos** (`cited_by_id`). Es la red **más cara** (depende del 2º nivel de fetch); sobre un
   corpus recién sembrado da pocas o cero aristas hasta enriquecer.
@@ -120,17 +120,17 @@ determinista (orden de filas estable), sin servidores.
 > estudio de la cadena de **semiconductores**) y un **Cypher de co-citación ERRÓNEO** (computa
 > acoplamiento). Se conserva para trazar de dónde viene el proyecto y como caso documentado; **el
 > método vigente es el de las §1–§8**. El giro a OpenAlex/DuckDB está en el ADR
-> [0007](decisiones/0007-openalex-backbone.md) y la arquitectura objetivo en
-> [`ARCHITECTURE.md`](ARCHITECTURE.md).
+> [0007](../decisiones/0007-openalex-backbone.md) y la arquitectura objetivo en
+> [`ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 ### A.1 Arquitectura previa
 
 1. **Modelo de datos en Neo4j** (base orientada a grafos). → *Hoy:* tabla Arrow + DuckDB; Neo4j es
    un adaptador `Store` opt-in post-V1, ya **no** el modelo (ADR
-   [0002](decisiones/0002-modelo-agnostico-backend.md)).
+   [0002](../decisiones/0002-modelo-agnostico-backend.md)).
 2. **Cargador desde BibTeX.** → *Hoy:* OpenAlex backbone; BibTeX es `Source` secundaria.
 3. **Enriquecedor por Semantic Scholar/Scopus.** → *Hoy:* refs/citantes vienen de OpenAlex; el
-   Enricher deja de ser estructural (ADR [0007](decisiones/0007-openalex-backbone.md)).
+   Enricher deja de ser estructural (ADR [0007](../decisiones/0007-openalex-backbone.md)).
 4. **Analizador de redes** sobre el grafo Neo4j. → *Hoy:* funciones puras sobre networkx.
 
 ### A.2 Cypher de co-citación (ERRÓNEO — computa acoplamiento, no reusar)
@@ -158,5 +158,5 @@ hardcodean conceptos de un estudio concreto.
 El estudio de la cadena de semiconductores fue el caso original sobre Neo4j/Cypher. Queda como
 **caso documentado histórico**; el **caso validador vigente** es el de **intercambio ecológico
 desigual (IED)**, corrido end-to-end sobre OpenAlex (ver
-[`exploracion/informe_ied_lectura_2.md`](../exploracion/informe_ied_lectura_2.md)). Ninguno es el
+[`exploracion/informe_ied_lectura_2.md`](../../exploracion/informe_ied_lectura_2.md)). Ninguno es el
 producto.
