@@ -40,6 +40,7 @@ snapshots/*.parquet
 *.duckdb
 *.duckdb.*.bak
 prueba/
+prueba_e2e/
 redes/
 valoraciones_*
 

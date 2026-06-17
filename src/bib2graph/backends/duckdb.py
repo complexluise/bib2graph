@@ -110,6 +110,20 @@ _DDL_LOOP_STATE_MIGRATE = """
 ALTER TABLE loop_state_log ADD COLUMN round INTEGER DEFAULT 0
 """
 
+# #54 (opción B): tabla hermana de loop_state_log — acumula IDs observados en
+# backward chaining pero no materializados en el corpus.  Append-only, sin
+# constraint UNIQUE: la idempotencia de escritura la garantiza el comando chain
+# (que solo escribe los IDs nuevos del lote en curso, no re-escribe anteriores).
+# ``observed_at`` usa ``now()`` de DuckDB (mismo patrón que ``recorded_at`` en
+# loop_state_log: reloj en la frontera del backend, no inyectado desde el núcleo).
+_DDL_REFERENCED_BUT_NOT_FETCHED = """
+CREATE TABLE IF NOT EXISTS referenced_but_not_fetched (
+    ref_id      VARCHAR NOT NULL,
+    cycle_round INTEGER NOT NULL DEFAULT 0,
+    observed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+"""
+
 # ADR 0024: migración liviana para bases pre-existentes sin columna ``_seq``.
 # Se suprime el error si la columna ya existe (CatalogException o BinderException).
 # El backfill usa ``rowid`` como proxy de orden de inserción original; es inocuo
@@ -300,6 +314,8 @@ class DuckDBBackend:
         # Backfill: asigna _seq = rowid a filas legacy sin _seq asignado.
         # Es inocuo cuando no hay NULLs (WHERE _seq IS NULL no toca nada).
         self._con.execute(_DDL_CORPUS_BACKFILL_SEQ)
+        # #54: tabla auxiliar para IDs backward observados pero no materializados.
+        self._con.execute(_DDL_REFERENCED_BUT_NOT_FETCHED)
         self._register_udfs()
 
     def _register_udfs(self) -> None:
@@ -395,6 +411,17 @@ class DuckDBBackend:
                 new_backend._con.execute(
                     "INSERT INTO loop_state_log (state, round, recorded_at) VALUES (?, ?, ?)",
                     [state_val, round_val, at_val],
+                )
+            # #54: copiar la tabla referenced_but_not_fetched (hermana de loop_state_log)
+            ref_rows = self._con.execute(
+                "SELECT ref_id, cycle_round, observed_at "
+                "FROM referenced_but_not_fetched ORDER BY observed_at"
+            ).fetchall()
+            for ref_id_val, cycle_round_val, observed_at_val in ref_rows:
+                new_backend._con.execute(
+                    "INSERT INTO referenced_but_not_fetched "
+                    "(ref_id, cycle_round, observed_at) VALUES (?, ?, ?)",
+                    [ref_id_val, cycle_round_val, observed_at_val],
                 )
             return new_backend
         else:
@@ -635,6 +662,62 @@ class DuckDBBackend:
             "INSERT INTO loop_state_log (state, round) VALUES (?, ?)",
             [state.value, current_round],
         )
+
+    # ------------------------------------------------------------------
+    # Extensiones propias: referenced_but_not_fetched (#54)
+    # ------------------------------------------------------------------
+
+    def add_referenced_refs(self, ref_ids: list[str], *, cycle_round: int) -> int:
+        """Appendea IDs backward observados a ``referenced_but_not_fetched``.
+
+        No duplica IDs ya presentes (idempotencia basada en existencia): solo
+        inserta los que aún no están en la tabla, independientemente del
+        ``cycle_round``.  El ``observed_at`` lo provee ``now()`` de DuckDB.
+
+        Args:
+            ref_ids: IDs de OpenAlex observados en backward chaining.
+            cycle_round: Número de ronda del ciclo en curso.
+
+        Returns:
+            Número de IDs nuevos insertados (0 si todos ya existían).
+        """
+        if not ref_ids:
+            return 0
+        # IDs ya presentes (cualquier ronda — el contrato es append sin duplicar).
+        existing_rows = self._con.execute(
+            "SELECT ref_id FROM referenced_but_not_fetched"
+        ).fetchall()
+        existing: set[str] = {r[0] for r in existing_rows}
+        new_ids = [rid for rid in ref_ids if rid not in existing]
+        for rid in new_ids:
+            self._con.execute(
+                "INSERT INTO referenced_but_not_fetched (ref_id, cycle_round) "
+                "VALUES (?, ?)",
+                [rid, cycle_round],
+            )
+        return len(new_ids)
+
+    def referenced_refs_count(self) -> int:
+        """Número de IDs en ``referenced_but_not_fetched``.
+
+        Returns:
+            Conteo total de filas en la tabla auxiliar.
+        """
+        row = self._con.execute(
+            "SELECT COUNT(*) FROM referenced_but_not_fetched"
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def referenced_refs(self) -> list[str]:
+        """Lista de IDs en ``referenced_but_not_fetched``, ordenados por ``observed_at``.
+
+        Returns:
+            Lista de ``ref_id`` en orden de inserción.
+        """
+        rows = self._con.execute(
+            "SELECT ref_id FROM referenced_but_not_fetched ORDER BY observed_at"
+        ).fetchall()
+        return [r[0] for r in rows]
 
     # ------------------------------------------------------------------
     # Extensión: query SQL libre

@@ -353,16 +353,30 @@ class InMemoryBackend:
 
     Semántica de valor: todas las operaciones mutantes devuelven una nueva
     instancia; la original no cambia nunca.
+
+    #54: almacena también los IDs backward observados en ``_referenced_refs``
+    (lista en memoria, equivalente a la tabla ``referenced_but_not_fetched``
+    de ``DuckDBBackend``).
     """
 
-    def __init__(self, table: pa.Table) -> None:
+    def __init__(
+        self,
+        table: pa.Table,
+        *,
+        referenced_refs: list[str] | None = None,
+    ) -> None:
         """Constructor interno.
 
         Args:
             table: Tabla Arrow con el schema canónico (debe estar validada
                 antes de construir el backend).
+            referenced_refs: Lista de IDs ya registrados en la tabla auxiliar
+                ``referenced_but_not_fetched`` (para clonar el estado en
+                operaciones que devuelven una nueva instancia).
         """
         self._table = table
+        # #54: IDs backward observados, en orden de inserción, sin duplicados.
+        self._referenced_refs: list[str] = list(referenced_refs or [])
 
     # ------------------------------------------------------------------
     # TabularBackend protocol
@@ -387,7 +401,9 @@ class InMemoryBackend:
         """
         existing = self._table.to_pylist()
         existing.append(row)
-        return InMemoryBackend(_rows_to_table(existing))
+        return InMemoryBackend(
+            _rows_to_table(existing), referenced_refs=self._referenced_refs
+        )
 
     def merge(self, other_table: pa.Table) -> InMemoryBackend:
         """Fusiona ``other_table`` respetando D3 y devuelve una nueva instancia.
@@ -422,7 +438,9 @@ class InMemoryBackend:
             if id_ not in rows_self:
                 result_rows.append(row)
 
-        return InMemoryBackend(_rows_to_table(result_rows))
+        return InMemoryBackend(
+            _rows_to_table(result_rows), referenced_refs=self._referenced_refs
+        )
 
     def apply_curation(
         self,
@@ -450,7 +468,9 @@ class InMemoryBackend:
         updated = _apply_curation_to_rows(
             self._table.to_pylist(), ids, action, by, decided_at
         )
-        return InMemoryBackend(_rows_to_table(updated))
+        return InMemoryBackend(
+            _rows_to_table(updated), referenced_refs=self._referenced_refs
+        )
 
     def filter_view(self, view: Literal["seeds", "candidates", "accepted"]) -> pa.Table:
         """Devuelve la tabla filtrada según la vista pedida.
@@ -497,3 +517,42 @@ class InMemoryBackend:
         if not isinstance(other, InMemoryBackend):
             return False
         return self.corpus_hash() == other.corpus_hash()
+
+    # ------------------------------------------------------------------
+    # Extensiones: referenced_but_not_fetched (#54)
+    # ------------------------------------------------------------------
+
+    def add_referenced_refs(self, ref_ids: list[str], *, cycle_round: int) -> int:
+        """Appendea IDs backward observados a la tabla auxiliar en memoria.
+
+        Solo inserta los que aún no están (idempotente).  ``cycle_round`` se
+        acepta por compatibilidad con el protocolo pero no se persiste en
+        memoria (el backend en memoria no necesita auditoría de ronda).
+
+        Args:
+            ref_ids: IDs de OpenAlex observados en backward chaining.
+            cycle_round: Número de ronda del ciclo en curso (ignorado en memoria).
+
+        Returns:
+            Número de IDs nuevos insertados.
+        """
+        existing = set(self._referenced_refs)
+        new_ids = [rid for rid in ref_ids if rid not in existing]
+        self._referenced_refs.extend(new_ids)
+        return len(new_ids)
+
+    def referenced_refs_count(self) -> int:
+        """Número de IDs en la tabla auxiliar.
+
+        Returns:
+            Conteo total.
+        """
+        return len(self._referenced_refs)
+
+    def referenced_refs(self) -> list[str]:
+        """Lista de IDs en la tabla auxiliar, en orden de inserción.
+
+        Returns:
+            Lista de ``ref_id``.
+        """
+        return list(self._referenced_refs)

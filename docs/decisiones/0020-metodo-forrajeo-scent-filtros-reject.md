@@ -278,3 +278,66 @@ semántica.
 
 > **Decidido por:** AS-BUILT verificado del #21 (2026-06-16, rama `feat/forager-cap-batching`); gate
 > verde, 422 tests. Ver `API.md` §5 y §2 (`fetch_citing_batch`).
+
+## AS-BUILT — 2026-06-17 (#54: el backward deja de persistir placeholders; revierte el "no contaminan" de la decisión B)
+
+> El cuerpo del ADR (decisión **B**) afirmaba que los candidatos backward se materializan como
+> **stubs id-only** en el corpus (título placeholder `[candidate:{id}]`, resto nulo) y que **"no
+> contaminan las redes"**. **Esa afirmación era FALSA** y este AS-BUILT la corrige; **no reescribe**
+> el cuerpo histórico (queda como rastro del error). Gate verde, **636 tests**; verifier PASA. Rama
+> `fix/backward-chaining-no-placeholders`.
+
+### El "no contaminan" era falso — los stubs SÍ contaminaron
+
+Las sesiones de QA con datos reales lo destaparon ([Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md),
+[Nota 12](../Notas/12-continuacion-sesion-valoraciones.md), "el bug de fondo del Forager"): los stubs
+`[candidate:W...]` **sí contaminaron**. Llegaron a ser **~la mitad del corpus** (filas-fantasma sin
+metadata real) y, peor, **entraron al `corpus_hash`** (eran filas del `corpus`, no ruido externo) —
+rompiendo la reproducibilidad y las redes legibles. La promesa de "curables/enriquecibles después"
+nunca tuvo un materializador que la sostuviera (la deuda quedó abierta como #71).
+
+### Opción B implementada — observar sin materializar
+
+El backward chaining **ya NO crea filas-fantasma en el corpus**. Los IDs observados (los candidatos
+que el ranking backward detecta) se exponen por **`RankedCandidates.observed_refs: list[str]`** (campo
+nuevo, en orden de ranking, respetando `max_candidates`) y se persisten en una **tabla append-only
+hermana, `referenced_but_not_fetched`** (par de `loop_state_log`, **fuera** de la tabla `corpus`). El
+ranking backward sobrevive intacto en `RankedCandidates.ranking`; se eliminó `_build_backward_candidate_row`.
+
+- **Protocol `TabularBackend`** (`backends/base.py`): tres métodos nuevos —
+  `add_referenced_refs(ref_ids, *, cycle_round)` (idempotente por existencia de `ref_id`),
+  `referenced_refs_count()`, `referenced_refs()`—, implementados por `DuckDBBackend` (DDL + migración
+  liviana + copia en snapshot/`_clone`; `observed_at` vía el `now()` del backend) e `InMemoryBackend`.
+- **`b2g chain`** persiste los `observed_refs` en la tabla (con `cycle_round`) y suma
+  `observed_refs_count` al envelope JSON. **`b2g status`** suma el campo aditivo `referenced_not_fetched`
+  (`schema="1"` intacto).
+
+### `corpus_hash` y materialización on-demand
+
+El **`corpus_hash` NO incluye los observados** (viven en la tabla hermana, no en `corpus`): esto
+**arregla la contaminación previa del hash** (antes los fantasmas SÍ entraban). El materializador
+on-demand —rehidratar un observado a fila real del corpus vía `fetch_works_by_ids` (#55) cuando el
+humano lo pida— está **diferido a #71** (NO construido en #54).
+
+### Coherencia con otros ADR
+
+- **NO toca [ADR 0013](0013-identidad-hash-merge-corpus.md):** el schema del `corpus` queda intacto;
+  `referenced_but_not_fetched` es una tabla aparte, no una columna nueva.
+- **Coherente con [ADR 0017](0017-reproducibilidad-historia-snapshot.md):** los IDs observados son
+  **estado** (qué vio el forrajeo), **no contenido bibliográfico** → fuera del `corpus_hash`, igual que
+  la procedencia y los timestamps. La identidad sigue siendo solo el contenido curado.
+
+### Seguimiento — el forward tiene el MISMO footgun (#78, NO arreglado en #54)
+
+El verifier confirmó que el **forward chaining arrastra el mismo problema**:
+`_build_forward_candidate_row` materializa filas con **título placeholder `[candidate:W...]`** (IDs de
+citantes sin metadata completa). #54 **solo arregló el backward**; el forward queda **abierto como
+issue #78**. Honestidad de estado: el forward **NO está limpio** — sigue poniendo placeholders de
+título en el corpus.
+
+**Lo que NO cambia:** backward = co-citación con el corpus (puro/local), forward = citación directa,
+filtros `rejected` (C), `apply_thesaurus` (D), `depth=1`, desempate por `id`, "solo el Forager toca la
+red".
+
+> **Decidido por:** AS-BUILT verificado del #54 (2026-06-17, rama `fix/backward-chaining-no-placeholders`);
+> gate verde, 636 tests, verifier PASA. Ver `API.md` §5 (`observed_refs`) y §4 (`referenced_but_not_fetched`).

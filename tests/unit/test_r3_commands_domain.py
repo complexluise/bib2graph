@@ -92,7 +92,10 @@ def _make_noop_transport() -> Any:
 
 
 def _make_empty_forage_result() -> Any:
-    """Resultado de foraging vacío compatible con run_chain (Forager.chain mock)."""
+    """Resultado de foraging vacío compatible con run_chain (Forager.chain mock).
+
+    Incluye ``observed_refs`` (campo #54) para que run_chain no falle al accederlo.
+    """
     from bib2graph.corpus import Corpus
 
     empty = Corpus.from_arrow(
@@ -105,6 +108,7 @@ def _make_empty_forage_result() -> Any:
     class _FakeResult:
         corpus = empty
         ranking: ClassVar[list[Any]] = []
+        observed_refs: ClassVar[list[str]] = []
 
     return _FakeResult()
 

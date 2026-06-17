@@ -144,3 +144,33 @@ class TabularBackend(Protocol):
     def __eq__(self, other: object) -> bool:
         """Igualdad canónica por ``corpus_hash`` (D2)."""
         ...
+
+    def add_referenced_refs(self, ref_ids: list[str], *, cycle_round: int) -> int:
+        """Appendea IDs backward observados a ``referenced_but_not_fetched`` (#54).
+
+        Solo inserta los IDs que aún no están en la tabla (idempotente).
+
+        Args:
+            ref_ids: IDs de OpenAlex observados en backward chaining.
+            cycle_round: Número de ronda del ciclo en curso.
+
+        Returns:
+            Número de IDs nuevos insertados.
+        """
+        ...
+
+    def referenced_refs_count(self) -> int:
+        """Número de IDs en ``referenced_but_not_fetched``.
+
+        Returns:
+            Conteo total de filas en la tabla auxiliar.
+        """
+        ...
+
+    def referenced_refs(self) -> list[str]:
+        """Lista de IDs en ``referenced_but_not_fetched``, en orden de inserción.
+
+        Returns:
+            Lista de ``ref_id``.
+        """
+        ...

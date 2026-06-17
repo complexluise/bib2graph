@@ -196,7 +196,10 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
   `workspace: {root, source}` (la raíz resuelta y de dónde salió — flag/env/cwd); `schema="1"`
   intacto. **AS-BUILT #32 (2026-06-17):** suma también el campo aditivo `networks_cache_stale: bool`
   (+ `warnings` accionable cuando la cache de `networks/` quedó obsoleta respecto al corpus vivo;
-  avisa, NO regenera — ver §`build`/`export`/`snapshot` abajo). `inspect`, `validate`.
+  avisa, NO regenera — ver §`build`/`export`/`snapshot` abajo). **AS-BUILT #54 (2026-06-17):** `status`
+  suma el campo aditivo `referenced_not_fetched` (nº de IDs que el backward chaining observó sin
+  materializar — tabla `referenced_but_not_fetched`, §4/§5; `schema="1"` intacto), y `b2g chain` suma
+  `observed_refs_count` a su envelope JSON. `inspect`, `validate`.
 - **`seed`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md), Ciclo 9a + Ciclo
   10 AS-BUILT 2026-06-17): tiene **exactamente TRES modos mutuamente excluyentes** (exactamente uno
   requerido; pasar más de uno o ninguno → error de uso, exit 1):
@@ -647,7 +650,23 @@ class TabularBackend(Protocol):
     def corpus_hash(self) -> str: ...        # D2, order-independent, sobre el contenido
     def __len__(self) -> int: ...
     def __eq__(self, other: object) -> bool: ...   # igualdad canónica por corpus_hash (D2)
+
+    # AS-BUILT #54 (2026-06-17): tabla hermana `referenced_but_not_fetched` (append-only, par de
+    # loop_state_log) — los IDs que el backward chaining OBSERVA sin materializar en el corpus (§5).
+    # FUERA de la tabla `corpus` y del corpus_hash (son estado, no contenido; ADR 0017).
+    def add_referenced_refs(self, ref_ids: list[str], *, cycle_round: int) -> "TabularBackend": ...
+        # Registra IDs observados (idempotente por existencia de `ref_id`; observed_at = now() del backend).
+    def referenced_refs_count(self) -> int: ...    # nº de IDs observados distintos
+    def referenced_refs(self) -> pa.Table: ...     # los IDs observados (ref_id, cycle_round, observed_at)
 ```
+
+> **AS-BUILT #54 (2026-06-17) — `referenced_but_not_fetched`.** El backward chaining (§5) dejó de
+> crear filas-fantasma `[candidate:W...]` en el `corpus`. Sus IDs observados se registran en esta
+> tabla append-only (hermana de `loop_state_log`), implementada por `DuckDBBackend` (DDL + migración
+> liviana + copia en snapshot/`_clone`) e `InMemoryBackend`. **No entra al `corpus_hash`** (tabla
+> aparte, no columna del corpus → no toca el schema de [ADR 0013](decisiones/0013-identidad-hash-merge-corpus.md);
+> coherente con [ADR 0017](decisiones/0017-reproducibilidad-historia-snapshot.md): es estado, no
+> contenido). Materializar un observado a fila real vía `fetch_works_by_ids` (#55) está diferido a #71.
 
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
@@ -850,8 +869,11 @@ persistente.
 
 El contrato `TabularBackend` (Protocol) y su firma completa viven en **§1.4** (núcleo): `to_arrow`,
 `add_paper`, `merge(other_table: pa.Table)`, `apply_curation(ids, *, action, by)`, `filter_view`,
-`corpus_hash`, `__len__`, `__eq__`. El `DuckDBBackend` lo implementa en SQL (Hito 3); el `Store` de
-abajo es la costura de persistencia/intercambio **externa**, distinta del backend del `Corpus`.
+`corpus_hash`, `__len__`, `__eq__` y —AS-BUILT #54 (2026-06-17)— `add_referenced_refs(ref_ids, *,
+cycle_round)`/`referenced_refs_count()`/`referenced_refs()` (tabla hermana append-only
+`referenced_but_not_fetched`, fuera del `corpus_hash`; §1.4 + §5). El `DuckDBBackend` lo implementa en
+SQL (Hito 3); el `Store` de abajo es la costura de persistencia/intercambio **externa**, distinta del
+backend del `Corpus`.
 
 ```python
 class Store(Protocol):
@@ -952,6 +974,13 @@ El comando `b2g status` consume `loop_state()`/`loop_round()`/`available_transit
 > proyección** (puro), nunca al revés. El producto **no usa IA generativa**.
 > `explain_candidate`/`foraging/explain.py`/`[llm]` quedaron **eliminados**.
 
+> **AS-BUILT #54 (2026-06-17) — ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)
+> §AS-BUILT #54:** el backward chaining **deja de persistir placeholders** en el corpus. Los IDs
+> observados salen por `RankedCandidates.observed_refs` y se persisten en la tabla hermana
+> `referenced_but_not_fetched` (§4), **fuera del `corpus_hash`** (arregla la contaminación previa).
+> El **forward arrastra el mismo footgun** (placeholder de título), abierto como **#78** — NO está
+> limpio. Materializador on-demand diferido a #71. Gate verde, 636 tests.
+
 El *information scent* es **estructura bibliométrica de cita con el corpus** (ADR
 [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md), AS-BUILT R4). Es una **función pura**
 sobre el primitivo `collect_item_to_papers` (índice `{ref → corpus-papers que lo citan}`):
@@ -1006,8 +1035,15 @@ class GrowthPreview(BaseModel):
     forward_requires_fetch: bool = False   # True si se pidió forward/both → forward desconocido sin red
 
 class RankedCandidates(BaseModel):
-    corpus: Corpus                     # SOLO los candidatos nuevos (no mergeado con el corpus semilla)
+    corpus: Corpus                     # SOLO los candidatos nuevos (no mergeado con el corpus semilla).
+                                       # Forward: materializa filas (placeholder de título, ver #78).
+                                       # Backward (#54): NO materializa filas — observa, ver observed_refs.
     ranking: list[tuple[str, float]]   # (id, information_scent), desc scent / asc id
+    observed_refs: list[str] = []      # AS-BUILT #54 (2026-06-17): IDs observados por el backward SIN
+                                       # materializarlos en .corpus (orden de ranking, respeta
+                                       # max_candidates). El backward observa; el forward materializa.
+                                       # b2g chain los persiste en `referenced_but_not_fetched` (§4),
+                                       # fuera del corpus_hash. Materializar = diferido a #71.
 
 # RETIRADO (ADR 0022): `explain_candidate` y el extra `[llm]` se ELIMINAN del producto.
 # El producto no usa IA generativa. El "porqué" de un candidato lo explica la ESTRUCTURA
@@ -1043,9 +1079,17 @@ class RankedCandidates(BaseModel):
 - **`fetch_citing` (singular) con retry/backoff** ante 429/5xx (`_fetch_all_with_retry`: exponential
   backoff, 3 intentos) sigue disponible; el forward del Forager lo consume ahora vía la variante
   **batcheada** `fetch_citing_batch`.
-- **Candidatos backward = stubs id-only**: título placeholder `[candidate:{id}]`, `openalex_id`
-  poblado, resto nulo, `is_seed=False`, `curation_status='candidate'`, `provenance` con
-  `chaining_hop=1`. No contaminan las redes; son curables/enriquecibles después (gap conocido).
+- **AS-BUILT (#54, 2026-06-17) — el backward NO materializa stubs: observa sin contaminar.** El
+  backward chaining **ya no crea filas-fantasma `[candidate:W...]` en el corpus** (revierte el
+  comportamiento de Hito 5 — la promesa de "no contaminan" era **falsa**: los stubs llegaron a ser
+  ~la mitad del corpus y entraban al `corpus_hash`; Notas 09/12). Los IDs observados por el ranking
+  backward salen por **`RankedCandidates.observed_refs: list[str]`** (orden de ranking, respeta
+  `max_candidates`) y `b2g chain` los persiste en la tabla hermana **`referenced_but_not_fetched`**
+  (§4), **fuera** del `corpus` y del `corpus_hash`. La materialización on-demand (rehidratar un
+  observado a fila real vía `fetch_works_by_ids`, #55) está **diferida a #71**. El **forward sí sigue
+  materializando** filas en `.corpus` —y con el MISMO footgun de placeholder de título
+  `[candidate:W...]` (IDs de citantes sin metadata completa): **el forward NO está limpio**, abierto
+  como **#78**—.
 - **`preview` y `chain` no mutan** el corpus de entrada (semántica de valor).
 
 ---
@@ -1506,6 +1550,8 @@ forager = Forager(OpenAlexSource(email="luis@sostaina.com"), depth=1, max_candid
 prev = forager.preview(seed.corpus)                     # backward exacto; forward → chain
 print(prev.estimated_new, prev.forward_requires_fetch)  # p. ej. 142  True
 ranked = forager.chain(seed.corpus)                     # forward fetchea citantes
+# AS-BUILT #54: el backward observa sin materializar → ranked.observed_refs (no van a ranked.corpus);
+# el forward sí materializa filas (placeholder de título, #78). Ver §5.
 
 # 3') Curar lo forrajeado, normalizar y aplicar el thesaurus multilingüe determinista
 corpus = seed.corpus.merge(ranked.corpus).accept(ids=[...]).reject(ids=[...])

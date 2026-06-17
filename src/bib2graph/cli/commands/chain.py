@@ -99,7 +99,9 @@ def run_chain(
         # decorador @handle_errors las captura por tipo y emite exit 4.
         # AttributeError genuino se propaga limpio (no se disfraza de exit 3).
 
-        # Merge de candidatos en el corpus
+        # Merge de candidatos forward materializados en el corpus.
+        # Los IDs backward (ranked.observed_refs) NO van al corpus — se persisten
+        # en la tabla auxiliar ``referenced_but_not_fetched`` (#54, opción B).
         merged = corpus.merge(ranked.corpus)
         candidates_found = len(ranked.corpus)
         total_papers = len(merged)
@@ -108,6 +110,15 @@ def run_chain(
         ]
         merged_backend_close = getattr(merged._backend, "close", None)
         store.persist(merged)
+
+        # #54: persistir IDs backward observados en la tabla auxiliar.
+        # El backend del store (DuckDBBackend) ya tiene add_referenced_refs;
+        # el InMemoryBackend lo implementa también para tests.
+        if ranked.observed_refs:
+            store.backend.add_referenced_refs(
+                ranked.observed_refs, cycle_round=new_round
+            )
+
         store.backend.set_loop_state(new_state, cycle_round=new_round)
     finally:
         # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
@@ -122,6 +133,7 @@ def run_chain(
         "direction": direction,
         "depth": depth,
         "ranking_preview": ranking_preview,
+        "observed_refs_count": len(ranked.observed_refs),
     }
 
 
