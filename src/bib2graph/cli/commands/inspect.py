@@ -14,7 +14,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
-from bib2graph.cli._store import open_store
+from bib2graph.cli._store import open_store, resolve_library_path
 from bib2graph.constants import Col
 
 # ---------------------------------------------------------------------------
@@ -138,7 +138,7 @@ def inspect_cmd(
     Sin --id: muestra el manifest y conteos.
     Con --id: muestra datos + provenance de ese paper.
     """
-    store_path = ctx.obj["store"]
+    store_path = resolve_library_path(ctx.obj)
     data = run_inspect(store_path, paper_id=paper_id)
 
     if json_output:

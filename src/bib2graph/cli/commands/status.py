@@ -11,9 +11,9 @@ R3: el mapa honesto del lazo (ADR 0016 enmendado).  Muestra:
 - contador de ronda,
 - conteos por curation_status.
 
-El envelope ``--json`` incluye ``curation_available`` y ``round`` como campos
-ADITIVOS que mantienen ``schema="1"`` (decisión del PO 2026-06-16: campos
-nuevos no rompen a los agentes, no se bumpea).
+ADR 0029 (aditivo): el envelope incluye ``workspace`` con el workspace
+resuelto (root, source) para que el agente sepa de dónde salió la biblioteca.
+Mantiene ``schema="1"`` (campos nuevos son aditivos, no rompen agentes).
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
-from bib2graph.cli._store import open_store_readonly
+from bib2graph.cli._store import open_store_readonly, resolve_workspace
 from bib2graph.cycle import CURATION_ACTIONS, available_transitions
 
 # ---------------------------------------------------------------------------
@@ -123,9 +123,19 @@ def status_cmd(
     - Estado actual y transiciones disponibles (incluyendo reseed).
     - accept/reject como acciones siempre-disponibles (curación transversal).
     - Contador de ronda.
+    - ADR 0029: workspace resuelto (root y fuente de resolución).
     """
-    store_path = ctx.obj["store"]
+    # ADR 0029: resolver workspace para obtener library_path + info de origen
+    ws = resolve_workspace(ctx.obj)
+    store_path = ws.library_path
+
     data = run_status(store_path)
+
+    # Agregar info del workspace (campo aditivo, schema="1" se mantiene)
+    data["workspace"] = {
+        "root": str(ws.root) if ws.root is not None else None,
+        "source": ws.source,
+    }
 
     if json_output:
         envelope = build_envelope(
@@ -150,3 +160,5 @@ def status_cmd(
         emit_human(
             f"Curación (siempre disponible): {', '.join(data['curation_available'])}"
         )
+        ws_root = data["workspace"]["root"] or "(modo degenerado)"
+        emit_human(f"Workspace: {ws_root} (resuelto vía {data['workspace']['source']})")

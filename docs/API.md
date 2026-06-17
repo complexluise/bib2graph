@@ -57,6 +57,13 @@
 > **co-citación es end-to-end**: `enrich` puebla `cited_by_id` desde las semillas aceptadas (vía
 > `OpenAlexSource.fetch_citing_batch`, §2) y `Networks.quick` devuelve **4 o 5 redes** según haya
 > `cited_by_id` (§10). Flag `--max-citing`. **Hito 8 completo.**
+>
+> **Sincronizado con el workspace — ADR [0029](decisiones/0029-workspace-por-investigacion.md)
+> (AS-BUILT, 2026-06-16):** la unidad de persistencia es un **workspace = carpeta** (`workspace.json`
+> + `library.duckdb` + `networks/`/`snapshots/`/`exports/`). `--store` pasó a **opcional** y se agregó
+> **`--workspace`** (ambos opcionales, mutuamente excluyentes) con **resolución ambiente** (flag > env
+> `B2G_WORKSPACE` > walk-up del cwd). Suma el **14° subcomando `init`**. El `.duckdb` suelto sigue
+> válido (workspace degenerado). Ver §convenciones CLI.
 
 ## Convenciones
 
@@ -73,12 +80,14 @@ El CLI `b2g` (paquete `bib2graph.cli`, entry point `b2g = "bib2graph.cli:main"`)
 **construido** con el contrato del ADR [0021](decisiones/0021-cli-agente-native-contrato.md). Cada
 subcomando lleva `--json` (envelope estable/versionado) y exit codes (`0` éxito · `1` uso · `2`
 datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado). **Sin estado entre
-invocaciones:** el estado vive en el archivo `.duckdb` (opción global `--store`).
+invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opciones globales
+**opcionales** `--workspace`/`--store`, ver abajo).
 
-**Set de 13 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+**Set de 14 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
 y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
 pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
-[0025](decisiones/0025-enricher-cocitacion-openalex.md)):
+[0025](decisiones/0025-enricher-cocitacion-openalex.md); el 14° `init` con el workspace, ADR
+[0029](decisiones/0029-workspace-por-investigacion.md)):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -86,7 +95,9 @@ pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
   es el FSM cíclico `SEEDED/FORAGED/FILTERED/BUILT/MONITORED` (dominio en `bib2graph.cycle`) con
   **`reseed`**/contador de ronda; `status` **muestra `accept`/`reject` como acción siempre-disponible**
   (`curation_available`, curación transversal) + la **ronda** (`round`), campos aditivos que mantienen
-  `schema="1"`. `inspect`, `validate`.
+  `schema="1"`. **AS-BUILT workspace (ADR 0029):** `status` suma el campo aditivo
+  `workspace: {root, source}` (la raíz resuelta y de dónde salió — flag/env/cwd); `schema="1"`
+  intacto. `inspect`, `validate`.
 - **`accept`** / **`reject`** (decisión del PO, ADR 0021 §A): curación programática por `--ids`,
   ahora **subcomandos CLI de primera clase** (no solo API de librería), para que un agente cure la
   biblioteca viva por subprocess (historia C4). La **curación interactiva rica (`curate`) y la GUI
@@ -109,10 +120,23 @@ pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
   fetch), `--json`. `data` = `{enriched, references_resolved, ...}`. **NO transiciona el
   `CycleState`** (ortogonal al lazo): se puede enriquecer en cualquier estado sin perturbar el FSM.
   `build` sigue puro/sin red.
+- **`init`** (ADR [0029](decisiones/0029-workspace-por-investigacion.md)): **scaffold de un
+  workspace**. `b2g init <name>` crea `<name>/` con `workspace.json` + `library.duckdb` +
+  `networks/`/`snapshots/`/`exports/`; **`b2g init .`** inicializa el cwd. Si la carpeta ya es un
+  workspace → error (`WorkspaceExistsError`). **NO transiciona** el `CycleState`. `data` =
+  `{root, name, ...}`; `--json` con `schema="1"`.
 
-**`--store` global (obligatoria).** Va en el grupo `b2g`, **antes** del subcomando:
-`b2g --store mi.duckdb seed --equation "..."`. Una investigación = un archivo `.duckdb` (ADR
-0015/0016). El CLI es stateful **vía archivo**, no vía proceso.
+**`--workspace` / `--store` globales (ambos OPCIONALES, mutuamente excluyentes).** Van en el grupo
+`b2g`, **antes** del subcomando. Una investigación = un **workspace** (carpeta marcada por
+`workspace.json`; ADR [0029](decisiones/0029-workspace-por-investigacion.md), AS-BUILT). El estado
+vive en su `library.duckdb`; el CLI es stateful **vía archivo**, no vía proceso.
+
+- **`--workspace <carpeta>`** apunta a la raíz de un workspace; **`--store <archivo.duckdb>`** apunta
+  a un `.duckdb` suelto (**workspace degenerado**, retrocompatible — los artefactos caen en su dir
+  hermano). Pasarlos **juntos** = error de uso (exit 1).
+- **Resolución ambiente** cuando no se pasa ninguno (patrón git/cargo), precedencia de mayor a menor:
+  (1) `--workspace`/`--store` explícito, (2) `B2G_WORKSPACE` (variable de entorno), (3) **walk-up**
+  del cwd buscando `workspace.json`. Sin ninguno → **error accionable** que sugiere `b2g init`.
 
 **`build` y `export` separados** (decisión del PO, ADR 0021 §B): `build` computa `Networks.quick`
 (4 redes) y escribe artefactos a `<store_dir>/networks/<kind>/` (+ transiciona a `BUILT`);
@@ -150,8 +174,9 @@ faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` co
 `hasattr` en el comando** (p. ej. `chain` antes del `Forager`). Un `AttributeError` inesperado se
 propaga limpio.
 
-**Borde: el error de uso sale SIN envelope.** Si falta `--store` (u otra opción requerida), Click
-aborta el parseo **antes** de entrar al comando: se emite el mensaje de uso de Click en **stderr** y
+**Borde: el error de uso sale SIN envelope.** Ante un error de uso (p. ej. `--workspace` y `--store`
+juntos, una opción requerida faltante, o ningún store/workspace resoluble), Click aborta el parseo
+**antes** de entrar al comando: se emite el mensaje de uso de Click en **stderr** y
 exit code `1`, **sin** envelope JSON. El envelope versionado solo cubre errores que ocurren
 **dentro** de la ejecución del comando.
 
@@ -1032,22 +1057,29 @@ for s in steps:
 
 ### 12.3 Por CLI agente-native (Hito 6 — construido)
 
-El mismo flujo, sin escribir Python, vía `b2g` (`--store` global, una línea JSON por comando):
+El mismo flujo, sin escribir Python, vía `b2g`: se **inicia el workspace una vez** y, trabajando
+**dentro** de su carpeta, los comandos se resuelven por ambiente (sin `--store` repetido). Una línea
+JSON por comando:
 
 ```bash
-b2g --store biblioteca.duckdb seed --equation '"unequal ecological exchange"' --email luis@sostaina.com --json
-b2g --store biblioteca.duckdb chain --direction both --max-candidates 300 --json
-b2g --store biblioteca.duckdb filter --year-gte 2010 --language en --language es --json
-b2g --store biblioteca.duckdb accept --ids oa:abc123 --ids oa:def456 --json
-b2g --store biblioteca.duckdb build --json
-b2g --store biblioteca.duckdb export --format graphml --out-dir redes/ --json
-b2g --store biblioteca.duckdb status --json     # CycleState + round + curation_available + conteos
+b2g init ied                                    # crea ./ied/ (workspace.json + library.duckdb + networks/…)
+cd ied                                           # a partir de acá el workspace se resuelve por cwd
+b2g seed --equation '"unequal ecological exchange"' --email luis@sostaina.com --json
+b2g chain --direction both --max-candidates 300 --json
+b2g filter --year-gte 2010 --language en --language es --json
+b2g accept --ids oa:abc123 --ids oa:def456 --json
+b2g build --json                                 # escribe networks/ + sella networks/.corpus_hash
+b2g export --format graphml --out-dir redes/ --json
+b2g status --json     # CycleState + round + curation_available + workspace + conteos
 ```
+
+Retrocompat: `b2g --store biblioteca.duckdb seed …` (sin `init`, `.duckdb` suelto = workspace
+degenerado) sigue siendo válido.
 
 El **modo declarativo** (`b2g ... --spec redes.yaml`, `NetworkSpec` desde YAML) es del **Hito 9**
 (v0.3+), **no construido todavía**:
 
 ```bash
-# Hito 9 (futuro): pipeline declarativo desde un YAML versionable
-b2g --store biblioteca.duckdb networks --spec redes.yaml --json
+# Hito 9 (futuro): pipeline declarativo desde un YAML versionable (dentro del workspace)
+b2g networks --spec redes.yaml --json
 ```

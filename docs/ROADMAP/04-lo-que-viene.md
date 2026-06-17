@@ -177,13 +177,17 @@ No se prometen ni se cablean clientes que no se usan.
 
 ## Backlog / ideas pendientes (sin hito ni DoD todavía)
 
-- **Workspace por investigación:** cada investigación = una carpeta auto-contenida (la
-  `.duckdb` + `networks/` + snapshots/exports/artefactos), en vez de un `.duckdb` suelto.
-  Evoluciona el modelo "una investigación = un archivo" (ADR
-  [0009](../decisiones/0009-biblioteca-viva-duckdb.md) /
-  [0019](../decisiones/0019-concurrencia-diferida.md)). Encaja con la GUI local
-  ([Nota 07](../Notas/07-frontend-tool-for-thought.md)). Pendiente de diseño (probable ADR
-  que enmiende 0009/0019).
+- **Workspace por investigación · ✅ HECHO (2026-06-16, ADR
+  [0029](../decisiones/0029-workspace-por-investigacion.md); issues #32/#38/#39):** cada investigación
+  = una carpeta auto-contenida (`workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/
+  `exports/`), en vez de un `.duckdb` suelto. Evolucionó el modelo "una investigación = un archivo"
+  (enmienda a ADR [0009](../decisiones/0009-biblioteca-viva-duckdb.md) /
+  [0019](../decisiones/0019-concurrencia-diferida.md)). Construido: módulo `workspace.py`, **14°
+  subcomando `b2g init`**, `--store` opcional + `--workspace` con resolución ambiente; el `.duckdb`
+  suelto sigue válido (workspace degenerado). Prerequisito de la epic GUI local
+  ([#34](https://github.com/complexluise/bib2graph/issues/34),
+  [Nota 07](../Notas/07-frontend-tool-for-thought.md)). **Fuera de este corte:** `snapshot`/`export`
+  aún con `--out-dir` explícito; staleness solo sella el hash (sin aviso/regeneración automática).
 
 > **RETIRADO del producto (ADR [0022](../decisiones/0022-producto-sin-ia-generativa.md), 2026-06-15):**
 > el **fallback fuzzy/semántico del thesaurus por LLM** y la **"máquina de tensiones"** (la antigua

@@ -29,8 +29,8 @@
   (`DuckDBStore`), `sources/` (`OpenAlexSource`, `BibtexSource`), `foraging/` (`Forager`,
   scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/` con 13 subcomandos en `cli/commands/`, no un
-  placeholder—. **388 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+  El **CLI `b2g` es real** —paquete `cli/` con 14 subcomandos en `cli/commands/`, no un
+  placeholder—. **416 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
 - **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
   [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
   núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
@@ -51,8 +51,21 @@
   Ver `docs/ROADMAP/` (Hitos R1–R5). Tras la remediación se construyeron el **Hito 8** (Enricher
   OpenAlex: refs→DOI + co-citación end-to-end) y el **Hito 7 ✅** (dedup fuzzy determinista
   `rapidfuzz`, extra `[dedup]`: `deduplicate_authors`/`deduplicate_keywords`, función de librería sin
-  CLI; ADR [0026](docs/decisiones/0026-dedup-fuzzy-determinista.md)). **388 tests verdes. PRÓXIMO:
+  CLI; ADR [0026](docs/decisiones/0026-dedup-fuzzy-determinista.md)). **PRÓXIMO:
   Hito 9** (`NetworkSpec` YAML). El entorno se levanta con `uv sync`.
+- **Fundación workspace COMPLETA** (ADR
+  [0029](docs/decisiones/0029-workspace-por-investigacion.md), AS-BUILT 2026-06-16; issues
+  [#32](https://github.com/complexluise/bib2graph/issues/32)/
+  [#38](https://github.com/complexluise/bib2graph/issues/38)/
+  [#39](https://github.com/complexluise/bib2graph/issues/39)): una investigación = un **workspace =
+  carpeta** (`workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/`exports/`). Nuevo módulo
+  `src/bib2graph/workspace.py` (`Workspace`, `WorkspaceManifest`; el núcleo NO importa `duckdb`) +
+  **14° subcomando `b2g init`**. `--store` pasó a **opcional** y se agregó **`--workspace`** (ambos
+  opcionales, mutuamente excluyentes) con **resolución ambiente** (flag > env `B2G_WORKSPACE` >
+  walk-up del cwd buscando `workspace.json`). El `.duckdb` suelto sigue válido (workspace degenerado).
+  `b2g status` suma `workspace: {root, source}`; `b2g build` sella `networks/.corpus_hash`. **416
+  tests verdes**, 14 subcomandos. Flujo: `b2g init <name>` → trabajar **dentro** de la carpeta sin
+  `--store`.
 - Toda la información del producto, la arquitectura, los contratos y la secuencia de
   construcción está en `docs/`. **Leer `docs/ROADMAP/` antes de tocar nada**: cada hito declara
   qué historias del PRD §7 cumple, sus criterios de aceptación (DoD) y los tests TDD que se
@@ -230,8 +243,11 @@ src/bib2graph/
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
-                       # cli/commands/ = 13 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación). CLI = API
+                       # cli/commands/ = 14 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
+                       # init scaffold de workspace —ADR 0029). CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
+  workspace.py         # Workspace (init/open/resolve) + WorkspaceManifest (ADR 0029): la carpeta es la
+                       # unidad de persistencia; resolución ambiente; import perezoso de DuckDBStore
 tests/
   unit/                # tests puros, sin red ni I/O (default)
   integration/         # red / APIs externas / Neo4j; @pytest.mark.integration

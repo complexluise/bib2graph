@@ -1,8 +1,8 @@
 # 0029 — Workspace por investigación: carpeta autocontenida + resolución ambiente
 
-- **Estado:** Propuesta (pendiente de firma del PO; **no implementado**)
+- **Estado:** Aceptada — **AS-BUILT (2026-06-16)** (firmado por el PO e implementado)
 - **Fecha:** 2026-06-16
-- **Enmienda (propuesta por este ADR):** [0009](0009-biblioteca-viva-duckdb.md) y
+- **Enmienda (de este ADR):** [0009](0009-biblioteca-viva-duckdb.md) y
   [0019](0019-concurrencia-diferida.md) — la **unidad de persistencia** pasa de "1 archivo
   `.duckdb`" a "**1 workspace = 1 carpeta**" (el single-writer sobre el `.duckdb` sigue válido);
   [0021](0021-cli-agente-native-contrato.md) §E — `--store` deja de ser opción global
@@ -113,9 +113,34 @@ mi-investigacion/
   aditivo/retrocompatible (la resolución ambiente solo **cubre** el caso en que falta el flag), pero
   toca el contrato público y exige sincronizar `docs/API.md`/`ARCHITECTURE.md` cuando se implemente.
 
-> **PROPUESTA — no implementado (2026-06-16).** Mientras este ADR esté en estado *Propuesta*, el
-> comportamiento **as-built** sigue siendo el de ADR 0009/0019/0021: unidad = `.duckdb`, `--store`
-> global **obligatorio**, sin `b2g init` ni resolución ambiente. El flujo diario (CLAUDE.md /
-> AGENTS.md / CONTRIBUTING.md / referencia del CLI) y los conteos as-built **no** se reescriben hasta
-> que esto se implemente; los marcadores **TARGET** en `ARCHITECTURE.md` describen el objetivo, no el
-> presente.
+## AS-BUILT (2026-06-16)
+
+Implementado y verificado (gate verde, 416 tests). Lo construido en este corte:
+
+- **`src/bib2graph/workspace.py`** — clase `Workspace` (factories `init`/`open`/`resolve`),
+  `WorkspaceManifest` (`{name, created_at, bib2graph_version, schema_version}`) y las excepciones
+  `WorkspaceNotFoundError` / `WorkspaceExistsError`. El **núcleo NO importa `duckdb`**: `DuckDBStore`
+  se importa de forma **perezosa** dentro de `Workspace`.
+- **`b2g init <name>`** (14º subcomando, `cli/commands/init.py`): scaffolds `<name>/` con
+  `workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/`exports/`. **`b2g init .`**
+  inicializa el cwd. Si la carpeta ya es un workspace → error (`WorkspaceExistsError`).
+- **`--store` global pasó a OPCIONAL** y se agregó **`--workspace`** (ambos opcionales). **Resolución
+  ambiente** con precedencia: `--workspace`/`--store` explícito > `B2G_WORKSPACE` (env) > **walk-up**
+  del cwd buscando `workspace.json`. **`--workspace` y `--store` son mutuamente excluyentes**
+  (pasarlos juntos = error de uso). Sin ninguno y sin workspace resoluble → **error accionable** que
+  sugiere `b2g init`.
+- **Retrocompat (workspace degenerado):** `--store archivo.duckdb` suelto sigue válido; los
+  artefactos caen en su dir hermano, como hoy. Sin migración forzada.
+- **`b2g status`:** campo aditivo `workspace: {root, source}` (de dónde se resolvió). `schema="1"`
+  intacto.
+- **`b2g build`:** escribe las redes en `<workspace>/networks/` y **sella** `networks/.corpus_hash`
+  (cache regenerable; el snapshot sigue siendo lo reproducible).
+
+**Fuera de este corte (acotado deliberadamente):**
+
+- **`snapshot`/`export` siguen usando `--out-dir` explícito** — no se redirigen automáticamente a
+  `<workspace>/snapshots/`/`exports/`.
+- **Staleness = solo se sella el hash.** `build` graba `networks/.corpus_hash`, pero **no** hay aún
+  aviso de cache obsoleta ni regeneración automática cuando el `corpus_hash` deja de coincidir; se
+  implementará cuando aparezca la necesidad (la invalidación por hash sigue siendo el modelo, no un
+  build system — ver Consecuencias).
