@@ -205,11 +205,14 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
   Flags ergonómicos de OpenAlex (#14 + #30, **solo con `--equation`/`--spec`**): **`--max-results INT`**
   propaga a `OpenAlexSource(max_results=...)` —sin flag, el default del source = 200— para exploración
   con muestras chicas (Nota 09 B1); **`--exclude TEXT`** (repetible) son **negaciones quirúrgicas**:
-  cada término agrega `AND NOT title_and_abstract.search:"<término>"` al filtro y queda en el
+  cada término se inyecta **dentro** de la única expresión de búsqueda como
+  `title_and_abstract.search:((query) AND NOT "<término>")` (el campo **no se repite**; el `AND NOT`
+  va adentro del paréntesis) y queda en el
   `translation_report` del `SeedResult` (ejercicio consciente, query visible); ignorado con `--native`
   (query cruda); **`--min-year INT`/`--max-year INT`** (Ciclo 10) **filtran de verdad** contra OpenAlex
-  agregando `from_publication_date:<min_year>-01-01` y/o `to_publication_date:<max_year>-12-31` al
-  filtro (sintaxis idiomática de rango, combinada con coma; reportado en el `translation_report`).
+  agregando `from_publication_date:<min_year>-01-01` y/o `to_publication_date:<max_year>-12-31` como
+  predicado de filtro **separado por coma, fuera** de la expresión `search` (sintaxis idiomática de
+  rango; reportado en el `translation_report`).
   Con `--spec`, todos estos parámetros vienen del YAML (paridad 1:1 flag ⇄ campo). **Combinar
   cualquier flag de OpenAlex (`--exclude`/`--max-results`/`--native`/`--email`/`--min-year`/`--max-year`)
   con `--from-bib` → error de uso, exit 1** (falla fuerte, no ignora en silencio). En modo `--native`,
@@ -672,8 +675,9 @@ class Source(Protocol):
     def seed(self, query: str, *, exclude: list[str] | None = None) -> "SeedResult":
         """Siembra desde una ecuación de búsqueda. Devuelve el Corpus + la query ejecutada
         y el reporte de traducción (qué mapeó, qué se aproximó, qué se descartó).
-        `exclude` (negaciones quirúrgicas, opcional): cada término agrega
-        `AND NOT title_and_abstract.search:"<término>"` al filtro y se REPORTA en el
+        `exclude` (negaciones quirúrgicas, opcional): cada término se inyecta DENTRO de la
+        única expresión `title_and_abstract.search:((query) AND NOT "<término>")` (el campo
+        NO se repite) y se REPORTA en el
         translation_report (query visible, ejercicio consciente). Las comillas internas del
         término se sanean. Ignorado con `native=True` (query cruda). Una Source que no siembra
         por ecuación (p. ej. BibtexSource) lanza NotImplementedError."""
@@ -698,7 +702,7 @@ class EquationSpec(BaseModel):
     """Configuración declarativa de una ecuación de búsqueda (ADR 0030).
     model_config = ConfigDict(extra="forbid"): campo desconocido en el YAML → error accionable."""
     query: str                          # requerido (no vacío) — la ecuación de búsqueda
-    exclude: list[str] = []             # #30 — AND NOT title_and_abstract.search:"…" por término
+    exclude: list[str] = []             # #30 — AND NOT "…" DENTRO de la search:((query) AND NOT "…")
     max_results: int | None = None      # #14 — tope (None → default del source, 200)
     native: bool = False                # passthrough crudo a OpenAlex (sin traducción)
     min_year: int | None = None         # DECLARADO, AÚN NO FILTRA (ver nota)
@@ -722,7 +726,7 @@ def load_equation_spec(path: str | Path) -> EquationSpec:
 
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
-| `OpenAlexSource` | **v1 (construido, Hito 4)** | **Referencia/backbone**, sobre `httpx`. Entrega mínimo + enriquecimiento: refs inline + afiliaciones per-autor + instituciones; `cited_by_id` queda **diferido** al chaining/`Enricher` (no se trae en el seed). Traducción **passthrough** —envuelve la ecuación en `title_and_abstract.search:(...)` y **reporta** los límites WoS (NEAR/comodín/tags) sin traducirlos; el traductor WoS→OpenAlex es v0.2. Flag `native=True` (query cruda). **Negaciones (`exclude`, #30):** `seed(..., exclude=[...])` y `_translate(exclude=...)` agregan `AND NOT title_and_abstract.search:"<término>"` por término al filtro y lo **reportan en el `translation_report`** (query visible); comillas internas saneadas; **ignorado con `native=True`**. *(La sintaxis NOT no se validó contra la API real —mock—; es plausible/coherente con el passthrough.)* Credenciales inyectadas (arg → `OPENALEX_API_KEY` → `~/.openalex/credentials` → polite pool; ADR 0012). Cursor paging con tope `max_results` (param de `__init__`, default 200; **`b2g seed --max-results INT`** lo propaga para exploración con muestras chicas, Nota 09 B1). Puebla `Manifest.openalex_version` (header o fecha del fetch; ADR 0017). `transport` inyectable (tests con `MockTransport`, sin red en CI). |
+| `OpenAlexSource` | **v1 (construido, Hito 4)** | **Referencia/backbone**, sobre `httpx`. Entrega mínimo + enriquecimiento: refs inline + afiliaciones per-autor + instituciones; `cited_by_id` queda **diferido** al chaining/`Enricher` (no se trae en el seed). Traducción **passthrough** —envuelve la ecuación en `title_and_abstract.search:(...)` y **reporta** los límites WoS (NEAR/comodín/tags) sin traducirlos; el traductor WoS→OpenAlex es v0.2. Flag `native=True` (query cruda). **Negaciones (`exclude`, #30):** `seed(..., exclude=[...])` y `_translate(exclude=...)` inyectan cada `AND NOT "<término>"` **DENTRO** de la única expresión `title_and_abstract.search:((query) AND NOT "<término>")` (el campo **no se repite**; el filtro de año queda como predicado separado por coma **fuera** de la expresión `search`) y lo **reportan en el `translation_report`** (query visible); comillas internas saneadas; **ignorado con `native=True`**. *(Sintaxis **validada contra OpenAlex real** vía test `@pytest.mark.network`, 2026-06-17: la forma vieja con el campo repetido devolvía 0 resultados.)* Credenciales inyectadas (arg → `OPENALEX_API_KEY` → `~/.openalex/credentials` → polite pool; ADR 0012). Cursor paging con tope `max_results` (param de `__init__`, default 200; **`b2g seed --max-results INT`** lo propaga para exploración con muestras chicas, Nota 09 B1). Puebla `Manifest.openalex_version` (header o fecha del fetch; ADR 0017). `transport` inyectable (tests con `MockTransport`, sin red en CI). |
 | `BibtexSource` | **v1, secundaria (construido, Hito 4)** | Sembrar desde *pearls* vía `load()`. Extra **`[bibtex]`** (import perezoso de `bibtexparser`, ADR 0005); acceso defensivo (fix del bug T1: campos faltantes sin `KeyError`). Mínimo universal. `seed()` lanza `NotImplementedError` (BibTeX no siembra por ecuación). **R5:** un `.bib` con error de parseo grave → `ValueError` accionable (antes lo tragaba en silencio); un `.bib` sin entradas válidas / con entradas omitidas por falta de título → `UserWarning` (no no-op silencioso). Carga bulk con `from_arrow`. |
 | `ScieloSource` / `RedalycSource` / `LaReferenciaSource` | futuro | Fuentes regionales, mínimo universal. Declaradas, no implementadas (ADR 0018). |
 | `RisSource` / `CsvSource` | futuro | No implementados. |

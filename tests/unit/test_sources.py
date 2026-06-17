@@ -702,24 +702,31 @@ def test_translate_sin_exclusiones_comportamiento_actual() -> None:
 
 @pytest.mark.unit
 def test_translate_con_una_exclusion() -> None:
-    """Un término excluido → cláusula ``AND NOT title_and_abstract.search:"…"``."""
+    """Un término excluido → cláusula ``AND NOT "…"`` dentro de title_and_abstract.search."""
     query = "sistémico AND complejidad"
     executed, _report = _translate(query, exclude=["machine learning"])
 
-    assert 'AND NOT title_and_abstract.search:"machine learning"' in executed
-    # El prefijo sigue siendo el wrapping correcto
+    # El campo NO se repite: exactamente un "title_and_abstract.search:" en el filtro
+    assert executed.count("title_and_abstract.search:") == 1
+    # La cláusula NOT va dentro del paréntesis, sin prefijo de campo
+    assert 'AND NOT "machine learning"' in executed
+    assert "AND NOT title_and_abstract.search:" not in executed
+    # La query base sigue envuelta correctamente
     assert executed.startswith(f"title_and_abstract.search:({query})")
 
 
 @pytest.mark.unit
 def test_translate_con_multiples_exclusiones() -> None:
-    """Múltiples exclusiones → una cláusula AND NOT por cada término."""
+    """Múltiples exclusiones → una cláusula AND NOT por cada término, todas dentro del paréntesis."""
     query = "sujeto AND sistema"
     terms = ["machine learning", "algorithm", "lupus"]
     executed, _report = _translate(query, exclude=terms)
 
+    # El campo NO se repite: exactamente un "title_and_abstract.search:" en el filtro
+    assert executed.count("title_and_abstract.search:") == 1
+    assert "AND NOT title_and_abstract.search:" not in executed
     for term in terms:
-        assert f'AND NOT title_and_abstract.search:"{term}"' in executed
+        assert f'AND NOT "{term}"' in executed
 
 
 @pytest.mark.unit
@@ -759,21 +766,22 @@ def test_translate_exclusion_none_sin_efecto() -> None:
 
 @pytest.mark.unit
 def test_seed_exclude_en_query_ejecutada() -> None:
-    """``seed(..., exclude=[...])`` refleja las cláusulas NOT en ``executed_query``."""
+    """``seed(..., exclude=[...])`` refleja cláusulas NOT dentro del paréntesis de búsqueda."""
     works = _load_fixture_works()
     transport = _make_handler(works)
     source = OpenAlexSource(transport=transport)
 
     result = source.seed("sistémico", exclude=["machine learning"])
 
-    assert (
-        'AND NOT title_and_abstract.search:"machine learning"' in result.executed_query
-    )
+    # El campo NO se repite: exactamente un "title_and_abstract.search:" en la query
+    assert result.executed_query.count("title_and_abstract.search:") == 1
+    assert 'AND NOT "machine learning"' in result.executed_query
+    assert "AND NOT title_and_abstract.search:" not in result.executed_query
 
 
 @pytest.mark.unit
 def test_seed_exclude_multiples_en_query_ejecutada() -> None:
-    """Múltiples términos excluidos aparecen todos en la query ejecutada."""
+    """Múltiples términos excluidos aparecen todos dentro del paréntesis en la query ejecutada."""
     works = _load_fixture_works()
     transport = _make_handler(works)
     source = OpenAlexSource(transport=transport)
@@ -781,8 +789,11 @@ def test_seed_exclude_multiples_en_query_ejecutada() -> None:
     terms = ["machine learning", "algorithm"]
     result = source.seed("sujeto", exclude=terms)
 
+    # El campo NO se repite: exactamente un "title_and_abstract.search:"
+    assert result.executed_query.count("title_and_abstract.search:") == 1
+    assert "AND NOT title_and_abstract.search:" not in result.executed_query
     for term in terms:
-        assert f'AND NOT title_and_abstract.search:"{term}"' in result.executed_query
+        assert f'AND NOT "{term}"' in result.executed_query
 
 
 @pytest.mark.unit
@@ -843,8 +854,52 @@ def test_translate_exclude_strip_comillas_internas() -> None:
     """Comillas embebidas en un término se eliminan para no romper la frase OpenAlex."""
     executed, _report = _translate("ecologia", exclude=['"machine learning"'])
 
+    # El campo NO se repite: exactamente un "title_and_abstract.search:"
+    assert executed.count("title_and_abstract.search:") == 1
+    assert "AND NOT title_and_abstract.search:" not in executed
     # Las comillas del término se eliminaron; la frase externa queda bien formada
-    assert 'AND NOT title_and_abstract.search:"machine learning"' in executed
+    assert 'AND NOT "machine learning"' in executed
     # No debe haber comilla suelta que cierre la frase antes de tiempo
-    after_not = executed.split("AND NOT title_and_abstract.search:")[1]
-    assert after_not.count('"') == 2  # exactamente apertura y cierre
+    after_not = executed.split('AND NOT "')[1]
+    assert after_not.startswith("machine learning")
+    # La cláusula cierra con exactamente una comilla de cierre
+    assert after_not.count('"') == 1  # solo la comilla de cierre
+
+
+@pytest.mark.unit
+def test_translate_exclude_con_anio_forma_completa() -> None:
+    """Con exclude + year, los NOT van dentro de search y el año va fuera con coma.
+
+    Forma esperada:
+        title_and_abstract.search:(query) AND NOT "t1" AND NOT "t2",
+        from_publication_date:2020-01-01,to_publication_date:2024-12-31
+
+    Los NOT están dentro de la expresión de search (un solo campo);
+    los predicados de año se añaden fuera con coma (sintaxis idiomática OpenAlex).
+    """
+    query = "complejidad AND sistemas"
+    executed, _report = _translate(
+        query,
+        exclude=["machine learning", "deep learning"],
+        min_year=2020,
+        max_year=2024,
+    )
+
+    # Exactamente un campo de búsqueda (no se repite)
+    assert executed.count("title_and_abstract.search:") == 1
+    assert "AND NOT title_and_abstract.search:" not in executed
+
+    # Los NOT van dentro de la expresión (sin prefijo de campo)
+    assert 'AND NOT "machine learning"' in executed
+    assert 'AND NOT "deep learning"' in executed
+
+    # El año va fuera de la expresión de search, separado por coma
+    assert ",from_publication_date:2020-01-01" in executed
+    assert ",to_publication_date:2024-12-31" in executed
+
+    # La expresión de search precede a los predicados de año
+    search_idx = executed.index("title_and_abstract.search:")
+    from_idx = executed.index(",from_publication_date:")
+    to_idx = executed.index(",to_publication_date:")
+    assert search_idx < from_idx
+    assert search_idx < to_idx

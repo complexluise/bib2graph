@@ -287,11 +287,17 @@ No se prometen ni se cablean clientes que no se usan.
   `OpenAlexSource(max_results=...)` (sin flag = default del source, 200) para explorar con muestras
   chicas (síntoma B1 de la [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)).
   **`--exclude TEXT` repetible (#30)** son **negaciones quirúrgicas**: `seed(..., exclude=[...])` y
-  `_translate(exclude=...)` agregan `AND NOT title_and_abstract.search:"<término>"` por término al
-  filtro y las **reportan en el `translation_report`** del `SeedResult` (ejercicio consciente, query
-  visible); comillas internas saneadas; **ignorado con `native=True`**. *(La sintaxis NOT no se validó
-  contra la API real —mock—; plausible/coherente con el passthrough.)* Gate verde, **476 tests**. Ver
+  `_translate(exclude=...)` inyectan cada `AND NOT "<término>"` **dentro** de la única expresión
+  `title_and_abstract.search:((query) AND NOT "<término>")` (el campo **no se repite**) y las
+  **reportan en el `translation_report`** del `SeedResult` (ejercicio consciente, query
+  visible); comillas internas saneadas; **ignorado con `native=True`**. Gate verde, **476 tests**. Ver
   `API.md` §2 + §convenciones CLI.
+  *(**Corrección AS-BUILT 2026-06-17, `fix/openalex-exclude-filter`:** el corte original de #30 serializaba*
+  *cada negación **repitiendo el campo** (`…search:(query) AND NOT …search:"x"`), forma que OpenAlex no parsea*
+  *→ **0 resultados**. Los tests de #30 eran solo unit con `MockTransport` y assertaban la **forma buggeada** del*
+  *string → falso positivo. El fix mueve el `AND NOT "x"` **dentro** del único `search:((…))` y agrega (a) un*
+  *assert-guardia `executed.count("title_and_abstract.search:") == 1` en unit y (b) un test `@pytest.mark.network`*
+  *contra la **API real** —0 → ~3958 resultados—, fuera del gate por defecto.)*
 
 > **RETIRADO del producto (ADR [0022](../decisiones/0022-producto-sin-ia-generativa.md), 2026-06-15):**
 > el **fallback fuzzy/semántico del thesaurus por LLM** y la **"máquina de tensiones"** (la antigua

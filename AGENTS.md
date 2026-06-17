@@ -147,9 +147,11 @@
   `docs/API.md` §convenciones CLI.
 - **Ergonomía de `b2g seed` (#14 + #30, 2026-06-16):** **`--max-results INT`** propaga a
   `OpenAlexSource(max_results=...)` (sin flag = default 200) para explorar con muestras chicas;
-  **`--exclude TEXT`** (repetible) son negaciones quirúrgicas que agregan
-  `AND NOT title_and_abstract.search:"<término>"` por término al filtro y se **reportan en el
-  `translation_report`** del `SeedResult` (query visible, ignorado con `--native`). Cierra el síntoma
+  **`--exclude TEXT`** (repetible) son negaciones quirúrgicas que inyectan cada `AND NOT "<término>"`
+  **dentro** de la única expresión `title_and_abstract.search:((query) AND NOT "<término>")` (el campo
+  **no se repite**; la forma vieja con campo repetido devolvía 0 en OpenAlex, corregido AS-BUILT
+  2026-06-17, fix de #30 validado contra la API real vía test `@pytest.mark.network`) y se **reportan
+  en el `translation_report`** del `SeedResult` (query visible, ignorado con `--native`). Cierra el síntoma
   B1 de la [Nota 09](docs/Notas/09-sesion-qa-prueba-ecologia-valoraciones.md). **476 tests verdes**.
   Ver `docs/API.md` §2 + §convenciones CLI.
 - Toda la información del producto, la arquitectura, los contratos y la secuencia de
@@ -223,7 +225,9 @@ El proyecto se gestiona con **uv** (entorno + lockfile + versión de Python). **
 - **Un solo test:** `uv run pytest tests/unit/test_corpus.py::test_merge_idempotente -xvs`
 - **Por marcador:** `uv run pytest -m unit` / `uv run pytest -m integration` (los tests que
   toquen red o Neo4j se marcan `integration` y usan Testcontainers o mocks; el núcleo va en
-  `unit`).
+  `unit`). El marcador **`network`** es aparte: tests que pegan a la **API real de OpenAlex**
+  (no mock) — **fuera del gate por defecto** (`addopts -m "not network"`); se corren explícitos con
+  `uv run pytest -m network`. Los `integration` de DuckDB/store **sí** quedan en el gate.
 - **Lint:** `uv run ruff check .` y `uv run ruff format --check .` (así lo corre el CI; `exploracion/` excluido)
 - **Tipos:** `uv run mypy src`
 - **Todo en uno (gate de CI):** `uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest`

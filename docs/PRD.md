@@ -174,7 +174,8 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   **declara** como contrato en V1 y se concreta en **v0.2+**.
 - **Traducción** de la ecuación a query OpenAlex con **query ejecutada visible + reporte de
   traducción**, ambas **registradas** con la corrida. Incluye **negaciones quirúrgicas**
-  (`b2g seed --exclude`, repetible: `AND NOT title_and_abstract.search:"…"` por término) que se
+  (`b2g seed --exclude`, repetible: cada `AND NOT "…"` va **dentro** de la única expresión
+  `title_and_abstract.search:((query) AND NOT "…")`, campo no repetido) que se
   **reportan en el reporte de traducción** (ejercicio consciente, no silencioso), y
   **`--max-results`** para acotar el fetch en exploración con muestras chicas.
 - **Chaining asistido** backward/forward sobre OpenAlex; **profundidad 1 por defecto**, opt-in a
