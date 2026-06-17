@@ -59,8 +59,15 @@
   **2º nivel de fetch de este hito** lo materializa: **`OpenAlexSource.fetch_citing_batch`** agrupa
   varios `cites:` en una query `cites:W1|W2|...` (lotes ≤50) con **presupuesto por semilla**, matando
   el N+1 de requests (mejora de performance, no de correctitud: el N+1 ya era resiliente al
-  rate-limit). `fetch_citing` singular (Forager) no cambió. Ver registro-ia R5.3 y "Cleanup
-  pre-v0.3" C-seguimientos.
+  rate-limit). Ver registro-ia R5.3 y "Cleanup pre-v0.3" C-seguimientos.
+- **Forward chaining del `Forager` batcheado (#21) · ✅ HECHO (2026-06-16):** el forward del
+  **`Forager`** (`b2g chain`/`b2g monitor`) también dejó de hacer N+1 — **reusa
+  `fetch_citing_batch`** (mismo primitivo del 8b), suma **cap por semilla**
+  `max_citing_per_paper`/**`--max-citing`** (default 50) y **preview sin red** (estima nº de semillas
+  a forrajear). **Scope = `is_seed=True`** (todas las semillas, **sin** filtrar `curation_status`): el
+  chaining precede a la curación; la restricción a `accepted` es del **Enricher** (8b), no del Forager
+  (ADR [0020](../decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) AS-BUILT #21; API.md §5).
+  Gate verde, **422 tests**.
 
 **Historias:** completa **D1** para la red de **co-citación** end-to-end (la más cara) y la
 interoperabilidad de referencias cross-source (OpenAlex ↔ `.bib`).
@@ -94,7 +101,18 @@ cross-source.
 
 ---
 
-## Hito 9 — Capa declarativa: `NetworkSpec` (v0.2)
+## Hito 9 — Capa declarativa: `NetworkSpec` (v0.2) — **COMPLETO ✅**
+
+> **Hito 9 COMPLETO ✅ (2026-06-17):** `NetworkSpec` gana **carga declarativa desde YAML** vía
+> **`load_specs(path)`** (`networks/spec.py`, re-exportada desde `bib2graph.networks`; esquema raíz
+> `networks:` = lista, cada entrada validada con `NetworkSpec(**entry)`, errores accionables citando
+> archivo + `red #<idx>` + campo). Suma el campo **`resolution: float = 1.0`** (resolución de Louvain,
+> propagada por `_build_artifact` a `best_partition(..., resolution=...)`; ignorada en `label_prop`/
+> `greedy_modularity`; **fuera del `corpus_hash`** → seed de Louvain intacto, R2) y
+> **`extra="forbid"`** (campo desconocido → error). Nuevo **16° subcomando `b2g networks --spec
+> <yaml>`** (escribe artefactos con el helper compartido `_write_artifacts`; mismo envelope que
+> `build`; **NO** transiciona el `CycleState` ni sella `.corpus_hash`). `pyyaml` promovido al núcleo
+> (import perezoso). Gate verde, **516 tests**. Ver API.md §10 + §convenciones CLI.
 
 **Alcance**
 
@@ -109,26 +127,39 @@ qué se calcula). Abre la puerta a un GUI (editor de `NetworkSpec`).
 
 **Criterios de aceptación (DoD)**
 
-- Un `redes.yaml` válido carga y valida; uno inválido falla con error accionable.
-- `Networks.build(corpus, spec)` desde YAML es **equivalente** a la spec correspondiente de
-  `Networks.quick`.
+- **✅** Un `redes.yaml` válido carga y valida; uno inválido falla con error accionable.
+- **✅** `Networks.build(corpus, spec)` desde YAML es **equivalente** a la spec correspondiente de
+  `Networks.quick` (nodos + aristas + comunidades).
 
 **Tests (TDD — los justos)**
 
-- Carga/validación de un YAML válido y uno inválido (2 casos).
-- Equivalencia `build(spec)` ≡ la spec de `quick` para una red.
+- **✅** Carga/validación de un YAML válido y uno inválido (2 casos).
+- **✅** Equivalencia `build(spec)` ≡ la spec de `quick` para una red.
 
 **Se vuelve posible:** pipelines reproducibles versionados en git. Abre la puerta a un GUI.
 
 ---
 
-## Hito 10 — Visualización (extra `[viz]`)
+## Hito 10 — Visualización (extra `[viz]`) — **REEVALUADO: DIFERIDO (absorbido por la epic GUI #34)**
 
-**Alcance**
+> **Reevaluación 2026-06-17 (architect, encuadre pre-GUI):** este hito —figuras estáticas
+> `matplotlib`/`seaborn` por red— **se difiere y se absorbe en la epic GUI
+> [#34](https://github.com/complexluise/bib2graph/issues/34)**. Razón: la GUI es **exactamente**
+> la capa de lectura visual de la estructura intelectual (historia D), y su MVP es **read-only
+> visualizar** (Nota 10/T-MVP). Construir ahora figuras estáticas separadas sería trabajo
+> tirado o duplicado cuando llegue la SPA. **No es "terreno pre-GUI".** La **capa de export
+> visual** que sí es separable (layout determinista, atributos de nodo para herramientas
+> externas) **ya existe**: `networks/decorate.py` (#25 ✅, `label`/`year`/`is_seed`/`community`/
+> `degree_centrality`) + `clusters.csv` (#31 ✅) hacen que el GraphML abra legible en
+> Gephi/VOSviewer/Cytoscape **sin código**. Es decir, el "core/export" de viz pre-GUI **ya está
+> cubierto**; lo que queda (render propio) es la GUI. **Verdadero alcance restante = render
+> dentro de #34**, no un extra `[viz]` aparte.
+
+**Alcance (original — diferido)**
 
 - Figuras de redes/comunidades con `matplotlib`/`seaborn`, fuera del núcleo liviano.
 
-**Historias:** apoyo visual a **D** (lectura de la estructura intelectual).
+**Historias:** apoyo visual a **D** (lectura de la estructura intelectual) — **cubierto por #34**.
 
 **Criterios de aceptación (DoD)**
 
@@ -140,27 +171,13 @@ qué se calcula). Abre la puerta a un GUI (editor de `NetworkSpec`).
 
 ---
 
-## Hito 11 — Costuras externas de biblioteca/persistencia (post-V1)
+## Hito 11 — Costuras externas de biblioteca/persistencia (Zotero/Neo4j) — **DESCARTADO (decisión del PO, 2026-06-17)**
 
-**Alcance**
-
-- **`ZoteroStore`** (extra `[zotero]`, **V1.1**): sincronizar la biblioteca viva con una
-  colección Zotero (leer semillas / devolver lo aceptado). Costura opt-in, no el corazón (ADR
-  0009).
-- **`Neo4jStore`** (extra `[neo4j]`, post-V1.2): adaptador tabla→grafo para consultas Cypher.
-  **Ya no es sustrato** (ADR 0002).
-
-**Historias:** extiende **C4** (biblioteca viva sincronizable con Zotero) como costura opt-in.
-
-**Criterios de aceptación (DoD)**
-
-- Round-trip Zotero (leer semillas / escribir aceptados) contra cliente mockeado; `integration`
-  contra Neo4j efímera (Testcontainers) para el adaptador.
-
-**Tests (TDD — los justos)**
-
-- Round-trip Zotero sobre cliente mock.
-- `Neo4jStore` marcado `integration` (Testcontainers o driver mockeado), fuera del gate `unit`.
+> **Decisión del PO (2026-06-17):** **no se hace.** Ni `ZoteroStore` ni `Neo4jStore` son
+> necesarios. La biblioteca viva propia (DuckDB) es el corazón de V1.0 (ADR 0009/0002) y la GUI
+> se construye **sobre el workspace local**, no sobre integraciones externas. Se retira del
+> ROADMAP; si en el futuro aparece demanda real (p.ej. round-trip con un Zotero existente), se
+> reabrirá como un hito nuevo con su propio encuadre. No bloquea nada.
 
 ---
 
@@ -174,6 +191,124 @@ Marcadas como no implementadas hasta que exista decisión de producto y código 
   frontera programática desde el Hito 6.
 
 No se prometen ni se cablean clientes que no se usan.
+
+## Backlog / ideas pendientes (sin hito ni DoD todavía)
+
+- **Labels legibles en los nodos de las redes (#25) · ✅ HECHO (2026-06-16):** las redes salían con
+  `id` crudo (`oa:…`, `I185261750`, un ORCID), ilegibles en Gephi/VOSviewer/Cytoscape (síntoma B3 de
+  la [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). Se agregó la **capa frontera
+  `decorate`** (`networks/decorate.py`: `decorate_graph`/`decorate`) entre los proyectores puros y el
+  export/GUI, aplicada en `facade.py:_build_artifact`: inyecta `label` legible (mapeo por
+  `NetworkKind`; paper → `"título (año)"` truncado a `LABEL_MAX_CHARS`=60) + atributos de nodo
+  (`year`/`is_seed`/`curation_status`/`degree_centrality`/`community`). `Networks.quick`/`build`
+  devuelven artefactos **decorados**; los proyectores **siguen puros** (ADR
+  [0014](../decisiones/0014-proyeccion-redes-pesos-asortatividad.md) AS-BUILT #25). Reemplaza el
+  workaround local `_label_for_kind` de `prueba/06_redes_y_grafos.py`. Ver API.md §7.1.
+- **Tabla de clusters a CSV (#31) · ✅ HECHO (2026-06-17):** las redes salían con comunidades en el
+  GraphML pero sin una vista tabular legible de **qué cae en cada cluster** (composición por comunidad).
+  Se agregó la **función pura `cluster_table(table, artifact)`** (`networks/clusters.py`, re-exportada
+  desde `networks/__init__.py`): una fila por comunidad con `cluster, size, seed_count, candidate_count,
+  accepted_count, year_min, year_max, year_mean, top_authors, top_keywords`. **Solo redes de paper**
+  (coupling/cocitación; redes de autor/keyword/institución → `[]`, no crash). Cruza nodo→fila por
+  **`Col.ID`** (lección B6 de la [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md), no
+  `openalex_id`); `top_authors` de `authors_raw`, `top_keywords` de `keywords_id`. **Determinista**
+  (desempate `(-freq, nombre alfabético)`, reproducible cross-`PYTHONHASHSEED` y entre métodos de
+  clustering; ADR [0017](../decisiones/0017-reproducibilidad-historia-snapshot.md)). **`b2g build`**
+  escribe `<networks_dir>/<kind>/clusters.csv` (listas con separador `|`) cuando la red tiene
+  comunidades, y el envelope `--json` suma `clusters_csv` **condicional** por red. Gate verde, **498
+  tests**. Ver `API.md` §7.2 + §9 + §convenciones CLI.
+- **Workspace por investigación · ✅ HECHO (2026-06-16, ADR
+  [0029](../decisiones/0029-workspace-por-investigacion.md); issues #32/#38/#39):** cada investigación
+  = una carpeta auto-contenida (`workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/
+  `exports/`), en vez de un `.duckdb` suelto. Evolucionó el modelo "una investigación = un archivo"
+  (enmienda a ADR [0009](../decisiones/0009-biblioteca-viva-duckdb.md) /
+  [0019](../decisiones/0019-concurrencia-diferida.md)). Construido: módulo `workspace.py`, **14°
+  subcomando `b2g init`**, `--store` opcional + `--workspace` con resolución ambiente; el `.duckdb`
+  suelto sigue válido (workspace degenerado). Prerequisito de la epic GUI local
+  ([#34](https://github.com/complexluise/bib2graph/issues/34),
+  [Nota 07](../Notas/07-frontend-tool-for-thought.md)). **Remanentes cerrados · ✅ HECHO (2026-06-17,
+  #32):** `b2g snapshot`/`b2g export` ya resuelven por workspace (`--out-dir` pasó a override opcional
+  → `<workspace>/snapshots|exports/`; modo degenerado = dir hermano) y `b2g status` suma
+  `networks_cache_stale: bool` + `warnings` cuando el `networks/.corpus_hash` no coincide con el
+  corpus vivo (**avisa, NO regenera**: invalidación por hash, no build-system). `Workspace` ganó
+  `read_networks_corpus_hash()`/`is_networks_cache_stale()`. **El modelo workspace queda COMPLETO**
+  (sin remanentes). Gate verde, **534 tests**.
+- **Caso real reproducido: ecuación declarativa + `restore` + corpus de ejemplo (#33, ADR
+  [0030](../decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)) · ✅ HECHO (9a+9b, 2026-06-17) ·
+  #33 CERRADO:** prerequisito del gate de la epic GUI [#34](https://github.com/complexluise/bib2graph/issues/34)
+  (un tercero reproduce el lazo end-to-end sobre un corpus real, **sin red**) — **cubierto**.
+  - **9a ✅ HECHO (2026-06-17):** **(1)** capa declarativa de la ecuación — `EquationSpec` +
+    `load_equation_spec` (`sources/equation.py`, Pydantic `extra="forbid"`, clave raíz `equation:`,
+    errores accionables como `load_specs`) y **2º modo de `b2g seed`: `--spec equation.yaml`**
+    (mutuamente excluyente con `--equation`; mismo `executed_query`). `min_year`/`max_year` estaban en el
+    modelo pero **en 9a aún no filtraban** contra OpenAlex (filtro de año **construido en el Ciclo 10**,
+    abajo). **(2)** **17° subcomando `b2g restore --from-corpus <parquet>`**
+    (`cli/commands/restore.py`): rehidrata un corpus **ya curado sin red** (inverso de `snapshot`;
+    `CORPUS_SCHEMA` → `Corpus.from_arrow` → merge+persist), **preserva la curación**
+    (`decision`/`curation_status`/`is_seed`) y transiciona el `CycleState` a **`FILTERED`** (reusa la
+    transición permisiva `filter`, ADR [0016](../decisiones/0016-maquina-estados-lazo.md); deja correr
+    `build`/`networks` sin re-forrajeo). Ronda normalizada con `max(loop_round(), 1)` (evita ronda 0 en
+    bases legacy pre-R3). Gate verde, **564 tests**. Ver `API.md` §2 + §convenciones CLI.
+  - **9b ✅ HECHO (2026-06-17):** **workspace de ejemplo `examples/valoraciones/`** (corpus curado
+    congelado en `corpus.parquet`, **137 filas: 7 `accepted` / 130 `candidate` / 107 seeds**, reducción
+    determinista del corpus real del PO CC0/OpenAlex + `equation.yaml` de procedencia + `README.md` +
+    `build_corpus.py` de regeneración) como **excepción al `.gitignore`** de datos de usuario
+    (`!examples/` + regla defensiva `examples/**/*.duckdb`). El **gate de reproducibilidad R2**
+    (`tests/unit/test_example_r2_gate.py`, 7 tests) corre `restore --from-corpus` → `build` →
+    `networks`/`clusters` **sin red** sobre el corpus real y verifica **`corpus_hash` estable** +
+    **comunidades Louvain deterministas entre corridas** (cierra el agujero R2 de la
+    [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). **Con 9b, #33 queda CERRADO** y
+    el gate de #34 cubierto. Gate verde, **571 tests**. Ver `API.md` §2.1.
+  - **Ciclo 10 · ✅ HECHO (2026-06-17, cierra #50):** **`b2g seed --from-bib <archivo.bib>`** (3er modo
+    de seed, BibTeX local **sin red** — cablea el `BibtexSource.load` ya existente; exit 3 si falta
+    `bibtexparser`, exit 1 si se combina con flags OpenAlex) + su ejemplo **`examples/bibtex/`**
+    (`sample.bib` + README CLI-puro) + **filtro de año real** (`min_year`/`max_year` → `from_publication_date`/
+    `to_publication_date`, flags en `--equation` + campos del YAML). Ya **no** es "diferido". Gate verde,
+    **594 tests**. Ver `API.md` §2 y ADR 0030 §AS-BUILT Ciclo 10.
+  - **Ciclo B · ✅ HECHO (2026-06-17):** **`examples/valoraciones/` rehecho 100% por CLI** (principio
+    CLI-puro del PO, sin escribir código). `build_corpus.py` **eliminado**; el ejemplo se arma y se
+    reproduce **por CLI**: `seed --spec equation.yaml` (`max_results: 80`) → `curate --from-csv
+    curacion.csv` (10 `accepted`) → `enrich --max-citing 25` → `snapshot`. Corpus = **~80 filas**
+    (70 `candidate` + 10 `accepted` enriquecidos), parquet 168 KB. **`curacion.csv` nuevo artefacto
+    congelado** (receta determinista de curación). **Co-citación presente** (rala: 2 nodos / 1 arista)
+    + coupling/author/institution/keyword sustanciales (5 redes). Gate R2 ajustado: piso `n>=50` (antes
+    100) + `test_cocitacion_con_datos` (5 redes), estabilidad de hash/comunidades intacta. La
+    **procedencia de un ejemplo deja de ser un script y pasa a ser la receta CLI del README** +
+    `equation.yaml` + `curacion.csv` (supersede la convención de 9b/§2.1). Gate verde, **598 tests**
+    por defecto (+2 `network` fuera del gate). Ver `API.md` §2.1 y ADR 0030 §AS-BUILT Ciclo B.
+- **Curación a escala vía CSV (#22 dump + #26 import) · ✅ HECHO (2026-06-16):** marcar papers de a
+  uno con `accept`/`reject --ids` no escala (síntomas B4/B5/P1 de la
+  [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). Se agregó el **15° subcomando
+  `b2g curate`** (`cli/commands/curate.py`) con dos modos mutuamente excluyentes: **`--dump`** escribe
+  `curacion.csv` (default `<workspace>/exports/`; `--out` override; `--all` para todo el corpus, default
+  solo candidatos) para revisar offline en Excel/Calc, y **`--from-csv`** aplica las decisiones en lote
+  (`accepted`→accept / `rejected`→reject / `undecided`→no-op). Columnas: `id, openalex_id, title, year,
+  authors, scent_score, cluster, decision, note` (solo `decision`/`note` editables). **Idempotente**
+  (reimportar = mismo `corpus_hash`; `decided_at` inyectado en la frontera, R2/ADR
+  [0017](../decisiones/0017-reproducibilidad-historia-snapshot.md)), **validación accionable** y reporte
+  de **IDs huérfanos** (`not_found_count`, cierra el no-op silencioso). **Curación transversal** (NO
+  transiciona el `CycleState`; ADR [0016](../decisiones/0016-maquina-estados-lazo.md) enmendado R3).
+  **Fuera de este corte:** `note` es **advisory** (round-trip en el dump, ignorada al importar —
+  `ProvenanceEvent` no tiene campo de anotación; persistirla sería un ADR futuro); `scent_score`
+  best-effort (vacío hasta que el Forager guarde scent en provenance) y `cluster` diferido (integración
+  con redes). Gate verde, **459 tests**. Ver `API.md` §convenciones CLI.
+
+- **Ergonomía de `b2g seed` (#14 `--max-results` + #30 `--exclude`) · ✅ HECHO (2026-06-16):** dos
+  flags que afinan el seed sin tocar el contrato `Source`. **`--max-results INT` (#14)** propaga a
+  `OpenAlexSource(max_results=...)` (sin flag = default del source, 200) para explorar con muestras
+  chicas (síntoma B1 de la [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)).
+  **`--exclude TEXT` repetible (#30)** son **negaciones quirúrgicas**: `seed(..., exclude=[...])` y
+  `_translate(exclude=...)` inyectan cada `AND NOT "<término>"` **dentro** de la única expresión
+  `title_and_abstract.search:((query) AND NOT "<término>")` (el campo **no se repite**) y las
+  **reportan en el `translation_report`** del `SeedResult` (ejercicio consciente, query
+  visible); comillas internas saneadas; **ignorado con `native=True`**. Gate verde, **476 tests**. Ver
+  `API.md` §2 + §convenciones CLI.
+  *(**Corrección AS-BUILT 2026-06-17, `fix/openalex-exclude-filter`:** el corte original de #30 serializaba*
+  *cada negación **repitiendo el campo** (`…search:(query) AND NOT …search:"x"`), forma que OpenAlex no parsea*
+  *→ **0 resultados**. Los tests de #30 eran solo unit con `MockTransport` y assertaban la **forma buggeada** del*
+  *string → falso positivo. El fix mueve el `AND NOT "x"` **dentro** del único `search:((…))` y agrega (a) un*
+  *assert-guardia `executed.count("title_and_abstract.search:") == 1` en unit y (b) un test `@pytest.mark.network`*
+  *contra la **API real** —0 → ~3958 resultados—, fuera del gate por defecto.)*
 
 > **RETIRADO del producto (ADR [0022](../decisiones/0022-producto-sin-ia-generativa.md), 2026-06-15):**
 > el **fallback fuzzy/semántico del thesaurus por LLM** y la **"máquina de tensiones"** (la antigua

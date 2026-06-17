@@ -19,7 +19,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
-from bib2graph.cli._store import open_store
+from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -51,23 +51,30 @@ def run_reject(
     if not ids:
         raise DataError("Debés especificar al menos un ID con --ids.")
 
+    updated_backend_close = None
     store = open_store(store_path)
-    corpus = store.load()
+    try:
+        corpus = store.load()
 
-    # Verificar que todos los ids existen
-    existing_ids = {str(r["id"]) for r in corpus.to_arrow().to_pylist()}
-    missing = [id_ for id_ in ids if id_ not in existing_ids]
-    if missing:
-        raise DataError(
-            f"IDs no encontrados en el corpus: {missing}. "
-            "Verificá los ids con ``b2g inspect``."
-        )
+        # Verificar que todos los ids existen
+        existing_ids = {str(r["id"]) for r in corpus.to_arrow().to_pylist()}
+        missing = [id_ for id_ in ids if id_ not in existing_ids]
+        if missing:
+            raise DataError(
+                f"IDs no encontrados en el corpus: {missing}. "
+                "Verificá los ids con ``b2g inspect``."
+            )
 
-    # R2: el reloj se inyecta en la frontera (ADR 0017 enmendado); el núcleo
-    # no llama datetime.now().
-    now = datetime.now(UTC)
-    updated = corpus.reject(ids, by=by, decided_at=now)
-    store.persist(updated)
+        # R2: el reloj se inyecta en la frontera (ADR 0017 enmendado); el núcleo
+        # no llama datetime.now().
+        now = datetime.now(UTC)
+        updated = corpus.reject(ids, by=by, decided_at=now)
+        updated_backend_close = getattr(updated._backend, "close", None)
+        store.persist(updated)
+    finally:
+        if updated_backend_close is not None:
+            updated_backend_close()
+        store.close()
 
     return {
         "rejected_count": len(ids),
@@ -113,7 +120,7 @@ def reject_cmd(
     Curación TRANSVERSAL: no transiciona el CycleState.  Disponible en
     cualquier estado del lazo (Nota 05 §4, ADR 0016 enmendado R3).
     """
-    store_path = ctx.obj["store"]
+    store_path = resolve_library_path(ctx.obj)
     data = run_reject(store_path, list(ids), by=by)
 
     if json_output:

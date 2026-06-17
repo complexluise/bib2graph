@@ -78,19 +78,44 @@ _RETRY_BACKOFF_BASE: float = 1.0  # segundos; duplica por cada intento
 # ---------------------------------------------------------------------------
 
 
-def _translate(query: str, *, native: bool = False) -> tuple[str, list[str]]:
+def _translate(
+    query: str,
+    *,
+    native: bool = False,
+    exclude: list[str] | None = None,
+    min_year: int | None = None,
+    max_year: int | None = None,
+) -> tuple[str, list[str]]:
     """Traduce una ecuación WoS-style a una query OpenAlex ejecutable.
 
-    Si ``native=True`` pasa la query cruda sin ningún procesamiento.
+    Si ``native=True`` pasa la query cruda sin ningún procesamiento (las
+    exclusiones se ignoran en modo nativo).
 
     Detecta y reporta límites de OpenAlex (ADR 0007) sin abortar:
     - ``NEAR/n``: proximidad no soportada.
     - Comodín ``*``: comportamiento distinto al de WoS.
     - Tags de campo WoS (``TS=``, ``AB=``, ``AU=``…): no mapean 1:1.
 
+    Las exclusiones (``exclude``) añaden cláusulas ``AND NOT "<término>"``
+    dentro de la expresión ``title_and_abstract.search:(...)`` y se reportan
+    en el translation_report para transparencia (PRD §4).
+
+    El filtro de año (``min_year``/``max_year``) agrega cláusulas
+    ``from_publication_date:<min_year>-01-01`` y/o
+    ``to_publication_date:<max_year>-12-31`` al filtro de OpenAlex (sintaxis
+    idiomática de rango; combinables con AND junto a los demás predicados).
+
     Args:
         query: Ecuación de búsqueda.
         native: Si es ``True``, no traducir; usar query cruda.
+        exclude: Lista de términos a excluir de título/abstract.  Cada uno
+            genera una cláusula ``AND NOT "…"`` dentro del paréntesis de
+            ``title_and_abstract.search``.  ``None`` o lista vacía = sin
+            exclusiones.
+        min_year: Año mínimo de publicación (inclusive).  Genera
+            ``from_publication_date:<min_year>-01-01``.  ``None`` = sin límite.
+        max_year: Año máximo de publicación (inclusive).  Genera
+            ``to_publication_date:<max_year>-12-31``.  ``None`` = sin límite.
 
     Returns:
         Tupla ``(executed_query, translation_report)``.
@@ -117,8 +142,48 @@ def _translate(query: str, *, native: bool = False) -> tuple[str, list[str]]:
             "mapean 1:1 en OpenAlex; se descartaron del filtro de campo."
         )
 
-    # Envolver en el filtro de OpenAlex (PASSTHROUGH)
-    executed = f"title_and_abstract.search:({query})"
+    # Negaciones: cada término excluido agrega una cláusula AND NOT dentro del
+    # paréntesis de title_and_abstract.search (#30, fix bug).
+    # OpenAlex interpreta el filtro como predicados separados por coma; repetir
+    # el nombre del campo fuera del paréntesis produce 0 resultados.
+    # Las comillas internas se eliminan para no romper la frase entrecomillada
+    # en el filtro de OpenAlex (un `"` embebido cierra la frase antes de tiempo).
+    terms = [t.strip().replace('"', "") for t in (exclude or []) if t and t.strip()]
+
+    # Construir el cuerpo interno: (query) [AND NOT "t1" AND NOT "t2" ...]
+    body = f"({query})"
+    if terms:
+        not_clauses = " ".join(f'AND NOT "{t}"' for t in terms)
+        body = f"{body} {not_clauses}"
+        report.append(
+            f"Exclusiones aplicadas ({len(terms)}): "
+            + ", ".join(f'"{t}"' for t in terms)
+            + ". Cláusulas AND NOT añadidas al filtro de OpenAlex."
+        )
+
+    # Envolver UNA sola vez en el campo de OpenAlex (PASSTHROUGH)
+    executed = f"title_and_abstract.search:{body}"
+
+    # Filtro de año: sintaxis idiomática de rango de OpenAlex.
+    # Las cláusulas se combinan con AND junto al resto del filtro.
+    year_clauses: list[str] = []
+    if min_year is not None:
+        year_clauses.append(f"from_publication_date:{min_year}-01-01")
+    if max_year is not None:
+        year_clauses.append(f"to_publication_date:{max_year}-12-31")
+    if year_clauses:
+        executed = executed + "," + ",".join(year_clauses)
+        parts = []
+        if min_year is not None:
+            parts.append(f"desde {min_year}")
+        if max_year is not None:
+            parts.append(f"hasta {max_year}")
+        report.append(
+            f"Filtro de año aplicado ({', '.join(parts)}): "
+            + ", ".join(year_clauses)
+            + "."
+        )
+
     return executed, report
 
 
@@ -437,7 +502,15 @@ class OpenAlexSource:
     # API pública
     # ------------------------------------------------------------------
 
-    def seed(self, query: str, *, native: bool = False) -> SeedResult:
+    def seed(
+        self,
+        query: str,
+        *,
+        native: bool = False,
+        exclude: list[str] | None = None,
+        min_year: int | None = None,
+        max_year: int | None = None,
+    ) -> SeedResult:
         """Siembra un ``Corpus`` desde una ecuación de búsqueda.
 
         ``cited_by_id`` queda ``[]`` en el corpus sembrado: OpenAlex no lo
@@ -447,11 +520,22 @@ class OpenAlexSource:
         Args:
             query: Ecuación de búsqueda (WoS-style o nativa OpenAlex).
             native: Si es ``True``, pasa la query cruda sin traducción.
+            exclude: Lista de términos a excluir de título/abstract (#30).
+                Cada término genera ``AND NOT "…"`` dentro del paréntesis de
+                ``title_and_abstract.search``.
+            min_year: Año mínimo de publicación (filtro de rango OpenAlex).
+                Genera ``from_publication_date:<min_year>-01-01``.
+                ``None`` = sin límite inferior.
+            max_year: Año máximo de publicación (filtro de rango OpenAlex).
+                Genera ``to_publication_date:<max_year>-12-31``.
+                ``None`` = sin límite superior.
 
         Returns:
             ``SeedResult`` con el corpus, la query ejecutada y el reporte.
         """
-        executed_query, translation_report = _translate(query, native=native)
+        executed_query, translation_report = _translate(
+            query, native=native, exclude=exclude, min_year=min_year, max_year=max_year
+        )
         equation_id = f"eq-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}"
         fetched_at = datetime.now(UTC).isoformat()
 

@@ -96,3 +96,23 @@ aproximación al número de países. El output marca el proxy con un disclaimer.
 - **Peso crudo, no normalizado:** simple y predecible, pero comparar densidades entre redes de
   distinto tamaño exige cuidado. Migrar a un peso normalizado (Salton/Jaccard) sería aditivo y
   reversible (parámetro extra del proyector), no rompe el contrato actual.
+
+## AS-BUILT — capa `decorate` separada de los proyectores (2026-06-16, #25)
+
+Al implementar el label legible en los nodos (#25; síntoma en la Nota 09 B3: las redes salían con
+`id` crudo —`oa:…`, `I185261750`, un ORCID— ilegibles en Gephi/VOSviewer/Cytoscape) se **confirmó
+la pureza de los proyectores de D2**: los proyectores (`networks/projectors.py`) **siguen siendo
+funciones puras sobre `pa.Table`** y **NO setean ningún atributo de nodo** (devuelven el grafo con
+ids crudos, sin `label`).
+
+La legibilidad y los atributos para export/GUI viven en una **capa de frontera separada**,
+`bib2graph.networks.decorate` (`decorate_graph`/`decorate`), aplicada en `facade.py:_build_artifact`
+—no en los proyectores—. Inyecta en los nodos: `label` (mapeo por `NetworkKind`: paper →
+`"título (año)"` truncado a `LABEL_MAX_CHARS`=60; autor/institución → nombre `*_raw` correlativo;
+keyword → la keyword), `degree_centrality` (todos) y, para paper, `year`/`is_seed`/`curation_status`;
+`community` opcional desde `artifact.communities`. Así `Networks.quick`/`build` devuelven artefactos
+**decorados** sin contaminar el núcleo puro de proyección. Contrato en API.md §7.1.
+
+Esta separación es coherente con D2 (el proyector solo decide qué entidad es el nodo) y con la
+convención del repo "núcleo puro vs frontera": la proyección no sabe de presentación. (Nota
+aditiva; no modifica la decisión original.)

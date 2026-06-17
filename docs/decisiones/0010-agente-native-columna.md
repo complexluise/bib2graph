@@ -3,7 +3,7 @@
 - **Estado:** Aceptada
 - **Fecha:** 2026-06-15
 - **Relacionada con:** [0006](0006-tabla-canonica-y-networkspec.md) (§ CLI como API),
-  [`../critica-base.md`](../critica-base.md) §6
+  [`../critica-base.md`](../Notas/critica-base.md) §6
 
 ## Contexto
 

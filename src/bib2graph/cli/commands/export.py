@@ -2,6 +2,13 @@
 
 Serializa los artefactos de build al formato pedido.
 NO transiciona el CycleState.
+
+ADR 0029 — workspace:
+  El directorio de salida es ``<workspace>/exports/`` por defecto.
+  Si se pasa ``--out-dir`` explícito, se usa ese (override opcional).
+  La fuente de artefactos de build es ``<workspace>/networks/`` por defecto.
+  Modo degenerado (``--store archivo.duckdb`` suelto): usa dirs hermanos
+  ``networks/`` y ``exports/`` relativos al ``.duckdb``.
 """
 
 from __future__ import annotations
@@ -14,6 +21,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
+from bib2graph.cli._store import resolve_workspace
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -132,8 +140,11 @@ def run_export(
 )
 @click.option(
     "--out-dir",
-    required=True,
-    help="Directorio de salida para los archivos exportados.",
+    default=None,
+    help=(
+        "Directorio de salida para los archivos exportados "
+        "(default: <workspace>/exports/ o <store_dir>/exports/)."
+    ),
 )
 @click.option(
     "--json",
@@ -147,18 +158,25 @@ def run_export(
 def export_cmd(
     ctx: click.Context,
     fmt: str,
-    out_dir: str,
+    out_dir: str | None,
     json_output: bool,
 ) -> None:
     """Serializa artefactos de build al formato pedido (GraphML o CSV).
 
     No transiciona el CycleState.
+
+    El directorio de salida por defecto es ``<workspace>/exports/``.
+    Con ``--out-dir`` se puede especificar un directorio alternativo.
     """
-    store_path = ctx.obj["store"]
+    # ADR 0029: resolver workspace para obtener dirs canónicos
+    ws = resolve_workspace(ctx.obj)
+    effective_out_dir: Path = Path(out_dir) if out_dir is not None else ws.exports_dir
+
     data = run_export(
-        store_path,
+        ws.library_path,
         format=fmt,  # type: ignore[arg-type]
-        out_dir=out_dir,
+        out_dir=effective_out_dir,
+        networks_dir=ws.networks_dir,
     )
 
     if json_output:

@@ -3,13 +3,13 @@
 > Documento de Requisitos de Producto de la **V1** de `bib2graph`. Reescribe el PRD anterior
 > (que describía una librería BibTeX→redes con Semantic Scholar como enricher estructural y
 > Neo4j como preocupación central) tras el **giro** documentado en `Notas/04`–`07` y la
-> demolición de [`critica-base.md`](critica-base.md). Fecha: 2026-06-15 (reconciliado con el 2º
+> demolición de [`critica-base.md`](Notas/critica-base.md). Fecha: 2026-06-15 (reconciliado con el 2º
 > giro).
 >
 > Documentos hermanos: la dirección "IA in the loop" en
 > [`Notas/04-direccion-ia-in-the-loop.md`](Notas/04-direccion-ia-in-the-loop.md), el ciclo de
 > investigación humano en [`Notas/05-ciclo-investigacion-humano.md`](Notas/05-ciclo-investigacion-humano.md),
-> el método bibliométrico en [`metodología.md`](metodología.md), y las decisiones en
+> el método bibliométrico en [`metodología.md`](Notas/metodología.md), y las decisiones en
 > [`decisiones/`](decisiones/) — en particular [ADR 0007](decisiones/0007-openalex-backbone.md)
 > (OpenAlex backbone).
 >
@@ -62,6 +62,12 @@ de estados explícita** (`LoopState`: `SEEDED → FORAGED → FILTERED → BUILT
 [0016](decisiones/0016-maquina-estados-lazo.md)): **una investigación = un archivo `.duckdb`**, su
 estado se consulta con `b2g status`.
 
+> **TARGET (propuesto, no as-built) — ADR [0029](decisiones/0029-workspace-por-investigacion.md)
+> (2026-06-16):** "una investigación = un archivo" evolucionaría a "una investigación = un
+> **workspace** (carpeta `workspace.json` + db + redes/snapshots/exports)", con `b2g init` y `--store`
+> opcional vía resolución ambiente. Propuesta pendiente de firma; el `.duckdb` suelto sigue siendo
+> el modelo as-built.
+
 *El final siguen siendo las redes; lo nuevo es **cómo se llega a ellas** (forrajeo asistido) y
 que **la colección vive** (berry growing).*
 
@@ -69,7 +75,7 @@ que **la colección vive** (berry growing).*
 
 La exploración bibliográfica humana es **iterativa, no lineal** (Kuhlthau, Ellis, Bates,
 Pirolli, Wohlin — ver [`Notas/05`](Notas/05-ciclo-investigacion-humano.md) y
-[`metodología.md`](metodología.md)): se siembra, se hace *chaining*, la query y la idea
+[`metodología.md`](Notas/metodología.md)): se siembra, se hace *chaining*, la query y la idea
 **mutan** al leer (berrypicking), y la colección **se cultiva** en el tiempo (berry growing). El
 snowballing manual es mecánico y agota; documentarlo con rigor (PRISMA / vom Brocke) es trabajo.
 
@@ -129,7 +135,10 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 - **Consciente, no caja negra.** La ecuación de búsqueda es **ciudadana de primera clase**: se
   traduce a una query OpenAlex, se **muestra la query exacta ejecutada** y un **reporte de
   traducción** (qué mapeó limpio, qué se aproximó, qué se descartó). Eso *es* el ejercicio
-  bibliotecario y lo que hace el resultado reportable (PRISMA / vom Brocke).
+  bibliotecario y lo que hace el resultado reportable (PRISMA / vom Brocke). Las **exclusiones
+  quirúrgicas** (`b2g seed --exclude`, negaciones `AND NOT …` por término) son parte de ese
+  ejercicio consciente: quedan en el reporte de traducción, no se aplican en silencio. Para
+  exploración con muestras chicas, `--max-results` acota el fetch.
 - **Biblioteca viva, no mapa one-shot.** El corpus se cura y crece en el tiempo (berry growing),
   persistido en DuckDB. El investigador **posee** su colección.
 - **Forrajeo asistido.** Chaining backward/forward sobre OpenAlex, con candidatos **rankeados
@@ -164,7 +173,11 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   parciales y lo **reportan** (no fallan). El **reporte de cobertura/calidad** por seed/source se
   **declara** como contrato en V1 y se concreta en **v0.2+**.
 - **Traducción** de la ecuación a query OpenAlex con **query ejecutada visible + reporte de
-  traducción**, ambas **registradas** con la corrida.
+  traducción**, ambas **registradas** con la corrida. Incluye **negaciones quirúrgicas**
+  (`b2g seed --exclude`, repetible: cada `AND NOT "…"` va **dentro** de la única expresión
+  `title_and_abstract.search:((query) AND NOT "…")`, campo no repetido) que se
+  **reportan en el reporte de traducción** (ejercicio consciente, no silencioso), y
+  **`--max-results`** para acotar el fetch en exploración con muestras chicas.
 - **Chaining asistido** backward/forward sobre OpenAlex; **profundidad 1 por defecto**, opt-in a
   2, con **preview de crecimiento** ("esta expansión sumaría ~N papers") y **tope** configurable.
 - **Ranking por estructura** (acoplamiento/co-citación, centralidad) de los candidatos —
@@ -205,8 +218,10 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   las redes** (comunidades/centralidad/acoplamiento). Era el candidato a *moat*
   ([`Notas/04`](Notas/04-direccion-ia-in-the-loop.md) §5); el diferenciador pasa a ser la **biblioteca
   viva curada + estructura bibliométrica de primera clase + flujo abierto**, no una capa de IA.
-- **Costura Zotero** (biblioteca viva externa) → **V1.1**, extra opt-in `[zotero]`. El **corazón
-  de la persistencia en V1.0 es DuckDB nativo**, no Zotero.
+- **Costura Zotero** (biblioteca viva externa) → **DESCARTADA (decisión del PO, 2026-06-17): no se
+  hace.** El **corazón de la persistencia en V1.0 es DuckDB nativo**, no Zotero; la GUI se construye
+  sobre el workspace local. No es backlog planificado: reabrible solo si aparece demanda real (p.ej.
+  round-trip con un Zotero existente), como hito nuevo con su propio encuadre.
 - **Monitoreo / alertas de literatura nueva** (paso 8 del ciclo, estilo Litmaps) → futuro;
   encaja sobre la biblioteca viva, pero no en V1.
 - **Matriz concepto×paper** (Webster & Watson, paso 5) → futuro; en V1 la organización es vía
@@ -223,7 +238,9 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 - **GUI / web / servicio gestionado** → fuera.
 - **WoS / Scopus / RIS / CSV / BibTeX como backbone** → OpenAlex primero; el resto, `Source`
   futura. BibTeX queda como `Source` **secundaria** para sembrar desde *pearls*.
-- **Neo4j** → adaptador `Store` opt-in post-V1; **ya no es sustrato**.
+- **Neo4j** → **DESCARTADO (decisión del PO, 2026-06-17): no se hace.** **Ya no es sustrato** y
+  tampoco se planifica como adaptador `Store` post-V1. Reabrible solo si aparece demanda real, como
+  hito nuevo.
 - **Enricher Semantic Scholar como camino para co-citación** → innecesario: las referencias y
   citantes vienen de OpenAlex ([ADR 0007](decisiones/0007-openalex-backbone.md)).
 - **Concurrencia multi-escritor** → **limitación conocida, no defecto** (ADR
@@ -298,8 +315,9 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   (estilo flujo PRISMA).
 - **C4** · Como investigador, quiero **aceptar/rechazar** candidatos y que lo aceptado quede en
   mi **biblioteca viva persistida en DuckDB**, que **crece entre corridas** con su log de
-  procedencia, para cultivar la colección (berry growing). *(La sincronización con Zotero llega
-  como costura opt-in en V1.1.)*
+  procedencia, para cultivar la colección (berry growing). *(La biblioteca viva es DuckDB nativo; la
+  sincronización con Zotero está descartada —decisión del PO, 2026-06-17— y solo se reabriría si hay
+  demanda real.)*
 
 ### Épica D — Proyectar a redes (el final sigue siendo las redes)
 - **D1** · Como investigador, quiero proyectar el corpus a **co-citación, acoplamiento
@@ -340,7 +358,8 @@ precisada por el ADR [0015](decisiones/0015-corpus-tabular-backend.md):
 - El **snapshot deja de ser el modelo de datos** y es un **export sellado derivable del estado
   vivo** (foto reproducible para reportar). **Reproducir = re-leer ese snapshot, no re-correr la
   ecuación** (ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)).
-- **Zotero** queda como **costura externa opt-in en V1.1**, no como la persistencia de 1.0.
+- **Zotero** queda **DESCARTADO (decisión del PO, 2026-06-17): no se hace**; nunca fue la
+  persistencia de 1.0 (DuckDB nativo lo es). Reabrible solo si aparece demanda real, como hito nuevo.
 
 Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.2), `API.md` (§1, §4) y
 `ROADMAP.md` (Hitos 1.5/3). El estado de construcción (Hitos 0–6 + 1.5 terminados; v0.2 cubre el
@@ -372,7 +391,7 @@ Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.
   end-to-end sobre 103 papers de OpenAlex, con 3/4 redes con estructura, thesaurus multilingüe y
   asimetría Norte–Sur medible (ver
   [`exploracion/informe_ied_lectura_2.md`](../exploracion/informe_ied_lectura_2.md)). El estudio
-  de semiconductores sigue como caso documentado en [`metodología.md`](metodología.md).
+  de semiconductores sigue como caso documentado en [`metodología.md`](Notas/metodología.md).
 - Agregar una nueva `Source` o `Store` no requiere modificar el núcleo.
 
 ## 11. Próximos pasos
@@ -392,12 +411,18 @@ Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.
 3. ✅ Implementación por hitos en curso (coder): **Hitos 0–6 + 1.5 terminados** (núcleo del corpus
    stateful sobre `TabularBackend`, proyectores/analizadores/export, biblioteca viva en DuckDB,
    fuentes OpenAlex/BibTeX, forrajeo + `Preprocessor` + filtros PRISMA, y el **CLI agente-native
-   `b2g`** — 13 subcomandos, ADR [0021](decisiones/0021-cli-agente-native-contrato.md) +
-   [0025](decisiones/0025-enricher-cocitacion-openalex.md) (`enrich`, Ciclo 8a)). Con ello
+   `b2g`** — 14 subcomandos, ADR [0021](decisiones/0021-cli-agente-native-contrato.md) +
+   [0025](decisiones/0025-enricher-cocitacion-openalex.md) (`enrich`, Ciclo 8a) +
+   [0029](decisiones/0029-workspace-por-investigacion.md) (`init` + workspace)). Con ello
    v0.2 alcanza las capacidades del **flujo** `seed → … → export`. **El red-team de la
    [Nota 06](Notas/06-critica-as-built-v0.2.md) corrige el claim "capacidades completas":** falta la
    **tanda de remediación R1–R5** (modelo sin IA, identidad-vs-procedencia reproducible, FSM cíclico,
-   scent bibliométrico, robustez) **antes** de los Hitos 7–11. Tras R1–R5 se construyó el **Hito 8 ✅**
-   (`Enricher` OpenAlex: refs→DOI + co-citación end-to-end, `enrich --max-citing`); siguen pendientes
-   los Hitos 7 (dedup fuzzy), 9 (`NetworkSpec` YAML), 10 (viz) y 11 (Zotero/Neo4j). Estado vivo en el
-   [`ROADMAP.md`](ROADMAP/README.md).
+   scent bibliométrico, robustez) **antes** de los Hitos 7–11. Tras R1–R5 se construyeron el **Hito 7 ✅**
+   (dedup fuzzy `rapidfuzz`), el **Hito 8 ✅** (`Enricher` OpenAlex: refs→DOI + co-citación end-to-end,
+   `enrich --max-citing`) y el **Hito 9 ✅** (`NetworkSpec` YAML + `b2g networks --spec` + `resolution`
+   Louvain, 2026-06-17): **Hitos 1–9 construidos**. Los **Hitos 10 (viz) y 11 (Zotero/Neo4j) fueron
+   reevaluados (2026-06-17, encuadre pre-GUI):** 10 se **difiere/absorbe en la epic GUI #34** (la GUI es
+   la capa de lectura visual; el export visual pre-GUI ya lo cubren `decorate`/`clusters.csv`) y 11 queda
+   **DESCARTADO (decisión del PO, 2026-06-17): Zotero/Neo4j no se hacen** —no son backlog planificado—,
+   reabrible como hito nuevo solo si aparece demanda real; no bloquea la GUI. Estado vivo
+   en el [`ROADMAP.md`](ROADMAP/README.md).

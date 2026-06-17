@@ -1,7 +1,12 @@
-"""cli._store — Helper para abrir DuckDBStore y traducir StoreLockedError.
+"""cli._store — Helper para resolver el workspace y abrir DuckDBStore.
 
 Centraliza la apertura del store y el manejo del error de bloqueo,
 para que cada subcomando no tenga que repetir el try/except.
+
+ADR 0029 — resolución workspace:
+  ``resolve_library_path`` lee ``ctx.obj["workspace"]`` y ``ctx.obj["store"]``
+  y delega en ``Workspace.resolve(...)`` con las env actuales y el cwd.
+  El resultado es siempre una ``Path`` al archivo ``.duckdb``.
 
 R5 — footgun de auto-creación:
   ``open_store_readonly`` verifica que el archivo exista antes de abrirlo.
@@ -16,7 +21,67 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from bib2graph.cli._errors import StoreError
+from bib2graph.cli._errors import StoreError, UsageError
+
+
+def resolve_library_path(ctx_obj: dict[str, Any]) -> Path:
+    """Resuelve la ruta al archivo .duckdb desde el contexto Click (ADR 0029).
+
+    Lee ``workspace`` y ``store`` del dict de contexto Click y delega en
+    ``Workspace.resolve(...)`` para aplicar la precedencia (ADR 0029):
+      1. ``--workspace`` explícito (forma canónica),
+      2. ``--store`` explícito (modo degenerado, retrocompat; mutuamente excluyente con ``--workspace``),
+      3. variable de entorno ``B2G_WORKSPACE``,
+      4. caminar hacia arriba desde cwd buscando ``workspace.json``.
+
+    Args:
+        ctx_obj: El dict ``ctx.obj`` del grupo Click (contiene ``workspace``
+            y ``store`` con los valores de las opciones globales).
+
+    Returns:
+        Ruta al archivo ``.duckdb`` de la biblioteca viva.
+
+    Raises:
+        UsageError: Si no se puede resolver ningún workspace (exit 1).
+    """
+    from bib2graph.workspace import Workspace, WorkspaceNotFoundError
+
+    workspace: str | None = ctx_obj.get("workspace")
+    store: str | None = ctx_obj.get("store")
+
+    try:
+        ws = Workspace.resolve(workspace=workspace, store=store)
+    except WorkspaceNotFoundError as exc:
+        raise UsageError(str(exc)) from exc
+
+    return ws.library_path
+
+
+def resolve_workspace(ctx_obj: dict[str, Any]) -> Any:
+    """Resuelve el Workspace completo desde el contexto Click (ADR 0029).
+
+    Variante de ``resolve_library_path`` que devuelve el ``Workspace`` completo
+    (útil cuando el comando necesita más que solo la ruta al store, p.ej.
+    ``networks_dir`` para ``build`` o el manifest para ``status``).
+
+    Args:
+        ctx_obj: El dict ``ctx.obj`` del grupo Click.
+
+    Returns:
+        El ``Workspace`` resuelto.
+
+    Raises:
+        UsageError: Si no se puede resolver ningún workspace (exit 1).
+    """
+    from bib2graph.workspace import Workspace, WorkspaceNotFoundError
+
+    workspace: str | None = ctx_obj.get("workspace")
+    store: str | None = ctx_obj.get("store")
+
+    try:
+        return Workspace.resolve(workspace=workspace, store=store)
+    except WorkspaceNotFoundError as exc:
+        raise UsageError(str(exc)) from exc
 
 
 def open_store(path: str | Path) -> Any:

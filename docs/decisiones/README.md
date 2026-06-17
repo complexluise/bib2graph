@@ -37,6 +37,12 @@ Qué se vuelve posible/fácil y qué se vuelve costoso/imposible. Trade-offs hon
 
 ## Índice
 
+> Los ADR se numeran **por orden de creación**, no se reservan en general. La excepción son
+> **0027/0028**, **referenciados por adelantado** desde la [Nota 12](../Notas/12-arquitectura-gui-encuadre.md)
+> (encuadre GUI): el número está apartado para el pivote de posicionamiento (0027) y la arquitectura
+> GUI (0028), **pendientes de firma**; el archivo se crea cuando se firmen. **0029** (workspace) sí
+> existe ya como *Propuesta* porque el PO bloqueó el modelo.
+
 | ADR | Título | Estado |
 |-----|--------|--------|
 | [0001](0001-herramienta-reutilizable.md) | Herramienta reutilizable en vez de pipeline de un solo uso | Aceptada |
@@ -65,3 +71,7 @@ Qué se vuelve posible/fácil y qué se vuelve costoso/imposible. Trade-offs hon
 | [0024](0024-orden-d3-columna-secuencia-duckdb.md) | Orden D3 en DuckDB vía columna de secuencia interna (`_seq`) | Aceptada · AS-BUILT (2026-06-16) |
 | [0025](0025-enricher-cocitacion-openalex.md) | `Enricher` opt-in sobre OpenAlex (núcleo): refs→DOI + co-citación; supersede el `[s2]` del DoD del Hito 8 | Aceptada · AS-BUILT COMPLETO (2026-06-16): 8a + 8b → Hito 8 completo |
 | [0026](0026-dedup-fuzzy-determinista.md) | Dedup fuzzy determinista con `rapidfuzz` (autores + keywords, función de librería); `splink` diferido a post-V1 | Aceptada · AS-BUILT (2026-06-16): Hito 7 |
+| 0027 | *(reservado)* Pivote de posicionamiento GUI local opt-in (gatea 0028/0029 GUI) | **Propuesta** — pendiente de firma ([Nota 12](../Notas/12-arquitectura-gui-encuadre.md)) |
+| 0028 | *(reservado)* Arquitectura GUI/API/frontend + empaquetado | **Propuesta** — pendiente de firma ([Nota 12](../Notas/12-arquitectura-gui-encuadre.md)) |
+| [0029](0029-workspace-por-investigacion.md) | Workspace por investigación: carpeta autocontenida (`workspace.json` + db + redes/snapshots/exports) + resolución ambiente; `--store` opcional | **Propuesta** — enmienda 0009/0019/0021; prerequisito GUI (#34) |
+| [0030](0030-ecuacion-declarativa-corpus-ejemplo.md) | Ecuación declarativa (`equation.yaml`, `seed --spec`) + `restore` de corpus curado (sin red) + corpus de ejemplo commiteado (`examples/valoraciones/`) + `seed --from-bib` (BibTeX) + filtro de año | **Aceptada — AS-BUILT** (9a + 9b + Ciclo 10, 2026-06-17): `restore`+`equation.yaml` cargable; `examples/valoraciones/` + gate R2; **`seed --from-bib` + `examples/bibtex/` + filtro de año real (#50 cerrado)**. Enmienda 0029; relacionada 0005/0006/0007/0016/0017/0018; prereq. Ciclo #33 → gate GUI (#34) |

@@ -239,3 +239,22 @@ exploratorio). `status` lee y presenta el estado actual + las transiciones dispo
 **Además, el alias `LoopState = CycleState` se RETIRÓ** del código (`backends/duckdb.py` y
 `stores/duckdb.py`): el contrato usa **solo `CycleState`** (de `bib2graph.cycle`). Donde este ADR
 dice "`LoopState`", léase `CycleState` (mismo concepto, una sola clase).
+
+## Enmienda — `--store` deja de ser global obligatorio (AS-BUILT, 2026-06-16)
+
+> **Implementado por [0029](0029-workspace-por-investigacion.md) (ver su AS-BUILT).** El cuerpo de
+> este ADR queda como historia; esta enmienda actualiza el §E al as-built.
+
+El §E fijaba `--store` como **opción global del grupo, obligatoria**. Con el modelo "workspace por
+investigación" (ADR [0029](0029-workspace-por-investigacion.md)), `--store` pasó a **opcional** y se
+agregó **`--workspace`** (ambos opcionales): la unidad de persistencia deja de ser un `.duckdb`
+suelto y pasa a ser una **carpeta workspace** (marcada por `workspace.json`), resuelta por
+**ambiente** (patrón git/cargo: walk-up del cwd). Precedencia: `--workspace`/`--store` explícito >
+`B2G_WORKSPACE` (env) > workspace del cwd. **`--workspace` y `--store` son mutuamente excluyentes**
+(juntos = error de uso). `--workspace` es el flag primario; `--store` sobrevive para apuntar a un
+`.duckdb` suelto (workspace "degenerado", retrocompatible). Sin flag y sin workspace resoluble → error
+accionable que sugiere `b2g init`.
+
+El cambio es **aditivo/retrocompatible**: la resolución ambiente solo cubre el caso en que falta el
+flag; el resto del contrato (envelope `schema="1"`, exit codes, transiciones) **no cambia**. El set
+de subcomandos pasa de 13 a **14** con el alta de `b2g init` (scaffold del workspace).

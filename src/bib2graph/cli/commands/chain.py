@@ -13,7 +13,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DependencyError, handle_errors
-from bib2graph.cli._store import open_store
+from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -26,6 +26,7 @@ def run_chain(
     direction: Literal["backward", "forward", "both"] = "both",
     depth: int = 1,
     max_candidates: int | None = None,
+    max_citing_per_paper: int | None = 50,
     email: str | None = None,
     transport: Any = None,
 ) -> dict[str, Any]:
@@ -36,6 +37,8 @@ def run_chain(
         direction: Dirección del chaining (``backward``, ``forward``, ``both``).
         depth: Profundidad del chaining (solo 1 soportado; >1 → NotImplementedError).
         max_candidates: Tope de candidatos (None = sin límite).
+        max_citing_per_paper: Presupuesto de citantes por semilla en forward
+            chaining (default 50; None = sin tope).
         email: Email para el polite pool de OpenAlex.
         transport: Transport inyectable para tests.
 
@@ -51,54 +54,71 @@ def run_chain(
     from bib2graph.foraging import Forager
     from bib2graph.sources.openalex import OpenAlexSource
 
+    merged_backend_close = None
     store = open_store(store_path)
-    corpus = store.load()
-
-    # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
-    # no un literal en el comando (ADR 0016 enmendado §1).
-    current_state = store.backend.loop_state()
-    current_round = store.backend.loop_round()
-    new_state, new_round = apply_transition(current_state, "chain", current_round)
-
-    source = OpenAlexSource(email=email, transport=transport)
-
-    # Pre-check explícito: si la dirección requiere forward y el source no
-    # tiene ``fetch_citing``, fallamos antes de entrar al Forager — así un
-    # ``AttributeError`` genuino que surja dentro de chain/merge/_fetch_forward
-    # no queda disfrazado de "source no soporta forward" (exit 3).
-    if direction in ("forward", "both") and not hasattr(source, "fetch_citing"):
-        raise DependencyError(
-            f"El source {type(source).__name__!r} no soporta forward chaining: "
-            "no tiene el método ``fetch_citing``. "
-            "Usá un source compatible (p. ej. OpenAlexSource) o cambiá "
-            "--direction a 'backward'."
-        )
-
     try:
-        forager = Forager(source, depth=depth, max_candidates=max_candidates)
-        ranked = forager.chain(corpus, direction=direction)
-    except NotImplementedError as exc:
-        raise DependencyError(
-            f"Profundidad {depth} no soportada aún: {exc}. Usá depth=1 (por defecto)."
-        ) from exc
-    # httpx.HTTPError y subclases (ConnectError, TimeoutException,
-    # RemoteProtocolError, TransportError, etc.) se dejan propagar: el
-    # decorador @handle_errors las captura por tipo y emite exit 4.
-    # AttributeError genuino se propaga limpio (no se disfraza de exit 3).
+        corpus = store.load()
 
-    # Merge de candidatos en el corpus
-    merged = corpus.merge(ranked.corpus)
-    store.persist(merged)
-    store.backend.set_loop_state(new_state, cycle_round=new_round)
+        # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
+        # no un literal en el comando (ADR 0016 enmendado §1).
+        current_state = store.backend.loop_state()
+        current_round = store.backend.loop_round()
+        new_state, new_round = apply_transition(current_state, "chain", current_round)
 
-    candidates_found = len(ranked.corpus)
-    ranking_preview = [
-        {"id": id_, "scent": scent} for id_, scent in ranked.ranking[:10]
-    ]
+        source = OpenAlexSource(email=email, transport=transport)
+
+        # Pre-check explícito: si la dirección requiere forward y el source no
+        # tiene ``fetch_citing_batch`` (ni ``fetch_citing`` como fallback), fallamos
+        # antes de entrar al Forager — así un ``AttributeError`` genuino que surja
+        # dentro de chain/merge/_fetch_forward no queda disfrazado de "source no
+        # soporta forward" (exit 3).
+        if direction in ("forward", "both") and not (
+            hasattr(source, "fetch_citing_batch") or hasattr(source, "fetch_citing")
+        ):
+            raise DependencyError(
+                f"El source {type(source).__name__!r} no soporta forward chaining: "
+                "no tiene el método ``fetch_citing_batch`` ni ``fetch_citing``. "
+                "Usá un source compatible (p. ej. OpenAlexSource) o cambiá "
+                "--direction a 'backward'."
+            )
+
+        try:
+            forager = Forager(
+                source,
+                depth=depth,
+                max_candidates=max_candidates,
+                max_citing_per_paper=max_citing_per_paper,
+            )
+            ranked = forager.chain(corpus, direction=direction)
+        except NotImplementedError as exc:
+            raise DependencyError(
+                f"Profundidad {depth} no soportada aún: {exc}. Usá depth=1 (por defecto)."
+            ) from exc
+        # httpx.HTTPError y subclases (ConnectError, TimeoutException,
+        # RemoteProtocolError, TransportError, etc.) se dejan propagar: el
+        # decorador @handle_errors las captura por tipo y emite exit 4.
+        # AttributeError genuino se propaga limpio (no se disfraza de exit 3).
+
+        # Merge de candidatos en el corpus
+        merged = corpus.merge(ranked.corpus)
+        candidates_found = len(ranked.corpus)
+        total_papers = len(merged)
+        ranking_preview = [
+            {"id": id_, "scent": scent} for id_, scent in ranked.ranking[:10]
+        ]
+        merged_backend_close = getattr(merged._backend, "close", None)
+        store.persist(merged)
+        store.backend.set_loop_state(new_state, cycle_round=new_round)
+    finally:
+        # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
+        # para evitar segfault en Linux ante llamadas consecutivas al mismo archivo.
+        if merged_backend_close is not None:
+            merged_backend_close()
+        store.close()
 
     return {
         "candidates_found": candidates_found,
-        "total_papers": len(merged),
+        "total_papers": total_papers,
         "direction": direction,
         "depth": depth,
         "ranking_preview": ranking_preview,
@@ -132,6 +152,14 @@ def run_chain(
     help="Tope de candidatos (sin límite por defecto).",
 )
 @click.option(
+    "--max-citing",
+    "max_citing_per_paper",
+    type=int,
+    default=50,
+    show_default=True,
+    help="Presupuesto de citantes por semilla en forward chaining.",
+)
+@click.option(
     "--email",
     default=None,
     help="Email para el polite pool de OpenAlex.",
@@ -150,6 +178,7 @@ def chain_cmd(
     direction: str,
     depth: int,
     max_candidates: int | None,
+    max_citing_per_paper: int,
     email: str | None,
     json_output: bool,
 ) -> None:
@@ -157,12 +186,13 @@ def chain_cmd(
 
     Tras el chain, el estado del lazo transiciona a FORAGED.
     """
-    store_path = ctx.obj["store"]
+    store_path = resolve_library_path(ctx.obj)
     data = run_chain(
         store_path,
         direction=direction,  # type: ignore[arg-type]
         depth=depth,
         max_candidates=max_candidates,
+        max_citing_per_paper=max_citing_per_paper,
         email=email,
     )
 

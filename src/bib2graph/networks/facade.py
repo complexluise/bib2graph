@@ -20,6 +20,7 @@ import networkx as nx
 
 from bib2graph.constants import NetworkKind
 from bib2graph.networks.analyzer import detect_communities, network_metrics
+from bib2graph.networks.decorate import decorate
 from bib2graph.networks.projectors import (
     AuthorCollaborationProjector,
     BibliographicCouplingProjector,
@@ -158,12 +159,15 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
                 corpus_hash = corpus._backend.corpus_hash()
                 random_state = _louvain_seed_from_hash(corpus_hash)
             communities = detect_communities(
-                g, method=spec.clustering, random_state=random_state
+                g,
+                method=spec.clustering,
+                random_state=random_state,
+                resolution=spec.resolution,
             )
         except ImportError:
             raise  # dep faltante: fallar fuerte (lección 7, AGENTS.md)
 
-    return NetworkArtifact(
+    artifact = NetworkArtifact(
         graph=g,
         metrics=metrics,
         communities=communities,
@@ -171,6 +175,14 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
         layout=None,
         spec=spec,
     )
+
+    # Decorar el grafo con labels legibles y atributos de nodo (issue #25).
+    # Se hace aquí, en la frontera de construcción, para que todos los
+    # exportadores (GraphML, CSV) y el CLI reciban artefactos ya decorados
+    # sin necesitar conocer el corpus.
+    decorate(artifact, table)
+
+    return artifact
 
 
 class Networks:

@@ -427,45 +427,58 @@ class TestForagerPreviewNoRed:
 
 
 class TestForagerForward:
-    """Forager forward: usa MockTransport para simular fetch_citing."""
+    """Forager forward: usa MockTransport para simular fetch_citing_batch.
 
-    def _make_mock_transport(
+    El forward chaining ahora opera solo sobre semillas aceptadas y usa
+    ``fetch_citing_batch`` (batcheo OR ≤50, presupuesto por semilla) en lugar
+    del loop N+1 de ``fetch_citing``.
+    """
+
+    def _make_batch_transport(
         self, citing_works: list[dict[str, Any]]
     ) -> httpx.MockTransport:
-        """Crea un MockTransport que devuelve citing_works al primer GET /works."""
+        """MockTransport que responde a consultas ``cites:`` con los works dados.
+
+        Devuelve los works para cualquier request con ``cites`` en el filtro.
+        Responde vacío a otras consultas (p. ej. ``openalex_id:``).
+        """
 
         def handler(request: httpx.Request) -> httpx.Response:
-            payload = {
-                "results": citing_works,
-                "meta": {"next_cursor": None},
-            }
+            url_str = str(request.url)
+            if "cites" in url_str:
+                payload = {
+                    "results": citing_works,
+                    "meta": {"next_cursor": None},
+                }
+            else:
+                payload = {"results": [], "meta": {"next_cursor": None}}
             return httpx.Response(200, json=payload)
 
         return httpx.MockTransport(handler)
 
     def test_forward_chaining_con_mock_transport(self) -> None:
-        """Forward chaining: candidatos traídos por fetch_citing con citación directa.
+        """Forward chaining: candidatos traídos por fetch_citing_batch con citación directa.
 
         Fix forward-scent: el score es citación directa al corpus, no acoplamiento.
+        El forward chaining ahora opera solo sobre semillas aceptadas
+        (``is_seed=True AND curation_status=accepted``).
 
-        El corpus tiene P1 (openalex_id="W1") sin references_id (simulando
-        el estado tras un seed sin enriquecimiento — references_id rala).
-        El citante (W9999) cita "W1" directamente (→ _oa_id_short("https://…/W1") = "W1").
-        Con el fix: score(W9999) = 1 > 0 → entra al ranking.
-        Con el as-built (acoplamiento): score=0 porque el corpus no tiene refs → se perdía.
+        El corpus tiene P1 (openalex_id="W1", aceptada) sin references_id.
+        El citante (W9999) cita "W1" directamente → score = 1 → entra al ranking.
         """
-        # Corpus con 1 paper, sin references_id (estado común tras un seed)
+        # Corpus con 1 semilla aceptada, sin references_id (estado común tras un seed)
         rows = [
             _base_row(
                 "P1",
                 openalex_id="W1",
-                references_id=None,  # rala — así viene del seed
+                references_id=None,
+                curation_status="accepted",  # requerido para forward chaining
             )
         ]
         corpus = _make_corpus(*rows)
 
-        # Citante que cita a W1 (el corpus-paper) directamente.
-        # referenced_works → _oa_id_short → "W1" → en corpus_ids → score = 1
+        # Citante que cita a W1 (la semilla aceptada) directamente.
+        # referenced_works → _oa_id_short → "W1" → atribuido a W1 por fetch_citing_batch
         citing_work = {
             "id": "https://openalex.org/W9999",
             "title": "Citing Paper",
@@ -479,7 +492,7 @@ class TestForagerForward:
             "primary_location": None,
             "type": "article",
         }
-        transport = self._make_mock_transport([citing_work])
+        transport = self._make_batch_transport([citing_work])
         source = OpenAlexSource(transport=transport)
 
         forager = Forager(source, depth=1)
@@ -494,26 +507,212 @@ class TestForagerForward:
         cand_rows = ranked.corpus.to_arrow().to_pylist()
         assert all(not r["is_seed"] for r in cand_rows)
 
-    def test_chain_forward_si_fetchea(self) -> None:
-        """chain(forward) SÍ llama a fetch_citing — el fetch es correcto en chain."""
-        fetch_calls: list[str] = []
+    def test_chain_forward_usa_fetch_citing_batch(self) -> None:
+        """chain(forward) usa fetch_citing_batch — NO el loop N+1 de fetch_citing."""
+        batch_calls: list[list[str]] = []
 
         class TrackingSource:
-            def fetch_citing(self, oa_id: str) -> list[dict[str, Any]]:
-                fetch_calls.append(oa_id)
-                return []  # Sin candidatos; basta verificar que se llamó
+            def fetch_citing_batch(
+                self, ids: list[str], *, max_per_paper: int | None = None
+            ) -> dict[str, list[str]]:
+                batch_calls.append(list(ids))
+                # W1 fue citado por W9999
+                return {"W1": ["W9999"]}
 
-        rows = [_base_row("P1", openalex_id="W1", references_id=None)]
+        rows = [
+            _base_row(
+                "P1",
+                openalex_id="W1",
+                references_id=None,
+                curation_status="accepted",
+            )
+        ]
+        corpus = _make_corpus(*rows)
+        source = TrackingSource()
+
+        forager = Forager(source, depth=1)  # type: ignore[arg-type]
+        ranked = forager.chain(corpus, direction="forward")
+
+        # fetch_citing_batch fue llamado (no fetch_citing uno-por-uno)
+        assert len(batch_calls) == 1, (
+            f"chain(forward) debe llamar fetch_citing_batch 1 vez, "
+            f"llamó {len(batch_calls)} veces"
+        )
+        assert "W1" in batch_calls[0], (
+            "El lote debe incluir el openalex_id de la semilla aceptada"
+        )
+        # El candidato W9999 está en el ranking
+        assert len(ranked.ranking) == 1
+        assert ranked.ranking[0][0] == "W9999"
+
+    def test_forward_no_N_mas_1_con_multiples_semillas(self) -> None:
+        """Con N semillas aceptadas, forward chaining hace 1 batch (no N requests).
+
+        3 semillas → 1 sola llamada a fetch_citing_batch con los 3 IDs juntos
+        (batcheo OR ≤50), NO 3 llamadas individuales.
+        """
+        batch_calls: list[list[str]] = []
+
+        class TrackingSource:
+            def fetch_citing_batch(
+                self, ids: list[str], *, max_per_paper: int | None = None
+            ) -> dict[str, list[str]]:
+                batch_calls.append(list(ids))
+                return {}  # sin candidatos; basta verificar el conteo
+
+        rows = [
+            _base_row(f"P{i}", openalex_id=f"W{i}", curation_status="accepted")
+            for i in range(1, 4)
+        ]
         corpus = _make_corpus(*rows)
         source = TrackingSource()
 
         forager = Forager(source, depth=1)  # type: ignore[arg-type]
         forager.chain(corpus, direction="forward")
 
-        assert "W1" in fetch_calls, "chain(forward) debe llamar fetch_citing"
+        # 3 semillas ≤ 50 → exactamente 1 llamada batch con los 3 IDs
+        assert len(batch_calls) == 1, (
+            f"3 semillas deben batchear en 1 llamada; se hicieron {len(batch_calls)}"
+        )
+        assert set(batch_calls[0]) == {"W1", "W2", "W3"}, (
+            f"El lote debe contener los 3 openalex_ids; contiene {batch_calls[0]}"
+        )
 
-    def test_forward_sin_fetch_citing_falla_claro(self) -> None:
-        """Si el source no tiene fetch_citing, falla con AttributeError claro."""
+    def test_forward_alcance_solo_seeds(self) -> None:
+        """Solo semillas (``is_seed=True``) entran al forward chaining.
+
+        Papers con ``is_seed=False`` (candidatos de chaining previo) no se
+        incluyen en el lote, sin importar su ``curation_status``.  El
+        ``curation_status`` de la semilla no filtra: el chaining corre antes
+        de la curación (ciclo SEEDED → FORAGED → curación).
+        """
+        batch_calls: list[list[str]] = []
+
+        class TrackingSource:
+            def fetch_citing_batch(
+                self, ids: list[str], *, max_per_paper: int | None = None
+            ) -> dict[str, list[str]]:
+                batch_calls.append(list(ids))
+                return {}
+
+        rows = [
+            _base_row(
+                "P1",
+                openalex_id="W1",
+                curation_status="candidate",  # semilla candidate: sí entra
+                is_seed=True,
+            ),
+            _base_row(
+                "P2",
+                openalex_id="W2",
+                curation_status="accepted",
+                is_seed=False,  # no-semilla: no entra aunque esté aceptada
+            ),
+            _base_row(
+                "P3",
+                openalex_id="W3",
+                curation_status="candidate",
+                is_seed=True,  # semilla candidate: sí entra
+            ),
+        ]
+        corpus = _make_corpus(*rows)
+        source = TrackingSource()
+
+        forager = Forager(source, depth=1)  # type: ignore[arg-type]
+        forager.chain(corpus, direction="forward")
+
+        # Solo W1 y W3 (seeds) deben estar en el lote; W2 (is_seed=False) no
+        assert len(batch_calls) == 1
+        assert set(batch_calls[0]) == {"W1", "W3"}, (
+            f"Solo las seeds deben estar en el lote; hay {batch_calls[0]}"
+        )
+
+    def test_forward_corpus_recien_sembrado_produce_candidatos(self) -> None:
+        """Un corpus recién sembrado (semillas candidate) SÍ produce candidatos.
+
+        Verifica el camino feliz: ``b2g seed`` + ``b2g chain``.  Las semillas
+        nacen con ``curation_status='candidate'``; el forward chaining debe
+        funcionar igualmente para traer candidatos.
+        """
+        batch_calls: list[list[str]] = []
+
+        class TrackingSource:
+            def fetch_citing_batch(
+                self, ids: list[str], *, max_per_paper: int | None = None
+            ) -> dict[str, list[str]]:
+                batch_calls.append(list(ids))
+                # W9 cita a W1 (la semilla)
+                return {"W1": ["W9"]}
+
+        rows = [
+            _base_row(
+                "P1", openalex_id="W1", curation_status="candidate", is_seed=True
+            ),
+        ]
+        corpus = _make_corpus(*rows)
+        source = TrackingSource()
+
+        forager = Forager(source, depth=1)  # type: ignore[arg-type]
+        ranked = forager.chain(corpus, direction="forward")
+
+        # El forward chaining debe haberse ejecutado
+        assert len(batch_calls) == 1, "Debe hacer 1 llamada batch para la semilla"
+        # Debe haber producido al menos 1 candidato (W9 → cita W1)
+        assert len(ranked.ranking) == 1
+        assert ranked.ranking[0][0] == "W9"
+
+    def test_forward_sin_seeds_cero_requests(self) -> None:
+        """Sin semillas (``is_seed=True``), forward chaining no hace ningún request."""
+        batch_calls: list[list[str]] = []
+
+        class TrackingSource:
+            def fetch_citing_batch(
+                self, ids: list[str], *, max_per_paper: int | None = None
+            ) -> dict[str, list[str]]:
+                batch_calls.append(list(ids))
+                return {}
+
+        rows = [
+            # is_seed=False (candidato de chaining previo): no hay semillas
+            _base_row(
+                "P1", openalex_id="W1", curation_status="accepted", is_seed=False
+            ),
+        ]
+        corpus = _make_corpus(*rows)
+        source = TrackingSource()
+
+        forager = Forager(source, depth=1)  # type: ignore[arg-type]
+        ranked = forager.chain(corpus, direction="forward")
+
+        assert batch_calls == [], "Sin semillas no debe hacer requests"
+        assert len(ranked.ranking) == 0
+
+    def test_cap_por_semilla_respetado(self) -> None:
+        """max_citing_per_paper se pasa a fetch_citing_batch para acotar el fetch."""
+        received_max: list[int | None] = []
+
+        class TrackingSource:
+            def fetch_citing_batch(
+                self, ids: list[str], *, max_per_paper: int | None = None
+            ) -> dict[str, list[str]]:
+                received_max.append(max_per_paper)
+                # Devolver más citantes de los permitidos para verificar el cap
+                return {"W1": [f"C{i}" for i in range(100)]}
+
+        rows = [_base_row("P1", openalex_id="W1", curation_status="accepted")]
+        corpus = _make_corpus(*rows)
+        source = TrackingSource()
+
+        forager = Forager(source, depth=1, max_citing_per_paper=5)  # type: ignore[arg-type]
+        forager.chain(corpus, direction="forward")
+
+        # El cap se pasa correctamente a fetch_citing_batch
+        assert received_max == [5], (
+            f"max_per_paper=5 debe pasarse a fetch_citing_batch; recibido {received_max}"
+        )
+
+    def test_forward_sin_fetch_citing_batch_falla_claro(self) -> None:
+        """Si el source no tiene fetch_citing_batch ni fetch_citing, falla claro."""
 
         class SimpleFakeSource:
             def seed(self, query: str) -> None:
@@ -522,12 +721,36 @@ class TestForagerForward:
             def load(self, path: str) -> None:
                 return None
 
-        rows = [_base_row("P1", openalex_id="W1")]
+        rows = [_base_row("P1", openalex_id="W1", curation_status="accepted")]
         corpus = _make_corpus(*rows)
         forager = Forager(SimpleFakeSource(), depth=1)  # type: ignore[arg-type]
 
         with pytest.raises(AttributeError, match="fetch_citing"):
             forager.chain(corpus, direction="forward")
+
+    def test_idempotencia_forward_chaining(self) -> None:
+        """Mismo corpus → mismo resultado (determinismo/idempotencia)."""
+        batch_call_count = [0]
+
+        class TrackingSource:
+            def fetch_citing_batch(
+                self, ids: list[str], *, max_per_paper: int | None = None
+            ) -> dict[str, list[str]]:
+                batch_call_count[0] += 1
+                return {"W1": ["W9999"]}
+
+        rows = [_base_row("P1", openalex_id="W1", curation_status="accepted")]
+        corpus = _make_corpus(*rows)
+        source = TrackingSource()
+
+        forager = Forager(source, depth=1)  # type: ignore[arg-type]
+        ranked1 = forager.chain(corpus, direction="forward")
+        ranked2 = forager.chain(corpus, direction="forward")
+
+        # Mismo resultado ambas veces
+        assert ranked1.ranking == ranked2.ranking, (
+            "chain() debe ser determinista: mismo corpus → mismo ranking"
+        )
 
 
 class TestForagerDepth:

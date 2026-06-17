@@ -11,13 +11,14 @@ R3: el mapa honesto del lazo (ADR 0016 enmendado).  Muestra:
 - contador de ronda,
 - conteos por curation_status.
 
-El envelope ``--json`` incluye ``curation_available`` y ``round`` como campos
-ADITIVOS que mantienen ``schema="1"`` (decisión del PO 2026-06-16: campos
-nuevos no rompen a los agentes, no se bumpea).
+ADR 0029 (aditivo): el envelope incluye ``workspace`` con el workspace
+resuelto (root, source) para que el agente sepa de dónde salió la biblioteca.
+Mantiene ``schema="1"`` (campos nuevos son aditivos, no rompen agentes).
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
-from bib2graph.cli._store import open_store_readonly
+from bib2graph.cli._store import open_store_readonly, resolve_workspace
 from bib2graph.cycle import CURATION_ACTIONS, available_transitions
 
 # ---------------------------------------------------------------------------
@@ -123,9 +124,40 @@ def status_cmd(
     - Estado actual y transiciones disponibles (incluyendo reseed).
     - accept/reject como acciones siempre-disponibles (curación transversal).
     - Contador de ronda.
+    - ADR 0029: workspace resuelto (root y fuente de resolución).
     """
-    store_path = ctx.obj["store"]
+    # ADR 0029: resolver workspace para obtener library_path + info de origen
+    ws = resolve_workspace(ctx.obj)
+    store_path = ws.library_path
+
     data = run_status(store_path)
+
+    # Agregar info del workspace (campo aditivo, schema="1" se mantiene)
+    data["workspace"] = {
+        "root": str(ws.root) if ws.root is not None else None,
+        "source": ws.source,
+    }
+
+    # ADR 0029 — aviso de staleness de la cache de redes.
+    # Si networks/.corpus_hash existe y no coincide con el corpus vivo,
+    # se emite un aviso accionable (no se regenera automáticamente).
+    # R5: open_store_readonly para consistencia (no auto-crea ante typo;
+    # mapea StoreLockedError → exit 5 vía el decorador @handle_errors).
+    warnings: list[str] = []
+    from bib2graph.backends.memory import compute_corpus_hash
+
+    _store = open_store_readonly(store_path)
+    _corpus = _store.load()
+    live_hash = compute_corpus_hash(_corpus.to_arrow())
+    stale = ws.is_networks_cache_stale(live_hash)
+
+    if stale:
+        warnings.append(
+            "La cache de redes (networks/) está desactualizada: el corpus cambió "
+            "desde el último build. Ejecutá 'b2g build' para regenerarla."
+        )
+
+    data["networks_cache_stale"] = stale
 
     if json_output:
         envelope = build_envelope(
@@ -133,6 +165,7 @@ def status_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=warnings,
         )
         emit(envelope)
     else:
@@ -150,3 +183,7 @@ def status_cmd(
         emit_human(
             f"Curación (siempre disponible): {', '.join(data['curation_available'])}"
         )
+        ws_root = data["workspace"]["root"] or "(modo degenerado)"
+        emit_human(f"Workspace: {ws_root} (resuelto vía {data['workspace']['source']})")
+        for w in warnings:
+            print(f"AVISO: {w}", file=sys.stderr)

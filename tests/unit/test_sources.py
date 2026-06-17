@@ -602,3 +602,304 @@ def test_with_manifest_mismo_corpus_hash() -> None:
     result = corpus.with_manifest(nuevo_manifest)
 
     assert _compute_corpus_hash(corpus.table) == _compute_corpus_hash(result.table)
+
+
+# ---------------------------------------------------------------------------
+# #14 — max_results: el source respeta el tope al paginar
+# ---------------------------------------------------------------------------
+
+
+def _make_handler_paged(
+    works: list[dict[str, Any]], *, page_size: int = 2
+) -> httpx.MockTransport:
+    """MockTransport que devuelve ``works`` en páginas de ``page_size``.
+
+    Permite verificar que ``max_results`` corta la paginación antes de agotar
+    todos los works disponibles cuando el tope es menor que el total.
+    """
+    pages: list[list[dict[str, Any]]] = []
+    for i in range(0, len(works), page_size):
+        pages.append(works[i : i + page_size])
+    # Añadir página vacía al final para señalar fin de paginación
+    pages.append([])
+    call_count: list[int] = [0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        idx = call_count[0]
+        call_count[0] += 1
+        page = pages[idx] if idx < len(pages) else []
+        has_next = idx < len(pages) - 2  # hay más páginas no vacías
+        body = {
+            "results": page,
+            "meta": {
+                "count": len(works),
+                "next_cursor": "cursor_next" if has_next else None,
+            },
+        }
+        return httpx.Response(
+            200,
+            json=body,
+            headers={"x-openalex-api-version": "2026-05-01"},
+        )
+
+    return httpx.MockTransport(handler)
+
+
+@pytest.mark.unit
+def test_max_results_propagado_al_source() -> None:
+    """``OpenAlexSource(max_results=N)`` almacena el valor en ``_max_results``."""
+    source = OpenAlexSource(max_results=30)
+    assert source._max_results == 30
+
+
+@pytest.mark.unit
+def test_max_results_default_es_200() -> None:
+    """Sin ``max_results`` explícito, el default es 200."""
+    source = OpenAlexSource()
+    assert source._max_results == 200
+
+
+@pytest.mark.unit
+def test_seed_max_results_corta_resultados() -> None:
+    """``seed()`` con ``max_results=1`` devuelve a lo sumo 1 paper."""
+    works = _load_fixture_works()
+    # Fixture tiene al menos 2 works; con max_results=1 solo llega 1
+    assert len(works) >= 2
+
+    transport = _make_handler_paged(works, page_size=2)
+    source = OpenAlexSource(max_results=1, transport=transport)
+    result = source.seed("ecological exchange")
+
+    assert len(result.corpus) == 1
+
+
+@pytest.mark.unit
+def test_seed_max_results_trae_todos_si_hay_menos() -> None:
+    """Si el total de works < max_results, se traen todos."""
+    works = _load_fixture_works()
+    transport = _make_handler(works)
+    source = OpenAlexSource(max_results=9999, transport=transport)
+    result = source.seed("ecological exchange")
+
+    assert len(result.corpus) == len(works)
+
+
+# ---------------------------------------------------------------------------
+# #30 — negaciones / exclusiones en _translate y seed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_translate_sin_exclusiones_comportamiento_actual() -> None:
+    """Sin ``exclude``, el comportamiento es idéntico al actual (sin AND NOT)."""
+    query = '"unequal exchange" OR trade'
+    executed, _report = _translate(query)
+
+    assert executed == f"title_and_abstract.search:({query})"
+    # Sin exclusiones no aparece AND NOT
+    assert "AND NOT" not in executed
+
+
+@pytest.mark.unit
+def test_translate_con_una_exclusion() -> None:
+    """Un término excluido → cláusula ``AND NOT "…"`` dentro de title_and_abstract.search."""
+    query = "sistémico AND complejidad"
+    executed, _report = _translate(query, exclude=["machine learning"])
+
+    # El campo NO se repite: exactamente un "title_and_abstract.search:" en el filtro
+    assert executed.count("title_and_abstract.search:") == 1
+    # La cláusula NOT va dentro del paréntesis, sin prefijo de campo
+    assert 'AND NOT "machine learning"' in executed
+    assert "AND NOT title_and_abstract.search:" not in executed
+    # La query base sigue envuelta correctamente
+    assert executed.startswith(f"title_and_abstract.search:({query})")
+
+
+@pytest.mark.unit
+def test_translate_con_multiples_exclusiones() -> None:
+    """Múltiples exclusiones → una cláusula AND NOT por cada término, todas dentro del paréntesis."""
+    query = "sujeto AND sistema"
+    terms = ["machine learning", "algorithm", "lupus"]
+    executed, _report = _translate(query, exclude=terms)
+
+    # El campo NO se repite: exactamente un "title_and_abstract.search:" en el filtro
+    assert executed.count("title_and_abstract.search:") == 1
+    assert "AND NOT title_and_abstract.search:" not in executed
+    for term in terms:
+        assert f'AND NOT "{term}"' in executed
+
+
+@pytest.mark.unit
+def test_translate_exclusiones_en_translation_report() -> None:
+    """Las exclusiones aparecen listadas en el ``translation_report``."""
+    _, report = _translate(
+        "ecological exchange", exclude=["machine learning", "algorithm"]
+    )
+
+    assert len(report) >= 1
+    # El report debe mencionar explícitamente las exclusiones
+    combined = " ".join(report)
+    assert "machine learning" in combined
+    assert "algorithm" in combined
+
+
+@pytest.mark.unit
+def test_translate_exclusion_lista_vacia_sin_efecto() -> None:
+    """``exclude=[]`` equivale a sin exclusiones."""
+    query = "ecological exchange"
+    executed_sin, report_sin = _translate(query)
+    executed_con, report_con = _translate(query, exclude=[])
+
+    assert executed_sin == executed_con
+    assert report_sin == report_con
+
+
+@pytest.mark.unit
+def test_translate_exclusion_none_sin_efecto() -> None:
+    """``exclude=None`` equivale a sin exclusiones."""
+    query = "ecological exchange"
+    executed_sin, _ = _translate(query)
+    executed_con, _ = _translate(query, exclude=None)
+
+    assert executed_sin == executed_con
+
+
+@pytest.mark.unit
+def test_seed_exclude_en_query_ejecutada() -> None:
+    """``seed(..., exclude=[...])`` refleja cláusulas NOT dentro del paréntesis de búsqueda."""
+    works = _load_fixture_works()
+    transport = _make_handler(works)
+    source = OpenAlexSource(transport=transport)
+
+    result = source.seed("sistémico", exclude=["machine learning"])
+
+    # El campo NO se repite: exactamente un "title_and_abstract.search:" en la query
+    assert result.executed_query.count("title_and_abstract.search:") == 1
+    assert 'AND NOT "machine learning"' in result.executed_query
+    assert "AND NOT title_and_abstract.search:" not in result.executed_query
+
+
+@pytest.mark.unit
+def test_seed_exclude_multiples_en_query_ejecutada() -> None:
+    """Múltiples términos excluidos aparecen todos dentro del paréntesis en la query ejecutada."""
+    works = _load_fixture_works()
+    transport = _make_handler(works)
+    source = OpenAlexSource(transport=transport)
+
+    terms = ["machine learning", "algorithm"]
+    result = source.seed("sujeto", exclude=terms)
+
+    # El campo NO se repite: exactamente un "title_and_abstract.search:"
+    assert result.executed_query.count("title_and_abstract.search:") == 1
+    assert "AND NOT title_and_abstract.search:" not in result.executed_query
+    for term in terms:
+        assert f'AND NOT "{term}"' in result.executed_query
+
+
+@pytest.mark.unit
+def test_seed_exclude_en_translation_report() -> None:
+    """Los términos excluidos se mencionan en el ``translation_report``."""
+    works = _load_fixture_works()
+    transport = _make_handler(works)
+    source = OpenAlexSource(transport=transport)
+
+    result = source.seed("complejidad", exclude=["machine learning"])
+
+    combined = " ".join(result.translation_report)
+    assert "machine learning" in combined
+
+
+@pytest.mark.unit
+def test_seed_sin_exclude_comportamiento_intacto() -> None:
+    """Sin ``exclude``, la query sigue siendo solo el wrapping PASSTHROUGH."""
+    works = _load_fixture_works()
+    transport = _make_handler(works)
+    source = OpenAlexSource(transport=transport)
+
+    query = '"unequal exchange" AND trade'
+    result = source.seed(query)
+
+    assert result.executed_query == f"title_and_abstract.search:({query})"
+    assert "AND NOT" not in result.executed_query
+
+
+@pytest.mark.unit
+def test_translate_native_ignora_exclude() -> None:
+    """Con ``native=True`` las exclusiones se ignoran: la query pasa cruda sin AND NOT."""
+    query = "title.search:ecologia"
+    executed, report = _translate(query, native=True, exclude=["machine learning"])
+
+    assert executed == query
+    assert "AND NOT" not in executed
+    # El report indica modo nativo pero no menciona exclusiones
+    assert any("nativa" in r.lower() for r in report)
+
+
+@pytest.mark.unit
+def test_seed_native_ignora_exclude() -> None:
+    """``seed(native=True, exclude=[...])`` no añade AND NOT a la query ejecutada."""
+    works = _load_fixture_works()
+    transport = _make_handler(works)
+    source = OpenAlexSource(transport=transport)
+
+    query = "title.search:ecologia"
+    result = source.seed(query, native=True, exclude=["machine learning", "algorithm"])
+
+    assert result.executed_query == query
+    assert "AND NOT" not in result.executed_query
+
+
+@pytest.mark.unit
+def test_translate_exclude_strip_comillas_internas() -> None:
+    """Comillas embebidas en un término se eliminan para no romper la frase OpenAlex."""
+    executed, _report = _translate("ecologia", exclude=['"machine learning"'])
+
+    # El campo NO se repite: exactamente un "title_and_abstract.search:"
+    assert executed.count("title_and_abstract.search:") == 1
+    assert "AND NOT title_and_abstract.search:" not in executed
+    # Las comillas del término se eliminaron; la frase externa queda bien formada
+    assert 'AND NOT "machine learning"' in executed
+    # No debe haber comilla suelta que cierre la frase antes de tiempo
+    after_not = executed.split('AND NOT "')[1]
+    assert after_not.startswith("machine learning")
+    # La cláusula cierra con exactamente una comilla de cierre
+    assert after_not.count('"') == 1  # solo la comilla de cierre
+
+
+@pytest.mark.unit
+def test_translate_exclude_con_anio_forma_completa() -> None:
+    """Con exclude + year, los NOT van dentro de search y el año va fuera con coma.
+
+    Forma esperada:
+        title_and_abstract.search:(query) AND NOT "t1" AND NOT "t2",
+        from_publication_date:2020-01-01,to_publication_date:2024-12-31
+
+    Los NOT están dentro de la expresión de search (un solo campo);
+    los predicados de año se añaden fuera con coma (sintaxis idiomática OpenAlex).
+    """
+    query = "complejidad AND sistemas"
+    executed, _report = _translate(
+        query,
+        exclude=["machine learning", "deep learning"],
+        min_year=2020,
+        max_year=2024,
+    )
+
+    # Exactamente un campo de búsqueda (no se repite)
+    assert executed.count("title_and_abstract.search:") == 1
+    assert "AND NOT title_and_abstract.search:" not in executed
+
+    # Los NOT van dentro de la expresión (sin prefijo de campo)
+    assert 'AND NOT "machine learning"' in executed
+    assert 'AND NOT "deep learning"' in executed
+
+    # El año va fuera de la expresión de search, separado por coma
+    assert ",from_publication_date:2020-01-01" in executed
+    assert ",to_publication_date:2024-12-31" in executed
+
+    # La expresión de search precede a los predicados de año
+    search_idx = executed.index("title_and_abstract.search:")
+    from_idx = executed.index(",from_publication_date:")
+    to_idx = executed.index(",to_publication_date:")
+    assert search_idx < from_idx
+    assert search_idx < to_idx

@@ -14,7 +14,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, StoreError, handle_errors
-from bib2graph.cli._store import open_store_readonly
+from bib2graph.cli._store import open_store_readonly, resolve_library_path
 from bib2graph.constants import Col, CurationStatus
 
 # ---------------------------------------------------------------------------
@@ -128,7 +128,7 @@ def validate_cmd(
 
     Exit 0: válido. Exit 2: datos inválidos. Exit 5: store corrupto.
     """
-    store_path = ctx.obj["store"]
+    store_path = resolve_library_path(ctx.obj)
     data = run_validate(store_path)
 
     if json_output:

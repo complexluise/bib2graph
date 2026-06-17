@@ -40,9 +40,15 @@
 > bibliométrico** (R4: proyectores como olfato, retiro de `explain`/`[llm]`/tensiones, ADR
 > 0020/0022/0008) → **robustez/escala** (R5: bulk-load, UTF-8 en la frontera, `except` anchos de la
 > Nota 06). El `ARCHITECTURE.md` apunta a estos hitos por número (R1–R5).
-> **Lo que falta** (tras la remediación R1–R5, el **Hito 8 ✅** —`Enricher` co-citación end-to-end— y
-> el **Hito 7 ✅** —dedup fuzzy `rapidfuzz`—, hacia v1.0): Hitos 9 (`NetworkSpec` YAML), 10 (viz) y 11
-> (Zotero/Neo4j). Tras el **2º giro**
+> **Lo que falta** (tras la remediación R1–R5, el **Hito 8 ✅** —`Enricher` co-citación end-to-end—,
+> el **Hito 7 ✅** —dedup fuzzy `rapidfuzz`— y el **Hito 9 ✅** —`NetworkSpec` YAML + `b2g networks
+> --spec` + `resolution` Louvain, 2026-06-17—, hacia v1.0): **Hitos 1–9 CONSTRUIDOS**. Quedan
+> **reevaluados (2026-06-17, encuadre pre-GUI)** el **Hito 10 (viz) — DIFERIDO/absorbido en la epic
+> GUI [#34](https://github.com/complexluise/bib2graph/issues/34)** (la GUI *es* la capa de lectura
+> visual; el export visual pre-GUI ya lo cubren `decorate` #25 ✅ + `clusters.csv` #31 ✅)— y el
+> **Hito 11 (Zotero/Neo4j) — DESCARTADO (decisión del PO, 2026-06-17)**: no se hace, no es backlog
+> planificado, reabrible si hay demanda real (hito nuevo); no bloquea la GUI. Ver
+> [04 · Lo que viene](04-lo-que-viene.md). Tras el **2º giro**
 > (acta del PO; ADR [0015](../decisiones/0015-corpus-tabular-backend.md)–[0019](../decisiones/0019-concurrencia-diferida.md))
 > se insertó un **Hito 1.5 — Rework de `Corpus` a `TabularBackend`** como el **paso inmediato
 > siguiente, secuenciado por delante del Hito 3** (instrucción explícita del PO: el rework va
@@ -95,7 +101,9 @@ OIDC), no el push de tags. Cortes acordados:
   [0021](../decisiones/0021-cli-agente-native-contrato.md)). El 12° **`monitor`** (cleanup pre-v0.3)
   re-chequea citantes nuevos del corpus y transiciona a `MONITORED`; el 13° **`enrich`** (Hito 8,
   ADR [0025](../decisiones/0025-enricher-cocitacion-openalex.md)) resuelve refs→DOI **+ co-citación
-  end-to-end** (`--max-citing`) y **no transiciona** el ciclo. El `accept`/`reject` programático
+  end-to-end** (`--max-citing`) y **no transiciona** el ciclo. *(Más tarde, la fundación workspace
+  sumó el 14° `init` —ADR [0029](../decisiones/0029-workspace-por-investigacion.md)—, fuera del corte
+  v0.2.)* El `accept`/`reject` programático
   sobrevive (ahora como subcomando CLI); la curación interactiva rica (`curate`) y la GUI son
   futuro. Acá se cumple el criterio "V1 hecha" del PRD §9 a nivel de *capacidades* (el número de
   versión sigue en 0.y). **Tag `v0.2.0`** creado el 2026-06-15, **publicado en `origin`**.
@@ -107,8 +115,29 @@ OIDC), no el push de tags. Cortes acordados:
   excluir timestamps; el `LoopState` se mueve a `cycle.py`), pero **no rompe el flujo de 10 minutos**
   ni el contrato `--json` externo. Sin esto, el claim de reproducibilidad y de "ciclo no lineal" no
   se sostiene (Nota 06, RAÍZ 1/2).
-- **v0.4+ — opcionales (Hitos 7–9):** dedup fuzzy, `Enricher` de co-citación (**Hito 8 ✅**:
-  refs→DOI + co-citación end-to-end), `NetworkSpec`.
+- **Fundación workspace · ✅ HECHA (2026-06-16, ADR
+  [0029](../decisiones/0029-workspace-por-investigacion.md); issues #32/#38/#39):** una investigación
+  = un **workspace = carpeta** (`workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/
+  `exports/`). Suma el **14° subcomando `b2g init`**; `--store` pasó a opcional + nuevo `--workspace`
+  (resolución ambiente). El `.duckdb` suelto sigue válido (workspace degenerado). No fue un hito
+  numerado (prerequisito de la epic GUI #34). Ver [04 · Lo que viene](04-lo-que-viene.md) §Backlog.
+- **v0.4+ — opcionales (Hitos 7–9) · ✅ COMPLETOS:** dedup fuzzy (**Hito 7 ✅**), `Enricher` de
+  co-citación (**Hito 8 ✅**: refs→DOI + co-citación end-to-end), `NetworkSpec` YAML (**Hito 9 ✅**,
+  2026-06-17). Con esto **Hitos 1–9 están construidos**.
+- **Caso real reproducido (#33, ADR [0030](../decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md))
+  · ✅ CERRADO (9a+9b, 2026-06-17):** ecuación declarativa (`EquationSpec` + `b2g seed --spec`),
+  `b2g restore --from-corpus` (rehidratación sin red) y el **corpus de ejemplo `examples/valoraciones/`**
+  (~80 filas, armado **100% por CLI**; Ciclo B) con **gate de reproducibilidad R2** (`corpus_hash` estable
+  + comunidades Louvain deterministas). Es el **gate de la epic GUI #34** (un tercero reproduce el lazo
+  end-to-end sin red); con #33 cerrado, **todo el terreno pre-GUI está completo**. **Ciclo 10 (2026-06-17,
+  cierra #50):** `seed --from-bib` (3er modo BibTeX sin red), filtro de año real (`min_year`/`max_year`) y
+  `examples/bibtex/` — ya **no** diferidos. **Ciclo B (2026-06-17):** `examples/valoraciones/` rehecho
+  CLI-puro (`build_corpus.py` eliminado; procedencia = receta CLI del README + `equation.yaml` +
+  `curacion.csv`), corpus ~80 filas con co-citación presente. Ver [04 · Lo que viene](04-lo-que-viene.md) §Backlog.
+- **Reevaluación 2026-06-17 (pre-GUI):** **Hito 10 (viz) → DIFERIDO/absorbido en la epic GUI #34**
+  (la GUI es la capa de lectura visual; el export visual pre-GUI ya lo cubren `decorate` #25 / `clusters.csv`
+  #31). **Hito 11 (Zotero/Neo4j) → DESCARTADO (decisión del PO, 2026-06-17):** no se hace, no es
+  backlog planificado; reabrible si hay demanda real (hito nuevo), no bloquea la GUI.
 - **1.0.0:** API congelada + caso real (IED) reproducido por un usuario distinto del autor (Nota 06,
   PRODUCTO).
 
@@ -179,7 +208,8 @@ limpio y actual; el cuerpo de cada hito vive en su archivo:
   del red-team (Nota 06): capa `constants`/`schemas`, identidad-vs-procedencia reproducible, FSM
   cíclico (`cycle.py`), scent bibliométrico (sin IA) y robustez. **v0.3 ✅ remediación completa.**
 - **[04 · Lo que viene (Hitos 7–11 + costuras futuras)](04-lo-que-viene.md)** — dedup fuzzy,
-  `Enricher` de co-citación, `NetworkSpec` YAML, viz, Zotero/Neo4j. **Lo que viene (hacia v1.0).**
+  `Enricher` de co-citación, `NetworkSpec` YAML; viz (Hito 10 diferido a la GUI #34) y Zotero/Neo4j
+  (Hito 11 descartado, PO 2026-06-17). **Lo que viene (hacia v1.0).**
 
 
 ## Trazabilidad historias ↔ hitos (resumen)
@@ -198,11 +228,11 @@ limpio y actual; el cuerpo de cada hito vive en su archivo:
 | C1 dedup/normalización autores/inst. | 5 ✅ (det.) + 7 ✅ (fuzzy) | `normalize` conservador + dedup fuzzy `rapidfuzz` (autores; keywords en C2; instituciones diferidas), ADR 0026 |
 | C2 thesaurus multilingüe | 5 ✅ + 7 ✅ (fuzzy) | `apply_thesaurus` (sobrescribe `keywords_id` desde `keywords_raw`); dedup fuzzy de keywords fuera del thesaurus en Hito 7 (`deduplicate_keywords`, ADR 0026) |
 | C3 filtros incl/excl con conteo | 5 ✅ (lógica) + 6 ✅ (CLI `filter`) | flujo PRISMA; marcan `rejected`, no borran; `b2g filter` con conteos por paso |
-| C4 aceptar/rechazar + biblioteca viva | 1 (modelo) + 1.5 (backend) + 3 (persist DuckDB) + 6 ✅ (CLI `accept`/`reject`) + 11 (Zotero) | `accept`/`reject` ahora subcomandos CLI (`b2g accept/reject --ids`); `curate`+GUI = futuro |
+| C4 aceptar/rechazar + biblioteca viva | 1 (modelo) + 1.5 (backend) + 3 (persist DuckDB) + 6 ✅ (CLI `accept`/`reject`) | `accept`/`reject` ahora subcomandos CLI (`b2g accept/reject --ids`); biblioteca viva = DuckDB nativo; `curate`+GUI = futuro. *(Sincronización con Zotero descartada —PO 2026-06-17, ex-Hito 11—, no planificada.)* |
 | D1 cinco proyecciones | 2 + 8 ✅ (co-citación) | co-citación end-to-end vía `b2g enrich` (8b); `Networks.quick` → 4/5 redes según `cited_by_id` |
 | D2 métricas y comunidades | 2 | |
 | D3 asortatividad + composición + proxy | 2 | |
 | D4 export GraphML/CSV | 2 | |
 | E1 snapshot reproducible | 1 + 6 ✅ | `Corpus.snapshot` + `b2g snapshot` |
-| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) + cleanup pre-v0.3 ✅ (`monitor`) + 8 ✅ (`enrich`) | `b2g` **13 subcomandos** (Hito 6 entregó 11; `monitor` se sumó en el cleanup pre-v0.3 → `MONITORED`; `enrich` en el Hito 8 —refs→DOI + co-citación, `--max-citing`—, ADR 0025, sin transición), envelope `--json` versionado, exit 0–5 (ADR 0021) |
+| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) + cleanup pre-v0.3 ✅ (`monitor`) + 8 ✅ (`enrich`) + workspace ✅ (`init`) | `b2g` **14 subcomandos** (Hito 6 entregó 11; `monitor` se sumó en el cleanup pre-v0.3 → `MONITORED`; `enrich` en el Hito 8 —refs→DOI + co-citación, `--max-citing`—, ADR 0025, sin transición; `init` con el workspace, ADR 0029), envelope `--json` versionado, exit 0–5 (ADR 0021) |
 

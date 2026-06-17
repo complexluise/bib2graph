@@ -12,7 +12,7 @@
 > [0009](decisiones/0009-biblioteca-viva-duckdb.md); **agente-native columna**
 > [0010](decisiones/0010-agente-native-columna.md); **thesaurus**
 > [0011](decisiones/0011-thesaurus-multilingue.md). El método bibliométrico está en
-> [`metodología.md`](metodología.md).
+> [`metodología.md`](Notas/metodología.md).
 >
 > **AS-BUILT vs TARGET (importante):** este doc describe el diseño **objetivo** tras el red-team
 > de la [Nota 06](Notas/06-critica-as-built-v0.2.md). Donde el código v0.2 difiere del objetivo,
@@ -180,7 +180,7 @@ Funciones puras sobre `networkx.Graph`:
   atributo. Las métricas que dependen de un **proxy** (p. ej. afiliación por-paper vs per-autor)
   se reportan **con el disclaimer del proxy** ("fácil pero consciente"). El atributo y sus
   categorías son **config del usuario**, no umbrales hardcodeados (crítica #5).
-- **Informe de calidad** de la co-citación según [`metodología.md`](metodología.md) §4, con
+- **Informe de calidad** de la co-citación según [`metodología.md`](Notas/metodología.md) §4, con
   umbrales **configurables**.
 
 ### 3.4 `Exporter` — resultados → archivos
@@ -289,15 +289,27 @@ tablas de **procedencia, decisiones de curación** (aceptar/rechazar) y el **`Lo
 en memoria). **Cleanup pre-v0.3:** el `merge` ya **no interpola ids crudos** en el SQL (eliminado el
 `CASE WHEN`/`IN (...)` con f-strings); lee las filas y **ordena en Python** por orden de aparición
 antes de reinsertar (orden determinista D3 preservado, sin construir SQL con datos). Soporta query
-SQL. Es **núcleo**, no extra. **Una investigación = un archivo
-`.duckdb`** (single-writer; concurrencia diferida, ADR
-[0019](decisiones/0019-concurrencia-diferida.md)).
+SQL. Es **núcleo**, no extra. **Una investigación = un workspace** (carpeta autocontenida con su
+`library.duckdb`; AS-BUILT ADR [0029](decisiones/0029-workspace-por-investigacion.md)); el
+`library.duckdb` sigue siendo single-writer (un `.duckdb` suelto = workspace degenerado;
+concurrencia diferida, ADR [0019](decisiones/0019-concurrencia-diferida.md)).
 
 El **snapshot** es un **export sellado** del estado vivo (ver §6.2), no la persistencia en sí;
 `ParquetStore` puede servir como **formato de export/intercambio**. La costura `Store` sigue
 siendo el punto de extensión para destinos externos: **`ZoteroStore`** (sincronizar la biblioteca
 con una colección Zotero) es **opt-in en V1.1** (`[zotero]`); **`Neo4jStore`** es adaptador opt-in
 post-V1 (`[neo4j]`): un destino más, **ya no el sustrato** (ADR 0002).
+
+> **AS-BUILT (2026-06-16) — workspace por investigación, ADR
+> [0029](decisiones/0029-workspace-por-investigacion.md):** la **unidad de persistencia es el
+> workspace = una carpeta** (`workspace.json` + `library.duckdb` + `networks/` + `snapshots/` +
+> `exports/`), formalizando la convención emergente de que `build` ya escribía `<store_dir>/networks/`.
+> El corpus/procedencia/curación/loop-state siguen en el `.duckdb`; redes/exports = cache regenerable
+> sellada por `corpus_hash` (`b2g build` graba `networks/.corpus_hash`); el snapshot sigue siendo lo
+> reproducible (§6.2). El `.duckdb` suelto sigue válido como **workspace degenerado** (sin migración
+> forzada). Enmienda 0009/0019; single-writer sin cambios. **Acotado en este corte:**
+> `snapshot`/`export` aún usan `--out-dir` explícito; la staleness solo sella el hash (sin aviso ni
+> regeneración automática todavía).
 
 ## 5. Flujo de datos (ciclo iterativo, no pipeline lineal)
 
@@ -426,14 +438,23 @@ trabajo posterior, pero la API se **diseña con estos principios desde el hito 1
    faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` mediante un
    **pre-check `hasattr` en el borde** (p. ej. `chain.py` antes del `Forager`). Ver ADR 0021 §D.
 
-Son **13 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
-`inspect`, `validate`, `accept`, `reject`, **`monitor`**, **`enrich`**); `build`/`export` están
+Son **16 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
+`inspect`, `validate`, `accept`, `reject`, **`monitor`**, **`enrich`**, **`init`**, **`curate`**,
+**`networks`**); `build`/`export` están
 **separados** y el `CycleState` transiciona automáticamente por comando (ADR 0021). El 12°
 **`monitor`** (cleanup pre-v0.3) re-chequea citantes nuevos del corpus (forward chaining) y
 transiciona a `MONITORED`. El 13° **`enrich`** (Hito 8 = Ciclos 8a + 8b, ADR
 [0025](decisiones/0025-enricher-cocitacion-openalex.md)) corre el `OpenAlexEnricher` (refs→DOI +
-co-citación, flag `--max-citing`) y **no transiciona** el ciclo (ortogonal al lazo). El error de uso (p. ej. falta `--store`) sale **sin
-envelope** (Click aborta el parseo: stderr + exit 1).
+co-citación, flag `--max-citing`) y **no transiciona** el ciclo (ortogonal al lazo). El 14°
+**`init`** (AS-BUILT ADR [0029](decisiones/0029-workspace-por-investigacion.md)) hace scaffold de un
+workspace (carpeta + `workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/`exports/`;
+`b2g init .` inicializa el cwd) y **no transiciona** el ciclo. El 15° **`curate`** (#22 + #26) hace
+curación a escala vía CSV (dump/import en lote, transversal: **no transiciona** el ciclo). El 16°
+**`networks`** (Hito 9, AS-BUILT 2026-06-17) construye redes desde un YAML declarativo
+(`b2g networks --spec <yaml>`, `load_specs` + `Networks.build` por red, helper compartido
+`_write_artifacts`) y **no transiciona** el ciclo ni sella `.corpus_hash` (transversal al lazo). El error de uso (p. ej.
+`--workspace` y `--store` juntos, o ningún store/workspace resoluble) sale **sin envelope** (Click
+aborta el parseo: stderr + exit 1).
 
 **AS-BUILT R5 — UTF-8 en la frontera (Nota 06 RAÍZ 3):** `main()` llama `_force_utf8()` (reconfigura
 `sys.stdout`/`stderr` a UTF-8, con guarda por si la stream no es reconfigurable) **antes de que Click
@@ -442,6 +463,18 @@ consola cp1252 de Windows (`ecuaci�n`), rompiendo el contrato agente-native. *
 solo lectura:** `status`/`validate` usan `open_store_readonly` (`cli/_store.py`), que **no auto-crea**
 el `.duckdb` ante un typo en `--store` (falla accionable); los comandos de escritura conservan
 `open_store`.
+
+> **AS-BUILT (2026-06-16) — `--store` opcional + `--workspace` + `b2g init`, ADR
+> [0029](decisiones/0029-workspace-por-investigacion.md):** con el modelo workspace, `--store` dejó de
+> ser opción global **obligatoria** y pasó a **opcional**, y se agregó **`--workspace`** (ambos
+> opcionales y **mutuamente excluyentes** — juntos = error de uso). La unidad es una **carpeta
+> workspace** (`workspace.json`), resuelta por ambiente (patrón git/cargo: walk-up del cwd).
+> Precedencia: `--workspace`/`--store` explícito > `B2G_WORKSPACE` (env) > workspace del cwd. Sin flag
+> y sin workspace resoluble → error accionable que sugiere `b2g init`. Entró el subcomando **`b2g init
+> <name>`** (scaffold de la carpeta; `b2g init .` inicializa el cwd) → el conteo de subcomandos pasó de
+> **13 a 14**. El `.duckdb` suelto sigue funcionando (workspace "degenerado", sin migración forzada).
+> Es un cambio **suave/aditivo** del contrato (la resolución ambiente solo cubre el flag ausente). El
+> `status` suma el campo aditivo `workspace: {root, source}` (`schema="1"` intacto).
 
 ## 7. Layout de dependencias (extras)
 

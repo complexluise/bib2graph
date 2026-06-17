@@ -20,7 +20,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
-from bib2graph.cli._store import open_store
+from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -69,33 +69,42 @@ def run_enrich(
     from bib2graph.sources.openalex import OpenAlexSource
 
     store = open_store(store_path)
-    corpus = store.load()
+    try:
+        corpus = store.load()
 
-    source = OpenAlexSource(email=email, api_key=api_key, transport=transport)
-    enricher = OpenAlexEnricher(source, max_citing_per_paper=max_citing)
-    enriched = enricher.enrich(corpus)
+        source = OpenAlexSource(email=email, api_key=api_key, transport=transport)
+        enricher = OpenAlexEnricher(source, max_citing_per_paper=max_citing)
+        enriched = enricher.enrich(corpus)
 
-    store.persist(enriched)
+        store.persist(enriched)
 
-    # Extraer métricas de los EnricherRef registrados
-    enricher_refs = enriched.manifest.enrichers
+        # Extraer métricas de los EnricherRef registrados
+        enricher_refs = enriched.manifest.enrichers
 
-    doi_entry = next(
-        (e for e in enricher_refs if e.name == "openalex_references_doi"), None
-    )
-    refs_resolved = int(doi_entry.params.get("resolved", 0)) if doi_entry else 0
-    refs_total = int(doi_entry.params.get("total_unique_refs", 0)) if doi_entry else 0
+        doi_entry = next(
+            (e for e in enricher_refs if e.name == "openalex_references_doi"), None
+        )
+        refs_resolved = int(doi_entry.params.get("resolved", 0)) if doi_entry else 0
+        refs_total = (
+            int(doi_entry.params.get("total_unique_refs", 0)) if doi_entry else 0
+        )
 
-    cb_entry = next((e for e in enricher_refs if e.name == "openalex_cited_by"), None)
-    citing_new = int(cb_entry.params.get("resolved", 0)) if cb_entry else 0
-    citing_targets = int(cb_entry.params.get("total", 0)) if cb_entry else 0
+        cb_entry = next(
+            (e for e in enricher_refs if e.name == "openalex_cited_by"), None
+        )
+        citing_new = int(cb_entry.params.get("resolved", 0)) if cb_entry else 0
+        citing_targets = int(cb_entry.params.get("total", 0)) if cb_entry else 0
+
+        total_papers = len(enriched)
+    finally:
+        store.close()
 
     return {
         "refs_resolved": refs_resolved,
         "refs_total_unique": refs_total,
         "citing_new": citing_new,
         "citing_targets": citing_targets,
-        "total_papers": len(enriched),
+        "total_papers": total_papers,
     }
 
 
@@ -149,7 +158,7 @@ def enrich_cmd(
 
     Si no hay referencias ni semillas aceptadas, termina sin error.
     """
-    store_path = ctx.obj["store"]
+    store_path = resolve_library_path(ctx.obj)
     data = run_enrich(
         store_path,
         email=email,

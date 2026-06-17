@@ -16,8 +16,15 @@ scent es puro.  ``explain_candidate`` fue **eliminado** (R4, ADR 0022).
 
 ``depth > 1`` lanza ``NotImplementedError`` claro (decisión e=A, ADR 0008).
 
-Forward chaining requiere que el ``source`` tenga ``fetch_citing``.  Si el
-source no tiene ese método, falla ruidoso (no se amplía el Protocol ``Source``).
+Forward chaining requiere que el ``source`` tenga ``fetch_citing_batch``.
+Si el source no lo tiene, falla ruidoso.
+
+El forward chaining opera **sobre todas las semillas** (``is_seed=True``),
+independientemente de su ``curation_status``.  El chaining corre antes de la
+curación (ciclo: SEEDED → FORAGED → curación); restringir a ``accepted``
+bloquearía el camino feliz ``b2g seed`` + ``b2g chain`` (las semillas nacen
+``candidate``).  La restricción a ``accepted`` es del Enricher (post-curación).
+``max_citing_per_paper`` acota el fetch por semilla.
 
 Ver docs/API.md §5.
 """
@@ -34,7 +41,6 @@ from bib2graph.corpus import Corpus, _rows_with_ids
 from bib2graph.foraging.base import Direction, GrowthPreview, RankedCandidates
 from bib2graph.foraging.scent import (
     compute_backward_scent,
-    compute_forward_scent,
     rank_candidates,
 )
 from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
@@ -48,6 +54,91 @@ def _make_empty_corpus() -> Corpus:
             schema=CORPUS_SCHEMA,
         )
     )
+
+
+def _extract_seed_ids(corpus_rows: list[dict[str, Any]]) -> list[str]:
+    """Extrae los openalex_id de todas las semillas del corpus.
+
+    El forward chaining corre antes de la curación (ciclo: SEEDED → FORAGED
+    → curación); las semillas nacen con ``curation_status="candidate"`` y el
+    paso de curación es posterior.  Restringir a ``accepted`` rompería el
+    camino feliz ``b2g seed`` + ``b2g chain``.  La restricción a ``accepted``
+    es responsabilidad del Enricher (post-curación, Hito 8b), no del Forager.
+
+    Las no-semillas (candidatos traídos por chaining anterior, con
+    ``is_seed=False``) sí se omiten: solo las semillas originales se forrajean.
+
+    Args:
+        corpus_rows: Filas del corpus como dicts.
+
+    Returns:
+        Lista de IDs cortos de OpenAlex de las semillas, en orden de aparición
+        (determinista).
+    """
+    result: list[str] = []
+    for row in corpus_rows:
+        if row.get(Col.IS_SEED) and row.get(Col.OPENALEX_ID):
+            result.append(str(row[Col.OPENALEX_ID]))
+    return result
+
+
+def _build_forward_candidate_row(
+    citer_id: str,
+    *,
+    seed_ids_cited: list[str],
+    fetched_at: str,
+) -> dict[str, Any]:
+    """Construye una fila mínima para un candidato forward.
+
+    A diferencia del candidato backward (que tiene solo el id), el candidato
+    forward incorpora en ``references_id`` los IDs de las semillas que él cita
+    (atribuidos por ``fetch_citing_batch``).  Esto permite calcular el score
+    por intersección con ``corpus_ids`` sin re-fetchear los datos de red.
+
+    Args:
+        citer_id: ID corto de OpenAlex del citante (p. ej. ``W99999``).
+        seed_ids_cited: IDs de las semillas del corpus que este citante cita,
+            según la re-atribución de ``fetch_citing_batch``.
+        fetched_at: Timestamp ISO del fetch.
+
+    Returns:
+        Dict con las columnas mínimas del schema canónico.
+    """
+    provenance_event = ProvenanceEvent(
+        action="fetched",
+        equation_id=None,
+        chaining_hop=1,
+        source="chaining:forward",
+        fetched_at=fetched_at,
+        decided_by=None,
+        decided_at=None,
+    )
+    return {
+        Col.OPENALEX_ID: citer_id,
+        Col.DOI: None,
+        Col.TITLE: f"[candidate:{citer_id}]",
+        Col.YEAR: None,
+        Col.ABSTRACT: None,
+        Col.SOURCE: None,
+        Col.LANGUAGE: None,
+        Col.PUBLISHER: None,
+        Col.RESEARCH_AREAS: None,
+        Col.IS_SEED: False,
+        Col.CURATION_STATUS: CurationStatus.CANDIDATE,
+        Col.PROVENANCE: ProvenanceEvent.dump_list([provenance_event]),
+        Col.AUTHORS_RAW: None,
+        Col.AUTHORS_ID: None,
+        Col.AUTHORS_AFFILIATIONS: None,
+        Col.KEYWORDS_RAW: None,
+        Col.KEYWORDS_ID: None,
+        Col.INSTITUTIONS_RAW: None,
+        Col.INSTITUTIONS_ID: None,
+        # references_id incluye los seeds citados para que compute_forward_scent
+        # pueda calcular el score por intersección con corpus_ids.
+        Col.REFERENCES_ID: seed_ids_cited or None,
+        Col.REFERENCES_DOI: None,
+        Col.CITED_BY_ID: None,
+    }
 
 
 def _build_backward_candidate_row(
@@ -111,6 +202,10 @@ class Forager:
     forward = cuántos corpus-papers cita el candidato directamente (citación
     directa al corpus, Wohlin; robusto ante ``references_id`` ralas en el corpus).
 
+    El forward chaining opera sobre **todas las semillas** (``is_seed=True``,
+    sin filtrar por ``curation_status``) y usa batcheo OR
+    (``fetch_citing_batch``, ≤50 IDs/lote) para eliminar el patrón N+1.
+
     Uso::
 
         forager = Forager(OpenAlexSource(email="yo@example.com"), depth=1)
@@ -122,6 +217,8 @@ class Forager:
         source: ``Source`` inyectado (``OpenAlexSource`` u otro compatible).
         depth: Profundidad de chaining; solo 1 está implementado.
         max_candidates: Tope de candidatos en el ranking; ``None`` = sin límite.
+        max_citing_per_paper: Presupuesto de citantes por semilla en el forward
+            chaining; ``None`` = sin tope.
     """
 
     def __init__(
@@ -130,15 +227,19 @@ class Forager:
         *,
         depth: int = 1,
         max_candidates: int | None = None,
+        max_citing_per_paper: int | None = 50,
     ) -> None:
         """Inicializa el Forager.
 
         Args:
             source: ``Source`` con acceso a la API externa.  Para forward
-                chaining debe tener ``fetch_citing``.
+                chaining debe tener ``fetch_citing_batch``.
             depth: Profundidad de chaining (solo 1 implementado).
             max_candidates: Tope de candidatos en el ranking (``None`` = sin
                 límite).
+            max_citing_per_paper: Presupuesto de citantes por semilla para el
+                forward chaining.  Default 50 (acota el fetch por semilla, no
+                solo trunca el resultado).  Pasar ``None`` para sin tope.
 
         Raises:
             NotImplementedError: Si ``depth > 1``.
@@ -151,6 +252,7 @@ class Forager:
         self._source = source
         self._depth = depth
         self._max_candidates = max_candidates
+        self._max_citing_per_paper = max_citing_per_paper
 
     def preview(
         self,
@@ -161,12 +263,15 @@ class Forager:
         """Estima cuántos papers nuevos agregaría un chaining.
 
         Opera **solo localmente, sin red**.  No realiza ninguna llamada a la
-        API ni a ``fetch_citing`` en ninguna dirección.
+        API en ninguna dirección.
 
         - **Backward**: estimación exacta desde ``references_id`` local.
-        - **Forward**: no es estimable sin red (``cited_by_id`` está vacío
-          tras el seed inicial).  Cuando se pide forward o both,
-          ``by_direction["forward"]`` vale ``0`` y
+        - **Forward**: el conteo de citantes no es estimable sin red
+          (``cited_by_id`` está vacío tras el seed inicial).  Sin embargo,
+          se reporta el número de semillas (``is_seed=True``) que se forejarían
+          como estimación del costo de red (~1 request por lote de 50 semillas).
+          Cuando se pide forward o
+          both, ``by_direction["forward"]`` vale ``0`` y
           ``GrowthPreview.forward_requires_fetch`` es ``True``.  El conteo
           real de candidatos forward solo se conoce al llamar
           ``chain(direction="forward"/"both")``, que sí fetchea.
@@ -196,9 +301,10 @@ class Forager:
 
         if direction in ("forward", "both"):
             # El crecimiento forward no puede estimarse localmente: cited_by_id
-            # está vacío tras el seed y traerlo requeriría fetch_citing (red).
+            # está vacío tras el seed y traerlo requeriría fetch a la red.
             # Marcamos el campo para que el llamador sepa que debe chain() para
-            # obtener el conteo real.
+            # obtener el conteo real.  El número de semillas (is_seed=True)
+            # es la única estimación disponible sin red.
             by_direction["forward"] = 0
             forward_requires_fetch = True
 
@@ -299,7 +405,18 @@ class Forager:
         *,
         fetched_at: str,
     ) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
-        """Trae citantes y calcula scent forward.
+        """Trae citantes via batcheo y calcula scent forward.
+
+        Usa ``fetch_citing_batch`` del source (batcheo OR ≤50 IDs por request,
+        presupuesto por semilla, retry/backoff incluidos) en lugar del loop N+1.
+        Opera sobre todas las semillas (``is_seed=True``), independientemente
+        del ``curation_status`` — el chaining corre antes de la curación.
+
+        El scent forward se computa desde la re-atribución que ya realiza
+        ``fetch_citing_batch``: para cada citante, los seed IDs que él cita
+        están en el dict resultado; con eso se construye una fila mínima con
+        ``references_id=seed_ids_citados`` y el score se calcula por
+        intersección con ``corpus_ids``.
 
         Args:
             corpus_rows: Filas del corpus actual.
@@ -307,33 +424,84 @@ class Forager:
 
         Returns:
             Tupla ``(scent_map, candidate_rows)`` donde ``candidate_rows``
-            tiene la fila completa de cada candidato forward.
+            tiene la fila mínima de cada candidato forward (con
+            ``references_id`` = seeds citadas, para el scent).
 
         Raises:
-            AttributeError: Si el ``source`` no tiene ``fetch_citing``.
+            AttributeError: Si el ``source`` no tiene ``fetch_citing_batch``.
         """
-        if not hasattr(self._source, "fetch_citing"):
+        if not hasattr(self._source, "fetch_citing_batch"):
             raise AttributeError(
                 f"El source {type(self._source).__name__!r} no implementa "
-                "'fetch_citing': el forward chaining requiere OpenAlexSource "
-                "o un source con ese método."
+                "'fetch_citing_batch': el forward chaining requiere "
+                "OpenAlexSource o un source con ese método."
             )
 
-        all_citing_rows: list[dict[str, Any]] = []
+        # Alcance: todas las semillas (is_seed=True); el chaining precede a la curación
+        seed_ids = _extract_seed_ids(corpus_rows)
+        if not seed_ids:
+            return {}, {}
+
+        # corpus_ids: ids y openalex_ids de todos los papers del corpus
+        # (para compute_forward_scent y para excluir candidatos ya presentes)
+        corpus_ids: set[str] = set()
         for row in corpus_rows:
-            oa_id = row.get(Col.OPENALEX_ID)
-            if not oa_id:
-                continue
-            citing = self._source.fetch_citing(str(oa_id))
-            all_citing_rows.extend(citing)
+            id_val = row.get(Col.ID)
+            oa_id_val = row.get(Col.OPENALEX_ID)
+            if id_val:
+                corpus_ids.add(str(id_val))
+            if oa_id_val:
+                corpus_ids.add(str(oa_id_val))
 
-        fwd_scent = compute_forward_scent(corpus_rows, all_citing_rows)
+        # Batcheo: fetch_citing_batch hace ≤50 IDs por request, presupuesto
+        # por semilla y retry/backoff.  Devuelve {seed_id: [citer_id]}.
+        # tqdm es dependencia del núcleo; el import perezoso evita efectos de módulo.
+        try:
+            from tqdm import tqdm as _tqdm
 
-        # Indexar las filas de candidatos por id (para el corpus de candidatos)
+            # Barra de progreso: una iteración por llamada batch (no por semilla)
+            with _tqdm(
+                total=1,
+                desc="forward chaining",
+                unit="lote",
+                leave=False,
+            ) as pbar:
+                citing_dict = self._source.fetch_citing_batch(
+                    seed_ids, max_per_paper=self._max_citing_per_paper
+                )
+                pbar.update(1)
+        except ImportError:
+            # tqdm no disponible: continuar sin barra de progreso
+            citing_dict = self._source.fetch_citing_batch(
+                seed_ids, max_per_paper=self._max_citing_per_paper
+            )
+
+        # Invertir: {citer_id → [seed_ids que este citante cita]}
+        # para construir las filas mínimas y calcular el scent.
+        citer_to_seeds: dict[str, list[str]] = {}
+        for seed_id, citer_ids in citing_dict.items():
+            for citer_id in citer_ids:
+                if citer_id not in corpus_ids:  # excluir ya presentes
+                    citer_to_seeds.setdefault(citer_id, []).append(seed_id)
+
+        if not citer_to_seeds:
+            return {}, {}
+
+        # Construir filas mínimas de candidatos (con references_id = seeds citadas)
+        # y calcular scent forward directamente desde la re-atribución.
+        # score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
+        # Como seed_ids ⊆ corpus_ids (openalex_id de las semillas), la
+        # intersección es trivial: score = len(seed_ids_citados por Y).
         candidate_rows: dict[str, dict[str, Any]] = {}
-        for row in all_citing_rows:
-            row_id = row.get("id")
-            if row_id and str(row_id) in fwd_scent:
-                candidate_rows[str(row_id)] = row
+        scent_map: dict[str, float] = {}
+        for citer_id, seeds_cited in citer_to_seeds.items():
+            score = float(sum(1 for s in seeds_cited if s in corpus_ids))
+            if score > 0:
+                scent_map[citer_id] = score
+                candidate_rows[citer_id] = _build_forward_candidate_row(
+                    citer_id,
+                    seed_ids_cited=seeds_cited,
+                    fetched_at=fetched_at,
+                )
 
-        return fwd_scent, candidate_rows
+        return scent_map, candidate_rows

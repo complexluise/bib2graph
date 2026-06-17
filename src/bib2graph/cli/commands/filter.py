@@ -14,7 +14,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
-from bib2graph.cli._store import open_store
+from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -74,22 +74,30 @@ def run_filter(
             "--year-gte, --year-lte, --language, --type, o --min-citations."
         )
 
+    filtered_backend_close = None
     store = open_store(store_path)
-    corpus = store.load()
+    try:
+        corpus = store.load()
 
-    # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
-    # no un literal en el comando (ADR 0016 enmendado §1).
-    current_state = store.backend.loop_state()
-    current_round = store.backend.loop_round()
-    new_state, new_round = apply_transition(current_state, "filter", current_round)
+        # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
+        # no un literal en el comando (ADR 0016 enmendado §1).
+        current_state = store.backend.loop_state()
+        current_round = store.backend.loop_round()
+        new_state, new_round = apply_transition(current_state, "filter", current_round)
 
-    # R2: el reloj se inyecta en la frontera (ADR 0017 enmendado); el núcleo
-    # no llama datetime.now(). Un único timestamp para todos los pasos de
-    # filtrado de esta invocación.
-    now = datetime.now(UTC)
-    filtered_corpus, steps = apply_filters(corpus, criteria, decided_at=now)
-    store.persist(filtered_corpus)
-    store.backend.set_loop_state(new_state, cycle_round=new_round)
+        # R2: el reloj se inyecta en la frontera (ADR 0017 enmendado); el núcleo
+        # no llama datetime.now(). Un único timestamp para todos los pasos de
+        # filtrado de esta invocación.
+        now = datetime.now(UTC)
+        filtered_corpus, steps = apply_filters(corpus, criteria, decided_at=now)
+        total_papers = len(filtered_corpus)
+        filtered_backend_close = getattr(filtered_corpus._backend, "close", None)
+        store.persist(filtered_corpus)
+        store.backend.set_loop_state(new_state, cycle_round=new_round)
+    finally:
+        if filtered_backend_close is not None:
+            filtered_backend_close()
+        store.close()
 
     steps_data = [
         {
@@ -104,7 +112,7 @@ def run_filter(
 
     return {
         "steps": steps_data,
-        "total_papers": len(filtered_corpus),
+        "total_papers": total_papers,
         "criteria_applied": len(criteria),
     }
 
@@ -156,7 +164,7 @@ def filter_cmd(
 
     Tras el filtro, el estado del lazo transiciona a FILTERED.
     """
-    store_path = ctx.obj["store"]
+    store_path = resolve_library_path(ctx.obj)
     data = run_filter(
         store_path,
         year_gte=year_gte,

@@ -346,6 +346,9 @@ desarrollo es asistido por IA; el producto no.
 > Distinguir: el retry SÍ se hizo; el batching NO. (Ver registro-ia R5.3 y "Decisiones de seguimiento".)
 > **➡ Encuadrado por el arquitecto (cleanup pre-v0.3, 2026-06-16): el batching-por-OR pasa al Hito 8**
 > (`Enricher` de co-citación), que es donde se hace el **2º nivel de fetch** a escala — ver Hito 8 §Alcance.
+> **✅ RESUELTO también para el `Forager` (#21, 2026-06-16):** el forward del Forager (`b2g chain`/
+> `monitor`) reusa `fetch_citing_batch` (cap por semilla + preview sin red, scope `is_seed`) — el N+1
+> del forrajeo desaparece. Ver [04 · Lo que viene](04-lo-que-viene.md) §Hito 8 y ADR 0020 AS-BUILT #21.
 >
 > **Cierre de la tanda:** con R5 la **remediación R1–R5 queda COMPLETA** — la brecha AS-BUILT↔TARGET
 > del red-team (Nota 06: RAÍZ 1, 2, 3 + secundarios) está cerrada. Lo que sigue son los Hitos 7–11
