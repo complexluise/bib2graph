@@ -290,7 +290,7 @@ semántica.
 ### El "no contaminan" era falso — los stubs SÍ contaminaron
 
 Las sesiones de QA con datos reales lo destaparon ([Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md),
-[Nota 12](../Notas/12-continuacion-sesion-valoraciones.md), "el bug de fondo del Forager"): los stubs
+[Nota 13](../Notas/13-continuacion-sesion-valoraciones.md), "el bug de fondo del Forager"): los stubs
 `[candidate:W...]` **sí contaminaron**. Llegaron a ser **~la mitad del corpus** (filas-fantasma sin
 metadata real) y, peor, **entraron al `corpus_hash`** (eran filas del `corpus`, no ruido externo) —
 rompiendo la reproducibilidad y las redes legibles. La promesa de "curables/enriquecibles después"

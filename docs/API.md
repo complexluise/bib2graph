@@ -342,7 +342,14 @@ degenerado = dir hermano del `.duckdb`). **AS-BUILT #31 (2026-06-17):** `build` 
 resumen de comunidades, §7.2) en `<networks_dir>/<kind>/` **solo** para redes de **paper** con
 comunidades detectadas (listas con separador `|`); en el envelope `--json`, cada entrada de
 `data["networks"]` suma `clusters_csv` (ruta del archivo) **condicionalmente** —solo cuando ese
-archivo se generó—.
+archivo se generó—. **Qué artefactos emite cada red:** **todas** escriben `network.graphml` +
+`metrics.json`; **`clusters.csv` lo emiten ÚNICAMENTE las redes de paper** —`bibliographic_coupling`
+y `cocitation`— (con comunidades). Las redes `author_collab`, `institution_collab` y
+`keyword_cooccurrence` **NO** emiten `clusters.csv` **por diseño**: sus nodos ya son
+autores/instituciones/keywords, y `cluster_table` (§7.2) resume comunidades **de papers** cruzando
+nodo→corpus por `Col.ID` — ese mapeo no existe para nodos que no son papers, así que devuelve `[]`
+(no crash) y el comando omite el archivo. Lo mismo aplica a `b2g networks --spec` (comparten
+`_write_artifacts`).
 
 **`build --corpus-scope [all|accepted|seeds_only]` (AS-BUILT #56):** filtra el corpus por estado de
 curación **antes** de proyectar (vía `Corpus.scoped`, §1.2). **Default `all`** = corpus completo
@@ -1329,9 +1336,12 @@ def cluster_table(table: pa.Table, artifact: NetworkArtifact) -> list[dict[str, 
 `networks/__init__.py` re-exporta `cluster_table`.
 
 **Restricción a redes de paper (V1):** solo aplica a los kinds cuyo nodo es un `Col.ID`
-(`bibliographic_coupling` / `cocitation`); para redes de **autor/keyword/institución** las comunidades
-agrupan entidades distintas a papers y la misma tabla no tiene sentido en V1 → devuelve `[]` (no
-crash). Si `artifact.communities is None` también devuelve `[]`.
+(`bibliographic_coupling` / `cocitation`); para `author_collab`, `institution_collab` y
+`keyword_cooccurrence` las comunidades agrupan entidades distintas a papers y la misma tabla no tiene
+sentido en V1 → devuelve `[]` (no crash). Si `artifact.communities is None` también devuelve `[]`.
+**Consecuencia en el CLI:** por esto **`clusters.csv` se emite ÚNICAMENTE para `bibliographic_coupling`
+y `cocitation`** (§convenciones CLI / §9); las otras tres redes escriben `network.graphml` +
+`metrics.json` pero **no** `clusters.csv`.
 
 **Columnas de cada fila** (orden estable):
 
@@ -1437,6 +1447,9 @@ class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
   (`cluster_table` no vacío, §7.2). Una fila por comunidad; las columnas de lista (`top_authors`/
   `top_keywords`) se serializan **con separador `|`**. No lo emite un `Exporter` —lo arma el comando
   `build` a partir de `cluster_table`—; las redes sin comunidades o no-paper no generan el archivo.
+  **Solo lo generan `bibliographic_coupling` y `cocitation`**: `author_collab`, `institution_collab`
+  y `keyword_cooccurrence` emiten `network.graphml` + `metrics.json` pero **no** `clusters.csv`, por
+  diseño (sus nodos no son papers; ver §7.2).
 
 ---
 
@@ -1527,6 +1540,32 @@ networks --spec`, §convenciones CLI).
 
   Se ejecuta vía el subcomando **`b2g networks --spec redes.yaml`** (§convenciones CLI). DoD del
   Hito 9 cubierto, incluida la **equivalencia build≡quick** (nodos + aristas + comunidades).
+
+  **Ejemplo mínimo de `networks.yaml` válido** (copiable) — clave raíz `networks:` = lista; lo único
+  obligatorio de cada entrada es **`kind`**:
+
+  ```yaml
+  networks:
+    - kind: bibliographic_coupling
+  ```
+
+  **Campos válidos de cada entrada** (nombres exactos; `kind` obligatorio, el resto con default):
+
+  | Campo | Valores / tipo | Default | Obligatorio |
+  |---|---|---|---|
+  | `kind` | `bibliographic_coupling` · `cocitation` · `author_collab` · `institution_collab` · `keyword_cooccurrence` | — | **sí** |
+  | `min_weight` | `int` (peso mínimo de arista) | `1` | no |
+  | `min_year` | `int` | `null` | no |
+  | `max_year` | `int` | `null` | no |
+  | `scope` | `full` · `seeds_only` | `full` | no |
+  | `clustering` | `louvain` · `label_prop` · `greedy_modularity` · `null` | `louvain` | no |
+  | `resolution` | `float` (solo Louvain; ignorado en los demás) | `1.0` | no |
+  | `assortativity_attribute` | `str` (atributo categórico, p. ej. `region`) | `null` | no |
+  | `layout` | `spring` · `kamada_kawai` · `circular` · `null` | `null` | no |
+
+  **`NetworkSpec` usa `extra="forbid"`:** cualquier campo fuera de la tabla **se rechaza** con un
+  `ValueError` accionable (no se ignora en silencio). Error común: **`name:` NO es un campo** — no hay
+  forma de nombrar una red en el spec; usá un comentario YAML (`#`) si querés anotarla.
 - **AS-BUILT #25 — artefactos decorados:** `_build_artifact` (en `facade.py`) aplica `decorate`
   (§7.1) sobre el grafo, así que `build`/`quick` devuelven artefactos con `label` legible + atributos
   de nodo (`year`/`is_seed`/`curation_status`/`degree_centrality`/`community`) listos para el export
