@@ -239,3 +239,20 @@ exploratorio). `status` lee y presenta el estado actual + las transiciones dispo
 **Además, el alias `LoopState = CycleState` se RETIRÓ** del código (`backends/duckdb.py` y
 `stores/duckdb.py`): el contrato usa **solo `CycleState`** (de `bib2graph.cycle`). Donde este ADR
 dice "`LoopState`", léase `CycleState` (mismo concepto, una sola clase).
+
+## Enmienda — `--store` deja de ser global obligatorio (PROPUESTA, 2026-06-16)
+
+> **Propuesta por [0029](0029-workspace-por-investigacion.md) (estado *Propuesta*, no implementado).**
+> El cuerpo de este ADR queda como historia; esta enmienda solo señala el cambio futuro al §E.
+
+El §E fija `--store` como **opción global del grupo, obligatoria**. El ADR
+[0029](0029-workspace-por-investigacion.md) (modelo "workspace por investigación") propone que
+`--store` pase a **opcional**: la unidad de persistencia deja de ser un `.duckdb` suelto y pasa a ser
+una **carpeta workspace** (marcada por `workspace.json`), resuelta por **ambiente** (patrón
+git/cargo: caminar hacia arriba desde el cwd). Precedencia: `--workspace`/`--store` explícito >
+`B2G_WORKSPACE` (env) > workspace del cwd. `--workspace` pasa a ser el flag primario; `--store`
+sobrevive para apuntar a un `.duckdb` suelto (workspace "degenerado", retrocompatible).
+
+El cambio es **aditivo/retrocompatible**: la resolución ambiente solo cubre el caso en que falta el
+flag; el resto del contrato (envelope `schema="1"`, exit codes, transiciones) **no cambia**. **Hasta
+que 0029 se firme e implemente, `--store` sigue siendo global obligatorio** (as-built vigente).

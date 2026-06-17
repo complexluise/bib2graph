@@ -44,3 +44,17 @@ servidor si aparece el caso multi-agente concurrente).
 - **Recomendación para el `coder`:** el `DuckDBBackend`/`DuckDBStore` del **Hito 3** documenta la
   asunción single-writer y traduce el error de archivo bloqueado de DuckDB a un error accionable
   con exit code `5` (a cablear en el CLI, Hito 6). No se implementa locking propio.
+
+## Enmienda — la unidad pasa a "workspace/carpeta"; el single-writer sigue válido (PROPUESTA, 2026-06-16)
+
+> **Propuesta por [0029](0029-workspace-por-investigacion.md) (estado *Propuesta*, no implementado).**
+> El cuerpo queda como historia.
+
+Este ADR razona sobre "1 archivo `.duckdb` = 1 escritor". El ADR
+[0029](0029-workspace-por-investigacion.md) propone que la **unidad de persistencia** pase a ser un
+**workspace = carpeta** (`workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/`exports/`).
+La conclusión de concurrencia **no cambia**: el `library.duckdb` dentro del workspace sigue siendo
+**single-writer** (un escritor a la vez; lecturas concurrentes OK). Varias investigaciones en
+paralelo = varios workspaces (varias carpetas, varios `.duckdb`) sin contención entre ellos. La
+concurrencia multi-escritor sobre un mismo `.duckdb` sigue diferida post-v1.0. **Léase "1 archivo" ≡
+"el `library.duckdb` del workspace".**

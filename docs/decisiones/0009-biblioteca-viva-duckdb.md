@@ -60,3 +60,18 @@ persistencia núcleo de 1.0.
   persistencia por defecto.
 - Hay que **reescribir `ARCHITECTURE.md` §6.2** y **reordenar `ROADMAP.md`** (el store DuckDB
   stateful sube a un hito temprano del núcleo).
+
+## Enmienda — la unidad de persistencia pasa a "workspace/carpeta" (PROPUESTA, 2026-06-16)
+
+> **Propuesta por [0029](0029-workspace-por-investigacion.md) (estado *Propuesta*, no implementado).**
+> El cuerpo queda como historia; la biblioteca viva stateful en DuckDB **no cambia**.
+
+Este ADR estableció la biblioteca viva sobre **un archivo `.duckdb`**. El ADR
+[0029](0029-workspace-por-investigacion.md) propone que la **unidad de persistencia** pase de "1
+archivo" a "**1 workspace = 1 carpeta**" (marcada por `workspace.json`), que contiene el
+`library.duckdb` + `networks/` + `snapshots/` + `exports/`. El **corpus, la procedencia, las
+decisiones de curación y el loop-state siguen viviendo dentro del `.duckdb`** (sin duplicarse en el
+manifest); las redes/exports son cache regenerable y el snapshot sigue siendo lo reproducible (ADR
+0017). Es una **formalización de una convención emergente** (`b2g build` ya escribe
+`<store_dir>/networks/`), no una revisión del modelo de datos. **Hasta que 0029 se firme e
+implemente, la unidad as-built sigue siendo el `.duckdb` suelto.**
