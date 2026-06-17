@@ -299,6 +299,15 @@ siendo el punto de extensión para destinos externos: **`ZoteroStore`** (sincron
 con una colección Zotero) es **opt-in en V1.1** (`[zotero]`); **`Neo4jStore`** es adaptador opt-in
 post-V1 (`[neo4j]`): un destino más, **ya no el sustrato** (ADR 0002).
 
+> **TARGET (propuesto, no as-built) — workspace por investigación, ADR
+> [0029](decisiones/0029-workspace-por-investigacion.md):** la unidad de persistencia evolucionaría
+> de "1 archivo `.duckdb`" a "**1 workspace = 1 carpeta**" (`workspace.json` + `library.duckdb` +
+> `networks/` + `snapshots/` + `exports/`), formalizando la convención emergente de que `build` ya
+> escribe `<store_dir>/networks/`. El corpus/procedencia/curación/loop-state siguen en el `.duckdb`;
+> redes/exports = cache regenerable sellada por `corpus_hash`; el snapshot sigue siendo lo
+> reproducible (§6.2). Enmienda 0009/0019; single-writer sin cambios. **Propuesta, pendiente de
+> firma — el as-built sigue siendo el `.duckdb` suelto.**
+
 ## 5. Flujo de datos (ciclo iterativo, no pipeline lineal)
 
 ```
@@ -442,6 +451,17 @@ consola cp1252 de Windows (`ecuaci�n`), rompiendo el contrato agente-native. *
 solo lectura:** `status`/`validate` usan `open_store_readonly` (`cli/_store.py`), que **no auto-crea**
 el `.duckdb` ante un typo en `--store` (falla accionable); los comandos de escritura conservan
 `open_store`.
+
+> **TARGET (propuesto, no as-built) — `--store` opcional + `b2g init`, ADR
+> [0029](decisiones/0029-workspace-por-investigacion.md):** con el modelo workspace, `--store`
+> dejaría de ser opción global **obligatoria** y pasaría a **opcional**: la unidad sería una
+> **carpeta workspace** (`workspace.json`), resuelta por ambiente (patrón git/cargo: caminar hacia
+> arriba desde el cwd). Precedencia: `--workspace`/`--store` explícito > `B2G_WORKSPACE` (env) >
+> workspace del cwd. Entraría un subcomando **`b2g init <name>`** (scaffold de la carpeta; `b2g init .`
+> inicializa el cwd) → el conteo de subcomandos pasaría de **13 a 14+** **cuando se implemente**. El
+> `.duckdb` suelto seguiría funcionando (workspace "degenerado", sin migración forzada). Es un cambio
+> **suave/aditivo** del contrato (la resolución ambiente solo cubre el flag ausente). **Propuesta,
+> pendiente de firma — hoy `--store` sigue siendo global obligatorio y son 13 subcomandos.**
 
 ## 7. Layout de dependencias (extras)
 
