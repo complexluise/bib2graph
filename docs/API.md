@@ -94,6 +94,18 @@
 > compartido `_write_artifacts`; mismo envelope que `build`; **NO** transiciona el `CycleState` ni
 > sella `.corpus_hash`). `pyyaml` pasó a dependencia del núcleo (import perezoso). Ver §10 +
 > §convenciones CLI.
+>
+> **Sincronizado con los remanentes del modelo workspace — #32 (AS-BUILT, 2026-06-17):** cierra lo
+> que el ADR [0029](decisiones/0029-workspace-por-investigacion.md) dejó "fuera de corte".
+> **`b2g snapshot` y `b2g export`** se resuelven por ambiente: `--out-dir` pasó de obligatorio a
+> **override OPCIONAL**; sin él, `snapshot` escribe en **`<workspace>/snapshots/`** y `export` en
+> **`<workspace>/exports/`** (resolución vía `resolve_workspace`, igual que `build`; modo degenerado =
+> dir hermano del `.duckdb`, sin regresión). **`b2g status`** suma el campo aditivo
+> **`data["networks_cache_stale"]: bool`** + un `warnings` accionable cuando el `networks/.corpus_hash`
+> sellado **no coincide** con el `corpus_hash` del corpus vivo (aviso "ejecutá `b2g build`"; **NO**
+> regenera — invalidación por hash, no build-system, ADR 0029). `schema="1"` intacto. `Workspace` ganó
+> `read_networks_corpus_hash()` e `is_networks_cache_stale(live_hash)` (los accessors
+> `snapshots_dir`/`exports_dir`/`networks_dir` ya existían). Ver §convenciones CLI.
 
 ## Convenciones
 
@@ -128,7 +140,9 @@ pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
   (`curation_available`, curación transversal) + la **ronda** (`round`), campos aditivos que mantienen
   `schema="1"`. **AS-BUILT workspace (ADR 0029):** `status` suma el campo aditivo
   `workspace: {root, source}` (la raíz resuelta y de dónde salió — flag/env/cwd); `schema="1"`
-  intacto. `inspect`, `validate`.
+  intacto. **AS-BUILT #32 (2026-06-17):** suma también el campo aditivo `networks_cache_stale: bool`
+  (+ `warnings` accionable cuando la cache de `networks/` quedó obsoleta respecto al corpus vivo;
+  avisa, NO regenera — ver §`build`/`export`/`snapshot` abajo). `inspect`, `validate`.
 - **`seed`** (flags ergonómicos, #14 + #30): **`--max-results INT`** propaga a
   `OpenAlexSource(max_results=...)` —sin flag, el default del source = 200— para exploración con
   muestras chicas (Nota 09 B1). **`--exclude TEXT`** (repetible) son **negaciones quirúrgicas**:
@@ -214,13 +228,29 @@ vive en su `library.duckdb`; el CLI es stateful **vía archivo**, no vía proces
   del cwd buscando `workspace.json`. Sin ninguno → **error accionable** que sugiere `b2g init`.
 
 **`build` y `export` separados** (decisión del PO, ADR 0021 §B): `build` computa `Networks.quick`
-(4 redes) y escribe artefactos a `<store_dir>/networks/<kind>/` (+ transiciona a `BUILT`);
-`export --format graphml|csv --out-dir ...` **relee** esos artefactos y los serializa (sin
-transición). **AS-BUILT #31 (2026-06-17):** `build` también escribe **`clusters.csv`** (tabla de
+(4 redes) y escribe artefactos a `<workspace>/networks/<kind>/` (+ transiciona a `BUILT`);
+`export --format graphml|csv` **relee** esos artefactos (fuente resuelta vía `ws.networks_dir`) y
+los serializa (sin transición). **AS-BUILT #32 (2026-06-17):** `export --out-dir` pasó a **override
+OPCIONAL** — sin él, escribe en **`<workspace>/exports/`** (resolución ambiente como `build`; modo
+degenerado = dir hermano del `.duckdb`). **AS-BUILT #31 (2026-06-17):** `build` también escribe **`clusters.csv`** (tabla de
 resumen de comunidades, §7.2) en `<networks_dir>/<kind>/` **solo** para redes de **paper** con
 comunidades detectadas (listas con separador `|`); en el envelope `--json`, cada entrada de
 `data["networks"]` suma `clusters_csv` (ruta del archivo) **condicionalmente** —solo cuando ese
 archivo se generó—.
+
+**`snapshot` (AS-BUILT #32, 2026-06-17):** `b2g snapshot` sella una foto reproducible del estado vivo
+(parquet + `manifest.json`, ADR 0017). **`--out-dir` pasó a override OPCIONAL** — sin él, escribe en
+**`<workspace>/snapshots/`** (resolución ambiente vía `resolve_workspace`, igual que `build`); en modo
+degenerado (`--store` suelto) cae en el dir hermano del `.duckdb` (sin regresión). No transiciona el
+`CycleState`.
+
+**Staleness de la cache de redes (AS-BUILT #32, 2026-06-17):** `b2g status` suma el campo aditivo
+`data["networks_cache_stale"]: bool` (`schema="1"` intacto) y, cuando es `true`, un `warnings`
+accionable ("ejecutá `b2g build`"). Lo dispara que el `networks/.corpus_hash` **sellado** por el
+último `build` **no coincida** con el `corpus_hash` del corpus vivo (calculado con el **mismo**
+`compute_corpus_hash(corpus.to_arrow())` que `build` usa para sellar → sin falsos positivos). Si la
+cache **no existe** (nunca se corrió `build`), **no** es stale. `status` **avisa, NO regenera**:
+invalidación por hash, **no** un build-system (ADR [0029](decisiones/0029-workspace-por-investigacion.md)).
 
 **Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`, `chain`→`FORAGED`,
 `filter`→`FILTERED`, `build`→`BUILT`, **`monitor`→`MONITORED`** (cleanup pre-v0.3);

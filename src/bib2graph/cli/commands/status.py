@@ -18,6 +18,7 @@ Mantiene ``schema="1"`` (campos nuevos son aditivos, no rompen agentes).
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -137,12 +138,34 @@ def status_cmd(
         "source": ws.source,
     }
 
+    # ADR 0029 — aviso de staleness de la cache de redes.
+    # Si networks/.corpus_hash existe y no coincide con el corpus vivo,
+    # se emite un aviso accionable (no se regenera automáticamente).
+    # R5: open_store_readonly para consistencia (no auto-crea ante typo;
+    # mapea StoreLockedError → exit 5 vía el decorador @handle_errors).
+    warnings: list[str] = []
+    from bib2graph.backends.memory import compute_corpus_hash
+
+    _store = open_store_readonly(store_path)
+    _corpus = _store.load()
+    live_hash = compute_corpus_hash(_corpus.to_arrow())
+    stale = ws.is_networks_cache_stale(live_hash)
+
+    if stale:
+        warnings.append(
+            "La cache de redes (networks/) está desactualizada: el corpus cambió "
+            "desde el último build. Ejecutá 'b2g build' para regenerarla."
+        )
+
+    data["networks_cache_stale"] = stale
+
     if json_output:
         envelope = build_envelope(
             command="status",
             ok=True,
             data=data,
             exit_code=0,
+            warnings=warnings,
         )
         emit(envelope)
     else:
@@ -162,3 +185,5 @@ def status_cmd(
         )
         ws_root = data["workspace"]["root"] or "(modo degenerado)"
         emit_human(f"Workspace: {ws_root} (resuelto vía {data['workspace']['source']})")
+        for w in warnings:
+            print(f"AVISO: {w}", file=sys.stderr)
