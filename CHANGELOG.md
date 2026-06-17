@@ -11,6 +11,42 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.5.0](https://github.com/complexluise/bib2graph/compare/v0.4.0...v0.5.0) (2026-06-17)
+
+
+### Features
+
+* **cli:** b2g curate — dump + import de curación por CSV ([#22](https://github.com/complexluise/bib2graph/issues/22), [#26](https://github.com/complexluise/bib2graph/issues/26)) ([#44](https://github.com/complexluise/bib2graph/issues/44)) ([04bce5a](https://github.com/complexluise/bib2graph/commit/04bce5adffda754f03d0fd96a7306208126e41ab))
+* **cli:** equation.yaml cargable (seed --spec) + b2g restore offline (9a, [#33](https://github.com/complexluise/bib2graph/issues/33)) ([#51](https://github.com/complexluise/bib2graph/issues/51)) ([23436ef](https://github.com/complexluise/bib2graph/commit/23436efdd3deffc51679e2deb9e6b80091b06e80))
+* **examples:** valoraciones reproducible 100% por CLI (Ciclo B) ([#67](https://github.com/complexluise/bib2graph/issues/67)) ([be75b4a](https://github.com/complexluise/bib2graph/commit/be75b4a71670e3d3c64cfa3a111808f9539c4efa))
+* **examples:** workspace valoraciones + gate de reproducibilidad R2 (9b, cierra [#33](https://github.com/complexluise/bib2graph/issues/33)) ([#52](https://github.com/complexluise/bib2graph/issues/52)) ([c7dfba7](https://github.com/complexluise/bib2graph/commit/c7dfba710090195baed0d225f9dbf75c5412e797))
+* **foraging:** forward chaining batcheado con cap por semilla ([#21](https://github.com/complexluise/bib2graph/issues/21)) ([#42](https://github.com/complexluise/bib2graph/issues/42)) ([58a394d](https://github.com/complexluise/bib2graph/commit/58a394d9f973ed244ffb3ec9d4a190897d4430cb))
+* **networks:** capa declarativa NetworkSpec YAML + b2g networks (Hito 9) ([#47](https://github.com/complexluise/bib2graph/issues/47)) ([8d15c24](https://github.com/complexluise/bib2graph/commit/8d15c24a185ae51d794c20b8bc98b28bb600acdb))
+* **networks:** capa decorate — labels + atributos legibles en nodos ([#25](https://github.com/complexluise/bib2graph/issues/25)) ([#43](https://github.com/complexluise/bib2graph/issues/43)) ([9c4597c](https://github.com/complexluise/bib2graph/commit/9c4597c95102acbf3c9ecf410c45d8cfce976b44))
+* **networks:** tabla de clusters a CSV ([#31](https://github.com/complexluise/bib2graph/issues/31)) ([#46](https://github.com/complexluise/bib2graph/issues/46)) ([49cf28b](https://github.com/complexluise/bib2graph/commit/49cf28b4cf7d8f05416e60ae4ac4f53e0fd58984))
+* **seed:** b2g seed --from-bib + filtro de año real ([#50](https://github.com/complexluise/bib2graph/issues/50), Ciclo 10) ([#53](https://github.com/complexluise/bib2graph/issues/53)) ([f4d3b8a](https://github.com/complexluise/bib2graph/commit/f4d3b8a70a60dd4d47e0c0b422dd268e54bf4186))
+* **sources/cli:** seed --max-results + negaciones --exclude ([#14](https://github.com/complexluise/bib2graph/issues/14), [#30](https://github.com/complexluise/bib2graph/issues/30)) ([#45](https://github.com/complexluise/bib2graph/issues/45)) ([882e7fa](https://github.com/complexluise/bib2graph/commit/882e7fa3f8dcef0fdbf81050419445dfc4453b83))
+* **workspace:** snapshot/export por ambiente + aviso de staleness ([#32](https://github.com/complexluise/bib2graph/issues/32)) ([#49](https://github.com/complexluise/bib2graph/issues/49)) ([861daa9](https://github.com/complexluise/bib2graph/commit/861daa96b6706c7ed64f474e3ecece709911119f))
+* **workspace:** workspace por investigación — b2g init + resolución ambiente (ADR 0029) ([#41](https://github.com/complexluise/bib2graph/issues/41)) ([23bf94e](https://github.com/complexluise/bib2graph/commit/23bf94e93a96cb388faf55cefbf093a398460dd3))
+
+
+### Bug Fixes
+
+* **sources:** filtro --exclude mal-formado en OpenAlex ([#30](https://github.com/complexluise/bib2graph/issues/30)) ([#66](https://github.com/complexluise/bib2graph/issues/66)) ([8c9ea88](https://github.com/complexluise/bib2graph/commit/8c9ea88c9eada832b45796d4fc002a56e8614df2))
+
+
+### Documentation
+
+* API.md §7.1, ADR 0014 nota AS-BUILT, AGENTS (437), ROADMAP. Cierra [#25](https://github.com/complexluise/bib2graph/issues/25). ([9c4597c](https://github.com/complexluise/bib2graph/commit/9c4597c95102acbf3c9ecf410c45d8cfce976b44))
+* **arch:** ADR 0029 workspace por investigación (Propuesta) + propagación ([#40](https://github.com/complexluise/bib2graph/issues/40)) ([37cce84](https://github.com/complexluise/bib2graph/commit/37cce84d19d3b2aace0dd8c77ea2cacb88731538))
+* mover notas de referencia a docs/Notas/ + gitignore datos de usuario ([#27](https://github.com/complexluise/bib2graph/issues/27)) ([87e66a6](https://github.com/complexluise/bib2graph/commit/87e66a69cbfd49704dd275707215a9c335c8c339))
+* **notas:** commitear Nota 09 (sesión QA — ecología de valoraciones) ([#36](https://github.com/complexluise/bib2graph/issues/36)) ([ca43163](https://github.com/complexluise/bib2graph/commit/ca43163d2df85730d48aedfedfef6c510b932d46))
+* **notas:** explorar frontend tool-for-thought + revisión de referentes ([#24](https://github.com/complexluise/bib2graph/issues/24)) ([4f50b95](https://github.com/complexluise/bib2graph/commit/4f50b95339c08cdab6393e6fc13a77437332c0b3))
+* **notas:** Nota 10 — tensiones RESUELTAS + mapeo a issues ([#35](https://github.com/complexluise/bib2graph/issues/35)) ([0a2cbe8](https://github.com/complexluise/bib2graph/commit/0a2cbe86bb4801b4ef1e875ec81cb9e0f1be9ed2))
+* **notas:** Nota 12 — encuadre de arquitectura GUI (decisiones A-G propuestas) ([#37](https://github.com/complexluise/bib2graph/issues/37)) ([dcee48d](https://github.com/complexluise/bib2graph/commit/dcee48dce2498ea8a99ffb06e334d152057f8e0e))
+* **notas:** síntesis de contextualización GUI (descomposición 07/08/09) ([#28](https://github.com/complexluise/bib2graph/issues/28)) ([e4de811](https://github.com/complexluise/bib2graph/commit/e4de811b9ea92cbc4cdf42aa2e3341160ae025bb))
+* **roadmap:** reevaluación pre-GUI — Hitos 1–9 hechos, 10 a la GUI, 11 descartado ([#48](https://github.com/complexluise/bib2graph/issues/48)) ([af34a82](https://github.com/complexluise/bib2graph/commit/af34a82a8fcd6c212c9d25c48bc8168ad6daadf4))
+
 ## [0.4.0](https://github.com/complexluise/bib2graph/compare/v0.3.2...v0.4.0) (2026-06-16)
 
 
