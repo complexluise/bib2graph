@@ -65,6 +65,13 @@
 > `facade.py:_build_artifact`); los proyectores **siguen puros** (ADR 0014). Cierra el hueco de la
 > Nota 09 B3 (redes con id crudo, ilegibles en Gephi/VOSviewer).
 >
+> **Sincronizado con la tabla de clusters — #31 (AS-BUILT, 2026-06-17):** se agregó la función pura
+> **`cluster_table(table, artifact)`** (§7.2, `networks/clusters.py`, re-exportada desde
+> `networks/__init__.py`): resume cada comunidad de una red de **paper** (coupling/cocitación) en una
+> fila (tamaño, conteos de curación, rango de años, top autores/keywords). **`b2g build`** ahora escribe
+> `<workspace>/networks/<kind>/clusters.csv` (listas con separador `|`) cuando la red tiene comunidades,
+> y el envelope `--json` suma `clusters_csv` **condicional** por red (§9/§convenciones CLI).
+>
 > **Sincronizado con el workspace — ADR [0029](decisiones/0029-workspace-por-investigacion.md)
 > (AS-BUILT, 2026-06-16):** la unidad de persistencia es un **workspace = carpeta** (`workspace.json`
 > + `library.duckdb` + `networks/`/`snapshots/`/`exports/`). `--store` pasó a **opcional** y se agregó
@@ -189,7 +196,11 @@ vive en su `library.duckdb`; el CLI es stateful **vía archivo**, no vía proces
 **`build` y `export` separados** (decisión del PO, ADR 0021 §B): `build` computa `Networks.quick`
 (4 redes) y escribe artefactos a `<store_dir>/networks/<kind>/` (+ transiciona a `BUILT`);
 `export --format graphml|csv --out-dir ...` **relee** esos artefactos y los serializa (sin
-transición).
+transición). **AS-BUILT #31 (2026-06-17):** `build` también escribe **`clusters.csv`** (tabla de
+resumen de comunidades, §7.2) en `<networks_dir>/<kind>/` **solo** para redes de **paper** con
+comunidades detectadas (listas con separador `|`); en el envelope `--json`, cada entrada de
+`data["networks"]` suma `clusters_csv` (ruta del archivo) **condicionalmente** —solo cuando ese
+archivo se generó—.
 
 **Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`, `chain`→`FORAGED`,
 `filter`→`FILTERED`, `build`→`BUILT`, **`monitor`→`MONITORED`** (cleanup pre-v0.3);
@@ -959,6 +970,56 @@ es la única capa que sabe de labels.
 
 ---
 
+## 7.2 Núcleo — `cluster_table` (resumen de comunidades, v1, AS-BUILT #31)
+
+`bib2graph.networks.cluster_table` es una **función pura** que cruza los nodos de una red con el
+corpus para producir **una fila de resumen por comunidad**. Es el insumo tabular de la composición de
+clusters (quién/qué/cuándo cae en cada comunidad), legible offline (Excel/Calc) y la base del
+`clusters.csv` que escribe `b2g build` (§convenciones CLI).
+
+```python
+def cluster_table(table: pa.Table, artifact: NetworkArtifact) -> list[dict[str, Any]]:
+    """Una fila por comunidad de `artifact.communities`. Función pura (sin red, sin duckdb).
+    Cruza nodo→fila por Col.ID (id canónico), NUNCA por openalex_id. Devuelve [] si el kind
+    no es de paper o si no hay comunidades. Orden determinista por `cluster` ascendente."""
+```
+
+`networks/__init__.py` re-exporta `cluster_table`.
+
+**Restricción a redes de paper (V1):** solo aplica a los kinds cuyo nodo es un `Col.ID`
+(`bibliographic_coupling` / `cocitation`); para redes de **autor/keyword/institución** las comunidades
+agrupan entidades distintas a papers y la misma tabla no tiene sentido en V1 → devuelve `[]` (no
+crash). Si `artifact.communities is None` también devuelve `[]`.
+
+**Columnas de cada fila** (orden estable):
+
+| Columna | Tipo | Origen |
+|---|---|---|
+| `cluster` | `int` | id de comunidad |
+| `size` | `int` | nº de nodos en la comunidad (incluye nodos sin match en el corpus) |
+| `seed_count` | `int` | nodos con `is_seed=True` |
+| `candidate_count` | `int` | nodos con `curation_status='candidate'` |
+| `accepted_count` | `int` | nodos con `curation_status='accepted'` |
+| `year_min` / `year_max` | `int \| None` | rango de año (`None` si ningún nodo tiene año) |
+| `year_mean` | `float \| None` | media de año redondeada a 1 decimal (`None` si no hay años) |
+| `top_authors` | `list[str]` | hasta 5 autores más frecuentes, de **`authors_raw`** |
+| `top_keywords` | `list[str]` | hasta 5 keywords más frecuentes, de **`keywords_id`** (post-thesaurus) |
+
+**Notas de contrato** (#31, AS-BUILT 2026-06-17):
+
+- **Cruce por `Col.ID`, no `openalex_id`** (lección B6 de la
+  [Nota 09](Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)): el nodo del grafo **es** un `Col.ID`
+  (`oa:…`); indexar por `openalex_id` (`W…`) daría 0 cruces. Un nodo sin match en el corpus **suma al
+  `size`** pero no aporta año/autores/keywords.
+- **Determinista** (ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)): el top de
+  autores/keywords se ordena por **`(-frecuencia, nombre alfabético ascendente)`** — desempate
+  explícito que hace el resultado reproducible **independiente** del método de clustering
+  (louvain/label_prop/greedy) y de `PYTHONHASHSEED`.
+- **Pura:** sin red, sin `duckdb`; opera sobre `corpus.to_arrow()` + el `NetworkArtifact`. Combina con
+  `community_composition` (§8, % por categoría) que mira el atributo, no la composición bibliográfica.
+
+---
+
 ## 8. Núcleo — `Analyzer` (funciones puras, v1)
 
 ```python
@@ -984,7 +1045,8 @@ def assortativity(g: nx.Graph, *, attribute: str | None = None,
     en el output como disclaimer ('fácil pero consciente'). Validado en el sandbox IED."""
 
 def community_composition(g: nx.Graph, communities: dict, attribute: str) -> dict:
-    """% de cada categoría del atributo dentro de cada comunidad."""
+    """% de cada categoría del atributo dentro de cada comunidad.
+    (Composición bibliográfica de las comunidades de una red de paper → `cluster_table`, §7.2.)"""
 
 def cocitation_quality_report(corpus: Corpus, g: nx.Graph, *,
                               thresholds: "QualityThresholds | None" = None) -> dict:
@@ -1028,6 +1090,11 @@ class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
 - **`GraphMLExporter`** escribe esos atributos como node attributes, **omite** los atributos con
   valor `None` (Gephi / `nx.write_graphml` no los admiten) y **no muta** el grafo original (opera
   sobre una copia).
+- **`clusters.csv` (AS-BUILT #31):** además de `network.graphml` + `metrics.json`, **`b2g build`**
+  escribe `<networks_dir>/<kind>/clusters.csv` cuando la red es de **paper** y tiene comunidades
+  (`cluster_table` no vacío, §7.2). Una fila por comunidad; las columnas de lista (`top_authors`/
+  `top_keywords`) se serializan **con separador `|`**. No lo emite un `Exporter` —lo arma el comando
+  `build` a partir de `cluster_table`—; las redes sin comunidades o no-paper no generan el archivo.
 
 ---
 
