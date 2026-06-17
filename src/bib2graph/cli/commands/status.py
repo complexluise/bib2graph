@@ -87,6 +87,10 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
     # Antes de R3, ``transitions_available`` nunca listaba accept/reject → bug cerrado.
     curation = list(CURATION_ACTIONS)
 
+    # #54: conteo de IDs backward observados pero no materializados.
+    # El campo es aditivo (schema="1" intacto; campos nuevos no rompen agentes).
+    referenced_not_fetched = store.backend.referenced_refs_count()
+
     return {
         "loop_state": state_str,
         "transitions_available": transitions,
@@ -94,6 +98,7 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
         "round": current_round,
         "counts_by_status": counts,
         "total_papers": total,
+        "referenced_not_fetched": referenced_not_fetched,
     }
 
 
@@ -185,5 +190,8 @@ def status_cmd(
         )
         ws_root = data["workspace"]["root"] or "(modo degenerado)"
         emit_human(f"Workspace: {ws_root} (resuelto vía {data['workspace']['source']})")
+        ref_count = data.get("referenced_not_fetched", 0)
+        if ref_count > 0:
+            emit_human(f"Referenciados sin materializar: {ref_count}")
         for w in warnings:
             print(f"AVISO: {w}", file=sys.stderr)

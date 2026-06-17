@@ -4,15 +4,21 @@ El Forager rankea candidatos por *information scent* bibliométrico usando
 funciones puras de ``scent.py`` (R4, ADR 0020/0022):
 
 - **Backward**: score = nº de corpus-papers que listan al candidato en
-  ``references_id`` (acoplamiento hacia atrás).
+  ``references_id`` (acoplamiento hacia atrás).  Los IDs backward NO se
+  materializan como filas del corpus; salen en ``RankedCandidates.observed_refs``
+  para que el comando CLI los persista en ``referenced_but_not_fetched`` (#54,
+  opción B).  El ranking backward SIGUE en ``RankedCandidates.ranking``.
 - **Forward** (fix forward-scent, Wohlin): score = citación directa al corpus.
     corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
     forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
   Robusto ante corpus con ``references_id`` ralas (estado común tras un seed
   sin enriquecimiento); el acoplamiento bibliográfico puro degeneraba a 0.
+  Los candidatos forward SÍ se materializan como filas del corpus.
 
 Solo él toca la red (a través del ``Source`` inyectado).  El núcleo de
 scent es puro.  ``explain_candidate`` fue **eliminado** (R4, ADR 0022).
+``_build_backward_candidate_row`` fue **eliminado** (#54): ya no se fabrica
+ninguna fila-fantasma para candidatos backward.
 
 ``depth > 1`` lanza ``NotImplementedError`` claro (decisión e=A, ADR 0008).
 
@@ -136,59 +142,6 @@ def _build_forward_candidate_row(
         # references_id incluye los seeds citados para que compute_forward_scent
         # pueda calcular el score por intersección con corpus_ids.
         Col.REFERENCES_ID: seed_ids_cited or None,
-        Col.REFERENCES_DOI: None,
-        Col.CITED_BY_ID: None,
-    }
-
-
-def _build_backward_candidate_row(
-    ref_id: str,
-    *,
-    fetched_at: str,
-) -> dict[str, Any]:
-    """Construye una fila mínima (id-only) para un candidato backward.
-
-    El candidato backward es un id de OpenAlex extraído de ``references_id``
-    de los papers del corpus.  Solo tenemos el id; el título se rellena con
-    un placeholder para pasar la validación del schema.
-
-    Args:
-        ref_id: ID de OpenAlex del candidato (p. ej. ``W12345``).
-        fetched_at: Timestamp ISO del fetch.
-
-    Returns:
-        Dict con las columnas mínimas del schema canónico.
-    """
-    provenance_event = ProvenanceEvent(
-        action="fetched",
-        equation_id=None,
-        chaining_hop=1,
-        source="chaining:backward",
-        fetched_at=fetched_at,
-        decided_by=None,
-        decided_at=None,
-    )
-    return {
-        Col.OPENALEX_ID: ref_id,
-        Col.DOI: None,
-        Col.TITLE: f"[candidate:{ref_id}]",
-        Col.YEAR: None,
-        Col.ABSTRACT: None,
-        Col.SOURCE: None,
-        Col.LANGUAGE: None,
-        Col.PUBLISHER: None,
-        Col.RESEARCH_AREAS: None,
-        Col.IS_SEED: False,
-        Col.CURATION_STATUS: CurationStatus.CANDIDATE,
-        Col.PROVENANCE: ProvenanceEvent.dump_list([provenance_event]),
-        Col.AUTHORS_RAW: None,
-        Col.AUTHORS_ID: None,
-        Col.AUTHORS_AFFILIATIONS: None,
-        Col.KEYWORDS_RAW: None,
-        Col.KEYWORDS_ID: None,
-        Col.INSTITUTIONS_RAW: None,
-        Col.INSTITUTIONS_ID: None,
-        Col.REFERENCES_ID: None,
         Col.REFERENCES_DOI: None,
         Col.CITED_BY_ID: None,
     }
@@ -324,9 +277,18 @@ class Forager:
     ) -> RankedCandidates:
         """Computa candidatos rankeados por *information scent*.
 
-        Devuelve un ``RankedCandidates`` con un Corpus SOLO de candidatos
-        nuevos (no mergeado con el corpus de entrada).  El humano hace
-        ``seed_corpus.merge(ranked.corpus)`` para expandir.
+        **Opción B (#54):** los candidatos backward NO se materializan como
+        filas del corpus — sus IDs salen en ``RankedCandidates.observed_refs``
+        para que el comando CLI los persista en ``referenced_but_not_fetched``.
+        El ranking backward SIGUE presente en ``RankedCandidates.ranking``.
+
+        Los candidatos forward SÍ se materializan como filas en
+        ``RankedCandidates.corpus`` (con metadata traída por ``fetch_citing_batch``).
+
+        Devuelve un ``RankedCandidates`` con:
+        - ``corpus``: SOLO candidatos forward (no mergeado con el corpus semilla).
+        - ``ranking``: candidatos backward + forward rankeados por scent.
+        - ``observed_refs``: IDs backward observados (no en corpus, tabla auxiliar).
 
         NO muta el corpus de entrada.
 
@@ -335,41 +297,53 @@ class Forager:
             direction: ``'backward'``, ``'forward'`` o ``'both'``.
 
         Returns:
-            ``RankedCandidates`` con candidatos y ranking por scent.
+            ``RankedCandidates`` con candidatos, ranking y observed_refs.
         """
         rows = corpus.to_arrow().to_pylist()
         fetched_at = datetime.now(UTC).isoformat()
 
         combined_scent: dict[str, float] = {}
-        candidate_rows: dict[str, dict[str, Any]] = {}
+        # Solo los candidatos forward tienen filas materializadas
+        fwd_candidate_rows: dict[str, dict[str, Any]] = {}
+        # IDs backward: se observan pero NO se materializan como corpus rows
+        bwd_observed: set[str] = set()
 
         if direction in ("backward", "both"):
             bwd_scent = compute_backward_scent(rows)
             for ref_id, scent_val in bwd_scent.items():
                 combined_scent[ref_id] = combined_scent.get(ref_id, 0.0) + scent_val
-                if ref_id not in candidate_rows:
-                    candidate_rows[ref_id] = _build_backward_candidate_row(
-                        ref_id, fetched_at=fetched_at
-                    )
+                bwd_observed.add(ref_id)
 
         if direction in ("forward", "both"):
             fwd_scent, fwd_rows = self._fetch_forward(rows, fetched_at=fetched_at)
             for cand_id, scent_val in fwd_scent.items():
                 combined_scent[cand_id] = combined_scent.get(cand_id, 0.0) + scent_val
-                if cand_id not in candidate_rows:
-                    candidate_rows[cand_id] = fwd_rows[cand_id]
+                if cand_id not in fwd_candidate_rows:
+                    fwd_candidate_rows[cand_id] = fwd_rows[cand_id]
 
-        # Ranking estable (desc scent, asc id)
+        # Ranking estable (desc scent, asc id) — incluye backward + forward
         ranking = rank_candidates(combined_scent, max_candidates=self._max_candidates)
 
-        # R5: bulk-load — construir la tabla Arrow de una vez en vez de N add_paper/clone.
-        # El orden del ranking se preserva construyendo la lista en ese orden.
-        candidate_rows_ordered = [
-            candidate_rows[cand_id]
+        # observed_refs: IDs backward presentes en el ranking (respeta el cap),
+        # en orden de ranking para reproducibilidad.
+        ranked_ids_set = {cand_id for cand_id, _ in ranking}
+        observed_refs = [
+            cand_id
             for cand_id, _ in ranking
-            if cand_id in candidate_rows
+            if cand_id in bwd_observed
+            and cand_id in ranked_ids_set
+            # excluir IDs que también aparecen como forward (ya en corpus)
+            and cand_id not in fwd_candidate_rows
         ]
-        rows_with_ids = _rows_with_ids(candidate_rows_ordered)
+
+        # R5: bulk-load — solo filas FORWARD materializadas.
+        # El orden del ranking se preserva construyendo la lista en ese orden.
+        fwd_rows_ordered = [
+            fwd_candidate_rows[cand_id]
+            for cand_id, _ in ranking
+            if cand_id in fwd_candidate_rows
+        ]
+        rows_with_ids = _rows_with_ids(fwd_rows_ordered)
         if rows_with_ids:
             table = pa.Table.from_pylist(rows_with_ids, schema=CORPUS_SCHEMA)
             candidates_corpus = Corpus.from_arrow(table)
@@ -393,6 +367,7 @@ class Forager:
         return RankedCandidates(
             corpus=candidates_corpus,
             ranking=ranking,
+            observed_refs=observed_refs,
         )
 
     # ------------------------------------------------------------------

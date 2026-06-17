@@ -34,7 +34,7 @@
   El **CLI `b2g` es real** —paquete `cli/` con 17 subcomandos en `cli/commands/`, no un
   placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9; el 17° `b2g restore`
   rehidrata un corpus curado sin red, Ciclo 9a, abajo)—.
-  **571 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
+  **636 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
   (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2). **`b2g snapshot`/`b2g export` resuelven por
@@ -97,6 +97,18 @@
   trayendo los citantes de las semillas aceptadas vía `OpenAlexSource.fetch_citing_batch` (batcheo OR
   ≤50 con presupuesto por semilla) y los une (idempotente, sin crecer el corpus). `b2g enrich` con
   `--max-citing` (tope por semilla); `Networks.quick` → 4 o 5 redes según haya `cited_by_id`.
+- **Backward chaining sin placeholders** (#54, 2026-06-17): el backward del `Forager`
+  (`b2g chain`) **ya no persiste filas-fantasma `[candidate:W...]` en el corpus** (revierte el
+  comportamiento de Hito 5 — la promesa de "no contaminan" era **falsa**: los stubs llegaron a ser
+  ~la mitad del corpus y entraban al `corpus_hash`; Notas 09/12). Los IDs observados salen por
+  `RankedCandidates.observed_refs` y `b2g chain` los persiste en la tabla append-only hermana
+  **`referenced_but_not_fetched`** (`backends/base.py` Protocol + `DuckDBBackend`/`InMemoryBackend`:
+  `add_referenced_refs`/`referenced_refs_count`/`referenced_refs`), **fuera del `corpus_hash`** (arregla
+  la contaminación previa). `b2g status` suma `referenced_not_fetched`; `b2g chain` suma
+  `observed_refs_count`. **El forward arrastra el MISMO footgun** (placeholder de título), abierto como
+  **#78** — NO está limpio. Materializador on-demand diferido a #71. **636 tests verdes.** Ver
+  `docs/API.md` §5/§4 y ADR [0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)
+  §AS-BUILT #54.
 - **Forward chaining del `Forager` batcheado** (#21, 2026-06-16): el forward del `Forager`
   (`b2g chain`/`b2g monitor`) **ya no es N+1** — reusa `OpenAlexSource.fetch_citing_batch` (batcheo OR
   + cap por semilla `max_citing_per_paper`/`--max-citing`, default 50) con preview sin red. **Opera
@@ -332,7 +344,10 @@ src/bib2graph/
                        # equation.py (EquationSpec + load_equation_spec, capa declarativa de la
                        # ecuación —seed --spec, 9a); RIS, CSV (futuro, no publicar)
   backends/            # TabularBackend (Protocol) + InMemoryBackend (núcleo puro) +
-                       # DuckDBBackend (biblioteca viva, carga perezosa de duckdb; persiste cycle)
+                       # DuckDBBackend (biblioteca viva, carga perezosa de duckdb; persiste cycle).
+                       # #54: tabla hermana referenced_but_not_fetched (IDs observados por el backward
+                       # sin materializar) → add_referenced_refs/referenced_refs_count/referenced_refs,
+                       # fuera del corpus_hash
   foraging/            # Forager (chaining + ranking por scent BIBLIOMÉTRICO vía proyectores, Hito R4).
                        # SIN explain.py / explain_candidate / [llm] (eliminados, ADR 0022)
   preprocessors/       # normalize + thesaurus multilingüe DETERMINISTA, sin fallback LLM (núcleo);

@@ -30,7 +30,6 @@ Marcador: ``unit`` (sin red, sin I/O real).
 
 from __future__ import annotations
 
-import json
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -306,8 +305,13 @@ class TestForagerBackward:
         assert isinstance(ranked, RankedCandidates)
         assert len(ranked.ranking) == 2
 
-    def test_candidatos_marcados_correctamente(self) -> None:
-        """Los candidatos tienen is_seed=False, candidate, provenance hop=1."""
+    def test_candidatos_backward_en_observed_refs(self) -> None:
+        """Backward chaining: IDs observados van a observed_refs, NO al corpus (#54).
+
+        Opción B: los candidatos backward no se materializan como filas-fantasma.
+        El ranking sigue presente; los IDs salen por observed_refs para persistirse
+        en referenced_but_not_fetched.
+        """
         rows = [_base_row("P1", references_id=["REF_A"])]
         corpus = _make_corpus(*rows)
 
@@ -315,19 +319,16 @@ class TestForagerBackward:
         forager = Forager(source, depth=1)
         ranked = forager.chain(corpus, direction="backward")
 
+        # El corpus NO tiene filas-fantasma backward
         cand_table = ranked.corpus.to_arrow().to_pylist()
-        assert len(cand_table) == 1
-        cand = cand_table[0]
-
-        assert cand["is_seed"] is False
-        assert cand["curation_status"] == "candidate"
-
-        provenance = json.loads(cand["provenance"])
-        assert isinstance(provenance, list)
-        assert len(provenance) >= 1
-        event = provenance[0]
-        assert event["chaining_hop"] == 1
-        assert "backward" in event["source"]
+        assert len(cand_table) == 0, (
+            "Backward chaining no debe materializar filas en corpus (#54)"
+        )
+        # Los IDs backward van a observed_refs
+        assert "REF_A" in ranked.observed_refs
+        # El ranking sigue presente (la señal de scent es útil)
+        assert len(ranked.ranking) == 1
+        assert ranked.ranking[0][0] == "REF_A"
 
     def test_chain_no_muta_corpus_entrada(self) -> None:
         """chain() no muta el corpus de entrada."""
