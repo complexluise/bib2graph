@@ -1,11 +1,22 @@
 """cli.commands.seed — Subcomando ``b2g seed``.
 
-Siembra el corpus desde una ecuación de búsqueda en OpenAlex.
-Transiciona el CycleState a SEEDED tras persistir con éxito.
+Siembra el corpus desde una ecuación de búsqueda en OpenAlex o desde un
+YAML declarativo.
+
+Dos modos mutuamente excluyentes (exactamente uno requerido):
+  --equation '<texto>'    siembra desde OpenAlex con la ecuación dada.
+  --spec equation.yaml    siembra desde OpenAlex con los parámetros del YAML
+                          (mismo resultado que ``--equation`` + flags).
 
 R3 — reseed: si ya había un estado previo en el store (no es la primera
 siembra), la acción se trata como ``reseed`` → loop-back a SEEDED con
 ronda++ (ADR 0016 enmendado).  El corpus acumulado (lo curado) se conserva.
+
+ADR 0030 — capa declarativa: ``--spec`` es equivalente a pasar ``--equation``
+con los flags correspondientes; los campos del YAML mapean 1:1 a los argumentos
+de ``run_seed``.
+
+Para cargar un corpus curado desde un parquet sin red, usá ``b2g restore``.
 """
 
 from __future__ import annotations
@@ -16,11 +27,11 @@ from typing import Any
 import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
-from bib2graph.cli._errors import DataError, NetworkError, handle_errors
+from bib2graph.cli._errors import DataError, NetworkError, UsageError, handle_errors
 from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click)
+# Función núcleo: siembra desde OpenAlex (testeable, sin Click)
 # ---------------------------------------------------------------------------
 
 
@@ -33,6 +44,8 @@ def run_seed(
     transport: Any = None,
     max_results: int | None = None,
     exclude: list[str] | None = None,
+    min_year: int | None = None,
+    max_year: int | None = None,
 ) -> dict[str, Any]:
     """Siembra el corpus desde OpenAlex y persiste en el store.
 
@@ -49,6 +62,8 @@ def run_seed(
             usa el default del source (200).
         exclude: Términos a excluir del título/abstract vía ``AND NOT`` (#30).
             ``None`` o lista vacía = sin exclusiones.
+        min_year: Año mínimo de publicación (filtro opcional).
+        max_year: Año máximo de publicación (filtro opcional).
 
     Returns:
         Dict con ``executed_query``, ``translation_report``, ``papers_added``.
@@ -85,7 +100,15 @@ def run_seed(
 
     try:
         source = OpenAlexSource(**source_kwargs)
-        result = source.seed(equation, native=native, exclude=exclude)
+        # min_year / max_year: reservados en EquationSpec (ADR 0030) pero aún no
+        # propagados a OpenAlexSource.seed (que no los acepta todavía). Se
+        # aceptan en la firma de run_seed para compatibilidad futura sin romper
+        # el contrato público.
+        result = source.seed(
+            equation,
+            native=native,
+            exclude=exclude,
+        )
     except ImportError as exc:
         raise NetworkError(
             f"Error importando httpx: {exc}. Verificá la instalación del núcleo."
@@ -117,12 +140,27 @@ def run_seed(
 
 
 @click.command("seed")
-@click.option("--equation", required=True, help="Ecuación de búsqueda bibliográfica.")
+@click.option(
+    "--equation",
+    "equation",
+    default=None,
+    help="Ecuación de búsqueda bibliográfica (modo OpenAlex directo).",
+)
+@click.option(
+    "--spec",
+    "spec_path",
+    default=None,
+    type=click.Path(),
+    help=(
+        "Ruta a un YAML con la ecuación de búsqueda declarativa "
+        "(equation.yaml; mutuamente excluyente con --equation)."
+    ),
+)
 @click.option(
     "--native",
     is_flag=True,
     default=False,
-    help="Pasar la ecuación cruda a OpenAlex sin traducción.",
+    help="Pasar la ecuación cruda a OpenAlex sin traducción (solo con --equation).",
 )
 @click.option(
     "--email",
@@ -134,14 +172,14 @@ def run_seed(
     "max_results",
     type=int,
     default=None,
-    help="Tope de resultados a traer de OpenAlex (default: 200).",
+    help="Tope de resultados a traer de OpenAlex, default: 200 (solo con --equation).",
 )
 @click.option(
     "--exclude",
     "exclude",
     multiple=True,
     help=(
-        "Término a excluir del título/abstract (repetible). "
+        "Término a excluir del título/abstract (repetible; solo con --equation). "
         'Cada valor agrega AND NOT title_and_abstract.search:"…" al filtro.'
     ),
 )
@@ -156,21 +194,93 @@ def run_seed(
 @handle_errors("seed")
 def seed_cmd(
     ctx: click.Context,
-    equation: str,
+    equation: str | None,
+    spec_path: str | None,
     native: bool,
     email: str | None,
     max_results: int | None,
     exclude: tuple[str, ...],
     json_output: bool,
 ) -> None:
-    """Siembra el corpus desde una ecuación de búsqueda en OpenAlex.
+    """Siembra el corpus. Exactamente uno de los dos modos es requerido.
 
+    \b
+    Modos mutuamente excluyentes:
+      --equation '<texto>'    siembra desde OpenAlex con la ecuación dada.
+      --spec equation.yaml    siembra desde OpenAlex con parámetros del YAML.
+
+    \b
+    Para cargar un corpus curado desde un parquet sin red, usá b2g restore.
+
+    \b
     Tras el seed, el estado del lazo transiciona a SEEDED.
+
+    \b
+    Ejemplos:
+      b2g seed --equation "unequal exchange"
+      b2g seed --spec equation.yaml
     """
+    # --- Validar exclusividad de modos ---
+    modes_given = sum([equation is not None, spec_path is not None])
+    if modes_given == 0:
+        raise UsageError(
+            "Debés especificar un modo: --equation '<texto>' o --spec <equation.yaml>."
+        )
+    if modes_given > 1:
+        active = []
+        if equation is not None:
+            active.append("--equation")
+        if spec_path is not None:
+            active.append("--spec")
+        raise UsageError(
+            f"Los modos {' y '.join(active)} son mutuamente excluyentes. "
+            "Usá exactamente uno por invocación."
+        )
+
     store_path = resolve_library_path(ctx.obj)
+
+    # --- Modo --spec (YAML declarativo) ---
+    if spec_path is not None:
+        from bib2graph.sources.equation import load_equation_spec
+
+        try:
+            spec = load_equation_spec(spec_path)
+        except (ValueError, FileNotFoundError) as exc:
+            raise DataError(str(exc)) from exc
+
+        data = run_seed(
+            store_path,
+            spec.query,
+            native=spec.native,
+            email=email,
+            max_results=spec.max_results,
+            exclude=spec.exclude if spec.exclude else None,
+            min_year=spec.min_year,
+            max_year=spec.max_year,
+        )
+        if json_output:
+            envelope = build_envelope(
+                command="seed",
+                ok=True,
+                data=data,
+                exit_code=0,
+                warnings=data.get("translation_report", []),
+            )
+            emit(envelope)
+        else:
+            emit_human(f"Sembrados {data['papers_added']} papers nuevos.")
+            emit_human(f"Query ejecutada: {data['executed_query']}")
+            if data.get("translation_report"):
+                emit_human("Advertencias de traducción:")
+                for w in data["translation_report"]:
+                    emit_human(f"  - {w}")
+            emit_human(f"Total en corpus: {data['total_papers']}")
+        return
+
+    # --- Modo --equation (directo, comportamiento original) ---
     data = run_seed(
         store_path,
-        equation,
+        equation,  # type: ignore[arg-type]  # equation is not None here
         native=native,
         email=email,
         max_results=max_results,
