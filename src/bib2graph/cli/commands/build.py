@@ -14,6 +14,8 @@ ADR 0029 — sellado por corpus_hash:
 Los artefactos se escriben en ``<networks_dir>/<kind>/``:
   - ``network.graphml``: el grafo en formato GraphML.
   - ``metrics.json``: métricas de red calculadas.
+  - ``clusters.csv``: tabla de resumen de comunidades (solo redes de paper
+    con comunidades detectadas, issue #31).
 """
 
 from __future__ import annotations
@@ -42,6 +44,8 @@ def run_build(
 
     Usa ``Networks.quick`` para las 4 redes principales (coupling, co-autoría,
     institución, co-word). Escribe GraphML + metrics.json por red.
+    Para redes de paper con comunidades detectadas escribe también clusters.csv
+    (tabla de resumen de comunidades, issue #31).
     Sella ``networks/.corpus_hash`` con el hash del corpus que las produjo.
     Transiciona a BUILT tras escribir con éxito.
 
@@ -57,8 +61,11 @@ def run_build(
         DependencyError: Si falta ``python-louvain``.
         StoreError: Si el store está bloqueado.
     """
+    import csv as _csv
+
     from bib2graph.cycle import apply_transition
     from bib2graph.exporters.graphml import GraphMLExporter
+    from bib2graph.networks.clusters import cluster_table
     from bib2graph.networks.facade import Networks
 
     store = open_store(store_path)
@@ -120,15 +127,49 @@ def run_build(
             encoding="utf-8",
         )
 
-        networks_info.append(
-            {
-                "kind": kind,
-                "nodes": art.graph.number_of_nodes(),
-                "edges": art.graph.number_of_edges(),
-                "graphml": str(kind_dir / "network.graphml"),
-                "metrics_json": str(metrics_path),
-            }
-        )
+        # Escribir clusters.csv para redes de paper con comunidades (issue #31).
+        # cluster_table devuelve [] si el kind no es de paper o no hay comunidades.
+        clusters_path: str | None = None
+        clusters = cluster_table(corpus.to_arrow(), art)
+        if clusters:
+            clusters_path = str(kind_dir / "clusters.csv")
+            with open(clusters_path, "w", newline="", encoding="utf-8") as _f:
+                _writer = _csv.DictWriter(
+                    _f,
+                    fieldnames=[
+                        "cluster",
+                        "size",
+                        "seed_count",
+                        "candidate_count",
+                        "accepted_count",
+                        "year_min",
+                        "year_max",
+                        "year_mean",
+                        "top_authors",
+                        "top_keywords",
+                    ],
+                )
+                _writer.writeheader()
+                for _row in clusters:
+                    # Serializar listas como cadena separada por "|"
+                    _writer.writerow(
+                        {
+                            **_row,
+                            "top_authors": "|".join(_row["top_authors"]),
+                            "top_keywords": "|".join(_row["top_keywords"]),
+                        }
+                    )
+
+        net_entry: dict[str, Any] = {
+            "kind": kind,
+            "nodes": art.graph.number_of_nodes(),
+            "edges": art.graph.number_of_edges(),
+            "graphml": str(kind_dir / "network.graphml"),
+            "metrics_json": str(metrics_path),
+        }
+        if clusters_path is not None:
+            net_entry["clusters_csv"] = clusters_path
+        networks_info.append(net_entry)
 
     # ADR 0029 — sellar con corpus_hash para detección de staleness.
     # El hash ya lo tiene el corpus vía Manifest/CorpusSnapshot; lo derivamos

@@ -194,6 +194,19 @@ No se prometen ni se cablean clientes que no se usan.
   devuelven artefactos **decorados**; los proyectores **siguen puros** (ADR
   [0014](../decisiones/0014-proyeccion-redes-pesos-asortatividad.md) AS-BUILT #25). Reemplaza el
   workaround local `_label_for_kind` de `prueba/06_redes_y_grafos.py`. Ver API.md §7.1.
+- **Tabla de clusters a CSV (#31) · ✅ HECHO (2026-06-17):** las redes salían con comunidades en el
+  GraphML pero sin una vista tabular legible de **qué cae en cada cluster** (composición por comunidad).
+  Se agregó la **función pura `cluster_table(table, artifact)`** (`networks/clusters.py`, re-exportada
+  desde `networks/__init__.py`): una fila por comunidad con `cluster, size, seed_count, candidate_count,
+  accepted_count, year_min, year_max, year_mean, top_authors, top_keywords`. **Solo redes de paper**
+  (coupling/cocitación; redes de autor/keyword/institución → `[]`, no crash). Cruza nodo→fila por
+  **`Col.ID`** (lección B6 de la [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md), no
+  `openalex_id`); `top_authors` de `authors_raw`, `top_keywords` de `keywords_id`. **Determinista**
+  (desempate `(-freq, nombre alfabético)`, reproducible cross-`PYTHONHASHSEED` y entre métodos de
+  clustering; ADR [0017](../decisiones/0017-reproducibilidad-historia-snapshot.md)). **`b2g build`**
+  escribe `<networks_dir>/<kind>/clusters.csv` (listas con separador `|`) cuando la red tiene
+  comunidades, y el envelope `--json` suma `clusters_csv` **condicional** por red. Gate verde, **498
+  tests**. Ver `API.md` §7.2 + §9 + §convenciones CLI.
 - **Workspace por investigación · ✅ HECHO (2026-06-16, ADR
   [0029](../decisiones/0029-workspace-por-investigacion.md); issues #32/#38/#39):** cada investigación
   = una carpeta auto-contenida (`workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/

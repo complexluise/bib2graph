@@ -30,7 +30,10 @@
   scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `exporters/` (GraphML, CSV) y `cli/`.
   El **CLI `b2g` es real** —paquete `cli/` con 15 subcomandos en `cli/commands/`, no un
-  placeholder—. **476 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`).
+  placeholder—. **498 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
+  redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
+  resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
+  (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2).
 - **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
   [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
   núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
@@ -267,7 +270,7 @@ src/bib2graph/
   filters/             # filtros de inclusión/exclusión con conteo PRISMA (núcleo)
   enrichers/           # OpenAlexEnricher opt-in, NÚCLEO (Hito 8 ✅: refs→DOI 8a + co-citación 8b → pobla cited_by_id);
                        # Enricher Protocol; S2 ([s2]) reservado para señal adicional, NO el Enricher (ADR 0025)
-  networks/            # Projector, Analyzer, NetworkSpec, NetworkArtifact, Networks
+  networks/            # Projector, Analyzer, NetworkSpec, NetworkArtifact, Networks, cluster_table (#31)
   exporters/           # GraphML, CSV
   stores/              # DuckDBStore (núcleo, por defecto: biblioteca viva);
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
