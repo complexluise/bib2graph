@@ -100,15 +100,15 @@
 > **(1)** `b2g seed` gana un 2º modo declarativo **`--spec equation.yaml`** (mutuamente excluyente con
 > `--equation`): carga la ecuación de un YAML con el modelo **`EquationSpec`** + loader
 > `load_equation_spec` (`sources/equation.py`, Pydantic `extra="forbid"`, mismo patrón de errores que
-> `load_specs`; §2). Los campos `min_year`/`max_year` **están en el modelo pero NO filtran contra
-> OpenAlex todavía** (filtro de año = trabajo futuro; no se promete capacidad inexistente). **(2)** Nuevo
+> `load_specs`; §2). Los campos `min_year`/`max_year` ya existen en el modelo **(en Ciclo 9a aún no
+> filtraban; desde el Ciclo 10 SÍ filtran contra OpenAlex — ver el banner de Ciclo 10 abajo)**. **(2)** Nuevo
 > **17° subcomando `b2g restore --from-corpus <parquet>`** (`cli/commands/restore.py`): rehidrata un
 > corpus **ya curado** desde un parquet **sin red** (inverso de `snapshot`; lee con `CORPUS_SCHEMA`,
 > `Corpus.from_arrow`, merge+persist), preserva la curación (`decision`/`curation_status`/`is_seed`) y
 > transiciona el `CycleState` a **`FILTERED`** (reusa la transición permisiva `filter`, ADR 0016; deja
 > correr `build`/`networks` sin re-forrajeo). **NO** existe `seed --from-corpus` (la rehidratación es
-> `restore`) ni `seed --from-bib` (diferido a un issue futuro, ADR 0030 §Diferido). Ver §2 +
-> §convenciones CLI.
+> `restore`). En Ciclo 9a `seed --from-bib` estaba diferido; el **Ciclo 10 lo construyó** (ver banner
+> abajo). Ver §2 + §convenciones CLI.
 >
 > **Sincronizado con el corpus de ejemplo + gate R2 — #33 / Ciclo 9b (AS-BUILT, 2026-06-17):**
 > se materializa la convención **`examples/`** (§convención `examples/`) y se construye el primer
@@ -118,9 +118,22 @@
 > `b2g restore --from-corpus examples/valoraciones/corpus.parquet` → `build` → `networks`/`clusters`.
 > Un **gate R2** (`tests/unit/test_example_r2_gate.py`, 7 tests) verifica `corpus_hash` estable +
 > composición de comunidades Louvain estable entre corridas (cierra el agujero R2 de la
-> [Nota 09](Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). **#33 cerrado / 9a+9b completos**;
-> `seed --from-bib` y `examples/bibtex/` siguen diferidos (issue #50). Ver
+> [Nota 09](Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). **#33 cerrado / 9a+9b completos**.
+> (En 9b, `seed --from-bib` y `examples/bibtex/` quedaban diferidos —issue #50—; el **Ciclo 10 los
+> construyó**, ver banner abajo.) Ver
 > [ADR 0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md) §AS-BUILT 9b.
+>
+> **Sincronizado con el segundo camino de seed (BibTeX) + filtro de año — Ciclo 10 (AS-BUILT, 2026-06-17,
+> cierra issue #50):** des-diferido lo que 9a había postergado (ADR
+> [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md) §AS-BUILT Ciclo 10). **(1)** `b2g seed`
+> pasa a **TRES modos** mutuamente excluyentes: `--equation` / `--spec` / **`--from-bib <archivo.bib>`**
+> (siembra desde BibTeX local **sin red**, `run_seed_from_bib` → `BibtexSource.load`; `SEEDED`/reseed;
+> exit 3 si falta `bibtexparser`; combinar `--from-bib` con flags OpenAlex → exit 1). **(2)**
+> `--min-year`/`--max-year` **ahora filtran de verdad** contra OpenAlex
+> (`from_publication_date`/`to_publication_date` en el `filter`; expuestos como flags en `--equation` y
+> como campos del YAML en `--spec`, paridad 1:1). **(3)** Nuevo ejemplo **`examples/bibtex/`** (`sample.bib`
+> + README con receta 100% CLI) que demuestra el camino BibTeX. Ver §2 + §convenciones CLI + §convención
+> `examples/`.
 >
 > **Sincronizado con los remanentes del modelo workspace — #32 (AS-BUILT, 2026-06-17):** cierra lo
 > que el ADR [0029](decisiones/0029-workspace-por-investigacion.md) dejó "fuera de corte".
@@ -172,22 +185,35 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
   intacto. **AS-BUILT #32 (2026-06-17):** suma también el campo aditivo `networks_cache_stale: bool`
   (+ `warnings` accionable cuando la cache de `networks/` quedó obsoleta respecto al corpus vivo;
   avisa, NO regenera — ver §`build`/`export`/`snapshot` abajo). `inspect`, `validate`.
-- **`seed`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md), Ciclo 9a): tiene
-  **exactamente DOS modos mutuamente excluyentes** (exactamente uno requerido; pasar ambos o ninguno
-  → error de uso, exit 1):
-  - **`--equation '<texto>'`** — ecuación cruda en la línea de comandos (modo OpenAlex directo).
+- **`seed`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md), Ciclo 9a + Ciclo
+  10 AS-BUILT 2026-06-17): tiene **exactamente TRES modos mutuamente excluyentes** (exactamente uno
+  requerido; pasar más de uno o ninguno → error de uso, exit 1):
+  - **`--equation '<texto>'`** — ecuación cruda en la línea de comandos (modo OpenAlex directo, con red).
   - **`--spec equation.yaml`** — la misma siembra OpenAlex parametrizada por un YAML versionable
     (clave raíz `equation:`; modelo `EquationSpec`, §2). Equivale a `--equation` + flags (mismo
     `executed_query`).
+  - **`--from-bib <archivo.bib>`** — siembra desde un archivo BibTeX local, **sin red** (segundo
+    camino de seed, cierra issue #50). Usa `BibtexSource.load` (`run_seed_from_bib` en
+    `cli/commands/seed.py`); marca los papers `is_seed=True` / `curation_status='candidate'` y
+    transiciona a `SEEDED` (o reseed → ronda++ si ya había estado, igual que los otros modos). El
+    envelope `--json` lleva `{papers_added, total_papers, round, reseeded}` — **sin** `executed_query`
+    ni `translation_report` (no aplican a BibTeX). Si falta `bibtexparser` (extra `[bibtex]`) →
+    **`DependencyError`, exit 3** (patrón `[dedup]`); archivo inexistente / `.bib` mal formado →
+    `DataError`, exit 2.
 
-  **No existe `seed --from-corpus`** (la rehidratación de un parquet curado es `restore`, abajo) **ni
-  `seed --from-bib`** (segundo camino de seed por BibTeX, **diferido** a un issue futuro propio, ADR
-  0030 §Diferido). Flags ergonómicos (#14 + #30, **solo con `--equation`**): **`--max-results INT`**
+  **No existe `seed --from-corpus`** (la rehidratación de un parquet curado es `restore`, abajo).
+  Flags ergonómicos de OpenAlex (#14 + #30, **solo con `--equation`/`--spec`**): **`--max-results INT`**
   propaga a `OpenAlexSource(max_results=...)` —sin flag, el default del source = 200— para exploración
   con muestras chicas (Nota 09 B1); **`--exclude TEXT`** (repetible) son **negaciones quirúrgicas**:
   cada término agrega `AND NOT title_and_abstract.search:"<término>"` al filtro y queda en el
   `translation_report` del `SeedResult` (ejercicio consciente, query visible); ignorado con `--native`
-  (query cruda). Con `--spec`, estos parámetros vienen del YAML.
+  (query cruda); **`--min-year INT`/`--max-year INT`** (Ciclo 10) **filtran de verdad** contra OpenAlex
+  agregando `from_publication_date:<min_year>-01-01` y/o `to_publication_date:<max_year>-12-31` al
+  filtro (sintaxis idiomática de rango, combinada con coma; reportado en el `translation_report`).
+  Con `--spec`, todos estos parámetros vienen del YAML (paridad 1:1 flag ⇄ campo). **Combinar
+  cualquier flag de OpenAlex (`--exclude`/`--max-results`/`--native`/`--email`/`--min-year`/`--max-year`)
+  con `--from-bib` → error de uso, exit 1** (falla fuerte, no ignora en silencio). En modo `--native`,
+  `--min-year`/`--max-year` no se aplican (nativo = sin traducción).
 - **`restore`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md), Ciclo 9a, 17°
   subcomando): **rehidrata un corpus ya curado desde un parquet, SIN red** — inverso de `snapshot`,
   como `load` es a `dump`. **`--from-corpus <parquet>`** (requerido) lee el parquet con el schema
@@ -685,12 +711,14 @@ def load_equation_spec(path: str | Path) -> EquationSpec:
     citando archivo + campo. Importación perezosa de PyYAML."""
 ```
 
-> **`min_year`/`max_year`: declarados pero NO filtran (v1; lección 5).** El AS-BUILT de 9a acepta
-> ambos campos en `EquationSpec` y los pasa por la firma de `run_seed` (compatibilidad futura), pero
-> **`OpenAlexSource.seed` NO los aplica todavía** como filtro de año contra OpenAlex. El **filtro de
-> año es trabajo futuro** (ADR 0030 §Diferido). Los demás campos
-> (`query`/`exclude`/`max_results`/`native`) sí mapean 1:1 al `run_seed` existente: la capa
-> declarativa **no agrega capacidad nueva al `Source`**, solo empaqueta los flags ya soportados.
+> **`min_year`/`max_year`: filtran de verdad (Ciclo 10, 2026-06-17).** En el corte 9a estos campos
+> estaban en `EquationSpec` pero `OpenAlexSource.seed` no los aplicaba; el **Ciclo 10 los conectó**:
+> `_translate`/`seed` agregan `from_publication_date:<min_year>-01-01` y/o
+> `to_publication_date:<max_year>-12-31` al `filter` de OpenAlex (sintaxis idiomática de rango,
+> concatenada con coma) y lo reportan en el `translation_report`. Expuestos además como flags
+> **`--min-year`/`--max-year`** en `b2g seed --equation` (paridad 1:1 con el YAML); en `--native` no
+> se aplican. Todos los campos (`query`/`exclude`/`max_results`/`native`/`min_year`/`max_year`) mapean
+> 1:1 al `run_seed`: la capa declarativa empaqueta los flags ya soportados.
 
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
@@ -744,10 +772,15 @@ epic GUI #34). Reglas:
   curación y transiciona a `FILTERED`; luego `build` → `networks`/`clusters` corren localmente.
 - **`.gitignore`:** `!examples/` trackea el ejemplo; `examples/**/*.duckdb` lo protege de que un
   store vivo se cuele. El resto de la política de datos de usuario no cambia.
-- **Ejemplo existente:** **`examples/valoraciones/`** (137 filas: 7 `accepted`, 130 `candidate`,
-  107 seeds). Verificado por el gate R2 `tests/unit/test_example_r2_gate.py` (`corpus_hash` estable
-  + comunidades Louvain estables entre corridas). **`examples/bibtex/` queda diferido** (acompaña a
-  `seed --from-bib`, issue #50).
+- **Ejemplos existentes:**
+  - **`examples/valoraciones/`** (137 filas: 7 `accepted`, 130 `candidate`, 107 seeds). Verificado por
+    el gate R2 `tests/unit/test_example_r2_gate.py` (`corpus_hash` estable + comunidades Louvain
+    estables entre corridas). Se rehidrata con `b2g restore --from-corpus`.
+  - **`examples/bibtex/`** (Ciclo 10, AS-BUILT 2026-06-17): un `sample.bib` chico (10 entradas, con
+    variedad deliberada de campos faltantes para ejercitar el parser defensivo) + `README.md` con la
+    receta 100% CLI (`b2g init` → `b2g seed --from-bib examples/bibtex/sample.bib` → `b2g build`).
+    Demuestra el segundo camino de seed (BibTeX local, sin red). El `.bib` queda trackeado por la
+    excepción `!examples/` ya existente.
 
 ---
 
