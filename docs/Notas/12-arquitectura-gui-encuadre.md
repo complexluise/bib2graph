@@ -6,12 +6,76 @@
 > a la arquitectura, el PRD y la gestión de docs, y destapar las decisiones A–G. Fecha: 2026-06-16.
 > Nada se implementa: la GUI sigue gateada (epic **#34**: núcleo → caso real → GUI).
 
+---
+
+## ⟳ Revisión 2026-06-18 (perspectiva actual)
+
+> El cuerpo de abajo (2026-06-16) **se conserva como historia**. Este bloque actualiza el encuadre
+> a la luz de tres cosas que pasaron *después* de escribirlo: (1) el **workspace se construyó** (ADR
+> 0029, #32 cerrado); (2) apareció un **prototipo `app/`** (frontend mock desechable + un embrión de
+> server FastAPI); y (3) al leer el código real (esta sesión) descubrimos **dónde vive de verdad la
+> capa de convergencia**. Los cambios:
+
+**1. La idea central se corrige: la convergencia es una CAPA DE SERVICIOS NEUTRAL, no `run_<cmd>` en
+`cli/`.** El diagrama original ("los tres frontends convergen en `run_<cmd>` en `cli/commands/`")
+subestima dónde está el contrato. Hoy `run_<cmd>(store_path, …)` devuelve **solo el payload `data`**;
+el **envelope `schema="1"`, la jerarquía de errores tipados (`B2GError`) y el mapeo→exit-code viven en
+`cli/`** (`_envelope.py`/`_errors.py`). Hacer "converger en `run_<cmd>`" forzaría a la API a importar
+de `cli/` (y `cli` deja de ser hoja) o a **reimplementar el contrato** — drift que **ya empezó**
+(`app/server/errors.py` tiene su propio `envelope()`). → La forma correcta es **invertir la
+dependencia (ports & adapters)**: una capa neutral `src/bib2graph/service/` (agnóstica de transporte:
+sin `print`, `sys.exit`, Click ni FastAPI) que contiene la orquestación (lo que hoy es `run_<cmd>`)
+**+ el contrato (envelope, errores, mapeo a código), subido desde `cli/`**. **CLI y API son ambos
+adaptadores delgados** que se cuelgan de los servicios y comparten todo lo que puedan. *(Acordado con
+el PO 2026-06-18.)*
+
+**2. El contrato de la SPA NO mapea 1:1 a subcomandos** (hallazgo del mock `app/src/mock/api.ts`):
+`getScent(paperId)`, `getNetwork(roundId, kind)`, `searchPapers(...)` **no tienen subcomando CLI** (el
+scent vive embebido en el grafo; search no existe). La capa de servicios debe exponer funciones de
+**lectura** que el CLI nunca tuvo → otra razón por la que la convergencia va en *servicios*, no en
+*comandos*. Cuidado de producto: si la API es un proxy fino de subcomandos, la GUI hereda granularidad
+imperativa de CLI en vez del modelo "estado de la investigación" (Nota 07).
+
+**3. Operaciones largas + lock single-writer (nuevo, para el ADR 0028):** `seed`/`enrich`/`build`
+bloquean (red, Louvain) y `run_<cmd>` abre/cierra el store por llamada. Un server de larga vida
+reintroduce la **concurrencia que el CLI nunca tuvo** (ADR 0019 la difirió) y el bloqueo HTTP es mala
+UX. **Reco (pendiente de firma):** v1 **síncrono** + **lock global serializado**; **jobs async/SSE y
+reabrir 0019 = diferidos**.
+
+**4. El prototipo `app/` (no existía en el original).** `app/src/` = frontend React/Vite con mock
+Zustand, **desechable** (referencia UX). `app/server/` = FastAPI standalone, solo `GET /api/workspace`,
+envelope propio. **Destino:** el frontend es throwaway hasta `frontend/`; la API se **promueve** a
+`src/bib2graph/api/` colgada de la capa de servicios; `app/server/errors.py` se retira a favor del
+contrato neutral; el `src/client/` TS es la semilla del cliente real contra el contrato.
+
+**5. Estado de las decisiones A–G hoy:**
+- **A/B/C — vigentes, con el ajuste del punto 1.** C.2 se reformula: CLI y API son hermanos sobre la
+  **capa de servicios neutral**, no sobre `run_<cmd>`. El árbol de repo suma `src/bib2graph/service/`.
+- **D (docs) — vigente.**
+- **E (workspace) — ✅ HECHA, ya no es propuesta:** ADR 0029 firmado, workspace construido, #32 cerrado.
+- **F (posicionamiento) — vigente.**
+- **G (ADRs) — renumerar:** **0029 ya es el workspace** (hecho), **0030** = ecuación declarativa.
+  Quedan por escribir **0027 (pivote de posicionamiento, gatea)** y **0028 (arquitectura
+  GUI/API/frontend + empaquetado + LA CAPA DE SERVICIOS del punto 1)**. La terna original "0027/0028/
+  0029" ya no aplica para 0029.
+
+**6. Drift numérico actualizado:** el CLI hoy tiene **17 subcomandos** (no 13) → `b2g gui` sería el
+**18º** (no el 14º). Además (PO 2026-06-17, posterior a la nota): **Hito 10 (viz) absorbido en la GUI**
+(es la capa de lectura visual) y **Hito 11 (Zotero/Neo4j) descartado** — no hay extra `[viz]` aparte.
+
+---
+
 ## Idea central
 
 La GUI **no rompe** la arquitectura "núcleo puro + costuras". Agrega un **4º frontend (la SPA)** y
 una **costura nueva de servidor (API local)**. Los **tres frontends — CLI · API · SPA — convergen
 en la misma capa `run_<cmd>`** (en `cli/commands/`), no en la API. El CLI sigue standalone
 agente-native (ADR 0010); la API es **par** del CLI, no superior.
+
+> ⟳ **Revisado 2026-06-18 (ver bloque arriba):** la convergencia **no** es en `run_<cmd>` (que solo
+> devuelve el payload) sino en una **capa de servicios neutral** `src/bib2graph/service/` que también
+> absorbe el contrato (envelope/errores/exit-code) hoy atrapado en `cli/`. CLI y API son **adaptadores**
+> de esa capa.
 
 ```
    SPA (JS, grafo-lienzo) ──HTTP/JSON──► API local (FastAPI, 127.0.0.1, opt-in [gui])
