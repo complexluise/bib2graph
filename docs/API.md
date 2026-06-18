@@ -165,6 +165,15 @@
 > y un `.duckdb` legacy se adopta con **`b2g init .`**. La resolución ambiente pierde la rama
 > `--store`: `--workspace` > `B2G_WORKSPACE` > walk-up del cwd. Ver §convenciones CLI y ADR 0029
 > (enmienda 2026-06-17).
+>
+> **Sincronizado con el preprocesamiento automático en la ingesta — #88 (AS-BUILT, 2026-06-18, ADR
+> [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** `seed`/`seed_from_bib`/`chain`/
+> `restore` aplican **`normalize` + dedup fuzzy automáticamente** sobre el corpus completo mergeado
+> (helper `cli/_ingest.py::normalize_and_dedup`), así que **dejan el corpus siempre normalizado y
+> deduplicado cross-biblioteca** (§6 + §11). Persisten con **`persist_replace`** (§4.1), no upsert.
+> Nuevo **18° subcomando `b2g thesaurus --from <archivo>`** (único paso explícito del preproc,
+> transversal al FSM). **`rapidfuzz` pasa al núcleo; el extra `[dedup]` se elimina.** `build`/`networks`
+> siguen puros (el corpus ya entra deduplicado). Ver §6, §11, §4.1 y el listado de subcomandos.
 
 ## Convenciones
 
@@ -185,14 +194,16 @@ invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción
 `--workspace`; `--store` fue eliminada en [#75](https://github.com/complexluise/bib2graph/issues/75),
 ver abajo).
 
-**Set de 17 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+**Set de 18 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
 y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
 pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
 [0025](decisiones/0025-enricher-cocitacion-openalex.md); el 14° `init` con el workspace, ADR
 [0029](decisiones/0029-workspace-por-investigacion.md); el 15° `curate` con la curación a escala,
 #22 + #26; el 16° `networks` con la capa declarativa YAML, Hito 9; el 17° `restore` con la
 rehidratación de corpus curado sin red, Ciclo 9a, ADR
-[0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)):
+[0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md); el 18° `thesaurus` con el
+preprocesamiento automático en la ingesta, #88, ADR
+[0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -278,6 +289,17 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
   fetch), `--json`. `data` = `{enriched, references_resolved, ...}`. **NO transiciona el
   `CycleState`** (ortogonal al lazo): se puede enriquecer en cualquier estado sin perturbar el FSM.
   `build` sigue puro/sin red.
+- **`thesaurus`** (#88, ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md), 18°
+  subcomando): aplica un **thesaurus multilingüe curado** al corpus —**`--from <archivo>`**
+  (requerido, JSON formato ADR 0011)— sobrescribiendo `keywords_id` con los conceptos canónicos del
+  mapa (`Preprocessor.apply_thesaurus`, §6). Es el **único paso explícito del preproc**: requiere el
+  mapeo del usuario, por eso no es automático (a diferencia de `normalize`+dedup, que corren solos en
+  la ingesta). **NO transiciona el `CycleState`** (transversal al lazo, igual que `enrich`/`curate`/
+  `networks`). Persiste con **`persist_replace`** (§4.1): el thesaurus reemplaza los `keywords_id` del
+  corpus completo; el upsert-concat reintroduciría los canónicos viejos junto a los nuevos si el mapeo
+  cambió. `data` = `{keywords_mapped, keywords_total, aliases_loaded, applied_at}`; `--json` con
+  `schema="1"`. Errores accionables: thesaurus inexistente o con formato inválido → `DataError`
+  (exit 2).
 - **`init`** (ADR [0029](decisiones/0029-workspace-por-investigacion.md)): **scaffold de un
   workspace**. `b2g init <name>` crea `<name>/` con `workspace.json` + `library.duckdb` +
   `networks/`/`snapshots/`/`exports/`; **`b2g init .`** inicializa el cwd. Si la carpeta ya es un
@@ -977,11 +999,22 @@ mutaciones subsiguientes tocan el archivo en disco).
 ```python
 class DuckDBStore:
     def __init__(self, path: str | Path) -> None: ...   # abre/crea el .duckdb; StoreLockedError si bloqueado
-    def persist(self, corpus: Corpus) -> None: ...       # merge idempotente por id en la biblioteca viva
+    def persist(self, corpus: Corpus) -> None: ...       # merge idempotente por id (upsert-concat D3) en la biblioteca viva
+    def persist_replace(self, corpus: Corpus) -> None: ...# DELETE+INSERT de la tabla `corpus`: el estado en disco
+                                                          # queda EXACTAMENTE el corpus dado; preserva las tablas
+                                                          # hermanas (loop_state_log, referenced_but_not_fetched)
     def load(self) -> Corpus: ...                         # corpus acumulado, respaldado por el DuckDBBackend
     @property
     def backend(self) -> "DuckDBBackend": ...            # acceso al backend para las extensiones de abajo
 ```
+
+> **`persist_replace` vs `persist` (#88, ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)).**
+> La **ingesta automática** (`seed`/`seed_from_bib`/`chain`/`restore`) y **`b2g thesaurus`** persisten
+> con **`persist_replace`** (→ `DuckDBBackend.overwrite_corpus`, DELETE+INSERT reasignando `_seq`
+> desde 0, ADR 0024), porque ya tienen el corpus **completo, normalizado y deduplicado** en memoria y
+> el upsert-concat D3 (`persist`) **reintroduciría** las variantes que el dedup cross-biblioteca acaba
+> de colapsar. **`persist`/upsert queda intacto** para el resto de los llamadores (caso "mismo paper
+> desde dos fuentes", D3). Ambos preservan las tablas hermanas.
 
 **Extensiones del `DuckDBBackend`, FUERA del Protocol `Store`/`TabularBackend`** (se acceden vía
 `store.backend.…`): son específicas de DuckDB y no parte del contrato genérico:
@@ -1174,21 +1207,33 @@ class RankedCandidates(BaseModel):
 
 ---
 
-## 6. Núcleo — `Preprocessor` + filtros PRISMA (v1 — construido, Hito 5)
+## 6. Núcleo — `Preprocessor` + filtros PRISMA (v1 — construido, Hito 5; auto-ingesta #88)
+
+> **Sincronizado con el preprocesamiento automático en la ingesta — #88 (AS-BUILT, 2026-06-18,
+> ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** `normalize` (+ el dedup
+> fuzzy de §11) corre **automáticamente en cada ingesta** vía el helper de frontera
+> `cli/_ingest.py::normalize_and_dedup` (sobre el corpus completo mergeado). `apply_thesaurus`, que
+> requiere el mapeo curado del usuario, queda como el **único paso explícito** del preproc:
+> **`b2g thesaurus --from <archivo>`** (18° subcomando, transversal, NO transiciona el FSM;
+> §convenciones CLI). Ambos métodos aceptan `applied_at` inyectado desde la frontera (R2, ADR 0017).
 
 ```python
 class Preprocessor:
-    """Determinístico e idempotente. La parte fuzzy vive en [dedup] (§11). Registra un
-    PreprocRef en el Manifest por cada operación aplicada."""
-    def normalize(self, corpus: Corpus) -> Corpus:
+    """Determinístico e idempotente. La parte fuzzy vive en §11 (ahora núcleo, no extra). Registra un
+    PreprocRef en el Manifest por cada operación aplicada. `applied_at` se inyecta desde la frontera
+    (R2): un único datetime.now(UTC) por invocación, igual que `decided_at` en curación."""
+    def normalize(self, corpus: Corpus, *, applied_at: datetime | None = None) -> Corpus:
         """Normalización CONSERVADORA (decisión b=A): authors_id (lowercase + quitar acentos +
-        colapso de espacios) y language (subtag ISO 639-1 primario). SIN fuzzy (eso es [dedup],
-        §11), SIN columna de periodización. Idempotente. NO muta el corpus de entrada."""
-    def apply_thesaurus(self, corpus: Corpus, thesaurus: dict | Path) -> Corpus:
+        colapso de espacios) y language (subtag ISO 639-1 primario). SIN fuzzy (eso es el dedup,
+        §11), SIN columna de periodización. Idempotente. NO muta el corpus de entrada. Corre
+        AUTOMÁTICAMENTE en la ingesta (helper `normalize_and_dedup`, ADR 0031)."""
+    def apply_thesaurus(self, corpus: Corpus, thesaurus: dict | Path, *,
+                        applied_at: datetime | None = None) -> Corpus:
         """Lee keywords_raw y SOBRESCRIBE keywords_id con los conceptos canónicos del thesaurus
         multilingüe CURADO (en/es/pt), dict canónico→aliases en JSON o Path a ese JSON.
         Determinista e idempotente (ADR 0011). SIN fallback semántico/LLM (ADR 0011 enmendado /
-        0022): lo que no matchea queda fuera, sin inventar conceptos con un modelo."""
+        0022): lo que no matchea queda fuera, sin inventar conceptos con un modelo. Paso EXPLÍCITO
+        (`b2g thesaurus`), NO automático: requiere el mapeo del usuario (ADR 0031)."""
 ```
 
 **Filtros de inclusión/exclusión** (funciones puras, flujo PRISMA; ADR
@@ -1582,41 +1627,70 @@ networks --spec`, §convenciones CLI).
 
 ---
 
-## 11. Deduplicación fuzzy (extra `[dedup]`, v1 — construido, Hito 7)
+## 11. Deduplicación fuzzy — AUTOMÁTICA en la ingesta (`rapidfuzz` núcleo, v1 — construido, Hito 7 + #88)
 
-**Construido** (Hito 7, ADR [0026](decisiones/0026-dedup-fuzzy-determinista.md)). Dedup fuzzy
-**determinista** con `rapidfuzz` (extra `[dedup]`, import perezoso): el complemento aproximado de la
-normalización conservadora del `Preprocessor` (§6). **Funciones de librería**, exportadas desde
-`bib2graph.preprocessors` (no hay subcomando CLI — decisión del PO). Operan sobre la columna `_id`
-(`authors_id`/`keywords_id`), **nunca** sobre `_raw`, y corren **después** de `normalize` y
-`apply_thesaurus` (orden: normalize → thesaurus → dedup).
+> **Sincronizado con el preprocesamiento automático en la ingesta — #88 (AS-BUILT, 2026-06-18,
+> ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** el dedup deja de ser
+> "función de librería sin subcomando" (corte 0026) y pasa a ejecutarse **automáticamente en cada
+> ingesta** (`seed`/`seed_from_bib`/`chain`/`restore`). **`rapidfuzz` pasa al núcleo**
+> (`[project.dependencies]`); **el extra `[dedup]` se ELIMINA** y el import deja de ser perezoso. El
+> **algoritmo** de 0026 (token_sort_ratio + Union-Find + canónico) **no cambia**: cambia *quién lo
+> invoca y cuándo*. `b2g thesaurus` es el único paso explícito del preproc (§convenciones CLI, §6).
+
+**Dedup fuzzy determinista** con `rapidfuzz` (núcleo desde #88): el complemento aproximado de la
+normalización conservadora del `Preprocessor` (§6). Las funciones siguen exportadas desde
+`bib2graph.preprocessors`, pero **se invocan automáticamente** desde el helper de frontera
+`cli/_ingest.py::normalize_and_dedup`, no a mano. Operan sobre la columna `_id`
+(`authors_id`/`keywords_id`), **nunca** sobre `_raw`.
 
 ```python
+# Helper de frontera — punto único de la ingesta (cli/_ingest.py)
+def normalize_and_dedup(corpus: Corpus, *, applied_at: datetime | None = None) -> Corpus:
+    """normalize → deduplicate_authors(0.92) → deduplicate_keywords(0.90), en ese orden, sobre el
+    corpus COMPLETO YA MERGEADO (existing + incoming) ⇒ dedup CROSS-BIBLIOTECA. NO aplica thesaurus
+    (eso es el paso explícito `b2g thesaurus`). `applied_at` se inyecta desde la frontera (R2)."""
+
+# Funciones de librería (ADR 0026, intactas; ahora invocadas por el helper, no a mano)
 def deduplicate_authors(corpus: Corpus, *, threshold: float = 0.92) -> Corpus:
     """Colapsa variantes de `authors_id` por similitud de nombres (fuzzy DETERMINISTA). Lo trivial
-    ya lo hizo el Preprocessor (§6); esto es el complemento aproximado. Requiere extra [dedup]."""
+    ya lo hizo el Preprocessor (§6); esto es el complemento aproximado."""
 
 def deduplicate_keywords(corpus: Corpus, *, threshold: float = 0.90) -> Corpus:
-    """Colapsa variantes de `keywords_id` fuera del thesaurus por similitud de cadenas. Requiere
-    extra [dedup]."""
+    """Colapsa variantes de `keywords_id` fuera del thesaurus por similitud de cadenas."""
 ```
 
-**Notas de contrato** (Hito 7, ADR [0026](decisiones/0026-dedup-fuzzy-determinista.md)):
+**Notas de contrato** (Hito 7 + #88, ADR [0026](decisiones/0026-dedup-fuzzy-determinista.md) /
+[0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):
 
+- **Automático en la ingesta, cross-biblioteca:** las cuatro rutas
+  (`seed`/`seed_from_bib`/`chain`/`restore`) hacen `existing.merge(incoming)` →
+  `normalize_and_dedup(corpus_completo)` → `store.persist_replace(...)`. Corre sobre el corpus
+  **completo** (no el lote) para deduplicar contra toda la biblioteca acumulada; se persiste con
+  **`persist_replace`** (DELETE+INSERT, §4.1) porque el upsert-concat D3 (`persist`) reintroduciría
+  las variantes colapsadas. `build`/`networks` siguen **puros** (el corpus ya entra deduplicado).
 - **`threshold` por-campo** (autores `0.92` / keywords `0.90`; **ambas** lo reciben): se compara con
-  `rapidfuzz.fuzz.token_sort_ratio` (0–100) contra `threshold * 100`.
+  `rapidfuzz.fuzz.token_sort_ratio` (0–100) contra `threshold * 100`. Umbrales fijos en
+  `cli/_ingest.py` (ADR 0031).
 - **Determinista e idempotente:** los pares ≥ umbral forman **componentes conexas** vía Union-Find
   (iteración ordenada); el **canónico** del cluster es la variante más frecuente (papers distintos)
   con desempate por `id` ascendente; se preserva el **orden de primera aparición** y **nunca se toca
   `_raw`**. Mismo corpus + threshold + versión de `rapidfuzz` → mismo resultado (verificado
   cross-`PYTHONHASHSEED`); converge en una pasada. **NO usa IA** (similitud de cadenas, no
   semántica/LLM; ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)).
-- **Extra `[dedup]` con import perezoso:** sin él, `ImportError` accionable → `uv sync --extra
-  dedup`. Registra un `PreprocRef` en el `Manifest` con `{library, rapidfuzz_version, scorer,
-  threshold, n_clusters_collapsed}` (reproducibilidad a igual versión del scorer, ADR 0017).
+- **`rapidfuzz` en el núcleo (#88):** `rapidfuzz>=3,<4` en `[project.dependencies]`; el import de
+  `preprocessors/dedup.py` es de nivel de módulo (ya **no** perezoso, ya **no** hay extra `[dedup]`
+  ni `uv sync --extra dedup`). Registra un `PreprocRef` en el `Manifest` con
+  `{library, rapidfuzz_version, scorer, threshold, n_clusters_collapsed}` (reproducibilidad a igual
+  versión del scorer, ADR 0017).
 - **Campos en V1:** autores + keywords. **Instituciones diferidas** (`institutions_id` no está
   normalizada determinísticamente hoy). `splink` (record-linkage probabilístico) **diferido a
   post-V1** (ADR 0026).
+- **Diferido a la epic GUI (#34):** la **revisión asistida de clusters ambiguos** (sugerir N
+  canónicos → el humano elige, determinista vía scores de `rapidfuzz`, **sin IA generativa**) requiere
+  superficie interactiva; hoy el dedup automático aplica el canónico determinista sin confirmar
+  (ADR 0031). **Deuda conocida:** el dedup por ingesta es O(n²) sobre el corpus completo
+  (optimización futura) y `test_run_seed_from_bib_reseed_incrementa_ronda` queda **skip** (#93,
+  crash `BibDataString`/`pyparsing` en reseed mismo-proceso; no afecta el CLI real).
 
 ---
 

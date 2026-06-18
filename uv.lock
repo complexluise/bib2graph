@@ -78,7 +78,7 @@ wheels = [
 
 [[package]]
 name = "bib2graph"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -89,15 +89,13 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-louvain" },
     { name = "pyyaml" },
+    { name = "rapidfuzz" },
     { name = "tqdm" },
 ]
 
 [package.optional-dependencies]
 bibtex = [
     { name = "bibtexparser" },
-]
-dedup = [
-    { name = "rapidfuzz" },
 ]
 
 [package.dev-dependencies]
@@ -124,7 +122,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.6" },
     { name = "python-louvain", specifier = ">=0.16" },
     { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "rapidfuzz", marker = "extra == 'dedup'", specifier = ">=3,<4" },
+    { name = "rapidfuzz", specifier = ">=3,<4" },
     { name = "tqdm", specifier = ">=4.66" },
 ]
 

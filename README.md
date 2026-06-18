@@ -102,8 +102,10 @@ uv run pre-commit install     # hooks de pre-commit
 ```
 
 Capacidades opcionales como extras (lección de v0: núcleo liviano): `uv sync --extra bibtex`
-(sembrar desde un `.bib`, Hito 4) y `uv sync --extra dedup` (dedup fuzzy `rapidfuzz`, Hito 7).
-*(El extra `[llm]` **se eliminó** en la remediación (R4): el producto no usa IA generativa — ADR
+(sembrar desde un `.bib`, Hito 4). *(El dedup fuzzy `rapidfuzz` (Hito 7) **ya no es extra**: pasó
+al núcleo en #88 porque corre automáticamente en la ingesta — ADR
+[0031](docs/decisiones/0031-preprocesamiento-automatico-en-ingesta.md). El extra `[llm]` **se
+eliminó** en la remediación (R4): el producto no usa IA generativa — ADR
 [0022](docs/decisiones/0022-producto-sin-ia-generativa.md).)*
 
 ## Uso

@@ -22,6 +22,7 @@ Para cargar un corpus curado desde un parquet sin red, usá ``b2g restore``.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,7 @@ from bib2graph.cli._errors import (
     UsageError,
     handle_errors,
 )
+from bib2graph.cli._ingest import normalize_and_dedup
 from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
@@ -129,12 +131,16 @@ def run_seed(
         # RemoteProtocolError, TransportError, etc.) se dejan propagar: el
         # decorador @handle_errors las captura por tipo y emite exit 4.
 
-        # Merge con el corpus existente (acumula sobre lo curado)
+        # Merge primero, dedup después sobre el corpus COMPLETO (fix bug cross-biblioteca).
+        # Orden: existing + incoming → merged completo → normalize_and_dedup → persist_replace.
+        # El reloj se fija UNA vez por invocación (R2).
+        ingest_at = datetime.now(UTC)
         merged = existing.merge(result.corpus)
+        merged_deduped = normalize_and_dedup(merged, applied_at=ingest_at)
         papers_added = len(result.corpus)
-        total_papers = len(merged)
-        merged_backend_close = getattr(merged._backend, "close", None)
-        store.persist(merged)
+        total_papers = len(merged_deduped)
+        merged_backend_close = getattr(merged_deduped._backend, "close", None)
+        store.persist_replace(merged_deduped)
         store.backend.set_loop_state(new_state, cycle_round=new_round)
     finally:
         # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
@@ -227,13 +233,18 @@ def run_seed_from_bib(
         except ValueError as exc:
             raise DataError(str(exc)) from exc
 
+        # Merge primero, dedup después sobre el corpus COMPLETO (fix bug cross-biblioteca).
+        # Orden: existing + incoming → merged completo → normalize_and_dedup → persist_replace.
+        # El reloj se fija UNA vez por invocación (R2).
+        ingest_at = datetime.now(UTC)
         merged = existing.merge(corpus)
+        merged_deduped = normalize_and_dedup(merged, applied_at=ingest_at)
         papers_added = len(corpus)
-        total_papers = len(merged)
+        total_papers = len(merged_deduped)
         # Capturá close() del backend clonado antes de persistir (puede no
         # existir si el backend es InMemoryBackend).
-        merged_backend_close = getattr(merged._backend, "close", None)
-        store.persist(merged)
+        merged_backend_close = getattr(merged_deduped._backend, "close", None)
+        store.persist_replace(merged_deduped)
         store.backend.set_loop_state(new_state, cycle_round=new_round)
     finally:
         # Cierra explícitamente TODAS las conexiones DuckDB de esta

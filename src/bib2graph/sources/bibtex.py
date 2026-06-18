@@ -77,15 +77,15 @@ def _entry_to_row(
         Dict con todas las columnas del schema canónico (sin ``id``, que
         calcula ``Corpus.add_paper``).
     """
-    raw_authors = entry.get("author") or ""
+    raw_authors = str(entry.get("author") or "")
     authors_raw = _parse_authors(raw_authors) or None
 
     # Afiliación: campo no estándar del .bib → authors_affiliations
-    affiliation = entry.get("affiliation") or ""
+    affiliation = str(entry.get("affiliation") or "")
     authors_affiliations: list[str] | None = [affiliation] if affiliation else None
 
     # Keywords: separadas por comas o punto y coma
-    raw_kw = entry.get("keywords") or ""
+    raw_kw = str(entry.get("keywords") or "")
     if raw_kw:
         kw_list = [k.strip() for k in raw_kw.replace(";", ",").split(",") if k.strip()]
         keywords_raw: list[str] | None = kw_list or None
@@ -93,7 +93,8 @@ def _entry_to_row(
         keywords_raw = None
 
     # Venue: preferir journal, luego booktitle
-    venue = entry.get("journal") or entry.get("booktitle") or None
+    _venue_raw = entry.get("journal") or entry.get("booktitle")
+    venue = str(_venue_raw) if _venue_raw else None
 
     # Año: convertir a int si es posible
     raw_year = entry.get("year")
@@ -105,7 +106,7 @@ def _entry_to_row(
             year = None
 
     # DOI: normalizar quitando prefijo URL
-    raw_doi = entry.get("doi") or ""
+    raw_doi = str(entry.get("doi") or "")
     doi: str | None = None
     if raw_doi:
         d = raw_doi.strip()
@@ -129,12 +130,12 @@ def _entry_to_row(
     return {
         Col.OPENALEX_ID: None,
         Col.DOI: doi,
-        Col.TITLE: (entry.get("title") or "").strip() or "",
+        Col.TITLE: str(entry.get("title") or "").strip() or "",
         Col.YEAR: year,
-        Col.ABSTRACT: entry.get("abstract") or None,
+        Col.ABSTRACT: str(entry["abstract"]) if entry.get("abstract") else None,
         Col.SOURCE: venue,
         Col.LANGUAGE: None,
-        Col.PUBLISHER: entry.get("publisher") or None,
+        Col.PUBLISHER: str(entry["publisher"]) if entry.get("publisher") else None,
         Col.RESEARCH_AREAS: None,
         Col.IS_SEED: True,
         Col.CURATION_STATUS: CurationStatus.CANDIDATE,

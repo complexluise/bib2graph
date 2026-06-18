@@ -267,6 +267,15 @@ def test_corpus_hash_coherente_store_vs_arrow_puro(tmp_path: Path) -> None:
 
     table = pq.read_table(str(slice_parquet), schema=CORPUS_SCHEMA)  # type: ignore[no-untyped-call]
     corpus_arrow = Corpus.from_arrow(table)
+    # #88: la ingesta (run_restore) normaliza+deduplica el corpus. Aplicamos la
+    # MISMA transformación al path Arrow puro para comparar el mismo contenido —
+    # lo que se testea acá es el transporte (DuckDB vs Arrow), no el dedup.
+    # applied_at no entra al corpus_hash (R2), así que no afecta la comparación.
+    from datetime import UTC, datetime
+
+    from bib2graph.cli._ingest import normalize_and_dedup
+
+    corpus_arrow = normalize_and_dedup(corpus_arrow, applied_at=datetime.now(UTC))
     hash_arrow = corpus_arrow._backend.corpus_hash()
 
     # Path DuckDB (run_restore → DuckDBStore.load)

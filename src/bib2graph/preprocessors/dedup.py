@@ -4,10 +4,9 @@ Implementa ``deduplicate_authors`` y ``deduplicate_keywords``: funciones puras
 que colapsan variantes ortográficas cercanas en un único canónico, operando
 sobre ``authors_id`` y ``keywords_id`` respectivamente (NUNCA sobre ``_raw``).
 
-Decisiones de diseño (ADR 0017 / Hito 7):
-- Librería: ``rapidfuzz`` únicamente (extra ``[dedup]``).  Import perezoso
-  dentro de cada función pública; importar este módulo nunca falla aunque el
-  extra esté ausente.
+Decisiones de diseño (ADR 0017 / Hito 7, actualizado #88):
+- Librería: ``rapidfuzz`` (dependencia del núcleo desde #88; ya no es extra).
+  El import es de nivel de módulo: importar este módulo requiere rapidfuzz.
 - Scorer: ``rapidfuzz.fuzz.token_sort_ratio``.  Ordena los tokens antes de
   comparar, lo que maneja variantes de orden en nombres de autores
   (``"smith john"`` vs ``"john smith"``) y en frases multi-palabra de keywords.
@@ -34,6 +33,8 @@ from __future__ import annotations
 import importlib.metadata
 from typing import TYPE_CHECKING
 
+import rapidfuzz.fuzz as _fuzz  # rapidfuzz es dependencia del núcleo (#88)
+
 if TYPE_CHECKING:
     from bib2graph.corpus import Corpus
 
@@ -56,9 +57,6 @@ def _build_clusters(
     determinismo.  La transitividad se resuelve con Union-Find (si A~B y B~C,
     {A,B,C} forman un cluster).
 
-    Asume que ``rapidfuzz`` ya está importado (se llama solo desde funciones
-    que ya verificaron el import).
-
     Args:
         variants: Lista de variantes distintas ordenadas lexicográficamente.
         threshold: Umbral de similitud en [0, 1].  Se compara contra
@@ -67,8 +65,6 @@ def _build_clusters(
     Returns:
         Lista de frozensets, cada uno representando un cluster de variantes.
     """
-    import rapidfuzz.fuzz as _fuzz
-
     # Union-Find simple con path compression
     parent: dict[str, str] = {v: v for v in variants}
 
@@ -204,18 +200,7 @@ def _deduplicate_col(
 
     Returns:
         Tupla ``(Corpus nuevo, nº de clusters colapsados)``.
-
-    Raises:
-        ImportError: Si ``rapidfuzz`` no está instalado.
     """
-    # Import perezoso de rapidfuzz — falla ruidoso si falta el extra
-    try:
-        import rapidfuzz.fuzz as _  # noqa: F401
-    except ImportError as exc:
-        raise ImportError(
-            "rapidfuzz no está instalado. Instalá el extra: uv sync --extra dedup"
-        ) from exc
-
     import pyarrow as pa
 
     from bib2graph.corpus import Corpus as _Corpus
@@ -287,9 +272,7 @@ def deduplicate_authors(
     modifica (fuente reversible).
 
     Idempotente: una segunda pasada no cambia el resultado.
-
-    Import perezoso de ``rapidfuzz``; si el extra ``[dedup]`` no está
-    instalado, lanza ``ImportError`` con instrucción de instalación.
+    ``rapidfuzz`` es dependencia del núcleo; siempre disponible.
 
     Args:
         corpus: Corpus de entrada (no muta).
@@ -299,10 +282,6 @@ def deduplicate_authors(
     Returns:
         Nuevo Corpus con ``authors_id`` deduplicado y ``PreprocRef``
         registrado en el Manifest.
-
-    Raises:
-        ImportError: Si ``rapidfuzz`` no está instalado
-            (``uv sync --extra dedup``).
     """
     from bib2graph.constants import Col
 
@@ -332,9 +311,7 @@ def deduplicate_keywords(
 
     Idealmente se llama después del thesaurus (Hito 5), pero no depende de él.
     Idempotente: una segunda pasada no cambia el resultado.
-
-    Import perezoso de ``rapidfuzz``; si el extra ``[dedup]`` no está
-    instalado, lanza ``ImportError`` con instrucción de instalación.
+    ``rapidfuzz`` es dependencia del núcleo; siempre disponible.
 
     Args:
         corpus: Corpus de entrada (no muta).
@@ -343,10 +320,6 @@ def deduplicate_keywords(
     Returns:
         Nuevo Corpus con ``keywords_id`` deduplicado y ``PreprocRef``
         registrado en el Manifest.
-
-    Raises:
-        ImportError: Si ``rapidfuzz`` no está instalado
-            (``uv sync --extra dedup``).
     """
     from bib2graph.constants import Col
 

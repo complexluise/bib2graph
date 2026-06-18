@@ -736,6 +736,33 @@ class DuckDBBackend:
         with contextlib.suppress(Exception):
             self._con.close()
 
+    def overwrite_corpus(self, table: pa.Table) -> None:
+        """Reemplaza TODA la tabla ``corpus`` con el contenido de ``table``.
+
+        Hace TRUNCATE + INSERT (no upsert) para que el estado en disco sea
+        exactamente ``table``, sin residuos de filas previas.  Preserva las
+        tablas hermanas (``loop_state_log``, ``referenced_but_not_fetched``).
+
+        Úsalo solo en la ruta de ingesta (``seed``, ``restore``, ``chain``,
+        ``thesaurus``) donde ya tenés el corpus completo y correcto en
+        memoria.  El upsert normal (``_upsert_table``) sigue siendo correcto
+        para el caso «mismo paper desde dos fuentes» (D3); este método NO lo
+        reemplaza en ese contexto.
+
+        ADR 0024: reasigna ``_seq`` desde 0 sobre la tabla limpia, manteniendo
+        el orden de filas que viene en ``table`` (que ya salió de
+        ``to_arrow()`` con ``ORDER BY _seq`` original).
+
+        Args:
+            table: Tabla Arrow con exactamente el contenido final a persistir.
+                Debe cumplir ``CORPUS_SCHEMA``.
+        """
+        self._con.execute("DELETE FROM corpus")
+        rows = table.to_pylist()
+        for i, row in enumerate(rows):
+            params = [*_row_to_params(row), i + 1]
+            self._con.execute(_UPSERT_SQL, params)
+
     def query(self, sql: str) -> pa.Table:
         """Ejecuta una consulta SQL sobre el backend y devuelve tabla Arrow.
 
