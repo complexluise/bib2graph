@@ -63,7 +63,10 @@ Agnóstica de transporte: **sin `print`, `sys.exit`, Click ni FastAPI**. Contien
   **mismo** envelope y traduce el código a **HTTP status**. Bind `127.0.0.1` + **token efímero**
   (C.3 de Nota 12). Import perezoso; el núcleo no importa `fastapi`.
 
-### 3. `b2g gui` — nuevo subcomando (18º)
+### 3. `b2g gui` — nuevo subcomando (19º)
+
+> El CLI tiene **18** subcomandos hoy (el 18º, `thesaurus`, lo sumó el ADR 0031/#88 el 2026-06-18);
+> `b2g gui` sería el **19º**.
 
 Levanta uvicorn sobre la API + sirve los assets pre-build del frontend + abre el browser. Es el
 adaptador de "arranque local" de la GUI.

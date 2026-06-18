@@ -59,8 +59,9 @@ contrato neutral; el `src/client/` TS es la semilla del cliente real contra el c
   GUI/API/frontend + empaquetado + LA CAPA DE SERVICIOS del punto 1)**. La terna original "0027/0028/
   0029" ya no aplica para 0029.
 
-**6. Drift numérico actualizado:** el CLI hoy tiene **17 subcomandos** (no 13) → `b2g gui` sería el
-**18º** (no el 14º). Además (PO 2026-06-17, posterior a la nota): **Hito 10 (viz) absorbido en la GUI**
+**6. Drift numérico actualizado:** el CLI hoy tiene **18 subcomandos** (no 13; el 18º, `thesaurus`, lo
+sumó ADR 0031/#88 el 2026-06-18) → `b2g gui` sería el **19º** (no el 14º). Además (PO 2026-06-17,
+posterior a la nota): **Hito 10 (viz) absorbido en la GUI**
 (es la capa de lectura visual) y **Hito 11 (Zotero/Neo4j) descartado** — no hay extra `[viz]` aparte.
 
 ---
