@@ -5,11 +5,12 @@ Casos cubiertos:
 2. ``b2g init .`` inicializa el cwd.
 3. Error si ya hay workspace.json.
 4. Resolución ambiente: (a) caminar hacia arriba encuentra workspace.json;
-   (b) B2G_WORKSPACE gana sobre cwd; (c) --workspace/--store gana sobre todo;
+   (b) B2G_WORKSPACE gana sobre cwd; (c) --workspace gana sobre todo;
    (d) sin nada → error accionable.
-5. --store suelto (modo degenerado) sigue funcionando (retrocompat).
+5. (borrado: modo degenerado --store eliminado en #75)
 6. ``b2g status`` reporta el workspace resuelto.
 7. ``b2g build`` escribe en ``<workspace>/networks/`` y sella corpus_hash.
+8. ``b2g --store`` → opción desconocida (eliminada en #75).
 
 Filosofía (AGENTS.md): se testean funciones núcleo, no el parser Click.
 Marcador: ``unit`` (DuckDB en tmp_path, sin red real).
@@ -193,21 +194,6 @@ def test_resolve_workspace_flag_explícito(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_resolve_store_flag_explícito_modo_degenerado(tmp_path: Path) -> None:
-    """--store explícito crea un workspace degenerado (sin root, sin manifest)."""
-    from bib2graph.workspace import Workspace
-
-    store_file = tmp_path / "mi.duckdb"
-    store_file.touch()
-
-    ws = Workspace.resolve(store=str(store_file))
-    assert ws.root is None
-    assert ws.library_path == store_file.resolve()
-    assert ws.manifest is None
-    assert ws.source == "degenerate"
-
-
-@pytest.mark.unit
 def test_resolve_workspace_flag_gana_sobre_env(tmp_path: Path) -> None:
     """--workspace tiene precedencia sobre B2G_WORKSPACE."""
     from bib2graph.workspace import Workspace
@@ -288,78 +274,12 @@ def test_resolve_sin_workspace_mapea_a_usage_error(tmp_path: Path) -> None:
 
     with patch("bib2graph.workspace.Workspace.resolve", side_effect=_raise):
         with pytest.raises(UsageError) as exc_info:
-            resolve_library_path({"workspace": None, "store": None})
+            resolve_library_path({"workspace": None})
         assert exc_info.value.exit_code == 1
 
 
-@pytest.mark.unit
-def test_resolve_workspace_y_store_juntos_es_error(tmp_path: Path) -> None:
-    """--workspace y --store simultáneos lanzan error accionable (son mutuamente excluyentes).
-
-    Fija el comportamiento ante la colisión de flags: en vez de descartar
-    silenciosamente uno de los dos, se rechaza explícitamente con un mensaje
-    claro que guía al usuario.
-    """
-    from bib2graph.workspace import Workspace, WorkspaceNotFoundError
-
-    ws_dir = tmp_path / "ws"
-    Workspace.init(ws_dir, "test")
-    store_file = tmp_path / "mi.duckdb"
-    store_file.touch()
-
-    with pytest.raises(WorkspaceNotFoundError, match="mutuamente excluyentes"):
-        Workspace.resolve(workspace=str(ws_dir), store=str(store_file))
-
-
-@pytest.mark.unit
-def test_resolve_workspace_y_store_juntos_mapea_a_usage_error(tmp_path: Path) -> None:
-    """Colisión --workspace/--store → WorkspaceNotFoundError → UsageError (exit 1)."""
-    from bib2graph.cli._errors import UsageError
-    from bib2graph.cli._store import resolve_library_path
-    from bib2graph.workspace import Workspace
-
-    ws_dir = tmp_path / "ws"
-    Workspace.init(ws_dir, "test")
-    store_file = tmp_path / "mi.duckdb"
-    store_file.touch()
-
-    with pytest.raises(UsageError, match="mutuamente excluyentes"):
-        resolve_library_path({"workspace": str(ws_dir), "store": str(store_file)})
-
-
 # ---------------------------------------------------------------------------
-# 4. Retrocompat: --store suelto (modo degenerado)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_retrocompat_store_suelto_con_run_status(tmp_path: Path) -> None:
-    """--store archivo.duckdb suelto sigue funcionando (workspace degenerado)."""
-    from bib2graph.cli.commands.status import run_status
-
-    store_path = tmp_path / "mi.duckdb"
-    _seed_store(store_path)
-
-    # run_status toma directamente store_path (nivel núcleo)
-    data = run_status(store_path)
-    assert "loop_state" in data
-    assert data["total_papers"] == 2
-
-
-@pytest.mark.unit
-def test_retrocompat_resolve_store_library_path(tmp_path: Path) -> None:
-    """resolve_library_path con {'store': 'ruta.duckdb'} devuelve esa ruta."""
-    from bib2graph.cli._store import resolve_library_path
-
-    store_path = tmp_path / "mi.duckdb"
-    store_path.touch()
-
-    result = resolve_library_path({"workspace": None, "store": str(store_path)})
-    assert result == store_path.resolve()
-
-
-# ---------------------------------------------------------------------------
-# 5. b2g status muestra workspace resuelto
+# 4. b2g status muestra workspace resuelto
 # ---------------------------------------------------------------------------
 
 
@@ -381,7 +301,7 @@ def test_status_incluye_workspace_info(tmp_path: Path) -> None:
     assert data["total_papers"] == 2
 
     # Verificar que el workspace resuelto tiene la info correcta
-    ws = resolve_workspace({"workspace": str(ws_dir), "store": None})
+    ws = resolve_workspace({"workspace": str(ws_dir)})
     assert ws.root == ws_dir.resolve()
     assert ws.source == "flag"
 
@@ -400,7 +320,7 @@ def test_status_workspace_info_en_ctx_obj(tmp_path: Path) -> None:
     from bib2graph.cli._store import resolve_workspace
     from bib2graph.cli.commands.status import run_status
 
-    ws = resolve_workspace({"workspace": str(ws_dir), "store": None})
+    ws = resolve_workspace({"workspace": str(ws_dir)})
     data = run_status(ws.library_path)
     # Agregar info del workspace tal como lo haría el cmd
     data["workspace"] = {
@@ -561,16 +481,26 @@ def test_workspace_to_dict_completo(tmp_path: Path) -> None:
     assert d["manifest"]["name"] == "test"
 
 
+# ---------------------------------------------------------------------------
+# 9. --store eliminado: opción desconocida (#75)
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.unit
-def test_workspace_to_dict_degenerado(tmp_path: Path) -> None:
-    """Workspace degenerado (store suelto) tiene root=None en to_dict."""
-    from bib2graph.workspace import Workspace
+def test_store_flag_eliminado_es_opcion_desconocida() -> None:
+    """b2g --store <algo> → opción desconocida (#75 — breaking change).
 
-    store_file = tmp_path / "mi.duckdb"
-    store_file.touch()
+    El flag --store se eliminó por completo del CLI (ya no está registrado en
+    Click). Pasarlo cae en el rechazo estándar de Click para una opción
+    inexistente ('No such option: --store') con exit code != 0. La única forma
+    de persistir es el workspace (b2g init / --workspace).
+    """
+    from click.testing import CliRunner
 
-    ws = Workspace.resolve(store=str(store_file))
-    d = ws.to_dict()
-    assert d["root"] is None
-    assert d["manifest"] is None
-    assert "library_path" in d
+    from bib2graph.cli import b2g
+
+    runner = CliRunner()
+    result = runner.invoke(b2g, ["--store", "cualquier.duckdb", "status"])
+
+    assert result.exit_code != 0
+    assert "no such option" in result.output.lower()

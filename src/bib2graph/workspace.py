@@ -13,14 +13,13 @@ Estructura canónica de un workspace:
     └── exports/          # exports regenerables
 
 Resolución ambiente (patrón git/cargo), de mayor a menor precedencia:
-  1. ``--workspace``/``--store`` explícito en la invocación CLI.
+  1. ``--workspace`` explícito en la invocación CLI.
   2. Variable de entorno ``B2G_WORKSPACE``.
   3. Caminar hacia arriba desde cwd buscando ``workspace.json``.
   4. Sin ninguno → ``WorkspaceNotFoundError`` con sugerencia accionable.
 
-El workspace «degenerado» (``--store archivo.duckdb`` suelto) mantiene
-retrocompatibilidad: ``library_path`` apunta al archivo y los dirs caen
-en su dir hermano, como antes de ADR 0029.
+El modo degenerado (``--store archivo.duckdb`` suelto) fue eliminado en #75.
+La única unidad canónica de persistencia es la carpeta con ``workspace.json``.
 
 ADR 0029: https://github.com/complexluise/bib2graph/docs/decisiones/0029-workspace-por-investigacion.md
 """
@@ -86,7 +85,7 @@ class WorkspaceNotFoundError(Exception):
             message = (
                 "No se encontró un workspace activo.\n"
                 "  • Creá uno con: b2g init <nombre> (o b2g init . para el directorio actual)\n"
-                "  • O apuntá a uno con: --workspace <carpeta> o --store <archivo.duckdb>\n"
+                "  • O apuntá a uno con: --workspace <carpeta>\n"
                 "  • O exportá la variable: export B2G_WORKSPACE=<carpeta>"
             )
         super().__init__(message)
@@ -110,19 +109,19 @@ class Workspace:
     No importa duckdb ni ningún módulo del núcleo.
 
     Atributos principales:
-        root: Carpeta raíz del workspace (o ``None`` para el modo degenerado).
+        root: Carpeta raíz del workspace.
         manifest: ``WorkspaceManifest`` leído/creado.
         library_path: Ruta al archivo ``library.duckdb``.
         networks_dir: Ruta al directorio ``networks/``.
         snapshots_dir: Ruta al directorio ``snapshots/``.
         exports_dir: Ruta al directorio ``exports/``.
-        source: De dónde salió la resolución (``"flag"``, ``"env"``, ``"cwd"``, ``"degenerate"``).
+        source: De dónde salió la resolución (``"flag"``, ``"env"``, ``"cwd"``, ``"init"``).
     """
 
     def __init__(
         self,
         *,
-        root: Path | None,
+        root: Path,
         library_path: Path,
         manifest: WorkspaceManifest | None,
         source: str,
@@ -137,46 +136,40 @@ class Workspace:
     # ------------------------------------------------------------------
 
     @property
-    def root(self) -> Path | None:
-        """Carpeta raíz del workspace (``None`` en modo degenerado)."""
+    def root(self) -> Path:
+        """Carpeta raíz del workspace."""
         return self._root
 
     @property
     def library_path(self) -> Path:
-        """Ruta al archivo ``library.duckdb`` (o al ``.duckdb`` suelto en modo degenerado)."""
+        """Ruta al archivo ``library.duckdb``."""
         return self._library_path
 
     @property
     def networks_dir(self) -> Path:
         """Directorio ``networks/`` del workspace."""
-        if self._root is not None:
-            return self._root / "networks"
-        return self._library_path.parent / "networks"
+        return self._root / "networks"
 
     @property
     def snapshots_dir(self) -> Path:
         """Directorio ``snapshots/`` del workspace."""
-        if self._root is not None:
-            return self._root / "snapshots"
-        return self._library_path.parent / "snapshots"
+        return self._root / "snapshots"
 
     @property
     def exports_dir(self) -> Path:
         """Directorio ``exports/`` del workspace."""
-        if self._root is not None:
-            return self._root / "exports"
-        return self._library_path.parent / "exports"
+        return self._root / "exports"
 
     @property
     def manifest(self) -> WorkspaceManifest | None:
-        """Manifest del workspace (``None`` en modo degenerado)."""
+        """Manifest del workspace."""
         return self._manifest
 
     @property
     def source(self) -> str:
         """De dónde salió la resolución del workspace.
 
-        Valores posibles: ``"flag"``, ``"env"``, ``"cwd"``, ``"degenerate"``.
+        Valores posibles: ``"flag"``, ``"env"``, ``"cwd"``, ``"init"``.
         """
         return self._source
 
@@ -276,7 +269,6 @@ class Workspace:
         cls,
         *,
         workspace: str | None = None,
-        store: str | None = None,
         cwd: Path | None = None,
         env: dict[str, str] | None = None,
     ) -> Workspace:
@@ -284,14 +276,16 @@ class Workspace:
 
         Precedencia (de mayor a menor):
           1. ``workspace`` (--workspace explícito) → ``Workspace.open()``.
-          2. ``store`` (--store explícito, modo degenerado) → library_path = ese archivo.
-          3. ``B2G_WORKSPACE`` en ``env`` → ``Workspace.open()``.
-          4. Caminar hacia arriba desde ``cwd`` buscando ``workspace.json``.
-          5. Ninguno → ``WorkspaceNotFoundError``.
+          2. ``B2G_WORKSPACE`` en ``env`` → ``Workspace.open()``.
+          3. Caminar hacia arriba desde ``cwd`` buscando ``workspace.json``.
+          4. Ninguno → ``WorkspaceNotFoundError``.
+
+        El modo degenerado (--store archivo.duckdb suelto) fue eliminado en #75.
+        El flag ``--store`` en el CLI emite exit 1 con mensaje accionable antes de
+        llegar aquí.
 
         Args:
             workspace: Ruta a la carpeta del workspace (--workspace).
-            store: Ruta a un archivo .duckdb suelto (--store, retrocompat).
             cwd: Directorio actual (default: ``Path.cwd()``).
             env: Variables de entorno (default: ``os.environ``).
 
@@ -299,51 +293,28 @@ class Workspace:
             El ``Workspace`` resuelto.
 
         Raises:
-            WorkspaceNotFoundError: Si no se puede resolver ningún workspace,
-                o si se pasan ``--workspace`` y ``--store`` simultáneamente
-                (son mutuamente excluyentes).
+            WorkspaceNotFoundError: Si no se puede resolver ningún workspace.
         """
         if env is None:
             env = dict(os.environ)
         if cwd is None:
             cwd = Path.cwd()
 
-        # Colisión de flags: --workspace y --store son mutuamente excluyentes.
-        # --workspace es la forma canónica; --store es el modo degenerado
-        # de retrocompat. Pasar ambos es ambiguo y se rechaza explícitamente
-        # (ADR 0029 §Sub-decisiones).
-        if workspace is not None and store is not None:
-            raise WorkspaceNotFoundError(
-                "--workspace y --store son mutuamente excluyentes.\n"
-                "  • Usá --workspace <carpeta> para un workspace completo.\n"
-                "  • Usá --store <archivo.duckdb> solo para un .duckdb suelto (modo legado)."
-            )
-
         # 1. --workspace explícito
         if workspace is not None:
             return cls.open(Path(workspace), source="flag")
 
-        # 2. --store explícito (modo degenerado — retrocompatibilidad ADR 0029)
-        if store is not None:
-            library_path = Path(store).resolve()
-            return cls(
-                root=None,
-                library_path=library_path,
-                manifest=None,
-                source="degenerate",
-            )
-
-        # 3. Variable de entorno B2G_WORKSPACE
+        # 2. Variable de entorno B2G_WORKSPACE
         env_ws = env.get("B2G_WORKSPACE")
         if env_ws:
             return cls.open(Path(env_ws), source="env")
 
-        # 4. Caminar hacia arriba desde cwd
+        # 3. Caminar hacia arriba desde cwd
         found = _walk_up(cwd)
         if found is not None:
             return cls.open(found, source="cwd")
 
-        # 5. Sin workspace → error accionable
+        # 4. Sin workspace → error accionable
         raise WorkspaceNotFoundError()
 
     # ------------------------------------------------------------------
@@ -393,7 +364,7 @@ class Workspace:
     def to_dict(self) -> dict[str, Any]:
         """Serializa el workspace a dict para el envelope JSON del CLI."""
         return {
-            "root": str(self._root) if self._root is not None else None,
+            "root": str(self._root),
             "library_path": str(self._library_path),
             "networks_dir": str(self.networks_dir),
             "snapshots_dir": str(self.snapshots_dir),

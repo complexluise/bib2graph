@@ -6,8 +6,6 @@ NO transiciona el CycleState.
 ADR 0029 — workspace:
   El directorio de salida es ``<workspace>/snapshots/`` por defecto.
   Si se pasa ``--out-dir`` explícito, se usa ese (override opcional).
-  Modo degenerado (``--store archivo.duckdb`` suelto): usa el dir hermano
-  ``snapshots/`` relativo al ``.duckdb``.
 """
 
 from __future__ import annotations

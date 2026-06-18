@@ -327,15 +327,17 @@ def test_seed_sin_modo_lanza_usage_error(tmp_path: Path) -> None:
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
+    from bib2graph.workspace import Workspace
 
-    store_path = tmp_path / "test.duckdb"
+    ws_dir = tmp_path / "ws"
+    Workspace.init(ws_dir, "test")
 
     runner = CliRunner()
     result = runner.invoke(
         b2g,
         [
-            "--store",
-            str(store_path),
+            "--workspace",
+            str(ws_dir),
             "seed",
             "--json",
         ],
@@ -353,17 +355,19 @@ def test_seed_equation_y_spec_a_la_vez_lanza_usage_error(tmp_path: Path) -> None
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
+    from bib2graph.workspace import Workspace
 
     spec_file = tmp_path / "equation.yaml"
     spec_file.write_text("equation:\n  query: 'algo'\n", encoding="utf-8")
-    store_path = tmp_path / "test.duckdb"
+    ws_dir = tmp_path / "ws"
+    Workspace.init(ws_dir, "test")
 
     runner = CliRunner()
     result = runner.invoke(
         b2g,
         [
-            "--store",
-            str(store_path),
+            "--workspace",
+            str(ws_dir),
             "seed",
             "--equation",
             "unequal exchange",
@@ -450,19 +454,21 @@ def test_seed_spec_yaml_invalido_emite_data_error(tmp_path: Path) -> None:
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
+    from bib2graph.workspace import Workspace
 
     bad_yaml = "equation:\n  query: 'algo'\n  campo_extra: true\n"
     spec_file = tmp_path / "bad.yaml"
     spec_file.write_text(bad_yaml, encoding="utf-8")
 
-    store_path = tmp_path / "test.duckdb"
+    ws_dir = tmp_path / "ws"
+    Workspace.init(ws_dir, "test")
 
     runner = CliRunner()
     result = runner.invoke(
         b2g,
         [
-            "--store",
-            str(store_path),
+            "--workspace",
+            str(ws_dir),
             "seed",
             "--spec",
             str(spec_file),
@@ -482,19 +488,21 @@ def test_seed_spec_yaml_sin_query_emite_data_error(tmp_path: Path) -> None:
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
+    from bib2graph.workspace import Workspace
 
     bad_yaml = "equation:\n  max_results: 100\n"
     spec_file = tmp_path / "bad.yaml"
     spec_file.write_text(bad_yaml, encoding="utf-8")
 
-    store_path = tmp_path / "test.duckdb"
+    ws_dir = tmp_path / "ws"
+    Workspace.init(ws_dir, "test")
 
     runner = CliRunner()
     result = runner.invoke(
         b2g,
         [
-            "--store",
-            str(store_path),
+            "--workspace",
+            str(ws_dir),
             "seed",
             "--spec",
             str(spec_file),
