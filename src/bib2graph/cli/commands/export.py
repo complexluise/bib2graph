@@ -7,8 +7,6 @@ ADR 0029 — workspace:
   El directorio de salida es ``<workspace>/exports/`` por defecto.
   Si se pasa ``--out-dir`` explícito, se usa ese (override opcional).
   La fuente de artefactos de build es ``<workspace>/networks/`` por defecto.
-  Modo degenerado (``--store archivo.duckdb`` suelto): usa dirs hermanos
-  ``networks/`` y ``exports/`` relativos al ``.duckdb``.
 """
 
 from __future__ import annotations

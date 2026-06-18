@@ -1,6 +1,8 @@
 # 0029 — Workspace por investigación: carpeta autocontenida + resolución ambiente
 
-- **Estado:** Aceptada — **AS-BUILT (2026-06-16)** (firmado por el PO e implementado)
+- **Estado:** Aceptada — **AS-BUILT (2026-06-16)** (firmado por el PO e implementado) ·
+  **enmienda BREAKING [#75](https://github.com/complexluise/bib2graph/issues/75) (2026-06-17)**:
+  `--store` eliminado del CLI y fin del modo degenerado (ver §ENMIENDA al final)
 - **Fecha:** 2026-06-16
 - **Enmienda (de este ADR):** [0009](0009-biblioteca-viva-duckdb.md) y
   [0019](0019-concurrencia-diferida.md) — la **unidad de persistencia** pasa de "1 archivo
@@ -171,3 +173,37 @@ None` (lee `networks/.corpus_hash`; `None` si no existe) e `is_networks_cache_st
 `snapshots_dir`/`exports_dir`/`networks_dir` (`_library_path.parent / "..."`, también en modo
 degenerado) **ya existían** desde el corte anterior. Con esto, la **fundación workspace queda
 completa**: no quedan remanentes del modelo en el backlog.
+
+## ENMIENDA (2026-06-17) — `--store` eliminado y fin del modo degenerado (BREAKING, [#75](https://github.com/complexluise/bib2graph/issues/75))
+
+- **Estado:** Aceptada — breaking change [#75](https://github.com/complexluise/bib2graph/issues/75).
+- **Fecha:** 2026-06-17.
+
+Esta enmienda **supera** —sin reescribirlas, son historia AS-BUILT— las siguientes sub-decisiones y
+consecuencias de este ADR:
+
+- La **Decisión › "Sin migración forzada"** (donde dice que un `.duckdb` suelto sigue funcionando
+  como "workspace degenerado" vía `--store`).
+- La **Sub-decisión "Flag = `--workspace` primario, `--store` opcional/degenerado"** (donde `--store`
+  se conservaba para apuntar a un `.duckdb` suelto).
+- La **Consecuencia "(+) Retrocompatible"** (donde el `.duckdb` suelto seguía siendo un workspace
+  degenerado válido) y los puntos del **AS-BUILT (2026-06-16)** / **ADDENDUM (2026-06-17)** que
+  mencionan el modo degenerado (`--store archivo.duckdb` → dir hermano).
+- La enmienda de [0021](0021-cli-agente-native-contrato.md) §E que dejaba `--store` "opcional".
+
+**Decisión:**
+
+- **`--store` se elimina por completo del CLI.** Ya no está registrada como opción global en Click;
+  pasarla produce el **error estándar de Click** (`No such option: --store`), no un mensaje custom de
+  migración ni un rechazo "amable". No es un cambio retrocompatible: es **BREAKING**.
+- **La única unidad canónica de persistencia es la carpeta con `workspace.json`.** El modo
+  degenerado se elimina entero: un `.duckdb` suelto **sin** `workspace.json` ya **no** se resuelve
+  como persistencia.
+- **Migración:** un `.duckdb` legacy se adopta ejecutando **`b2g init .`** en su carpeta (scaffolds
+  `workspace.json` + estructura junto al `.duckdb` existente).
+- La resolución ambiente sobrevive intacta salvo que **pierde la rama `--store`**: precedencia
+  `--workspace` explícito > `B2G_WORKSPACE` (env) > walk-up del cwd buscando `workspace.json` > error
+  accionable.
+
+El resto del contrato (envelope `schema="1"`, exit codes, estructura del workspace, cache por
+`corpus_hash`, snapshot reproducible) **no cambia**.

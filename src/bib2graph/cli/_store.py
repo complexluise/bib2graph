@@ -4,14 +4,14 @@ Centraliza la apertura del store y el manejo del error de bloqueo,
 para que cada subcomando no tenga que repetir el try/except.
 
 ADR 0029 — resolución workspace:
-  ``resolve_library_path`` lee ``ctx.obj["workspace"]`` y ``ctx.obj["store"]``
-  y delega en ``Workspace.resolve(...)`` con las env actuales y el cwd.
+  ``resolve_library_path`` lee ``ctx.obj["workspace"]`` y delega en
+  ``Workspace.resolve(...)`` con las env actuales y el cwd.
   El resultado es siempre una ``Path`` al archivo ``.duckdb``.
 
 R5 — footgun de auto-creación:
   ``open_store_readonly`` verifica que el archivo exista antes de abrirlo.
   Los comandos de solo lectura (``status``, ``validate``) usan esta variante
-  para no crear silenciosamente un store vacío ante un typo en ``--store``
+  para no crear silenciosamente un store vacío ante un typo en la ruta
   (Nota 06, catálogo de secundarios).  ``open_store`` (escritura) mantiene
   el comportamiento de crear el archivo si no existe.
 """
@@ -27,16 +27,15 @@ from bib2graph.cli._errors import StoreError, UsageError
 def resolve_library_path(ctx_obj: dict[str, Any]) -> Path:
     """Resuelve la ruta al archivo .duckdb desde el contexto Click (ADR 0029).
 
-    Lee ``workspace`` y ``store`` del dict de contexto Click y delega en
+    Lee ``workspace`` del dict de contexto Click y delega en
     ``Workspace.resolve(...)`` para aplicar la precedencia (ADR 0029):
       1. ``--workspace`` explícito (forma canónica),
-      2. ``--store`` explícito (modo degenerado, retrocompat; mutuamente excluyente con ``--workspace``),
-      3. variable de entorno ``B2G_WORKSPACE``,
-      4. caminar hacia arriba desde cwd buscando ``workspace.json``.
+      2. variable de entorno ``B2G_WORKSPACE``,
+      3. caminar hacia arriba desde cwd buscando ``workspace.json``.
 
     Args:
         ctx_obj: El dict ``ctx.obj`` del grupo Click (contiene ``workspace``
-            y ``store`` con los valores de las opciones globales).
+            con el valor de la opción global).
 
     Returns:
         Ruta al archivo ``.duckdb`` de la biblioteca viva.
@@ -47,10 +46,9 @@ def resolve_library_path(ctx_obj: dict[str, Any]) -> Path:
     from bib2graph.workspace import Workspace, WorkspaceNotFoundError
 
     workspace: str | None = ctx_obj.get("workspace")
-    store: str | None = ctx_obj.get("store")
 
     try:
-        ws = Workspace.resolve(workspace=workspace, store=store)
+        ws = Workspace.resolve(workspace=workspace)
     except WorkspaceNotFoundError as exc:
         raise UsageError(str(exc)) from exc
 
@@ -76,10 +74,9 @@ def resolve_workspace(ctx_obj: dict[str, Any]) -> Any:
     from bib2graph.workspace import Workspace, WorkspaceNotFoundError
 
     workspace: str | None = ctx_obj.get("workspace")
-    store: str | None = ctx_obj.get("store")
 
     try:
-        return Workspace.resolve(workspace=workspace, store=store)
+        return Workspace.resolve(workspace=workspace)
     except WorkspaceNotFoundError as exc:
         raise UsageError(str(exc)) from exc
 

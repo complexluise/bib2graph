@@ -6,7 +6,7 @@ Cierra los ítems "fuera de este corte" del AS-BUILT 2026-06-16:
     - snapshot sin --out-dir escribe en <workspace>/snapshots/
     - export sin --out-dir escribe en <workspace>/exports/
     - --out-dir explícito sigue funcionando (override gana)
-    - Modo degenerado (--store suelto) sigue resolviendo dirs hermanos
+    - (eliminado en #75: el modo degenerado --store ya no existe)
 
   Parte B — Staleness de la cache de redes:
     - is_networks_cache_stale con hash distinto → True
@@ -122,7 +122,7 @@ def test_snapshot_cmd_sin_outdir_resuelve_snapshots_dir(tmp_path: Path) -> None:
     result = runner.invoke(
         snapshot_cmd,
         ["--json"],
-        obj={"workspace": str(ws_dir), "store": None},
+        obj={"workspace": str(ws_dir)},
     )
 
     assert result.exit_code == 0, result.output
@@ -152,7 +152,7 @@ def test_snapshot_cmd_con_outdir_explicito_usa_ese(tmp_path: Path) -> None:
     result = runner.invoke(
         snapshot_cmd,
         ["--out-dir", str(custom_out), "--json"],
-        obj={"workspace": str(ws_dir), "store": None},
+        obj={"workspace": str(ws_dir)},
     )
 
     assert result.exit_code == 0, result.output
@@ -164,19 +164,6 @@ def test_snapshot_cmd_con_outdir_explicito_usa_ese(tmp_path: Path) -> None:
     # El snapshot debe estar dentro del directorio explícito, NO en snapshots/
     assert snap_dir.is_relative_to(custom_out)
     assert not snap_dir.is_relative_to(ws.snapshots_dir)
-
-
-@pytest.mark.unit
-def test_snapshot_modo_degenerado_usa_dir_hermano(tmp_path: Path) -> None:
-    """snapshot en modo degenerado (--store suelto) usa el dir hermano snapshots/."""
-    from bib2graph.workspace import Workspace
-
-    store_file = tmp_path / "mi.duckdb"
-    _seed_store(store_file)
-
-    ws = Workspace.resolve(store=str(store_file))
-    # El snapshots_dir degenerado es el dir hermano del duckdb
-    assert ws.snapshots_dir == store_file.parent / "snapshots"
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +191,7 @@ def test_export_cmd_sin_outdir_resuelve_exports_dir(tmp_path: Path) -> None:
     result = runner.invoke(
         export_cmd,
         ["--json"],
-        obj={"workspace": str(ws_dir), "store": None},
+        obj={"workspace": str(ws_dir)},
     )
 
     assert result.exit_code == 0, result.output
@@ -237,7 +224,7 @@ def test_export_cmd_con_outdir_explicito_usa_ese(tmp_path: Path) -> None:
     result = runner.invoke(
         export_cmd,
         ["--out-dir", str(custom_out), "--json"],
-        obj={"workspace": str(ws_dir), "store": None},
+        obj={"workspace": str(ws_dir)},
     )
 
     assert result.exit_code == 0, result.output
@@ -248,19 +235,6 @@ def test_export_cmd_con_outdir_explicito_usa_ese(tmp_path: Path) -> None:
     out_dir = Path(envelope["data"]["out_dir"])
     assert out_dir == custom_out
     assert out_dir != ws.exports_dir
-
-
-@pytest.mark.unit
-def test_export_modo_degenerado_usa_dir_hermano(tmp_path: Path) -> None:
-    """export en modo degenerado (--store suelto) usa el dir hermano exports/."""
-    from bib2graph.workspace import Workspace
-
-    store_file = tmp_path / "mi.duckdb"
-    store_file.touch()
-
-    ws = Workspace.resolve(store=str(store_file))
-    # El exports_dir degenerado es el dir hermano del duckdb
-    assert ws.exports_dir == store_file.parent / "exports"
 
 
 # ---------------------------------------------------------------------------
@@ -405,7 +379,7 @@ def test_status_sin_cache_no_avisa_staleness(tmp_path: Path) -> None:
     result = runner.invoke(
         status_cmd,
         ["--json"],
-        obj={"workspace": str(ws_dir), "store": None},
+        obj={"workspace": str(ws_dir)},
     )
 
     assert result.exit_code == 0, result.output
@@ -437,7 +411,7 @@ def test_status_cache_fresca_no_avisa(tmp_path: Path) -> None:
     result = runner.invoke(
         status_cmd,
         ["--json"],
-        obj={"workspace": str(ws_dir), "store": None},
+        obj={"workspace": str(ws_dir)},
     )
 
     assert result.exit_code == 0, result.output
@@ -474,7 +448,7 @@ def test_status_cache_stale_emite_aviso(tmp_path: Path) -> None:
     result = runner.invoke(
         status_cmd,
         ["--json"],
-        obj={"workspace": str(ws_dir), "store": None},
+        obj={"workspace": str(ws_dir)},
     )
 
     assert result.exit_code == 0, result.output
@@ -483,35 +457,3 @@ def test_status_cache_stale_emite_aviso(tmp_path: Path) -> None:
     assert envelope["data"]["networks_cache_stale"] is True
     assert len(envelope["warnings"]) == 1
     assert "b2g build" in envelope["warnings"][0]
-
-
-@pytest.mark.unit
-def test_status_cache_stale_modo_degenerado_no_avisa(tmp_path: Path) -> None:
-    """status en modo degenerado (sin workspace): networks_cache_stale es False.
-
-    En modo degenerado no hay networks/.corpus_hash conocido (networks_dir
-    apunta al dir hermano del duckdb suelto, que puede no existir).
-    is_networks_cache_stale devuelve False si no existe el archivo.
-    """
-    import json
-
-    from click.testing import CliRunner
-
-    from bib2graph.cli.commands.status import status_cmd
-
-    store_file = tmp_path / "mi.duckdb"
-    _seed_store(store_file)
-
-    runner = CliRunner()
-    result = runner.invoke(
-        status_cmd,
-        ["--json"],
-        obj={"workspace": None, "store": str(store_file)},
-    )
-
-    assert result.exit_code == 0, result.output
-    envelope = json.loads(result.output)
-    assert envelope["ok"] is True
-    # Sin .corpus_hash → no stale
-    assert envelope["data"]["networks_cache_stale"] is False
-    assert envelope["warnings"] == []

@@ -537,32 +537,6 @@ def test_dump_default_salida_en_exports(tmp_path: Path) -> None:
     assert data["csv_path"] == str(expected_out)
 
 
-@pytest.mark.unit
-def test_dump_default_salida_en_exports_degenerado(tmp_path: Path) -> None:
-    """En modo degenerado (--store), exports_dir cae en el dir hermano del .duckdb."""
-    from bib2graph.cli.commands.curate import run_curate_dump
-    from bib2graph.workspace import Workspace
-
-    store_path = tmp_path / "mi.duckdb"
-
-    # Poblar el store
-    from bib2graph.corpus import Corpus
-    from bib2graph.stores.duckdb import DuckDBStore
-
-    rows = [_make_corpus_row(id="P1")]
-    table = pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
-    corpus = Corpus.from_arrow(table)
-    DuckDBStore(store_path).persist(corpus)
-
-    # En modo degenerado, exports_dir = dir padre del .duckdb / "exports"
-    ws = Workspace.resolve(store=str(store_path))
-    expected_out = ws.exports_dir / "curacion.csv"
-    data = run_curate_dump(store_path, out_path=expected_out)
-
-    assert Path(data["csv_path"]).exists()
-    assert "exports" in data["csv_path"]
-
-
 # ---------------------------------------------------------------------------
 # 11. Contrato --json del comando (forma estable)
 # ---------------------------------------------------------------------------

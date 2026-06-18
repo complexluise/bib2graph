@@ -151,13 +151,20 @@
 > que el ADR [0029](decisiones/0029-workspace-por-investigacion.md) dejó "fuera de corte".
 > **`b2g snapshot` y `b2g export`** se resuelven por ambiente: `--out-dir` pasó de obligatorio a
 > **override OPCIONAL**; sin él, `snapshot` escribe en **`<workspace>/snapshots/`** y `export` en
-> **`<workspace>/exports/`** (resolución vía `resolve_workspace`, igual que `build`; modo degenerado =
-> dir hermano del `.duckdb`, sin regresión). **`b2g status`** suma el campo aditivo
+> **`<workspace>/exports/`** (resolución vía `resolve_workspace`, igual que `build`). **`b2g status`** suma el campo aditivo
 > **`data["networks_cache_stale"]: bool`** + un `warnings` accionable cuando el `networks/.corpus_hash`
 > sellado **no coincide** con el `corpus_hash` del corpus vivo (aviso "ejecutá `b2g build`"; **NO**
 > regenera — invalidación por hash, no build-system, ADR 0029). `schema="1"` intacto. `Workspace` ganó
 > `read_networks_corpus_hash()` e `is_networks_cache_stale(live_hash)` (los accessors
 > `snapshots_dir`/`exports_dir`/`networks_dir` ya existían). Ver §convenciones CLI.
+>
+> **Sincronizado con la eliminación de `--store` — [#75](https://github.com/complexluise/bib2graph/issues/75) (BREAKING, 2026-06-17):**
+> la opción global **`--store` se ELIMINA por completo** del CLI (ya no registrada en Click; pasarla
+> da el error estándar `No such option: --store`). El **modo degenerado** (`.duckdb` suelto sin
+> `workspace.json`) **deja de existir**: la única unidad canónica es la carpeta con `workspace.json`,
+> y un `.duckdb` legacy se adopta con **`b2g init .`**. La resolución ambiente pierde la rama
+> `--store`: `--workspace` > `B2G_WORKSPACE` > walk-up del cwd. Ver §convenciones CLI y ADR 0029
+> (enmienda 2026-06-17).
 
 ## Convenciones
 
@@ -174,8 +181,9 @@ El CLI `b2g` (paquete `bib2graph.cli`, entry point `b2g = "bib2graph.cli:main"`)
 **construido** con el contrato del ADR [0021](decisiones/0021-cli-agente-native-contrato.md). Cada
 subcomando lleva `--json` (envelope estable/versionado) y exit codes (`0` éxito · `1` uso · `2`
 datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado). **Sin estado entre
-invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opciones globales
-**opcionales** `--workspace`/`--store`, ver abajo).
+invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción global **opcional**
+`--workspace`; `--store` fue eliminada en [#75](https://github.com/complexluise/bib2graph/issues/75),
+ver abajo).
 
 **Set de 17 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
 y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
@@ -321,24 +329,26 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
   YAML malformado / spec inválida → `DataError` (exit 2); falta `python-louvain` → `DependencyError`
   (exit 3).
 
-**`--workspace` / `--store` globales (ambos OPCIONALES, mutuamente excluyentes).** Van en el grupo
-`b2g`, **antes** del subcomando. Una investigación = un **workspace** (carpeta marcada por
-`workspace.json`; ADR [0029](decisiones/0029-workspace-por-investigacion.md), AS-BUILT). El estado
-vive en su `library.duckdb`; el CLI es stateful **vía archivo**, no vía proceso.
+**`--workspace` global (OPCIONAL).** Va en el grupo `b2g`, **antes** del subcomando. Una
+investigación = un **workspace** (carpeta marcada por `workspace.json`; ADR
+[0029](decisiones/0029-workspace-por-investigacion.md), AS-BUILT). El estado vive en su
+`library.duckdb`; el CLI es stateful **vía archivo**, no vía proceso.
 
-- **`--workspace <carpeta>`** apunta a la raíz de un workspace; **`--store <archivo.duckdb>`** apunta
-  a un `.duckdb` suelto (**workspace degenerado**, retrocompatible — los artefactos caen en su dir
-  hermano). Pasarlos **juntos** = error de uso (exit 1).
-- **Resolución ambiente** cuando no se pasa ninguno (patrón git/cargo), precedencia de mayor a menor:
-  (1) `--workspace`/`--store` explícito, (2) `B2G_WORKSPACE` (variable de entorno), (3) **walk-up**
-  del cwd buscando `workspace.json`. Sin ninguno → **error accionable** que sugiere `b2g init`.
+- **`--workspace <carpeta>`** apunta a la raíz de un workspace. **`--store` fue ELIMINADA del CLI
+  ([#75](https://github.com/complexluise/bib2graph/issues/75), BREAKING):** ya no está registrada
+  como opción global, así que pasarla produce el **error estándar de Click** (`No such option:
+  --store`). El **modo degenerado** (`.duckdb` suelto sin `workspace.json`) **dejó de existir**: un
+  `.duckdb` legacy se adopta con **`b2g init .`** en su carpeta.
+- **Resolución ambiente** cuando no se pasa `--workspace` (patrón git/cargo), precedencia de mayor a
+  menor: (1) `--workspace` explícito, (2) `B2G_WORKSPACE` (variable de entorno), (3) **walk-up** del
+  cwd buscando `workspace.json`. Sin ninguno → **error accionable** que sugiere `b2g init`.
 
 **`build` y `export` separados** (decisión del PO, ADR 0021 §B): `build` computa `Networks.quick`
 (4 redes) y escribe artefactos a `<workspace>/networks/<kind>/` (+ transiciona a `BUILT`);
 `export --format graphml|csv` **relee** esos artefactos (fuente resuelta vía `ws.networks_dir`) y
 los serializa (sin transición). **AS-BUILT #32 (2026-06-17):** `export --out-dir` pasó a **override
-OPCIONAL** — sin él, escribe en **`<workspace>/exports/`** (resolución ambiente como `build`; modo
-degenerado = dir hermano del `.duckdb`). **AS-BUILT #31 (2026-06-17):** `build` también escribe **`clusters.csv`** (tabla de
+OPCIONAL** — sin él, escribe en **`<workspace>/exports/`** (resolución ambiente como `build`).
+**AS-BUILT #31 (2026-06-17):** `build` también escribe **`clusters.csv`** (tabla de
 resumen de comunidades, §7.2) en `<networks_dir>/<kind>/` **solo** para redes de **paper** con
 comunidades detectadas (listas con separador `|`); en el envelope `--json`, cada entrada de
 `data["networks"]` suma `clusters_csv` (ruta del archivo) **condicionalmente** —solo cuando ese
@@ -364,9 +374,8 @@ envelope `--json` suma `data["corpus_scope"]` (y `warnings`). **NO confundir con
 
 **`snapshot` (AS-BUILT #32, 2026-06-17):** `b2g snapshot` sella una foto reproducible del estado vivo
 (parquet + `manifest.json`, ADR 0017). **`--out-dir` pasó a override OPCIONAL** — sin él, escribe en
-**`<workspace>/snapshots/`** (resolución ambiente vía `resolve_workspace`, igual que `build`); en modo
-degenerado (`--store` suelto) cae en el dir hermano del `.duckdb` (sin regresión). No transiciona el
-`CycleState`.
+**`<workspace>/snapshots/`** (resolución ambiente vía `resolve_workspace`, igual que `build`). No
+transiciona el `CycleState`.
 
 **Staleness de la cache de redes (AS-BUILT #32, 2026-06-17):** `b2g status` suma el campo aditivo
 `data["networks_cache_stale"]: bool` (`schema="1"` intacto) y, cuando es `true`, un `warnings`
@@ -410,9 +419,9 @@ faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` co
 `hasattr` en el comando** (p. ej. `chain` antes del `Forager`). Un `AttributeError` inesperado se
 propaga limpio.
 
-**Borde: el error de uso sale SIN envelope.** Ante un error de uso (p. ej. `--workspace` y `--store`
-juntos, una opción requerida faltante, o ningún store/workspace resoluble), Click aborta el parseo
-**antes** de entrar al comando: se emite el mensaje de uso de Click en **stderr** y
+**Borde: el error de uso sale SIN envelope.** Ante un error de uso (p. ej. una opción requerida
+faltante, una opción desconocida como `--store` —eliminada en #75—, o ningún workspace resoluble),
+Click aborta el parseo **antes** de entrar al comando: se emite el mensaje de uso de Click en **stderr** y
 exit code `1`, **sin** envelope JSON. El envelope versionado solo cubre errores que ocurren
 **dentro** de la ejecución del comando.
 
@@ -1695,8 +1704,9 @@ b2g export --format graphml --out-dir redes/ --json
 b2g status --json     # CycleState + round + curation_available + workspace + conteos
 ```
 
-Retrocompat: `b2g --store biblioteca.duckdb seed …` (sin `init`, `.duckdb` suelto = workspace
-degenerado) sigue siendo válido.
+Migración de un `.duckdb` legacy: corré **`b2g init .`** en su carpeta para adoptarlo como
+workspace (`--store` y el modo degenerado fueron eliminados en
+[#75](https://github.com/complexluise/bib2graph/issues/75)).
 
 El **modo declarativo** (`b2g networks --spec redes.yaml`, `NetworkSpec` desde YAML) está
 **construido** (Hito 9, AS-BUILT 2026-06-17): un YAML versionable describe qué redes calcular.

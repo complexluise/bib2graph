@@ -290,9 +290,11 @@ en memoria). **Cleanup pre-v0.3:** el `merge` ya **no interpola ids crudos** en 
 `CASE WHEN`/`IN (...)` con f-strings); lee las filas y **ordena en Python** por orden de aparición
 antes de reinsertar (orden determinista D3 preservado, sin construir SQL con datos). Soporta query
 SQL. Es **núcleo**, no extra. **Una investigación = un workspace** (carpeta autocontenida con su
-`library.duckdb`; AS-BUILT ADR [0029](decisiones/0029-workspace-por-investigacion.md)); el
-`library.duckdb` sigue siendo single-writer (un `.duckdb` suelto = workspace degenerado;
-concurrencia diferida, ADR [0019](decisiones/0019-concurrencia-diferida.md)).
+`library.duckdb` marcada por `workspace.json`; AS-BUILT ADR
+[0029](decisiones/0029-workspace-por-investigacion.md), enmienda #75: la carpeta es la **única**
+unidad canónica —el modo degenerado del `.duckdb` suelto fue eliminado—); el `library.duckdb` sigue
+siendo single-writer (concurrencia diferida, ADR
+[0019](decisiones/0019-concurrencia-diferida.md)).
 
 El **snapshot** es un **export sellado** del estado vivo (ver §6.2), no la persistencia en sí;
 `ParquetStore` puede servir como **formato de export/intercambio**. La costura `Store` sigue
@@ -310,6 +312,10 @@ post-V1 (`[neo4j]`): un destino más, **ya no el sustrato** (ADR 0002).
 > forzada). Enmienda 0009/0019; single-writer sin cambios. **Acotado en este corte:**
 > `snapshot`/`export` aún usan `--out-dir` explícito; la staleness solo sella el hash (sin aviso ni
 > regeneración automática todavía).
+>
+> **SUPERADO (#75, 2026-06-17):** el modo degenerado se eliminó — la carpeta con `workspace.json` es
+> la **única** unidad canónica y un `.duckdb` legacy se adopta con `b2g init .` (ver ADR 0029,
+> enmienda 2026-06-17).
 
 ## 5. Flujo de datos (ciclo iterativo, no pipeline lineal)
 
@@ -426,7 +432,8 @@ trabajo posterior, pero la API se **diseña con estos principios desde el hito 1
 **paquete `bib2graph.cli/`** (no un `cli.py` plano) con **3 capas**:
 
 1. **Capa Click** (`cli/__init__.py` + `cli/commands/<cmd>.py`): el grupo `b2g` con la opción
-   global obligatoria `--store`, y un comando Click por subcomando que sólo parsea flags y delega.
+   global **opcional** `--workspace` (`--store` fue eliminada en #75), y un comando Click por
+   subcomando que sólo parsea flags y delega.
 2. **Capa de funciones núcleo** (`run_<cmd>(store_path, ...)` en cada módulo de comando):
    **testeable sin Click**, contiene la lógica del subcomando. El ROADMAP testea esta función, no
    el parser de Click.
@@ -456,15 +463,15 @@ curación a escala vía CSV (dump/import en lote, transversal: **no transiciona*
 **`restore`** (Ciclo 9a, ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)) rehidrata el
 corpus desde un parquet curado **sin red** (inverso de `snapshot`; preserva `decision`/`curation_status`/
 `is_seed`) y transiciona a `FILTERED` (reusa la transición permisiva `filter`, ADR 0016). El error de uso (p. ej.
-`--workspace` y `--store` juntos, o ningún store/workspace resoluble) sale **sin envelope** (Click
-aborta el parseo: stderr + exit 1).
+una opción desconocida como `--store` —eliminada en #75—, o ningún workspace resoluble) sale **sin
+envelope** (Click aborta el parseo: stderr + exit 1).
 
 **AS-BUILT R5 — UTF-8 en la frontera (Nota 06 RAÍZ 3):** `main()` llama `_force_utf8()` (reconfigura
 `sys.stdout`/`stderr` a UTF-8, con guarda por si la stream no es reconfigurable) **antes de que Click
 lea nada**. Sin esto, el envelope `--json` (`ensure_ascii=False`) y `--help` corrompen acentos en la
 consola cp1252 de Windows (`ecuaci�n`), rompiendo el contrato agente-native. **AS-BUILT R5 — store de
 solo lectura:** `status`/`validate` usan `open_store_readonly` (`cli/_store.py`), que **no auto-crea**
-el `.duckdb` ante un typo en `--store` (falla accionable); los comandos de escritura conservan
+el `.duckdb` ante un workspace mal apuntado (falla accionable); los comandos de escritura conservan
 `open_store`.
 
 > **AS-BUILT (2026-06-16) — `--store` opcional + `--workspace` + `b2g init`, ADR
@@ -478,6 +485,11 @@ el `.duckdb` ante un typo en `--store` (falla accionable); los comandos de escri
 > **13 a 14**. El `.duckdb` suelto sigue funcionando (workspace "degenerado", sin migración forzada).
 > Es un cambio **suave/aditivo** del contrato (la resolución ambiente solo cubre el flag ausente). El
 > `status` suma el campo aditivo `workspace: {root, source}` (`schema="1"` intacto).
+>
+> **SUPERADO (#75, 2026-06-17, BREAKING):** `--store` se **eliminó por completo** del CLI (pasarla da
+> el error estándar de Click `No such option`) y el modo degenerado dejó de existir. Queda solo
+> `--workspace` (opcional) + resolución ambiente; un `.duckdb` legacy se adopta con `b2g init .`. Ver
+> ADR 0029 / 0021 (enmiendas 2026-06-17).
 
 ## 7. Layout de dependencias (extras)
 

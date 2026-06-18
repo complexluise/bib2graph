@@ -188,8 +188,9 @@ def status_cmd(
         emit_human(
             f"Curación (siempre disponible): {', '.join(data['curation_available'])}"
         )
-        ws_root = data["workspace"]["root"] or "(modo degenerado)"
-        emit_human(f"Workspace: {ws_root} (resuelto vía {data['workspace']['source']})")
+        emit_human(
+            f"Workspace: {data['workspace']['root']} (resuelto vía {data['workspace']['source']})"
+        )
         ref_count = data.get("referenced_not_fetched", 0)
         if ref_count > 0:
             emit_human(f"Referenciados sin materializar: {ref_count}")

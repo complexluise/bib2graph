@@ -155,17 +155,19 @@
   [#39](https://github.com/complexluise/bib2graph/issues/39)): una investigación = un **workspace =
   carpeta** (`workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/`exports/`). Nuevo módulo
   `src/bib2graph/workspace.py` (`Workspace`, `WorkspaceManifest`; el núcleo NO importa `duckdb`) +
-  **14° subcomando `b2g init`**. `--store` pasó a **opcional** y se agregó **`--workspace`** (ambos
-  opcionales, mutuamente excluyentes) con **resolución ambiente** (flag > env `B2G_WORKSPACE` >
-  walk-up del cwd buscando `workspace.json`). El `.duckdb` suelto sigue válido (workspace degenerado).
+  **14° subcomando `b2g init`**. Se agregó **`--workspace`** (opcional) con **resolución ambiente**
+  (flag > env `B2G_WORKSPACE` > walk-up del cwd buscando `workspace.json`).
   `b2g status` suma `workspace: {root, source}`; `b2g build` sella `networks/.corpus_hash`. **422
-  tests verdes**, 14 subcomandos. Flujo: `b2g init <name>` → trabajar **dentro** de la carpeta sin
-  `--store`. **Remanentes cerrados (#32, AS-BUILT 2026-06-17):** `b2g snapshot`/`b2g export` ya
-  resuelven por workspace (`--out-dir` pasó a override opcional → `<workspace>/snapshots|exports/`;
-  modo degenerado = dir hermano) y `b2g status` suma `networks_cache_stale: bool` + `warnings`
+  tests verdes**, 14 subcomandos. Flujo: `b2g init <name>` → trabajar **dentro** de la carpeta.
+  **Remanentes cerrados (#32, AS-BUILT 2026-06-17):** `b2g snapshot`/`b2g export` ya
+  resuelven por workspace (`--out-dir` pasó a override opcional → `<workspace>/snapshots|exports/`)
+  y `b2g status` suma `networks_cache_stale: bool` + `warnings`
   accionable cuando el `networks/.corpus_hash` no coincide con el corpus vivo (**avisa, NO regenera**:
   invalidación por hash, no build-system). `Workspace` ganó `read_networks_corpus_hash()` /
   `is_networks_cache_stale()`. Con esto el modelo workspace queda **completo** (no quedan remanentes).
+  **BREAKING (#75, 2026-06-17):** la opción `--store` se **eliminó por completo** del CLI (pasarla da
+  el error estándar de Click `No such option`) y el **modo degenerado dejó de existir** — la carpeta
+  con `workspace.json` es la **única** unidad canónica; un `.duckdb` legacy se adopta con `b2g init .`.
 - **Curación a escala vía CSV** (#22 + #26, 2026-06-16): nuevo **15° subcomando `b2g curate`**
   (`cli/commands/curate.py`) con dos modos mutuamente excluyentes — **`--dump`** escribe
   `curacion.csv` (default `<workspace>/exports/`; `--out` override; `--all` para todo el corpus, default
