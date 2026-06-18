@@ -1,6 +1,15 @@
-"""cli._envelope — Envelope JSON común y versionado.
+"""cli._envelope — Envelope JSON común y versionado (adaptador CLI).
 
-Define la estructura del envelope JSON estable del CLI agente-native (ADR 0010):
+Re-exporta ``build_envelope`` y ``ENVELOPE_SCHEMA_VERSION`` desde
+``bib2graph.service.envelope`` (ADR 0028): el contrato vive en la capa de
+servicios neutral; ``cli/`` conserva solo el I/O del adaptador
+(``emit``/``emit_human``).
+
+Los imports existentes del CLI y de los tests —
+``from bib2graph.cli._envelope import build_envelope, ENVELOPE_SCHEMA_VERSION``
+— resuelven a los **mismos objetos** que ``bib2graph.service.envelope``.
+
+La estructura del envelope (ADR 0021):
 
     {
         "schema": "1",
@@ -21,41 +30,16 @@ import json
 import sys
 from typing import Any
 
-# Versión del contrato del envelope JSON.
-ENVELOPE_SCHEMA_VERSION = "1"
+# Re-exportar desde la capa de servicios neutral (ADR 0028).
+# Los imports existentes de cli/ y tests resuelven a los mismos objetos.
+from bib2graph.service.envelope import ENVELOPE_SCHEMA_VERSION, build_envelope
 
-
-def build_envelope(
-    *,
-    command: str,
-    ok: bool,
-    data: dict[str, Any],
-    exit_code: int,
-    warnings: list[str] | None = None,
-    error: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    """Construye el envelope JSON estable del CLI.
-
-    Args:
-        command: Nombre del subcomando.
-        ok: ``True`` si el comando terminó con éxito.
-        data: Datos de resultado del comando (vacío ``{}`` en error).
-        exit_code: Código de salida del proceso.
-        warnings: Lista de advertencias opcionales.
-        error: Dict ``{"code": str, "message": str}`` o ``None``.
-
-    Returns:
-        Dict con la estructura canónica del envelope.
-    """
-    return {
-        "schema": ENVELOPE_SCHEMA_VERSION,
-        "ok": ok,
-        "command": command,
-        "exit_code": exit_code,
-        "data": data,
-        "warnings": warnings or [],
-        "error": error,
-    }
+__all__ = [
+    "ENVELOPE_SCHEMA_VERSION",
+    "build_envelope",
+    "emit",
+    "emit_human",
+]
 
 
 def emit(envelope: dict[str, Any]) -> None:

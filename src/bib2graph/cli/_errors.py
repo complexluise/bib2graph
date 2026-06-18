@@ -1,10 +1,15 @@
 """cli._errors — Jerarquía de errores B2GError y decorador de captura.
 
-Define la jerarquía de excepciones tipadas del CLI y el decorador
-``@handle_errors`` que captura excepciones conocidas, emite el envelope
-JSON de error y llama a ``sys.exit(code)``.
+Re-exporta la jerarquía de errores desde ``bib2graph.service.errors`` (ADR
+0028): la jerarquía y el mapeo error→código viven en la capa de servicios
+neutral; ``cli/`` conserva solo el I/O del adaptador (``handle_errors`` y
+``_emit_error_envelope``).
 
-Mapeo de exit codes (ADR 0010):
+Los imports existentes del CLI y de los tests —
+``from bib2graph.cli._errors import B2GError, DataError, ...`` — resuelven
+a los **mismos objetos** que ``bib2graph.service.errors``.
+
+Mapeo de exit codes (ADR 0021):
   0: éxito
   1: uso (opción faltante/inválida)
   2: datos (schema inválido, ids inexistentes, filtro inválido)
@@ -34,58 +39,28 @@ from typing import Any, TypeVar
 
 import httpx
 
+# Re-exportar la jerarquía desde la capa de servicios neutral (ADR 0028).
+# Los imports existentes de cli/ y tests resuelven a los mismos objetos.
+from bib2graph.service.errors import (
+    B2GError,
+    DataError,
+    DependencyError,
+    NetworkError,
+    StoreError,
+    UsageError,
+)
+
+__all__ = [
+    "B2GError",
+    "DataError",
+    "DependencyError",
+    "NetworkError",
+    "StoreError",
+    "UsageError",
+    "handle_errors",
+]
+
 F = TypeVar("F", bound=Callable[..., Any])
-
-
-# ---------------------------------------------------------------------------
-# Jerarquía de excepciones tipadas
-# ---------------------------------------------------------------------------
-
-
-class B2GError(Exception):
-    """Base de todos los errores accionables del CLI bib2graph."""
-
-    exit_code: int = 1
-    code: str = "B2G_ERROR"
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-        self.message = message
-
-
-class UsageError(B2GError):
-    """Error de uso: opción faltante o inválida (exit 1)."""
-
-    exit_code = 1
-    code = "USAGE_ERROR"
-
-
-class DataError(B2GError):
-    """Error de datos: schema inválido, ids inexistentes, filtro inválido (exit 2)."""
-
-    exit_code = 2
-    code = "DATA_ERROR"
-
-
-class DependencyError(B2GError):
-    """Dependencia o capacidad faltante: ImportError / AttributeError (exit 3)."""
-
-    exit_code = 3
-    code = "DEPENDENCY_ERROR"
-
-
-class NetworkError(B2GError):
-    """Error de red: httpx.HTTPError / timeout (exit 4)."""
-
-    exit_code = 4
-    code = "NETWORK_ERROR"
-
-
-class StoreError(B2GError):
-    """Store/snapshot bloqueado o corrupto (exit 5)."""
-
-    exit_code = 5
-    code = "STORE_ERROR"
 
 
 # ---------------------------------------------------------------------------
