@@ -7,6 +7,9 @@ disponibles en CUALQUIER estado del lazo y NO transicionan el CycleState.
 Son lo único irreductiblemente humano (Nota 05 §4, pasos 0/4/7).  El mapa del
 lazo (``b2g status``) los muestra siempre en ``curation_available``, separado
 de ``transitions_available``.
+
+Shim delgado (ADR 0028 G3): la orquestación vive en ``service.curate``; este
+módulo inyecta el reloj (frontera CLI, R2/ADR 0017) y delega.
 """
 
 from __future__ import annotations
@@ -18,11 +21,11 @@ from typing import Any
 import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
-from bib2graph.cli._errors import DataError, handle_errors
-from bib2graph.cli._store import open_store, resolve_library_path
+from bib2graph.cli._errors import handle_errors
+from bib2graph.cli._store import resolve_library_path
 
 # ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click)
+# Función núcleo (testeable, sin Click) — shim que inyecta now y delega
 # ---------------------------------------------------------------------------
 
 
@@ -32,9 +35,9 @@ def run_accept(
     *,
     by: str = "cli",
 ) -> dict[str, Any]:
-    """Marca los papers dados como accepted y persiste.
+    """Shim CLI: inyecta ``decided_at`` en la frontera y delega en ``service.curate``.
 
-    Verifica que todos los ids existan en el corpus antes de operar.
+    Firma idéntica a la versión anterior para que ``test_cli.py`` no cambie.
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
@@ -48,38 +51,11 @@ def run_accept(
         DataError: Si algún id no existe en el corpus.
         StoreError: Si el store está bloqueado.
     """
-    if not ids:
-        raise DataError("Debés especificar al menos un ID con --ids.")
+    from bib2graph.service.curate import accept_papers
 
-    updated_backend_close = None
-    store = open_store(store_path)
-    try:
-        corpus = store.load()
-
-        # Verificar que todos los ids existen
-        existing_ids = {str(r["id"]) for r in corpus.to_arrow().to_pylist()}
-        missing = [id_ for id_ in ids if id_ not in existing_ids]
-        if missing:
-            raise DataError(
-                f"IDs no encontrados en el corpus: {missing}. "
-                "Verificá los ids con ``b2g inspect``."
-            )
-
-        # R2: el reloj se inyecta en la frontera (ADR 0017 enmendado); el núcleo
-        # no llama datetime.now().
-        now = datetime.now(UTC)
-        updated = corpus.accept(ids, by=by, decided_at=now)
-        updated_backend_close = getattr(updated._backend, "close", None)
-        store.persist(updated)
-    finally:
-        if updated_backend_close is not None:
-            updated_backend_close()
-        store.close()
-
-    return {
-        "accepted_count": len(ids),
-        "ids": ids,
-    }
+    # R2: el reloj se inyecta en la frontera CLI (ADR 0017 enmendado).
+    now = datetime.now(UTC)
+    return accept_papers(store_path, ids, by=by, decided_at=now)
 
 
 # ---------------------------------------------------------------------------
