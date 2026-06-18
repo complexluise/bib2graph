@@ -91,8 +91,8 @@ Funciones puras sobre `networkx.Graph` (`networks/analyzer.py`):
 ORCID**, la identidad de autor cae al **display name normalizado** (lowercase/trim/acentos,
 `preprocessors/normalize.py`), lo que puede producir **falsos merges/splits** en la red de
 co-autoría. **No es** una resolución de identidad robusta — no debe presentarse como tal. El dedup
-fuzzy **determinista** (`rapidfuzz`, extra `[dedup]`, Hito 7) refina, pero sigue sin ser identidad
-canónica.
+fuzzy **determinista** (`rapidfuzz`, **en el núcleo**, automático en la ingesta — ADR 0031, #88;
+ya no es el extra `[dedup]`) refina, pero sigue sin ser identidad canónica.
 
 ## 7. Visualización y exportación
 
