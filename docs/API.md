@@ -213,6 +213,19 @@
 > + `uvicorn`; exit 3 si falta; bind `127.0.0.1`; sirve la SPA buildeada si existe — el frontend G4 aún
 > no). **El contrato externo del CLI no cambia** (`test_cli.py` intacto) — no requiere ADR nuevo. La SPA
 > (`frontend/`, G4) y el empaquetado (G5) **siguen TARGET**. Ver §0.2.
+>
+> **Sincronizado con la SPA `frontend/` + wiring del token — Hito G4 del MVP GUI (AS-BUILT, 2026-06-18,
+> ADR [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)):** se construye la **SPA**
+> (`frontend/`, React 18 + Vite + TS + Cytoscape/fcose + Zustand + Tailwind + TanStack Query, **pnpm**),
+> que consume los **7 endpoints reales** de §0.2 (cliente que des-envuelve el envelope `schema="1"`,
+> ramea por `error.code` **string** y manda `Authorization: Bearer <token>`). **Cambia el wiring del
+> token de `b2g gui`** (§0.2 abajo): la SPA necesita el token para autenticarse, así que `b2g gui` ya
+> **no solo lo imprime** —ahora lo **inyecta en el `index.html` servido** (`cli/commands/gui.py::
+> _make_index_response` reemplaza el placeholder `__B2G_TOKEN__`; ruta **`GET /`** sirve el HTML con
+> token **sin** exigir Bearer, y `StaticFiles` —`html=False`— sirve los assets); el frontend lo lee de
+> `window.__B2G_TOKEN__`. El contrato HTTP de los 7 endpoints (§0.2) **no cambia**. Solo queda
+> **TARGET el empaquetado (G5)** —vendorear el build (`src/bib2graph/gui/static/`) al wheel + job CI JS—.
+> Ver §0.2.
 
 ## Convenciones
 
@@ -393,8 +406,10 @@ local + frontend, Hito G3 del MVP GUI, ADR
   (exit 3).
 - **`gui`** (Hito G3 del MVP GUI, AS-BUILT 2026-06-18, ADR
   [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md), 19° subcomando): **levanta la API
-  local FastAPI** (§0.2) con `uvicorn` y sirve la SPA buildeada de `gui/static/` si existe (el frontend
-  G4 aún no). Genera un **token Bearer efímero** (`secrets.token_urlsafe(32)`) e imprime URL + token al
+  local FastAPI** (§0.2) con `uvicorn` y sirve la SPA buildeada de `gui/static/` si existe (AS-BUILT G4;
+  el build local lo genera, el wheel lo incluirá en G5). Genera un **token Bearer efímero**
+  (`secrets.token_urlsafe(32)`), lo **inyecta en el `index.html` servido** (ruta `GET /`, placeholder
+  `__B2G_TOKEN__` → `window.__B2G_TOKEN__`; ver §0.2 "Wiring del token") e imprime URL + token al
   arrancar. Flags: **`--host`** (default `127.0.0.1`, local-first — no expone red), **`--port`** (default
   `8765`), **`--no-browser`** (no abre el browser). Requiere el extra **`[gui]`** (`fastapi` + `uvicorn`,
   import perezoso): si falta → `DependencyError`, **exit 3** con sugerencia `uv sync --extra gui`. **NO
@@ -725,8 +740,20 @@ delegan**, con su firma intacta (`by="cli"`, `decided_at` inyectado), así que `
 
 **Subcomando `b2g gui`.** Ver [`ARCHITECTURE.md`](ARCHITECTURE.md) §6.3 y §convenciones CLI (19°
 subcomando): levanta `uvicorn.run` sobre `create_app`, sirve la SPA buildeada de `gui/static/` **si
-existe** (frontend G4 aún no), imprime URL + token, bind `127.0.0.1` (default puerto 8765). Falta del
-extra `[gui]` → `DependencyError` (exit 3, mensaje accionable `uv sync --extra gui`).
+existe**, imprime URL + token, bind `127.0.0.1` (default puerto 8765). Falta del extra `[gui]` →
+`DependencyError` (exit 3, mensaje accionable `uv sync --extra gui`).
+
+**Wiring del token (AS-BUILT G4, B-G4-3).** La SPA necesita el token Bearer para autenticarse, así que
+`b2g gui` **no lo entrega solo por stdout**: cuando el frontend está buildeado (`gui/static/index.html`
+existe), monta una ruta **`GET /`** (`serve_index`) que lee ese `index.html` y reemplaza el placeholder
+**`__B2G_TOKEN__`** con el token efímero (`cli/commands/gui.py::_make_index_response` →
+`HTMLResponse`); **`GET /` no exige Bearer** (es el bootstrap del HTML, no un endpoint de datos). Los
+**assets** (JS/CSS/fuentes) los sirve `StaticFiles(directory=gui/static, html=False)` montado en `/`
+**sin** modificación. El frontend lee el token de **`window.__B2G_TOKEN__`** (inyectado en el HTML) y lo
+manda en `Authorization: Bearer <token>` a los 7 endpoints. Si el frontend **no** está buildeado, `b2g
+gui` avisa por stderr y deja **solo la API** disponible. *(Reemplaza el plan del encuadre G4 §5, que
+preveía `StaticFiles(..., html=True)`: el AS-BUILT usa `html=False` + ruta `GET /` propia para poder
+inyectar el token.)*
 
 ---
 

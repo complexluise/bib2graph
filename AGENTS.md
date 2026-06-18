@@ -54,6 +54,22 @@
   `_write_artifacts` (mismos GraphML + metrics.json + clusters.csv que `build`); **NO** transiciona el
   `CycleState` ni sella `.corpus_hash` (transversal al lazo, como `enrich`/`curate`). `pyyaml` pasó a
   dependencia del núcleo (import perezoso). **516 tests verdes**. Ver `docs/API.md` §10.
+- **MVP GUI — Hito G4 COMPLETO · SPA `frontend/` contra la API real (AS-BUILT 2026-06-18, ADR
+  [0028](docs/decisiones/0028-arquitectura-gui-api-capa-servicios.md)):** se construye la **SPA nueva
+  en `frontend/`** (paquete JS del monorepo, **`pnpm` —nunca npm**): React 18 + Vite + TS estricto +
+  Cytoscape/fcose + Zustand + Tailwind + TanStack Query, dirección visual **D-2 "Observatorio"**
+  (oscuro, grafo-céntrico, design tokens propios en `tailwind.config.js`). Consume los **7 endpoints
+  reales** de la API G3 (`src/{client,types,store,components,lib,styles}`): 3 columnas (rondas/grafo/
+  candidato) + curar (refetch, sin Louvain client-side) + diff de rondas; cliente tipado que
+  des-envuelve `schema="1"` (`error.code` **string**, header `Bearer`) y tipos que espejan los DTO
+  reales. **Wiring del token (B-G4-3):** `b2g gui` ahora **inyecta el token en el `index.html`
+  servido** (`cli/commands/gui.py::_make_index_response` reemplaza el placeholder `__B2G_TOKEN__`; ruta
+  `GET /` sirve el HTML con token sin exigir Bearer, `StaticFiles` —`html=False`— sirve los assets); el
+  frontend lo lee de `window.__B2G_TOKEN__`. El **build** sale a `src/bib2graph/gui/static/`
+  (`outDir`, `base: "./"`) y **NO se commitea** (gitignoreado; va al wheel en G5). **Tests vitest (14)**;
+  ambos gates verdes (frontend `pnpm lint`/`pnpm test:run`/`pnpm build` + Python). Lo que **sigue
+  TARGET: G5** (empaquetado: vendorear el build al wheel + job CI JS). Ver §`frontend/` abajo,
+  `docs/API.md` §0.2 y `docs/ROADMAP/05-gui.md` §G4.
 - **#88 — preprocesamiento automático en la ingesta (AS-BUILT 2026-06-18, ADR
   [0031](docs/decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** `normalize` + dedup
   fuzzy corren **automáticamente** en `seed`/`seed_from_bib`/`chain`/`restore` (helper
@@ -421,7 +437,8 @@ src/bib2graph/
                        # init scaffold de workspace —ADR 0029, curate dump/import CSV —#22+#26,
                        # networks capa declarativa YAML —Hito 9, restore rehidrata corpus curado sin
                        # red →FILTERED —ADR 0030/9a, thesaurus aplica thesaurus curado transversal —#88/ADR 0031,
-                       # gui levanta la API local FastAPI —Hito G3 del MVP GUI/ADR 0028, extra [gui]).
+                       # gui levanta la API local FastAPI —Hito G3 del MVP GUI/ADR 0028, extra [gui];
+                       # G4: _make_index_response inyecta el token en el index.html servido vía ruta GET /).
                        # CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
   workspace.py         # Workspace (init/open/resolve; snapshots_dir/exports_dir/networks_dir;
@@ -436,6 +453,32 @@ tests/
 La estructura es orientativa (ADR 0006): un módulo plano (`corpus.py`) o un paquete
 (`sources/`) es decisión del implementador según crezca. Lo fijo son los **nombres del
 dominio** y los **contratos de `docs/API.md`**.
+
+### `frontend/` — la SPA (paquete JS, NO Python; AS-BUILT G4, ADR 0028)
+
+El **único subárbol JS** del repo. El resto del monorepo es Python con **uv**; `frontend/` es
+JavaScript con **`pnpm` (SIEMPRE pnpm, nunca npm** — preferencia firme del PO). Es la SPA "tool for
+thought" del MVP GUI (React 18 + Vite + TS estricto + Cytoscape/fcose + Zustand + Tailwind + TanStack
+Query), dirección visual **D-2 "Observatorio"** (oscuro, grafo-céntrico; design tokens propios en
+`tailwind.config.js`).
+
+```
+frontend/                       # NO va al wheel; su build (gui/static/) sí, en G5
+  package.json                  # packageManager: pnpm@…; scripts dev/build/test:run/lint
+  pnpm-lock.yaml                # lockfile reproducible
+  vite.config.ts                # outDir → ../src/bib2graph/gui/static ; base "./" ; alias @ → frontend/src
+  index.html                    # placeholder del token (<meta b2g-token> + window.__B2G_TOKEN__)
+  src/{client,types,store,components,lib,styles}/   # cliente tipado, DTO espejo, estado, UI
+  src/__tests__/                # vitest (14)
+```
+
+Comandos (desde `frontend/`): **`pnpm lint`** (`tsc --noEmit`) · **`pnpm test:run`** (vitest, 14) ·
+**`pnpm build`** (`tsc --noEmit && vite build` → escribe `src/bib2graph/gui/static/`). El **alias `@`**
+resuelve a `frontend/src/`. El **build output** (`src/bib2graph/gui/static/`) está **gitignoreado**
+(no se commitea; lo vendorea el wheel en G5). El cliente consume los 7 endpoints reales de la API G3
+(`docs/API.md` §0.2): des-envuelve el envelope `schema="1"`, ramea por `error.code` (**string**) y
+manda `Authorization: Bearer <token>` (token leído de `window.__B2G_TOKEN__`, inyectado por `b2g gui`
+en el `index.html` servido).
 
 ### Manejo de errores
 

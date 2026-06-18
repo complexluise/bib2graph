@@ -327,6 +327,38 @@ Las cuatro se resolvieron como recomendado y quedaron reflejadas en el AS-BUILT 
 
 ## Hito G4 — Frontend nuevo (`frontend/`) contra la API real
 
+> **AS-BUILT (2026-06-18).** Construido en `feat/gui-g1-capa-servicios` (verifier PASA; ambos gates
+> verdes: frontend `pnpm lint`/`pnpm test:run` —14— /`pnpm build`, Python 744 passed). La **SPA nueva
+> nace en `frontend/`** (NO se portó `app/`): React 18 + Vite + TS estricto + Cytoscape/fcose + Zustand
+> + Tailwind + **TanStack Query**, con **pnpm** (`package.json` `packageManager: pnpm@9.15.9`). Las
+> bifurcaciones del PO se resolvieron así: **B-G4-1** stack = el recomendado (React/Vite/TS/Cytoscape/
+> Zustand/Tailwind + TanStack Query); **B-G4-2** dirección visual = **D-2 "Observatorio"** (oscuro,
+> grafo-céntrico, **design tokens propios** en `tailwind.config.js`); **B-G4-3** token = **inyectado en
+> el `index.html` servido** (recomendado), no pegado a mano. **Qué se construyó:**
+>
+> - **`frontend/`** (`src/{client,types,store,components,lib,styles}` + `src/__tests__`): cliente TS
+>   tipado que **des-envuelve el envelope `schema="1"`** (`error.code` **string**, header
+>   `Authorization: Bearer`), tipos que **espejan los DTO reales** de §0.1/§0.2 (no el mock). UI de **3
+>   columnas** (rondas · grafo · candidato) + **curar** (refetch tras curar, **sin Louvain
+>   client-side** — las comunidades vienen decoradas del servidor) + **diff de rondas** (el
+>   diferenciador). Consume los **7 endpoints reales** de G3. `vite.config.ts`: `build.outDir =
+>   ../src/bib2graph/gui/static`, `base: "./"`, alias `@` → `frontend/src`. **Tests vitest (14).**
+> - **`cli/commands/gui.py`** (wiring del token, B-G4-3): `b2g gui` ahora **inyecta el token** en el
+>   `index.html` servido — `_make_index_response()` reemplaza el placeholder `__B2G_TOKEN__`; ruta **`GET
+>   /`** sirve el HTML con token **sin** exigir Bearer, y `StaticFiles` (**`html=False`**) sirve los
+>   assets. El frontend lee `window.__B2G_TOKEN__`. *(Reemplaza el plan de §5 abajo, que preveía
+>   `StaticFiles(..., html=True)`: para poder inyectar el token se usa `html=False` + ruta `GET /`
+>   propia.)*
+> - **`.gitignore`**: suma `frontend/node_modules/`, `frontend/dist/` y `src/bib2graph/gui/static/`
+>   (build output — **NO se commitea**; va al wheel en G5). `frontend/` **sí** se commitea (es código
+>   fuente, a diferencia del prototipo `app/`, gitignoreado).
+> - **`AGENTS.md`** suma la convención del paquete `frontend/` (JS con pnpm; comandos; alias; stack/D-2)
+>   y **`docs/API.md` §0.2** documenta el wiring del token. **El contrato externo del CLI no cambió**
+>   (`tests/unit/test_cli.py` intacto) ni el contrato HTTP de los 7 endpoints.
+>
+> **Sigue TARGET: G5** (empaquetado — vendorear el build al wheel + job CI JS) y el **gate #34**
+> (validación con un tercero, al final). Contrato de la API: [`API.md`](../API.md) §0.2.
+
 **Alcance**
 
 - **SPA NUEVA** (Vite/TS) en `frontend/` (monorepo Python+JS). **NO se porta** `app/src/` (mock
@@ -361,6 +393,245 @@ diff de rondas; luego **C4** (aceptar/rechazar/curación) en la GUI, complementa
 - *No testear* pixel-perfect ni cada componente; sí el contrato cliente↔API.
 
 **Se vuelve posible:** la lectura visual no-lineal y la curación desde la GUI sobre el workspace local.
+
+### Encuadre de G4 (arquitecto, 2026-06-18) — estructura, stack, cliente, componentes, wiring
+
+> Encuadre **antes de construir** (mismo formato que G2/G3). G4 es el primer hito de la epic que
+> **no es as-built**: define el vertical mínimo de la SPA contra la **API real de G3** (no el mock).
+> El prototipo `app/` (ignorado en `.gitignore`, línea 44) es **referencia UX desechable** — NO se
+> porta. El objetivo del PO es **alta calidad de diseño**, ejecución muy superior al prototipo.
+> **Varias decisiones de abajo son del PO** (stack, dirección visual, entrega del token): ver
+> §Bifurcaciones G4.
+
+**Alcance del vertical mínimo (acotado).** Las **3 columnas** (RONDAS · GRAFO · CANDIDATO) + **curar**
+(aceptar/rechazar) + **diff de rondas** (el diferenciador, ADR 0027). **NO** entra en G4: `expand`/
+forrajeo desde la GUI (no hay endpoint), `search` (no hay endpoint), `reseed` desde la GUI (no hay
+endpoint), anotaciones (`note` es advisory, no se persiste — API.md §curate). La SPA solo consume los
+**7 endpoints reales** de G3 (API.md §0.2).
+
+#### 1. Estructura propuesta de `frontend/` (monorepo Python + JS)
+
+```
+frontend/                       # NO va al wheel; su build (dist/) sí (G5)
+├─ package.json                 # pnpm (packageManager: pnpm@…), scripts dev/build/test/lint
+├─ pnpm-lock.yaml               # commiteado (lockfile reproducible)
+├─ tsconfig.json                # TS estricto (noUncheckedIndexedAccess, strictNullChecks)
+├─ vite.config.ts               # build.outDir → ../src/bib2graph/gui/static, base relativa
+├─ index.html                   # entry; placeholder de inyección del token (ver §3/§5)
+├─ public/
+├─ src/
+│  ├─ main.tsx                  # entry React
+│  ├─ App.tsx                   # layout 3 columnas
+│  ├─ client/                   # capa de cliente API tipada (semilla: app/src/client/, CORREGIDA)
+│  │  ├─ http.ts                # apiFetch: envelope schema="1", Bearer, ApiError(error.code: string)
+│  │  ├─ api.ts                 # las 7 llamadas tipadas (1:1 con los endpoints de G3)
+│  │  └─ token.ts               # lee el token inyectado (ver bifurcación B-G4-3)
+│  ├─ types/
+│  │  └─ api.ts                 # tipos TS que ESPEJAN los DTO reales de §0.1/§0.2 (no el mock)
+│  ├─ store/                    # estado global (selección, kind activo, rondas a comparar)
+│  ├─ components/
+│  │  ├─ workspace/  (Header)
+│  │  ├─ rounds/     (RoundsColumn, RoundItem, NetworkKindToggle, CompareControl)
+│  │  ├─ graph/      (GraphCanvas, GraphControls, GraphLegend)
+│  │  ├─ candidate/  (CandidatePanel, ScentView, CurateActions)
+│  │  ├─ diff/       (RoundDiffPanel)
+│  │  └─ ui/         (Button, Badge, Tooltip, Spinner, ErrorBanner)
+│  ├─ lib/           (format.ts, cytoscapeStyle.ts)
+│  └─ styles/
+└─ src/__tests__/    (vitest: client contra el contrato + smoke de render)
+```
+
+`gui/static/` (destino del build) **no existe hoy** y **no se commitea** (lo genera el build; va al
+wheel en G5). Conviene agregar a `.gitignore`: `frontend/node_modules/`, `frontend/dist/`,
+`src/bib2graph/gui/static/` (artefacto de build). El monorepo no tiene convenciones en `AGENTS.md`
+todavía → **recomiendo** sumar una nota breve en `AGENTS.md` (`frontend/` = JS con pnpm; el resto es
+Python con uv) en el mismo PR de G4.
+
+#### 2. Stack recomendado (a confirmar PO — B-G4-1)
+
+**Recomendación: mantener el stack del prototipo, ejecutado a mucha mayor calidad.** Es un stack
+**probado para UX de grafos** y no hay razón técnica para cambiarlo; el salto de calidad es de
+**diseño y ejecución**, no de tecnología.
+
+| Capa | Recomendado | Por qué |
+|---|---|---|
+| Framework | **React 18** | Ecosistema, integración Cytoscape madura |
+| Build | **Vite 5 + TS estricto** | `outDir` configurable → `gui/static/`; HMR para iterar diseño |
+| Grafo | **Cytoscape.js + fcose** | Maduro/performante para ~100–500 nodos (tamaño real del corpus, ~80 en `examples/valoraciones/`) |
+| Estado | **Zustand** | Liviano; el estado que cruza columnas es chico |
+| Server-state | **TanStack Query** (NUEVO vs prototipo) | El prototipo era mock in-memory; contra API real conviene cache/refetch/estados de carga declarativos. Pequeña adición justificada |
+| Estilos | **Tailwind CSS** + tokens de diseño propios | Velocidad; la calidad viene de un **design system propio** (tokens, no utilities genéricas sueltas) |
+| Tests | **Vitest + RTL** | Integración nativa con Vite |
+
+Cambio sugerido frente al prototipo: **agregar TanStack Query** (el mock no lo necesitaba; la API real
+sí). El resto se mantiene. **Anti-stack** (no usar): Next.js/SSR (local-first), Redux/MobX (overkill),
+component-libs opinionadas (MUI/Chakra) que frenan la dirección visual de alta calidad.
+
+#### 3. Capa de cliente API tipada — espeja el contrato REAL (no el mock)
+
+El cliente semilla `app/src/client/http.ts` tiene **dos drifts vs el contrato real de G3** que el
+frontend nuevo debe corregir:
+
+- **`error.code` es `string`, no `number`.** El envelope real lleva `error.code: "DATA_ERROR"` |
+  `"INTERNAL_ERROR"` | … (códigos de `B2GError`, API.md §0/§0.2), NO un entero. El seed lo tipa
+  `code: number` — **incorrecto**.
+- **Falta el envelope completo y el Bearer.** El envelope real es
+  `{schema, ok, command, exit_code, data, warnings, error}` (7 claves; el seed solo lee
+  `{schema, data, warnings, error}`) y **toda** request necesita `Authorization: Bearer <token>`
+  (el seed no manda token → todas darían 401).
+
+Contrato del cliente nuevo (tipos TS que espejan los DTO reales):
+
+```typescript
+// envelope real (API.md §0/§0.2)
+interface EnvelopeError { code: string; message: string }  // code es STRING
+interface Envelope<T> {
+  schema: "1"; ok: boolean; command: string; exit_code: number;
+  data: T; warnings: string[]; error: EnvelopeError | null;
+}
+
+// DTOs que espejan service/reads.py (§0.1) y los routers (§0.2) — NO el mock app/src/types
+type CurationStatus = "candidate" | "accepted" | "rejected";
+type NetworkKind =            // los del NÚCLEO (NetworkKind), no los del mock
+  | "bibliographic_coupling" | "cocitation"
+  | "author_collab" | "institution_collab" | "keyword_cooccurrence";
+
+interface WorkspaceState {    // GET /api/workspace
+  name: string; root: string; created_at: string; bib2graph_version: string;
+  source: string | null; loop_state: string | null; round: number;
+  total_papers: number; counts_by_status: Record<string, number>;
+  transitions_available: string[]; curation_available: string[];
+  networks_cache_stale: boolean;
+}
+interface RoundEntry {        // GET /api/rounds → { rounds: RoundEntry[] }
+  id: string; corpus_hash?: string; created_at?: string;
+  total_papers: number; schema_version?: string;
+  round?: number; loop_state?: string | null;   // solo en id="live"
+}
+interface Paper {             // GET /api/paper/{id}
+  id: string; openalex_id: string | null; doi: string | null; title: string;
+  year: number | null; abstract: string | null; is_seed: boolean;
+  curation_status: CurationStatus;
+  authors_raw: string[]; authors_id: string[];   // listas crudas, NO objetos Author/ORCID
+  keywords_id: string[]; references_id: string[]; cited_by_id: string[];
+  provenance: unknown[];
+}
+interface ScentNeighbor { paper_id: string; title: string; weight?: number }
+interface Scent {             // GET /api/paper/{id}/scent
+  paper_id: string; score: number;
+  coupling: ScentNeighbor[]; references: ScentNeighbor[]; cited_by: ScentNeighbor[];
+}                             // NO 4 paneles cosméticos del mock
+interface NetworkNode {
+  id: string; label: string; degree_centrality: number;
+  community?: number; year?: number; is_seed?: boolean; curation_status?: CurationStatus;
+}
+interface NetworkData {       // GET /api/network/{kind}
+  nodes: NetworkNode[]; edges: { source: string; target: string; weight: number }[];
+  metrics: { n_nodes: number; n_edges: number; density: number;
+             num_components: number; avg_clustering: number; n_communities: number };
+}                             // NO modularity ni id de red persistido
+interface RoundDiff {         // GET /api/compare?a=&b=
+  round_a: string; round_b: string;
+  added_paper_ids: string[]; removed_paper_ids: string[];
+  mutated_hubs: unknown[];    // hoy [] (B-G2-3 diferido)
+  metrics_change: { metric: string; before: number; after: number }[];
+}
+interface CurateResult {      // POST /api/paper/{id}/curate  body {decision}
+  accepted_count?: number; rejected_count?: number; ids: string[];
+}
+```
+
+`apiFetch` corregido: agrega `Authorization: Bearer <token>`, valida `schema==="1"`, y ante
+`error !== null` lanza `ApiError(error.code, error.message)` con `code` **string** (la SPA ramea por
+`error.code`, no por HTTP status — API.md §0.2). 401 (sin/token inválido) se maneja aparte (no lleva
+el envelope estándar; es del adaptador HTTP).
+
+#### 4. Pantallas/componentes del MVP, mapeados a endpoints reales
+
+| Columna / panel | Componentes | Endpoint(s) real(es) |
+|---|---|---|
+| Header | `Header` (nombre, estado del lazo, ronda) | `GET /api/workspace` |
+| **RONDAS** (izq) | `RoundsColumn`, `RoundItem`, `NetworkKindToggle`, `CompareControl` | `GET /api/rounds` (selección de A/B); toggle elige `kind` |
+| **GRAFO** (centro) | `GraphCanvas` (Cytoscape+fcose), `GraphControls`, `GraphLegend` | `GET /api/network/{kind}` (color=community, tamaño=degree_centrality) |
+| **CANDIDATO** (der) | `CandidatePanel`, `ScentView`, `CurateActions` | `GET /api/paper/{id}`, `GET /api/paper/{id}/scent`, `POST /api/paper/{id}/curate` |
+| **DIFF** (overlay/panel) | `RoundDiffPanel` | `GET /api/compare?a=&b=` (added/removed + metrics_change) |
+
+Notas de fidelidad (NO inventar lo que el núcleo no da): el grafo **NO** tiene Louvain client-side
+(el prototipo lo hacía sobre el mock); las comunidades vienen **decoradas del servidor** en
+`node.community`. Al curar, **NO** se recalcula Louvain en cliente: se refetch del workspace/red (el
+recálculo real es server-side vía `b2g build`, fuera del MVP — mostrar `networks_cache_stale` como
+aviso). `ScentView` muestra **score + vecinos** (coupling/references/cited_by), no 4 paneles. El
+`CandidatePanel` no tiene botón "expandir" funcional (sin endpoint) — omitirlo o deshabilitarlo
+explícito.
+
+#### 5. Wiring build → static → `b2g gui`
+
+> **Reconciliado con el AS-BUILT (2026-06-18):** el wiring del token se construyó por **inyección en el
+> `index.html` servido** (B-G4-3, recomendado). Difiere de lo previsto abajo en un punto: en vez de
+> `StaticFiles(..., html=True)`, el AS-BUILT usa **ruta `GET /` + `_make_index_response`** (que reemplaza
+> el placeholder `__B2G_TOKEN__`) y `StaticFiles(..., html=False)` solo para los assets — necesario para
+> poder inyectar el token. Ver el banner AS-BUILT de §G4 arriba y [`API.md`](../API.md) §0.2.
+
+- **Build:** `vite build` con `build.outDir = "../src/bib2graph/gui/static"` y `base: "./"` (rutas
+  relativas, para que sirva bajo cualquier mount). `pnpm build` deja `index.html` + assets ahí.
+- **Servido:** `b2g gui` ya monta `StaticFiles(directory=gui/static, html=True)` **si existe**
+  (`cli/commands/gui.py` líneas 73-91). G4 hace que ese directorio **exista** tras el build local;
+  G5 lo vendorea al wheel y agrega el job CI.
+- **Token — hueco real a resolver en G4 (ver B-G4-3):** hoy `b2g gui` **solo imprime el token a
+  stdout** (`gui/commands/gui.py` líneas 100-102); **NO lo inyecta en el HTML servido**. El frontend
+  necesita el token para autenticarse. Como `b2g gui` solo edita docs/recomienda aquí, **el arquitecto
+  NO escribe ese cambio** — se recomienda al `coder`: en `cli/commands/gui.py`, en vez de
+  `StaticFiles` plano para `index.html`, servir el `index.html` con el token inyectado (p. ej. un
+  endpoint `GET /` que lee el `index.html` del build y reemplaza un placeholder
+  `<meta name="b2g-token" content="__B2G_TOKEN__">`, o `window.__B2G_TOKEN__`). El cliente TS
+  (`client/token.ts`) lo lee de ahí. **Decisión del PO sobre el mecanismo: B-G4-3.**
+
+#### 6. Tests del frontend (vitest, los justos)
+
+- **Cliente contra el contrato:** `apiFetch` des-envuelve `data` de un envelope `schema="1"` válido;
+  ante `error !== null` lanza `ApiError` con `code` **string**; manda el header `Bearer`. (2-3 tests —
+  alto valor, es la costura cliente↔API y donde el seed tenía drift.)
+- **Smoke de render:** `GraphCanvas` monta con una `NetworkData` mínima; `RoundDiffPanel` renderiza
+  added/removed de un `RoundDiff` conocido (el diferenciador). (2 tests.)
+- **NO** E2E (Playwright/Cypress), **NO** pixel-perfect, **NO** un test por componente. El gate #34
+  (tercero usando la GUI) es la validación de producto, no una suite E2E en CI.
+
+#### 7. Dirección de diseño — 3 direcciones para que el PO elija (B-G4-2)
+
+Principios transversales (para que **no** sea estética genérica de IA): (a) **el grafo es el héroe** —
+las columnas laterales lo enmarcan, no compiten; (b) **una sola pantalla, sin modales que rompan el
+flujo** (imagen mental de `app/ARCHITECTURE.md` §2); (c) **tipografía y espaciado de herramienta de
+pensamiento**, no de dashboard; (d) **color con significado** (comunidad/curación), no decorativo;
+(e) **design tokens propios** (no Tailwind utilities genéricas sueltas). Tres direcciones posibles
+(decisión del PO):
+
+- **D-1 · "Cuaderno de laboratorio" (analógico-cálido).** Fondo claro tipo papel, tipografía serif
+  para títulos + mono para ids, acentos sobrios. Transmite "instrumento de investigación artesanal".
+  Riesgo: legibilidad del grafo sobre fondo claro (cuidar contraste de nodos).
+- **D-2 · "Observatorio" (oscuro, foco en el grafo).** Fondo oscuro neutro, el grafo brilla, comunidad
+  por color saturado, UI cromáticamente apagada para no competir. Es la pista del prototipo pero
+  ejecutada con rigor (jerarquía, densidad, microinteracciones). Más seguro para visualización de redes.
+- **D-3 · "Editorial / atlas" (claro, denso en información, alto contraste).** Estética de publicación
+  académica: rejilla estricta, alto contraste, datos densos y legibles, decoración mínima. Transmite
+  seriedad metodológica. Riesgo: puede sentirse "frío" si no se cuida la microinteracción.
+
+#### Bifurcaciones G4 (decisión del PO)
+
+- **B-G4-1 — Stack.** Recomiendo **mantener** React+Vite+TS+Cytoscape(fcose)+Zustand+Tailwind
+  (probado para UX de grafos) y **sumar TanStack Query** (la API real, a diferencia del mock, justifica
+  cache/refetch declarativos). ¿Confirmás el stack, o querés cambiar alguna pieza?
+- **B-G4-2 — Dirección visual.** Tres direcciones arriba (D-1 cuaderno / D-2 observatorio / D-3
+  editorial). Es **tu** decisión y te importa mucho. ¿Cuál guía el diseño? (Se puede prototipar una y
+  pivotar; no es irreversible, pero conviene elegir una para no diluir el esfuerzo.)
+- **B-G4-3 — Cómo recibe el token el frontend.** Hoy `b2g gui` **solo imprime** el token a stdout (no
+  lo inyecta en el HTML). Para que la SPA se autentique sin que el usuario copie/pegue el token,
+  recomiendo **inyectarlo en el `index.html` servido** (placeholder `<meta>`/`window.__B2G_TOKEN__`
+  reemplazado al servir). Alternativa más simple pero peor UX: el usuario pega el token en un campo.
+  ¿Inyección en el HTML (recomendado) o pegado manual? (Implica un cambio chico en `cli/commands/gui.py`
+  que ejecuta el `coder`, no el arquitecto.)
+- **B-G4-4 — Destino del prototipo `app/`.** `app/` está en `.gitignore` (no commiteado) y es
+  desechable. ¿Lo borrás del working tree, lo dejás como referencia local archivada, o lo movés a una
+  rama/tag de archivo? (No bloquea G4; es higiene.)
 
 ---
 
