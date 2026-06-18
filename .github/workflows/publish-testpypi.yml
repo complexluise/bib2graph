@@ -31,6 +31,17 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Enable corepack (pnpm pinneado en package.json)
+        run: corepack enable
+      - name: Build frontend (llena src/bib2graph/gui/static/ antes del wheel)
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
       - name: Build (sdist + wheel)
         run: uv build
       - name: Publish to TestPyPI (trusted publishing)

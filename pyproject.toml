@@ -96,6 +96,12 @@ b2g = "bib2graph.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/bib2graph"]
 
+# Build output del frontend (gitignored → hatchling lo omite por defecto).
+# force-include vende el artefacto al wheel sin commitearlo al VCS (ADR 0028 §B.1, G5).
+# Requiere que `pnpm build` haya corrido ANTES de `uv build`.
+[tool.hatch.build.targets.wheel.force-include]
+"src/bib2graph/gui/static" = "bib2graph/gui/static"
+
 # El sdist incluye fuente, tests y docs para reproducibilidad, pero NO el sandbox
 # de exploración (datos de investigación IED: CSV/parquet/graphml) ni los binarios
 # pesados de referencia: son del repo, no del paquete distribuible.
