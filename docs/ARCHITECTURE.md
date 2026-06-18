@@ -70,8 +70,10 @@ biblioteca viva en DuckDB es el sustrato que lo sostiene entre corridas.
 > mapeo código→HTTP + 19º subcomando `b2g gui`) y la **SPA `frontend/` también está construida** (G4,
 > AS-BUILT 2026-06-18: React 18 + Vite + TS + Cytoscape/fcose + Zustand + Tailwind + TanStack Query,
 > **pnpm**, dirección visual D-2; consume los 7 endpoints reales; el token se inyecta en el `index.html`
-> servido). Solo el **empaquetado** (G5: vendorear el build al wheel + CI JS) **sigue TARGET, NO
-> implementado** (§4.4). Sobre ese núcleo + costuras se
+> servido). El **empaquetado** (G5, AS-BUILT 2026-06-18: el wheel vendorea el build del frontend vía
+> `force-include` + job CI JS, §4.4/§7) **cierra el build del MVP** — **los 5 hitos G1–G5 están
+> AS-BUILT**. Lo único pendiente es el **gate #34** (un tercero usa la GUI sin ayuda), que **no es
+> construcción** sino el criterio de aceptación de producto de la epic. Sobre ese núcleo + costuras se
 > montan **tres frontends de frontera** — **CLI**
 > (`b2g`, Click, la columna agente-native, ADR 0010/0021) · **API local** (FastAPI, opt-in `[gui]`) ·
 > **SPA** (frontend "tool for thought" en `frontend/`). Los tres **convergen en una capa de servicios
@@ -361,9 +363,9 @@ post-V1 (`[neo4j]`): un destino más, **ya no el sustrato** (ADR 0002).
 > la **única** unidad canónica y un `.duckdb` legacy se adopta con `b2g init .` (ver ADR 0029,
 > enmienda 2026-06-17).
 
-### 4.4 `LocalApiServer` / API local (costura opt-in, `[gui]`) — `AS-BUILT (G3)` · SPA `frontend/` `AS-BUILT (G4)`
+### 4.4 `LocalApiServer` / API local (costura opt-in, `[gui]`) — `AS-BUILT (G3)` · SPA `frontend/` `AS-BUILT (G4)` · empaquetado `AS-BUILT (G5)`
 
-> **AS-BUILT (2026-06-18) — Hitos G3 + G4 del MVP GUI, ADR
+> **AS-BUILT (2026-06-18) — Hitos G3 + G4 + G5 del MVP GUI, ADR
 > [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md) (Aceptado; GUI gateada por
 > [#34](https://github.com/complexluise/bib2graph/issues/34)).** La **capa de servicios neutral
 > `src/bib2graph/service/` existe** (G1: contrato subido; G2: 6 lecturas en `service/reads.py`), la
@@ -375,9 +377,12 @@ post-V1 (`[neo4j]`): un destino más, **ya no el sustrato** (ADR 0002).
 > 7 endpoints reales (cliente que des-envuelve `schema="1"`, `error.code` string, header Bearer). El
 > **wiring del token** se cableó en G4 (B-G4-3): `b2g gui` **inyecta el token en el `index.html`
 > servido** (ruta `GET /` + `_make_index_response`; el frontend lo lee de `window.__B2G_TOKEN__`) — ver
-> [`API.md`](API.md) §0.2. Lo que **sigue TARGET, NO construido**: el **empaquetado** del wheel con el
-> frontend buildeado + CI JS (G5) — y el **gate #34** (validar el caso real con un tercero, ADR 0027) es
-> el criterio de aceptación de la epic, AL FINAL. El prototipo `app/server/` (con su `envelope()` propio
+> [`API.md`](API.md) §0.2. El **empaquetado** (G5) **también está construido**: el wheel **vendorea el
+> build del frontend** (`src/bib2graph/gui/static/`, gitignored) vía `force-include` de hatchling
+> (`pyproject.toml`), con job CI JS y `pnpm build` antes del `uv build` en `publish-testpypi.yml` (§7) —
+> `b2g gui` funciona **sin Node** desde el wheel. Con G5, **los 5 hitos G1–G5 están AS-BUILT**. Lo único
+> pendiente es el **gate #34** (validar el caso real con un tercero, ADR 0027): es el criterio de
+> aceptación de producto de la epic, AL FINAL — **no** es construcción. El prototipo `app/server/` (con su `envelope()` propio
 > duplicado) es *throwaway* y se **retira** a favor del contrato neutral. Contrato exacto de la API en
 > [`API.md`](API.md) §0.2.
 
@@ -414,9 +419,10 @@ del contrato a HTTP status**. **`api/` NO importa de `cli/`** (ambos cuelgan de 
   **lock global serializado** (una escritura a la vez). **Jobs async/SSE, retry cross-process y reabrir
   0019 quedan diferidos** (no en v1).
 
-El **frontend SPA** (`frontend/`, monorepo Vite/TS) **ya está construido (AS-BUILT G4)**; su build sale a
-`src/bib2graph/gui/static/` (no se commitea — gitignoreado). El **empaquetado del wheel sigue TARGET (G5)**:
-ese build se **vendoreará** al wheel (la GUI funcionará sin Node) y el CI sumará un job JS. El subcomando
+El **frontend SPA** (`frontend/`, monorepo Vite/TS) **está construido (AS-BUILT G4)**; su build sale a
+`src/bib2graph/gui/static/` (no se commitea — gitignoreado). El **empaquetado del wheel está construido
+(AS-BUILT G5)**: ese build se **vendorea** al wheel vía `force-include` de hatchling (la GUI funciona sin
+Node desde el wheel) y el CI tiene un job JS (lint/test/build) que corre siempre. El subcomando
 **`b2g gui`** (ver §6.3, **AS-BUILT G3 + wiring del token G4**) es el adaptador de "arranque local":
 levanta uvicorn sobre la API, **inyecta el token en el `index.html`** y sirve los assets pre-build **si
 existen** (ruta `GET /` + `StaticFiles`, §4.4 banner / [`API.md`](API.md) §0.2), y abre el browser.
@@ -614,7 +620,8 @@ el `.duckdb` ante un workspace mal apuntado (falla accionable); los comandos de 
 > adaptador de "arranque local". **Conteo: 19 `add_command`** en `src/bib2graph/cli/__init__.py`
 > (verificado), con `gui` como **19º** subcomando (consistente con la lista AS-BUILT de §6.3 arriba, el
 > ADR 0028 §3 y la [Nota 12](Notas/12-arquitectura-gui-encuadre.md) punto 6). La **SPA** (`frontend/`)
-> está **AS-BUILT (G4)**; solo el **empaquetado** del wheel (G5) sigue TARGET.
+> está **AS-BUILT (G4)** y el **empaquetado** del wheel está **AS-BUILT (G5)** (§4.4/§7): con eso los 5
+> hitos G1–G5 del MVP GUI están construidos; solo queda el gate #34 (no es construcción).
 
 ## 7. Layout de dependencias (extras)
 
@@ -637,16 +644,19 @@ core         pyarrow, pydantic, networkx, click, tqdm,
 El extra **`[llm]` se elimina** (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)): el
 producto no usa IA generativa, así que no hay cliente LLM ni para forrajeo ni para thesaurus.
 
-> **AS-BUILT G3 / TARGET G5 (2026-06-18) — extra `[gui]`, ADR
+> **AS-BUILT G3 + G5 (2026-06-18) — extra `[gui]` + empaquetado, ADR
 > [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md) (Aceptado; GUI gateada por
 > [#34](https://github.com/complexluise/bib2graph/issues/34)).** El extra **`[gui]` = `fastapi` +
 > `uvicorn`** (ADR [0005](decisiones/0005-dependencias-extras.md)) **ya existe** (`pyproject.toml`),
 > **import perezoso**: el núcleo no importa `fastapi`; solo el adaptador `api/` y el subcomando `b2g
 > gui` (AS-BUILT G3) los usan. Cierra la deuda del prototipo `app/` (instalados a mano, no declarados).
-> **Sigue TARGET (G5):** el **wheel incluye el frontend buildeado** (`src/bib2graph/gui/static/`) → `b2g
-> gui` funciona **sin Node**, y el CI suma un **job de frontend** (lint/test/build JS) + build del
-> frontend en el release (B.3 de Nota 12). El frontend SPA (`frontend/`) ya está **AS-BUILT (G4)**; su
-> build (`src/bib2graph/gui/static/`, gitignoreado) es lo que G5 vendoreará al wheel.
+> **Empaquetado AS-BUILT (G5):** el **wheel incluye el frontend buildeado** (`src/bib2graph/gui/static/`,
+> gitignored) vía `[tool.hatch.build.targets.wheel.force-include]` de hatchling → `b2g gui` funciona
+> **sin Node** desde el wheel; el CI tiene un **job `frontend`** (lint/test/build JS, corre siempre) y
+> `publish-testpypi.yml` hace `pnpm build` **antes** del `uv build` (sin esto el wheel publicado saldría
+> mudo). `release-please.yml` no se tocó. El frontend SPA (`frontend/`) está **AS-BUILT (G4)**; su build
+> es lo que G5 vendorea al wheel. **Con G5, los 5 hitos G1–G5 del MVP GUI están AS-BUILT**; solo queda el
+> gate #34 (validación con un tercero, no construcción).
 
 `python-louvain` se **declara** (núcleo o extra de análisis), nunca usado sin declarar (lección
 7). `notebook`/Jupyter es **solo dev**, jamás runtime (ADR 0005).

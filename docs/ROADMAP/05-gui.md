@@ -1,27 +1,28 @@
-# ROADMAP · GUI local (Hitos G1–G5) — **TARGET, gateado por #34**
+# ROADMAP · GUI local (Hitos G1–G5) — **MVP AS-BUILT (G1–G5), gate #34 pendiente**
 
 > ← Volver al [índice del ROADMAP](README.md)
 
 ---
 
-> ⚠️ **TARGET, NO as-built.** Toda esta epic es la **GUI local "tool for thought"**
+> ✅ **MVP AS-BUILT (2026-06-18) — los 5 hitos de construcción (G1–G5) están construidos.** Toda esta
+> epic es la **GUI local "tool for thought"**
 > ([#34](https://github.com/complexluise/bib2graph/issues/34)), encuadrada por los ADR
 > [0027](../decisiones/0027-pivote-posicionamiento-gui-local.md) (pivote de posicionamiento,
 > Aceptada 2026-06-18) y [0028](../decisiones/0028-arquitectura-gui-api-capa-servicios.md)
 > (arquitectura: capa de servicios neutral + adaptadores, Aceptada 2026-06-18) y la
-> [Nota 12](../Notas/12-arquitectura-gui-encuadre.md) (revisión 2026-06-18). Fecha del plan: 2026-06-18.
+> [Nota 12](../Notas/12-arquitectura-gui-encuadre.md) (revisión 2026-06-18). Construida en
+> `feat/gui-g1-capa-servicios`: G1 (capa de servicios + contrato), G2 (6 lecturas read-only),
+> G3 (API local FastAPI + extra `[gui]` + `b2g gui`), G4 (SPA `frontend/`), G5 (empaquetado: el wheel
+> incluye el frontend buildeado + job CI JS) — todos con banner AS-BUILT abajo.
 >
-> **El gate de éxito/descarte ([#34](https://github.com/complexluise/bib2graph/issues/34)) va AL
-> FINAL, no antes:** un **tercero** (tesista/docente distinto del autor) usa la GUI **sin ayuda**
-> para reproducir/curar el caso `examples/valoraciones/`. Si no lo logra, la dirección de la GUI se
-> **revisa** antes de promoverla a oficial (ADR 0027 §Gate). El roadmap construye el vertical mínimo
-> **hacia** ese gate; los ADR de arquitectura ya están firmados, así que **G1 puede empezar ahora**
-> (no espera al gate; el gate valida el producto terminado).
+> **Lo único pendiente es el gate #34, que NO es construcción:** un **tercero** (tesista/docente
+> distinto del autor) usa la GUI **sin ayuda** para reproducir/curar el caso `examples/valoraciones/`.
+> Si no lo logra, la dirección de la GUI se **revisa** antes de promoverla a oficial (ADR 0027 §Gate).
+> El gate es el **criterio de aceptación de producto** de la epic, AL FINAL — no un hito de build.
 
-> **Diferencia con los tramos 01–04.** Aquellos son **as-built** (hitos construidos). Este es un
-> **plan a futuro**: el alcance, la secuencia y las bifurcaciones para el PO. Las cifras de tests son
-> **objetivos "los justos"**, no snapshots — la cuenta autoritativa la sigue dando el CI
-> (ver README §Disciplina de tests).
+> **Diferencia con los tramos 01–04.** Aquellos son **as-built** (hitos construidos); esta epic
+> **también lo es ahora** (G1–G5). Las cifras de tests de los encuadres previos eran **objetivos "los
+> justos"**, no snapshots — la cuenta autoritativa la sigue dando el CI (ver README §Disciplina de tests).
 
 ## Principio rector (de ADR 0028)
 
@@ -637,6 +638,35 @@ pensamiento**, no de dashboard; (d) **color con significado** (comunidad/curaci�
 
 ## Hito G5 — Empaquetado (wheel con frontend buildeado + CI JS)
 
+> **AS-BUILT (2026-06-18).** Construido en `feat/gui-g1-capa-servicios` (verifier PASA; gate verde).
+> Es el **último hito de construcción** del MVP GUI. **Qué se construyó:**
+>
+> - **Inclusión en el wheel (B-G5-2 = `force-include`, recomendado).** `pyproject.toml`:
+>   `[tool.hatch.build.targets.wheel.force-include]` mapea `src/bib2graph/gui/static` →
+>   `bib2graph/gui/static`, vendoreando el build del frontend (gitignored) al wheel **sin commitearlo**
+>   al VCS. Verificado: `unzip -l` del wheel lista `gui/static/index.html` + assets. **Clone fresco sin
+>   `pnpm build` previo → `uv build` falla ruidosamente** (no wheel mudo). El `.gitignore` no se tocó
+>   (B-G5 §5: `gui/static/` sigue gitignored + build, no commiteado).
+> - **Job CI de frontend (B-G5-3 = siempre, recomendado).** `.github/workflows/ci.yml` suma el job
+>   `frontend` (setup-node 20 + corepack/pnpm + `pnpm install --frozen-lockfile` / `lint` / `test:run` /
+>   `build`), que **corre siempre** (no path-filtered): valida también la costura `frontend/` →
+>   `gui/static/` que alimenta el wheel.
+> - **Fix del canal de release (B-G5-1 = sí, autorizado).** `.github/workflows/publish-testpypi.yml`
+>   inserta `setup-node` + `pnpm install --frozen-lockfile` + `pnpm build` **ANTES** del `uv build` (sin
+>   esto el wheel publicado a TestPyPI saldría mudo). Trusted Publishing intacto; **`release-please.yml`
+>   NO se tocó** (coherente con CLAUDE.md: no bumpear versión ni editar CHANGELOG a mano).
+> - **Tests de empaquetado (los justos).** `tests/unit/test_packaging_config.py`: **2 tests** que
+>   guardan la config `force-include` (clave presente + mapeo correcto). Son **guards de config**, no
+>   construyen un wheel real ni levantan uvicorn — el job JS ya corre las 14 de vitest.
+>
+> **Las 3 bifurcaciones se resolvieron como recomendado:** **B-G5-1** (sí, parchear
+> `publish-testpypi.yml`), **B-G5-2** (`force-include`, no build hook), **B-G5-3** (job CI JS siempre).
+> El contrato externo del CLI no cambió; `release-please.yml` no se tocó → no requiere ADR nuevo.
+>
+> **Con G5, los 5 hitos del MVP GUI (G1–G5) están AS-BUILT** — el build entero está completo. Lo único
+> pendiente es el **gate #34** (un tercero usa la GUI sin ayuda), que **NO es construcción**: es el
+> criterio de aceptación/descarte de producto, al final (§Gate #34 abajo).
+
 **Alcance**
 
 - **El wheel incluye el frontend buildeado** en `src/bib2graph/gui/static/` → `b2g gui` funciona **sin
@@ -660,6 +690,117 @@ el canal pip/uv de ADR 0027).
   E2E del browser).
 
 **Se vuelve posible:** distribuir la GUI a un tercero por pip/uv — **precondición del gate #34**.
+
+### Encuadre de G5 (arquitecto, 2026-06-18) — inclusión en el wheel, orden de build, CI JS
+
+> Encuadre **antes de construir** (mismo formato que G2/G3/G4). El arquitecto **no escribe** el código de
+> build/CI (es del coder); acá define el mecanismo de menor complejidad sobre el build-system **real** del
+> repo y las bifurcaciones para el PO.
+
+**Hallazgo verificado (la trampa de G5).** `gui/static/` **existe** localmente (lo dejó `pnpm build` de
+G4) pero está **gitignored** (`.gitignore` línea 65). El build-system es **hatchling** (`pyproject.toml`
+`[build-system]`), y hatchling **respeta el VCS por defecto**: lo gitignored **NO entra al wheel aunque
+exista en el working tree**. Verificado empíricamente esta sesión: `uv build --wheel` produjo un wheel
+**sin** `gui/static/` (solo aparece `cli/commands/gui.py`). Por lo tanto: **tener `pnpm build` corrido NO
+basta** — hay que decirle a hatchling que **fuerce** la inclusión de ese directorio. Este es el cambio
+central de G5; sin él, el wheel sale mudo y `b2g gui` cae al branch "frontend no construido aún".
+
+**1. Mecanismo de inclusión (recomendado: `force-include` de hatchling).** Es el de **menor
+complejidad** y no toca el flujo de release. En `pyproject.toml`, target wheel:
+
+```toml
+[tool.hatch.build.targets.wheel.force-include]
+"src/bib2graph/gui/static" = "bib2graph/gui/static"
+```
+
+`force-include` mete el directorio en el wheel **ignorando el `.gitignore`** (es exactamente su
+propósito: vendorear artefactos de build no versionados). El `.gitignore` se mantiene como está
+(`gui/static/` sigue sin commitearse). **Trade-off conocido:** si `gui/static/` **no existe** al momento
+de `uv build` (p. ej. en un clone fresco sin haber corrido `pnpm build`), hatchling falla o emite un wheel
+mudo según versión — por eso el **orden de build** (§2) es parte del DoD: `pnpm build` SIEMPRE antes de
+`uv build`. *(Alternativa descartada por más compleja: un build hook custom `hatch_build.py` que invoque
+`pnpm build` dentro de `uv build` — ver §2 trade-offs y B-G5-2.)*
+
+**2. Orden de build (recomendado: step de CI, NO build hook Python↔pnpm).** Quien llena `gui/static/` es
+`pnpm build`; tiene que correr **antes** del `uv build`. Dos formas:
+
+- **(A, recomendado) Step explícito en el workflow** que publica/empaca: `pnpm install --frozen-lockfile`
+  → `pnpm build` → `uv build`. Simple, legible, sin acoplar Python a Node. **Costo:** un `uv build`
+  **local** sin haber corrido `pnpm build` antes da wheel mudo — pero es el flujo natural (G4 ya documenta
+  `pnpm build` como paso del frontend) y se mitiga con la verificación de §5.
+- **(B, NO recomendado) Build hook de hatchling** (`hatch_build.py`) que invoca `pnpm build` desde dentro
+  de `uv build`. **Ventaja:** `uv build` local incluye el frontend sin pasos manuales. **Costo alto:**
+  acopla el build de Python a tener Node+pnpm disponibles (rompe `uv build` en runners/entornos sin Node,
+  contradice "la GUI funciona sin Node" para el *consumidor* —aunque el hook es para el *productor*—, y
+  mete lógica de orquestación de subprocess en el empaquetado). Va contra "menor complejidad".
+
+**Recomiendo A.** El acoplamiento Python↔pnpm de B no paga frente a un step de 2 líneas en el workflow.
+
+**3. Dónde corre el build del frontend en el release.** El repo **sí** tiene un canal de publicación:
+`publish-testpypi.yml` (TestPyPI vía Trusted Publishing, **disparo manual** `workflow_dispatch`), y su
+job hace `uv build` **directo sobre el checkout, sin pnpm** (líneas 34-36). **Ese es hoy el agujero
+operativo:** si se dispara tal cual, el wheel publicado a TestPyPI sale **sin frontend**. El coder debe
+insertar `setup-node` + `pnpm install --frozen-lockfile` + `pnpm build` **antes** del `uv build` en ese
+workflow. `release-please.yml` **no** buildea ni publica artefactos (solo abre el PR de versión/changelog
+y crea el tag+Release); **no se toca** — coherente con CLAUDE.md (no bumpear versión ni editar CHANGELOG a
+mano). El PRD/ADR habla de "build del frontend en el release (B.3)": en el estado real eso aterriza en
+**`publish-testpypi.yml`** (el único que produce wheel distribuible hoy), no en release-please.
+
+**4. Job de CI de frontend (B.3) en `ci.yml`.** Un job nuevo `frontend` (paralelo a `lint`/`test`):
+`setup-node` (Node 20 LTS) + `corepack enable` (pnpm viene pinneado por `packageManager: pnpm@9.15.9` en
+`package.json`) → `pnpm install --frozen-lockfile` → `pnpm lint` (= `tsc --noEmit`) → `pnpm test:run` (las
+14 de vitest) → `pnpm build` (valida que el build no rompe). **Recomendación: que corra siempre**, no solo
+si cambió `frontend/`. Razón: el `pnpm build` también valida la costura `frontend/` → `gui/static/` que
+alimenta el wheel, y un path-filter agrega complejidad (necesita `dorny/paths-filter` o `paths:` que
+interactúa mal con branch protection si el job es required). El job es liviano (~1–2 min con cache de
+pnpm). Si más adelante molesta, se filtra; en MVP, simple > óptimo.
+
+**5. `gui/static/`: ¿commiteado o gitignored+build (actual)?** **Recomiendo mantener gitignored + build
+(estado actual).** El ADR 0028 §5 dice "el build se vendorea al wheel"; lo que importa es que **el wheel
+lo tenga**, no que esté en git. Commitearlo metería un artefacto binario derivado al historial (diffs
+ruidosos, drift entre fuente y build commiteado, conflictos de merge en `assets/*.js` con hash). El
+`force-include` (§1) cubre el requisito sin commitear nada. **No cambiar el `.gitignore`.**
+
+**6. Verificación local (para el coder).** Reproduce el camino del wheel sin Node en el consumidor:
+
+```bash
+cd frontend && pnpm install --frozen-lockfile && pnpm build   # llena src/bib2graph/gui/static/
+cd .. && uv build --wheel
+unzip -l dist/bib2graph-*.whl | grep "gui/static"              # DEBE listar index.html + assets/
+```
+
+Hoy ese `grep` sale **vacío** (verificado esta sesión) — tras el `force-include` debe listar
+`bib2graph/gui/static/index.html` y `bib2graph/gui/static/assets/*`. Smoke end-to-end opcional: instalar
+el wheel en un venv **sin Node** (`pip install dist/bib2graph-*.whl[gui]`) y correr `b2g gui` apuntando a
+un workspace de ejemplo — debe imprimir "Frontend servido desde: …" (no "frontend no construido aún").
+
+**7. Tests (los justos).** El DoD ya pide el smoke correcto: **1 test de empaquetado** que verifique que
+el wheel contiene `gui/static/index.html` (puede inspeccionar el `.whl` con `zipfile`, o assertar que
+`importlib.resources.files("bib2graph") / "gui" / "static" / "index.html"` existe tras instalar). **No**
+E2E del browser, **no** levantar uvicorn real en CI. El job JS (§4) ya corre las 14 de vitest; no duplicar
+en pytest.
+
+**8. Docs a sincronizar.** Ninguna además de este apunte. `AGENTS.md` ya documenta `frontend/` (G4). Si el
+coder agrega el `force-include`, conviene un comentario en `pyproject.toml` (junto al target wheel)
+explicando **por qué** `force-include` y no inclusión normal (porque `gui/static/` es build output
+gitignored) — pero eso lo escribe el coder con el código.
+
+### Bifurcaciones para el PO (G5)
+
+- **B-G5-1 — ¿Se toca `publish-testpypi.yml` (el canal de release que manejás con cuidado)?** El wheel
+  distribuible **hoy** sale de ese workflow, y hoy saldría **sin frontend** porque hace `uv build` directo
+  sin pnpm. Recomiendo insertarle `setup-node` + `pnpm build` antes del `uv build`. **Es el único punto
+  donde G5 toca tu flujo de release** — y es un agujero real, no cosmético. ¿Lo autorizás? (`release-please.yml`
+  no se toca.)
+- **B-G5-2 — Inclusión en el wheel: `force-include` (recomendado) vs build hook Python↔pnpm.** Recomiendo
+  `force-include` (2 líneas en `pyproject.toml`, no acopla Python a Node, el orden de build lo garantiza
+  el workflow). La alternativa (build hook que corre `pnpm build` dentro de `uv build`) hace que
+  `uv build` local incluya el frontend automáticamente, pero **acopla el empaquetado a tener Node**
+  instalado y rompe `uv build` donde no lo haya. ¿`force-include` (simple) o build hook (auto pero
+  acoplado)?
+- **B-G5-3 — Job CI JS: ¿siempre o solo si cambió `frontend/`?** Recomiendo **siempre** (valida también la
+  costura que alimenta el wheel; el filtro agrega complejidad con branch protection). ¿OK, o preferís
+  path-filter para ahorrar ~2 min cuando el PR es solo-Python?
 
 ---
 

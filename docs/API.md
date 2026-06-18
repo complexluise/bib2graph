@@ -223,9 +223,17 @@
 > **no solo lo imprime** —ahora lo **inyecta en el `index.html` servido** (`cli/commands/gui.py::
 > _make_index_response` reemplaza el placeholder `__B2G_TOKEN__`; ruta **`GET /`** sirve el HTML con
 > token **sin** exigir Bearer, y `StaticFiles` —`html=False`— sirve los assets); el frontend lo lee de
-> `window.__B2G_TOKEN__`. El contrato HTTP de los 7 endpoints (§0.2) **no cambia**. Solo queda
-> **TARGET el empaquetado (G5)** —vendorear el build (`src/bib2graph/gui/static/`) al wheel + job CI JS—.
-> Ver §0.2.
+> `window.__B2G_TOKEN__`. El contrato HTTP de los 7 endpoints (§0.2) **no cambia**. Solo quedaba
+> TARGET el empaquetado (G5) —ya AS-BUILT, banner siguiente—. Ver §0.2.
+>
+> **Sincronizado con el empaquetado — Hito G5 del MVP GUI (AS-BUILT, 2026-06-18, ADR
+> [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)):** el wheel **vendorea el build del
+> frontend** (`src/bib2graph/gui/static/`, gitignored) vía `[tool.hatch.build.targets.wheel.force-include]`
+> de hatchling → `b2g gui` funciona **sin Node** desde el wheel; `ci.yml` suma el job `frontend`
+> (lint/test/build JS, corre siempre) y `publish-testpypi.yml` hace `pnpm build` antes del `uv build`
+> (`release-please.yml` no se tocó). **No cambia ningún contrato** (CLI ni HTTP) — no requiere ADR nuevo.
+> **Con G5, los 5 hitos G1–G5 del MVP GUI están AS-BUILT**; lo único pendiente es el **gate #34**
+> (validación con un tercero, criterio de aceptación de producto, **no** es construcción).
 
 ## Convenciones
 

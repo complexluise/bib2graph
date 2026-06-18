@@ -54,22 +54,33 @@
   `_write_artifacts` (mismos GraphML + metrics.json + clusters.csv que `build`); **NO** transiciona el
   `CycleState` ni sella `.corpus_hash` (transversal al lazo, como `enrich`/`curate`). `pyyaml` pasó a
   dependencia del núcleo (import perezoso). **516 tests verdes**. Ver `docs/API.md` §10.
-- **MVP GUI — Hito G4 COMPLETO · SPA `frontend/` contra la API real (AS-BUILT 2026-06-18, ADR
-  [0028](docs/decisiones/0028-arquitectura-gui-api-capa-servicios.md)):** se construye la **SPA nueva
-  en `frontend/`** (paquete JS del monorepo, **`pnpm` —nunca npm**): React 18 + Vite + TS estricto +
-  Cytoscape/fcose + Zustand + Tailwind + TanStack Query, dirección visual **D-2 "Observatorio"**
-  (oscuro, grafo-céntrico, design tokens propios en `tailwind.config.js`). Consume los **7 endpoints
-  reales** de la API G3 (`src/{client,types,store,components,lib,styles}`): 3 columnas (rondas/grafo/
-  candidato) + curar (refetch, sin Louvain client-side) + diff de rondas; cliente tipado que
-  des-envuelve `schema="1"` (`error.code` **string**, header `Bearer`) y tipos que espejan los DTO
-  reales. **Wiring del token (B-G4-3):** `b2g gui` ahora **inyecta el token en el `index.html`
-  servido** (`cli/commands/gui.py::_make_index_response` reemplaza el placeholder `__B2G_TOKEN__`; ruta
-  `GET /` sirve el HTML con token sin exigir Bearer, `StaticFiles` —`html=False`— sirve los assets); el
-  frontend lo lee de `window.__B2G_TOKEN__`. El **build** sale a `src/bib2graph/gui/static/`
-  (`outDir`, `base: "./"`) y **NO se commitea** (gitignoreado; va al wheel en G5). **Tests vitest (14)**;
-  ambos gates verdes (frontend `pnpm lint`/`pnpm test:run`/`pnpm build` + Python). Lo que **sigue
-  TARGET: G5** (empaquetado: vendorear el build al wheel + job CI JS). Ver §`frontend/` abajo,
-  `docs/API.md` §0.2 y `docs/ROADMAP/05-gui.md` §G4.
+- **MVP GUI — Hitos G1–G5 COMPLETOS · build entero del MVP (AS-BUILT 2026-06-18, ADR
+  [0028](docs/decisiones/0028-arquitectura-gui-api-capa-servicios.md)):** los 5 hitos de construcción
+  están **AS-BUILT** en `feat/gui-g1-capa-servicios` — G1 (capa de servicios neutral + contrato subido),
+  G2 (6 lecturas read-only en `service/reads.py`), G3 (API local FastAPI + extra `[gui]` + 19º
+  subcomando `b2g gui`), G4 (SPA `frontend/`), G5 (empaquetado). Lo único pendiente es el **gate #34**
+  (un tercero usa la GUI sin ayuda para reproducir/curar `examples/valoraciones/`), que **NO es
+  construcción**: es el criterio de aceptación/descarte de producto de la epic, al final (ADR 0027
+  §Gate). Detalle por hito en `docs/ROADMAP/05-gui.md`.
+  - **G4 — SPA `frontend/`** (paquete JS del monorepo, **`pnpm` —nunca npm**): React 18 + Vite + TS
+    estricto + Cytoscape/fcose + Zustand + Tailwind + TanStack Query, dirección visual **D-2
+    "Observatorio"** (oscuro, grafo-céntrico, design tokens propios en `tailwind.config.js`). Consume los
+    **7 endpoints reales** de la API G3 (`src/{client,types,store,components,lib,styles}`): 3 columnas
+    (rondas/grafo/candidato) + curar (refetch, sin Louvain client-side) + diff de rondas; cliente tipado
+    que des-envuelve `schema="1"` (`error.code` **string**, header `Bearer`) y tipos que espejan los DTO
+    reales. **Wiring del token (B-G4-3):** `b2g gui` **inyecta el token en el `index.html` servido**
+    (`cli/commands/gui.py::_make_index_response` reemplaza el placeholder `__B2G_TOKEN__`; ruta `GET /`
+    sirve el HTML con token sin exigir Bearer, `StaticFiles` —`html=False`— sirve los assets); el frontend
+    lo lee de `window.__B2G_TOKEN__`. El **build** sale a `src/bib2graph/gui/static/` (`outDir`,
+    `base: "./"`) y **NO se commitea** (gitignoreado). **Tests vitest (14).**
+  - **G5 — empaquetado:** el wheel **vendorea el build del frontend** vía
+    `[tool.hatch.build.targets.wheel.force-include]` de hatchling (`src/bib2graph/gui/static` →
+    `bib2graph/gui/static`) → `b2g gui` funciona **sin Node** desde el wheel; clone fresco sin `pnpm
+    build` previo → `uv build` **falla ruidosamente** (no wheel mudo). `ci.yml` suma el job **`frontend`**
+    (setup-node 20 + pnpm `install`/`lint`/`test:run`/`build`, corre siempre); `publish-testpypi.yml`
+    hace `pnpm build` **antes** del `uv build` (Trusted Publishing intacto, `release-please.yml` no se
+    tocó). `tests/unit/test_packaging_config.py` (**2 tests**) guarda la config `force-include`. Ver
+    §`frontend/` abajo, `docs/API.md` §0.2 y `docs/ROADMAP/05-gui.md` §G5.
 - **#88 — preprocesamiento automático en la ingesta (AS-BUILT 2026-06-18, ADR
   [0031](docs/decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** `normalize` + dedup
   fuzzy corren **automáticamente** en `seed`/`seed_from_bib`/`chain`/`restore` (helper
@@ -426,8 +437,8 @@ src/bib2graph/
                        # + routers/curate.py (POST); security.py = token Bearer efímero; deps.py = workspace
                        # singleton + require_token (401) + WriteLock global; envelopes.py = mapeo código→HTTP
                        # (0→200,1→400,2→422,3→501,4→502,5→409; inesperado→500 INTERNAL_ERROR), reusa
-                       # service.build_envelope/code_for. La SPA (frontend/, G4) y el empaquetado (G5) siguen
-                       # TARGET. API.md §0.2.
+                       # service.build_envelope/code_for. La SPA (frontend/, G4) y el empaquetado del wheel
+                       # (G5: force-include) están AS-BUILT; solo queda el gate #34 (validación, no build). API.md §0.2.
   stores/              # DuckDBStore (núcleo, por defecto: biblioteca viva);
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
@@ -463,7 +474,7 @@ Query), dirección visual **D-2 "Observatorio"** (oscuro, grafo-céntrico; desig
 `tailwind.config.js`).
 
 ```
-frontend/                       # NO va al wheel; su build (gui/static/) sí, en G5
+frontend/                       # NO va al wheel; su build (gui/static/) sí (vendoreado vía force-include, G5)
   package.json                  # packageManager: pnpm@…; scripts dev/build/test:run/lint
   pnpm-lock.yaml                # lockfile reproducible
   vite.config.ts                # outDir → ../src/bib2graph/gui/static ; base "./" ; alias @ → frontend/src
@@ -475,7 +486,7 @@ frontend/                       # NO va al wheel; su build (gui/static/) sí, en
 Comandos (desde `frontend/`): **`pnpm lint`** (`tsc --noEmit`) · **`pnpm test:run`** (vitest, 14) ·
 **`pnpm build`** (`tsc --noEmit && vite build` → escribe `src/bib2graph/gui/static/`). El **alias `@`**
 resuelve a `frontend/src/`. El **build output** (`src/bib2graph/gui/static/`) está **gitignoreado**
-(no se commitea; lo vendorea el wheel en G5). El cliente consume los 7 endpoints reales de la API G3
+(no se commitea; lo vendorea el wheel vía `force-include`, G5 AS-BUILT). El cliente consume los 7 endpoints reales de la API G3
 (`docs/API.md` §0.2): des-envuelve el envelope `schema="1"`, ramea por `error.code` (**string**) y
 manda `Authorization: Bearer <token>` (token leído de `window.__B2G_TOKEN__`, inyectado por `b2g gui`
 en el `index.html` servido).
