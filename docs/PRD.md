@@ -363,9 +363,9 @@ precisada por el ADR [0015](decisiones/0015-corpus-tabular-backend.md):
   persistencia de 1.0 (DuckDB nativo lo es). Reabrible solo si aparece demanda real, como hito nuevo.
 
 Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.2), `API.md` (§1, §4) y
-`ROADMAP.md` (Hitos 1.5/3). El estado de construcción (Hitos 0–6 + 1.5 terminados; v0.2 cubre el
-**flujo**, con la **tanda de remediación R1–R5 pendiente** antes de los Hitos 7–11) vive en el
-`ROADMAP.md`.
+`ROADMAP.md` (Hitos 1.5/3). El estado de construcción —**Hitos 0–9 + 1.5 terminados** y la **tanda de
+remediación R1–R5 completa** (2026-06-16)— vive en el `ROADMAP.md`: el terreno **pre-GUI está completo**
+(Hito 10 viz absorbido en la epic GUI #34; Hito 11 Zotero/Neo4j descartado, PO 2026-06-17).
 
 ## 9. Criterios de "V1 hecha"
 
@@ -397,10 +397,13 @@ Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.
 
 ## 11. Próximos pasos
 
-> ⚠️ **Corrección 2026-06-15:** el punto 1 es **planning histórico ya saldado** (los ADR 0007–0021
+> ⚠️ **Corrección 2026-06-17:** el punto 1 es **planning histórico ya saldado** (los ADR 0007–0021
 > están escritos). Donde dice "tensiones a v2", leer **"tensiones RETIRADAS del producto"** (ADR
-> 0022); el thesaurus es **determinista sin fallback fuzzy/LLM** (ADR 0011 enmendado). El próximo
-> trabajo real es la **tanda de remediación R1–R5** del [`ROADMAP.md`](ROADMAP/README.md).
+> 0022); el thesaurus es **determinista sin fallback fuzzy/LLM** (ADR 0011 enmendado). La **tanda de
+> remediación R1–R5 ya está completa** (2026-06-16) y, sobre ella, los **Hitos 1–9 están construidos**
+> (ver punto 3, actualizado). El **terreno pre-GUI está completo**: el próximo trabajo real es la
+> **epic GUI #34** (la capa de lectura visual), no más backend. Estado vivo en el
+> [`ROADMAP.md`](ROADMAP/README.md).
 
 1. **Nuevos ADRs** (architect), además del [0007](decisiones/0007-openalex-backbone.md) ya
    redactado: wedge = forrajeo (~~tensiones a v2~~ → **retiradas**, ADR 0022); **biblioteca viva en
