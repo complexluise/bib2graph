@@ -198,6 +198,21 @@
 > snapshot sellado, scent = score de acoplamiento + vecinos, `get_network` = red de la ronda viva
 > (cache por snapshot y `mutated_hubs` diferidos). El resto de la epic GUI (API/`b2g gui`/`frontend/`,
 > G3–G5) **sigue TARGET**. Ver §0.1.
+>
+> **Sincronizado con la API local + `b2g gui` — Hito G3 del MVP GUI (AS-BUILT, 2026-06-18, ADR
+> [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)):** se construye la **API local
+> FastAPI** (`src/bib2graph/api/`, §0.2): adaptador **delgado** sobre `service/` que expone **7
+> endpoints** (6 lecturas de §0.1 + 1 escritura de curación), con **token Bearer efímero** (sin/
+> inválido → **401**) y el **mapeo código→HTTP** del ADR 0028 §7 (`0`→200, `1`→400, `2`→422, `3`→501,
+> `4`→502, `5`→**409**; excepción inesperada → **500** `INTERNAL_ERROR`). Reusa `service.build_envelope`
+> y `service.code_for` (no reimplementa el contrato; el envelope `schema="1"` viaja íntegro en el body).
+> El paquete `api/` **no importa de `cli/`**; el núcleo **no importa `fastapi`** (import perezoso). Sube
+> a `service/curate.py` la **orquestación de accept/reject** (`accept_papers`/`reject_papers`/
+> `curate_paper`, `decided_at` inyectado en la frontera): `run_accept`/`run_reject` del CLI quedan como
+> **shims que delegan** (firma intacta). Entra el **19º subcomando `b2g gui`** (extra `[gui]` = `fastapi`
+> + `uvicorn`; exit 3 si falta; bind `127.0.0.1`; sirve la SPA buildeada si existe — el frontend G4 aún
+> no). **El contrato externo del CLI no cambia** (`test_cli.py` intacto) — no requiere ADR nuevo. La SPA
+> (`frontend/`, G4) y el empaquetado (G5) **siguen TARGET**. Ver §0.2.
 
 ## Convenciones
 
@@ -218,7 +233,7 @@ invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción
 `--workspace`; `--store` fue eliminada en [#75](https://github.com/complexluise/bib2graph/issues/75),
 ver abajo).
 
-**Set de 18 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+**Set de 19 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
 y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
 pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
 [0025](decisiones/0025-enricher-cocitacion-openalex.md); el 14° `init` con el workspace, ADR
@@ -227,7 +242,9 @@ pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
 rehidratación de corpus curado sin red, Ciclo 9a, ADR
 [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md); el 18° `thesaurus` con el
 preprocesamiento automático en la ingesta, #88, ADR
-[0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):
+[0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md); el 19° **`gui`** con la API
+local + frontend, Hito G3 del MVP GUI, ADR
+[0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -374,6 +391,15 @@ preprocesamiento automático en la ingesta, #88, ADR
   ni sella `networks/.corpus_hash`** (mismo criterio que `enrich`/`curate`). Errores accionables:
   YAML malformado / spec inválida → `DataError` (exit 2); falta `python-louvain` → `DependencyError`
   (exit 3).
+- **`gui`** (Hito G3 del MVP GUI, AS-BUILT 2026-06-18, ADR
+  [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md), 19° subcomando): **levanta la API
+  local FastAPI** (§0.2) con `uvicorn` y sirve la SPA buildeada de `gui/static/` si existe (el frontend
+  G4 aún no). Genera un **token Bearer efímero** (`secrets.token_urlsafe(32)`) e imprime URL + token al
+  arrancar. Flags: **`--host`** (default `127.0.0.1`, local-first — no expone red), **`--port`** (default
+  `8765`), **`--no-browser`** (no abre el browser). Requiere el extra **`[gui]`** (`fastapi` + `uvicorn`,
+  import perezoso): si falta → `DependencyError`, **exit 3** con sugerencia `uv sync --extra gui`. **NO
+  transiciona** el `CycleState`. La API es un adaptador delgado sobre `service/` (reusa el envelope
+  `schema="1"` + `code_for`, no reimplementa el contrato); el mapeo código→HTTP y la auth viven en §0.2.
 
 **`--workspace` global (OPCIONAL).** Va en el grupo `b2g`, **antes** del subcomando. Una
 investigación = un **workspace** (carpeta marcada por `workspace.json`; ADR
@@ -616,6 +642,91 @@ inventaron**: `get_paper` expone `authors_raw`/`authors_id` (no objetos autor co
 no emite los 4 paneles cosméticos, `get_network` no entrega `modularity` ni un id de red persistido, y
 `compare_rounds` deja `mutated_hubs=[]` mientras no haya redes por snapshot. El encuadre campo-por-campo
 y los "mock-no-sostenido" están en [`ROADMAP/05-gui.md`](ROADMAP/05-gui.md) §G2.
+
+### 0.2 API local `api/` — la frontera HTTP de la SPA (AS-BUILT G3, ADR 0028)
+
+> **AS-BUILT del Hito G3 del MVP GUI (2026-06-18, ADR
+> [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)).** Documenta una decisión **ya
+> tomada**: la API local es un **adaptador de transporte** sobre `service/` (§0/§0.1). **El contrato
+> externo del CLI no cambia** (`tests/unit/test_cli.py` intacto; envelope `schema="1"`, exit codes 0–5,
+> ADR 0021) — por eso este movimiento **no requiere un ADR nuevo**. Encuadre y bifurcaciones resueltas:
+> [`ROADMAP/05-gui.md`](ROADMAP/05-gui.md) §G3.
+
+`src/bib2graph/api/` es la **API local FastAPI**: un adaptador **delgado** sobre la capa de servicios
+neutral (§0). **No reimplementa lógica ni contrato** —reusa `service.build_envelope` y `service.code_for`—
+y **no importa de `cli/`**; ambos frontends cuelgan de `service/`. El **núcleo no importa `fastapi`**:
+todo `fastapi`/`uvicorn` se importa **perezosamente** dentro de `create_app`/`run_gui`, y vienen en el
+extra **`[gui]`** = `fastapi` + `uvicorn` (§7 de [`ARCHITECTURE.md`](ARCHITECTURE.md)).
+
+**Fábrica de la app.** `create_app(ws, *, token, cors_origins=None) -> FastAPI` (`api/app.py`, re-export
+en `api/__init__.py`) monta los routers, el CORS (default `http://localhost:5173` +
+`http://127.0.0.1:5173`, el Vite dev-server de G4), la seguridad y dos *exception handlers* globales
+(`B2GError` y `Exception`). El `Workspace` se inyecta una sola vez (**singleton por proceso**, no se
+resuelve por request — la resolución ambiente vive en el adaptador CLI `b2g gui`).
+
+**Endpoints (7).** Cada lectura llama a la función homónima de `service/reads.py` (§0.1) y la escritura a
+`service/curate.py`; el resultado se envuelve con `build_ok_response` (envelope `ok=true`, HTTP 200).
+Las lecturas que devuelven lista se envuelven en un dict con clave semántica (`rounds`) para respetar la
+firma `build_envelope(data: dict)`.
+
+| Método | Ruta | Servicio (`service/`) | Forma de `data` |
+|---|---|---|---|
+| GET | `/api/workspace` | `reads.get_workspace(ws)` | dict de estado del workspace (§0.1) |
+| GET | `/api/rounds` | `reads.list_rounds(ws)` | `{"rounds": [...]}` (snapshots + entrada `live`) |
+| GET | `/api/paper/{id}` | `reads.get_paper(ws, id)` | fila del corpus (§0.1) |
+| GET | `/api/paper/{id}/scent` | `reads.get_scent(ws, id)` | score de acoplamiento + vecinos (§0.1) |
+| GET | `/api/network/{kind}` | `reads.get_network(ws, kind)` | `{nodes, edges, metrics}` (§0.1) |
+| GET | `/api/compare?a=&b=` | `reads.compare_rounds(ws, a, b)` | diff de rondas (§0.1) |
+| POST | `/api/paper/{id}/curate` | `curate.curate_paper(ws.library_path, id, decision=…)` | `{accepted_count\|rejected_count, ids}` |
+
+El body del POST es `{"decision": "accepted"|"rejected"}` (modelo Pydantic `CurateRequest`); otra
+`decision` → `DataError` (422). El endpoint de curación toma el **`WriteLock` global serializado** (una
+escritura a la vez, ADR 0028 §6 / ADR 0019) e **inyecta `decided_at` en la frontera API** (`datetime.now(UTC)`;
+R2/ADR 0017) — el servicio nunca llama `datetime.now()`. La curación de un paper **es una mutación
+puntual** y por eso toma `ws.library_path` (la ruta al `.duckdb`), no el workspace completo.
+
+**Autenticación — Bearer token efímero** (`api/security.py`, Nota 12 C.3). El token se genera en el
+arranque de `b2g gui` con `secrets.token_urlsafe(32)` y se inyecta en `create_app`. Cada endpoint
+depende de `require_token` (`api/deps.py`), que lee `Authorization: Bearer <token>` (esquema
+`HTTPBearer(auto_error=False)`) y, si **falta o es inválido**, lanza `HTTPException(status_code=401)`. La
+verificación usa `secrets.compare_digest` (tiempo constante). El **401 de auth es del adaptador HTTP**,
+no del contrato de exit codes 0–5 (la auth no existe en el CLI).
+
+**Mapeo código→HTTP** (`api/envelopes.py`, ADR 0028 §7). Los *exception handlers* convierten la
+excepción en `JSONResponse` con el envelope `schema="1"` íntegro en el body (la SPA lee `error.code`, no
+depende del status); el status sale de `code_for(exc)` (la misma política pura de §0) traducido así:
+
+| Exit code (contrato) | Error | HTTP |
+|---|---|---|
+| 0 | éxito | **200** |
+| 1 | `UsageError` | **400** |
+| 2 | `DataError` | **422** |
+| 3 | `DependencyError` | **501** |
+| 4 | `NetworkError` | **502** |
+| 5 | `StoreError` (bloqueado/corrupto) | **409** |
+| — | excepción **inesperada** (no mapeada por `code_for`) | **500** (`error.code = "INTERNAL_ERROR"`) |
+
+El **500** es deliberadamente distinto del 409: una excepción no mapeada es un **bug interno**, no un
+conflicto de store; devolver 409 sugeriría a la SPA reintentar (`code_for` lanza `TypeError` ante una
+excepción no mapeada y el handler la convierte en 500). El **401 de auth** corta **antes** de llegar a
+este mapeo (es la dependencia `require_token`).
+
+**Operaciones largas (v1, ADR 0028 §6).** Ejecución **síncrona** + lock global serializado; jobs
+async/SSE de progreso **diferidos** (no en v1; el `5`→409 es el caso "store ocupado", el **retry
+cross-process queda diferido** — B-G3-3).
+
+**Migración de la orquestación de curación a `service/`.** Con G3, `service/curate.py` **sube desde
+`cli/`** la orquestación de `accept`/`reject`: expone `accept_papers(store_path, ids, *, by, decided_at)`,
+`reject_papers(...)` (gemelas) y `curate_paper(store_path, paper_id, *, decision, by, decided_at)` (wrapper
+de un solo paper que valida `decision ∈ {accepted, rejected}`). Todas verifican que los ids existan
+(`DataError` si faltan), abren el store con `_open_writable` (`StoreLockedError`/`OSError` → `StoreError`)
+e **inyectan `decided_at`** desde la frontera. **`run_accept`/`run_reject` (CLI) quedan como shims que
+delegan**, con su firma intacta (`by="cli"`, `decided_at` inyectado), así que `test_cli.py` no cambia.
+
+**Subcomando `b2g gui`.** Ver [`ARCHITECTURE.md`](ARCHITECTURE.md) §6.3 y §convenciones CLI (19°
+subcomando): levanta `uvicorn.run` sobre `create_app`, sirve la SPA buildeada de `gui/static/` **si
+existe** (frontend G4 aún no), imprime URL + token, bind `127.0.0.1` (default puerto 8765). Falta del
+extra `[gui]` → `DependencyError` (exit 3, mensaje accionable `uv sync --extra gui`).
 
 ---
 

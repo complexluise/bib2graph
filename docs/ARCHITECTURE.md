@@ -65,8 +65,10 @@ biblioteca viva en DuckDB es el sustrato que lo sostiene entre corridas.
 > [0027](decisiones/0027-pivote-posicionamiento-gui-local.md)/[0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)
 > (Aceptados; GUI gateada por [#34](https://github.com/complexluise/bib2graph/issues/34)).** La **capa
 > de servicios neutral `src/bib2graph/service/` ya existe** (G1: contrato subido desde `cli/`; G2:
-> 6 lecturas read-only en `service/reads.py`, AS-BUILT 2026-06-18). La **API local** (FastAPI) y la
-> **SPA** (`frontend/`) **siguen TARGET, NO implementadas** (§4.4). Sobre ese núcleo + costuras se
+> 6 lecturas read-only en `service/reads.py`, AS-BUILT 2026-06-18) y la **API local FastAPI**
+> (`src/bib2graph/api/`) **ya está construida** (G3, AS-BUILT 2026-06-18: 7 endpoints + token Bearer +
+> mapeo código→HTTP + 19º subcomando `b2g gui`). La **SPA** (`frontend/`, G4) y el **empaquetado** (G5)
+> **siguen TARGET, NO implementados** (§4.4). Sobre ese núcleo + costuras se
 > montan **tres frontends de frontera** — **CLI**
 > (`b2g`, Click, la columna agente-native, ADR 0010/0021) · **API local** (FastAPI, opt-in `[gui]`) ·
 > **SPA** (frontend "tool for thought" en `frontend/`). Los tres **convergen en una capa de servicios
@@ -356,48 +358,57 @@ post-V1 (`[neo4j]`): un destino más, **ya no el sustrato** (ADR 0002).
 > la **única** unidad canónica y un `.duckdb` legacy se adopta con `b2g init .` (ver ADR 0029,
 > enmienda 2026-06-17).
 
-### 4.4 `LocalApiServer` / API local (costura opt-in, `[gui]`) — `TARGET`, NO implementado
+### 4.4 `LocalApiServer` / API local (costura opt-in, `[gui]`) — `AS-BUILT (G3)`
 
-> **PARCIALMENTE CONSTRUIDO (2026-06-18) — ADR
+> **AS-BUILT (2026-06-18) — Hito G3 del MVP GUI, ADR
 > [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md) (Aceptado; GUI gateada por
 > [#34](https://github.com/complexluise/bib2graph/issues/34)).** La **capa de servicios neutral
-> `src/bib2graph/service/` YA existe**: G1 subió el contrato (envelope/errores/`code_for`, §0 de
-> [`API.md`](API.md)) y **G2 (AS-BUILT 2026-06-18) construyó las 6 lecturas read-only de la SPA** en
-> `service/reads.py` —`get_workspace`/`list_rounds`/`get_paper`/`get_scent`/`get_network`/
-> `compare_rounds`, cada una sobre un `Workspace` resuelto (ADR 0029), devolviendo `dict` serializable o
-> `B2GError`, sin red/mutación/transición— justamente las lecturas que el CLI nunca expuso (ver
-> [`API.md`](API.md) §0.1 y [`ROADMAP/05-gui.md`](ROADMAP/05-gui.md) §G2). Lo que **sigue TARGET, NO
-> construido**: la **API** (`src/bib2graph/api/`, FastAPI), el subcomando **`b2g gui`** y la **SPA**
-> (`frontend/`) — no se construyen hasta validar el caso real con un tercero (ADR 0027). El prototipo
-> `app/server/` es *throwaway* (referencia), con un `envelope()` propio que se **retira** a favor del
-> contrato neutral. El resto de esta sección describe el diseño **objetivo** de esa frontera de
-> servidor.
+> `src/bib2graph/service/` existe** (G1: contrato subido; G2: 6 lecturas en `service/reads.py`) y la
+> **API local FastAPI `src/bib2graph/api/` ya está construida** (G3): adaptador delgado que expone los
+> **7 endpoints** (6 lecturas + 1 curación), con **token Bearer efímero** y el **mapeo código→HTTP** del
+> ADR 0028 §7 (abajo). Entra el **19º subcomando `b2g gui`** (§6.3) y el extra **`[gui]`** (§7). Lo que
+> **sigue TARGET, NO construido**: la **SPA** (`frontend/`, G4) y el **empaquetado** del wheel con el
+> frontend buildeado + CI JS (G5) — no se construyen hasta validar el caso real con un tercero (ADR
+> 0027, gate #34). El prototipo `app/server/` (con su `envelope()` propio duplicado) es *throwaway* y se
+> **retira** a favor del contrato neutral. Contrato exacto de la API en [`API.md`](API.md) §0.2.
 
 La **API local** es una **costura nueva de servidor** (no del núcleo): un adaptador **delgado** sobre
 la capa de servicios neutral `src/bib2graph/service/`, en `src/bib2graph/api/` (FastAPI). No
-reimplementa lógica ni contrato: **reusa el mismo envelope `schema="1"` y la jerarquía de errores
-`B2GError`** que `service/` sube desde `cli/`, y traduce el **código del contrato a HTTP status**.
+reimplementa lógica ni contrato: **reusa `service.build_envelope` (`schema="1"`), la jerarquía
+`B2GError` y el mapeo puro `service.code_for`** que `service/` sube desde `cli/`, y traduce el **código
+del contrato a HTTP status**. **`api/` NO importa de `cli/`** (ambos cuelgan de `service/`).
 
-- **Local-first, sin hosting:** bind a **`127.0.0.1`** + **token efímero** (no expone red; ADR 0027).
+- **Fábrica de la app (AS-BUILT G3):** `create_app(ws, *, token, cors_origins=None)` (`api/app.py`)
+  monta los routers (`routers/reads.py` con los 6 GET, `routers/curate.py` con el POST), CORS y dos
+  *exception handlers* globales (`B2GError` + `Exception`). El `Workspace` se inyecta como **singleton
+  por proceso** (la resolución ambiente vive en `b2g gui`).
+- **Local-first, sin hosting:** bind a **`127.0.0.1`** + **token Bearer efímero** (no expone red; ADR
+  0027). Sin token / token inválido → **401** (dependencia `require_token`, `api/deps.py` + `secrets.compare_digest`).
 - **Import perezoso:** el núcleo **no importa `fastapi`/`uvicorn`**; solo el adaptador API y el
-  subcomando `b2g gui` los importan, y vienen en el extra **`[gui]`** (§7).
-- **Funciones de lectura que el CLI nunca expuso (AS-BUILT G2):** `service/reads.py` ya añade las
-  lecturas que la SPA necesita y no mapean 1:1 a subcomandos —`get_workspace`, `list_rounds`,
-  `get_paper`, `get_scent`, `get_network` (por kind, ronda viva), `compare_rounds` (diff de rondas, el
-  diferenciador)— por eso la convergencia es en **servicios**, no en **comandos**. La API (TARGET) las
-  consumirá vía HTTP. Ver [`API.md`](API.md) §0.1.
-- **Mapeo código→HTTP** (adaptador API, el envelope viaja igual en el body — la SPA lee `error.code`,
-  no depende del status): `0`→200 · `1` (uso)→400 · `2` (datos)→422 · `3` (dependencia)→501 · `4`
-  (red)→502 · `5` (store bloqueado/corrupto)→409/503.
+  subcomando `b2g gui` los importan (dentro de `create_app`/`run_gui`), y vienen en el extra **`[gui]`** (§7).
+- **Funciones de lectura que el CLI nunca expuso (AS-BUILT G2, servidas por la API en G3):**
+  `service/reads.py` añade las lecturas que la SPA necesita y no mapean 1:1 a subcomandos —`get_workspace`,
+  `list_rounds`, `get_paper`, `get_scent`, `get_network` (por kind, ronda viva), `compare_rounds` (diff de
+  rondas, el diferenciador)— por eso la convergencia es en **servicios**, no en **comandos**. Ver
+  [`API.md`](API.md) §0.1/§0.2.
+- **Escritura — curación (AS-BUILT G3):** `POST /api/paper/{id}/curate` llama a `service/curate.py`
+  (`curate_paper`, que sube desde `cli/` la orquestación de accept/reject; `run_accept`/`run_reject`
+  quedan como shims que delegan). Toma el **WriteLock global serializado** e inyecta `decided_at` en la
+  frontera API (R2/ADR 0017).
+- **Mapeo código→HTTP (AS-BUILT G3)** (`api/envelopes.py`; el envelope viaja igual en el body — la SPA
+  lee `error.code`, no depende del status): `0`→200 · `1` (uso)→400 · `2` (datos)→422 · `3`
+  (dependencia)→501 · `4` (red)→502 · `5` (store bloqueado/corrupto)→**409**. **Excepción inesperada**
+  (bug interno, no mapeada por `code_for`) → **500** (`error.code = "INTERNAL_ERROR"`) — NO 409, para no
+  sugerirle a la SPA reintentar.
 - **Operaciones largas (v1):** `seed`/`enrich`/`build` bloquean (red, Louvain) y el store es
   **single-writer** (ADR [0019](decisiones/0019-concurrencia-diferida.md)). La API v1 es **síncrona** +
-  **lock global serializado** (una escritura a la vez). **Jobs async/SSE y reabrir 0019 quedan
-  diferidos** (no en v1).
+  **lock global serializado** (una escritura a la vez). **Jobs async/SSE, retry cross-process y reabrir
+  0019 quedan diferidos** (no en v1).
 
-El **frontend SPA** vive en `frontend/` (monorepo Vite/TS); su build se **vendorea** a
-`src/bib2graph/gui/static/` y **va al wheel** (la GUI funciona sin Node). El subcomando **`b2g gui`**
-(ver §6.3) es el adaptador de "arranque local": levanta uvicorn sobre la API, sirve los assets
-pre-build y abre el browser.
+El **frontend SPA** (`frontend/`, monorepo Vite/TS) y el empaquetado del wheel **siguen TARGET (G4/G5)**:
+su build se **vendoreará** a `src/bib2graph/gui/static/` y **irá al wheel** (la GUI funcionará sin Node).
+El subcomando **`b2g gui`** (ver §6.3, **AS-BUILT G3**) es el adaptador de "arranque local": levanta
+uvicorn sobre la API, sirve los assets pre-build **si existen** (el frontend G4 aún no) y abre el browser.
 
 ## 5. Flujo de datos (ciclo iterativo, no pipeline lineal)
 
@@ -527,11 +538,13 @@ trabajo posterior, pero la API se **diseña con estos principios desde el hito 1
    faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` mediante un
    **pre-check `hasattr` en el borde** (p. ej. `chain.py` antes del `Forager`). Ver ADR 0021 §D.
 
-Son **18 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
+Son **19 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
 `inspect`, `validate`, `accept`, `reject`, **`monitor`**, **`enrich`**, **`init`**, **`curate`**,
-**`networks`**, **`restore`**, **`thesaurus`**); el 18° **`thesaurus`** —único paso de
+**`networks`**, **`restore`**, **`thesaurus`**, **`gui`**); el 18° **`thesaurus`** —único paso de
 normalización explícito— lo sumó el ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)
-(#88, 2026-06-18). `build`/`export` están
+(#88, 2026-06-18), y el 19° **`gui`** —arranque de la API local— lo sumó el Hito G3 del MVP GUI (ADR
+[0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md), AS-BUILT 2026-06-18, abajo).
+`build`/`export` están
 **separados** y el `CycleState` transiciona automáticamente por comando (ADR 0021). El 12°
 **`monitor`** (cleanup pre-v0.3) re-chequea citantes nuevos del corpus (forward chaining) y
 transiciona a `MONITORED`. El 13° **`enrich`** (Hito 8 = Ciclos 8a + 8b, ADR
@@ -575,21 +588,21 @@ el `.duckdb` ante un workspace mal apuntado (falla accionable); los comandos de 
 > `--workspace` (opcional) + resolución ambiente; un `.duckdb` legacy se adopta con `b2g init .`. Ver
 > ADR 0029 / 0021 (enmiendas 2026-06-17).
 
-> **TARGET (2026-06-18) — el CLI es uno de tres frontends de frontera; `b2g gui`, ADR
-> [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md) (Aceptado; gateado por
-> [#34](https://github.com/complexluise/bib2graph/issues/34) — NO implementado).** El CLI deja de ser
-> el único frontend: pasa a ser **un adaptador** (junto con la API local, §4.4) sobre la **capa de
-> servicios neutral** `src/bib2graph/service/`. El contrato (envelope `schema="1"`, jerarquía
-> `B2GError`, mapeo error→exit-code) **sube** de `cli/` a `service/`; el CLI conserva solo Click +
+> **AS-BUILT (2026-06-18) — el CLI es uno de tres frontends de frontera; `b2g gui`, ADR
+> [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md) (Aceptado; GUI gateada por
+> [#34](https://github.com/complexluise/bib2graph/issues/34)).** El CLI deja de ser el único frontend:
+> es **un adaptador** (junto con la API local AS-BUILT, §4.4) sobre la **capa de servicios neutral**
+> `src/bib2graph/service/`. El contrato (envelope `schema="1"`, jerarquía `B2GError`, mapeo
+> error→código) **subió** de `cli/` a `service/` (G1); el CLI conserva solo Click +
 > `emit`/`emit_human` + `sys.exit`. El **contrato externo (`schema="1"`, exit codes 0–5) NO cambia**
-> (enmienda 0021 sin romper el contrato).
+> (enmienda 0021 sin romper el contrato; `test_cli.py` intacto).
 >
-> Entra un subcomando nuevo **`b2g gui`** (levanta uvicorn sobre la API + sirve los assets pre-build
-> del frontend + abre el browser; adaptador de "arranque local"). **Conteo:** hoy el CLI tiene
-> **18 subcomandos** (verificado: 18 `add_command` en `src/bib2graph/cli/__init__.py`, incl.
-> `thesaurus` agregado por ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)),
-> así que `b2g gui` sería el **19º** (consistente con el AS-BUILT de §6.3 —18 incl. `thesaurus`—, el
-> ADR 0028 §3 y la [Nota 12](Notas/12-arquitectura-gui-encuadre.md) punto 6, todos alineados a "18 → 19º").
+> El subcomando **`b2g gui`** (G3, `cli/commands/gui.py`) levanta uvicorn sobre la API local FastAPI
+> (§4.4), sirve los assets pre-build del frontend **si existen** (G4 aún no) y abre el browser; es el
+> adaptador de "arranque local". **Conteo: 19 `add_command`** en `src/bib2graph/cli/__init__.py`
+> (verificado), con `gui` como **19º** subcomando (consistente con la lista AS-BUILT de §6.3 arriba, el
+> ADR 0028 §3 y la [Nota 12](Notas/12-arquitectura-gui-encuadre.md) punto 6). La **SPA** (`frontend/`,
+> G4) y el **empaquetado** del wheel (G5) siguen TARGET.
 
 ## 7. Layout de dependencias (extras)
 
@@ -612,14 +625,15 @@ core         pyarrow, pydantic, networkx, click, tqdm,
 El extra **`[llm]` se elimina** (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)): el
 producto no usa IA generativa, así que no hay cliente LLM ni para forrajeo ni para thesaurus.
 
-> **TARGET (2026-06-18) — extra `[gui]`, ADR
-> [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md) (Aceptado; gateado por
-> [#34](https://github.com/complexluise/bib2graph/issues/34) — NO implementado).** Nuevo extra
-> **`[gui]` = `fastapi` + `uvicorn`** (ADR [0005](decisiones/0005-dependencias-extras.md)), **import
-> perezoso**: el núcleo no importa `fastapi`; solo el adaptador `api/` y el subcomando `b2g gui` los
-> usan. Cierra la deuda actual (instalados a mano en el prototipo `app/`, no declarados). El **wheel
-> incluye el frontend buildeado** (`src/bib2graph/gui/static/`) → `b2g gui` funciona **sin Node**. CI
-> suma un **job de frontend** (lint/test/build JS) + build del frontend en el release (B.3 de Nota 12).
+> **AS-BUILT G3 / TARGET G5 (2026-06-18) — extra `[gui]`, ADR
+> [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md) (Aceptado; GUI gateada por
+> [#34](https://github.com/complexluise/bib2graph/issues/34)).** El extra **`[gui]` = `fastapi` +
+> `uvicorn`** (ADR [0005](decisiones/0005-dependencias-extras.md)) **ya existe** (`pyproject.toml`),
+> **import perezoso**: el núcleo no importa `fastapi`; solo el adaptador `api/` y el subcomando `b2g
+> gui` (AS-BUILT G3) los usan. Cierra la deuda del prototipo `app/` (instalados a mano, no declarados).
+> **Sigue TARGET (G5):** el **wheel incluye el frontend buildeado** (`src/bib2graph/gui/static/`) → `b2g
+> gui` funciona **sin Node**, y el CI suma un **job de frontend** (lint/test/build JS) + build del
+> frontend en el release (B.3 de Nota 12). El frontend SPA (`frontend/`) es G4.
 
 `python-louvain` se **declara** (núcleo o extra de análisis), nunca usado sin declarar (lección
 7). `notebook`/Jupyter es **solo dev**, jamás runtime (ADR 0005).

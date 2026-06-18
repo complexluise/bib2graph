@@ -33,10 +33,11 @@
   explícito), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `sources/equation.py` (capa declarativa de la
   ecuación, 9a), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/` con 18 subcomandos en `cli/commands/`, no un
+  El **CLI `b2g` es real** —paquete `cli/` con 19 subcomandos en `cli/commands/`, no un
   placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9; el 17° `b2g restore`
   rehidrata un corpus curado sin red, Ciclo 9a; el 18° `b2g thesaurus` aplica el thesaurus curado,
-  único paso explícito del preproc, #88, abajo)—.
+  único paso explícito del preproc, #88, abajo; el 19° `b2g gui` levanta la API local FastAPI, Hito G3
+  del MVP GUI, ADR 0028)—.
   **645 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
@@ -268,8 +269,9 @@ El proyecto se gestiona con **uv** (entorno + lockfile + versión de Python). **
 
 - **Setup dev completo:** `uv sync` (crea `.venv`, instala núcleo + dev-deps desde `uv.lock`)
   y `uv run pre-commit install`.
-- **Con una capacidad opcional:** `uv sync --extra bibtex` (el único extra poblado hoy; siembra
-  BibTeX). Sin dev-deps: `uv sync --no-dev`. *(No hay extra `[llm]`: **se eliminó** en la remediación
+- **Con una capacidad opcional:** `uv sync --extra bibtex` (siembra BibTeX) o `uv sync --extra gui`
+  (`fastapi` + `uvicorn` para `b2g gui` / la API local, AS-BUILT G3, ADR 0028) — los dos extras poblados
+  hoy. Sin dev-deps: `uv sync --no-dev`. *(No hay extra `[llm]`: **se eliminó** en la remediación
   R4 — el producto no usa IA generativa, ADR 0022. Tampoco hay extra `[dedup]`: `rapidfuzz` pasó al
   núcleo en #88 porque el dedup es automático en la ingesta, ADR 0031.)*
 - **Agregar dependencias:** `uv add <pkg>` (núcleo) · `uv add --dev <pkg>` (desarrollo) ·
@@ -390,24 +392,36 @@ src/bib2graph/
   networks/            # Projector, Analyzer, NetworkSpec (resolution + extra="forbid"), load_specs (YAML, Hito 9),
                        # NetworkArtifact, Networks, cluster_table (#31)
   exporters/           # GraphML, CSV
-  service/             # CAPA DE SERVICIOS NEUTRAL (ADR 0028, AS-BUILT G1+G2 del MVP GUI): contrato
+  service/             # CAPA DE SERVICIOS NEUTRAL (ADR 0028, AS-BUILT G1+G2+G3 del MVP GUI): contrato
                        # compartido por CLI/API, agnóstico de transporte (sin print/sys.exit/Click/
                        # FastAPI). envelope.py = build_envelope + ENVELOPE_SCHEMA_VERSION; errors.py =
                        # jerarquía B2GError (+ Usage/Data/Dependency/Network/StoreError) + code_for
                        # (mapeo puro error→exit code 0–5). reads.py (G2 ✅) = 6 lecturas read-only de la SPA
                        # sobre un Workspace resuelto: get_workspace/list_rounds/get_paper/get_scent/
                        # get_network/compare_rounds (ronda=snapshot; sin red/mutación/transición; API.md §0.1).
+                       # curate.py (G3 ✅) = orquestación de curación SUBIDA desde cli/: accept_papers/
+                       # reject_papers/curate_paper (toma store_path; decided_at inyectado en la frontera);
+                       # run_accept/run_reject del CLI son shims que delegan (firma intacta). API.md §0.2.
                        # cli/ re-exporta el contrato (subido desde cli/_envelope.py·_errors.py) y conserva
-                       # solo el I/O del adaptador. La migración de la orquestación run_<cmd> sigue TARGET.
+                       # solo el I/O del adaptador. La migración del resto de la orquestación run_<cmd> sigue TARGET.
+  api/                 # API LOCAL FastAPI (ADR 0028, AS-BUILT G3 del MVP GUI): adaptador DELGADO sobre
+                       # service/ (NO importa de cli/; el núcleo NO importa fastapi —import perezoso, extra
+                       # [gui]). app.py = create_app(ws, *, token, cors_origins); routers/reads.py (6 GET)
+                       # + routers/curate.py (POST); security.py = token Bearer efímero; deps.py = workspace
+                       # singleton + require_token (401) + WriteLock global; envelopes.py = mapeo código→HTTP
+                       # (0→200,1→400,2→422,3→501,4→502,5→409; inesperado→500 INTERNAL_ERROR), reusa
+                       # service.build_envelope/code_for. La SPA (frontend/, G4) y el empaquetado (G5) siguen
+                       # TARGET. API.md §0.2.
   stores/              # DuckDBStore (núcleo, por defecto: biblioteca viva);
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
                        # _ingest.py = helper normalize_and_dedup (auto-preproc en la ingesta, ADR 0031);
-                       # cli/commands/ = 18 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
+                       # cli/commands/ = 19 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
                        # init scaffold de workspace —ADR 0029, curate dump/import CSV —#22+#26,
                        # networks capa declarativa YAML —Hito 9, restore rehidrata corpus curado sin
-                       # red →FILTERED —ADR 0030/9a, thesaurus aplica thesaurus curado transversal —#88/ADR 0031).
+                       # red →FILTERED —ADR 0030/9a, thesaurus aplica thesaurus curado transversal —#88/ADR 0031,
+                       # gui levanta la API local FastAPI —Hito G3 del MVP GUI/ADR 0028, extra [gui]).
                        # CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
   workspace.py         # Workspace (init/open/resolve; snapshots_dir/exports_dir/networks_dir;

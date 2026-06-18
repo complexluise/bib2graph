@@ -433,7 +433,7 @@ remediación R1–R5 completa** (2026-06-16)— vive en el `ROADMAP.md`: el terr
 3. ✅ Implementación por hitos en curso (coder): **Hitos 0–6 + 1.5 terminados** (núcleo del corpus
    stateful sobre `TabularBackend`, proyectores/analizadores/export, biblioteca viva en DuckDB,
    fuentes OpenAlex/BibTeX, forrajeo + `Preprocessor` + filtros PRISMA, y el **CLI agente-native
-   `b2g`** — 18 subcomandos (incl. `thesaurus`, ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)), ADR [0021](decisiones/0021-cli-agente-native-contrato.md) +
+   `b2g`** — 19 subcomandos (incl. `thesaurus`, ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md), y `gui`, ADR [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md), Hito G3), ADR [0021](decisiones/0021-cli-agente-native-contrato.md) +
    [0025](decisiones/0025-enricher-cocitacion-openalex.md) (`enrich`, Ciclo 8a) +
    [0029](decisiones/0029-workspace-por-investigacion.md) (`init` + workspace)). Con ello
    v0.2 alcanza las capacidades del **flujo** `seed → … → export`. **El red-team de la

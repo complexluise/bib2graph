@@ -246,6 +246,28 @@ B-G2-1 abajo: G2 define `Round`/`compare_rounds` **sobre snapshots**, no sobre e
 
 ## Hito G3 — API local (FastAPI) + extra `[gui]` + subcomando `b2g gui` (19º)
 
+> **AS-BUILT (2026-06-18).** Construido en `feat/gui-g1-capa-servicios` (verifier PASA, gate verde, 743
+> tests). `src/bib2graph/api/` es la **API local FastAPI** (adaptador delgado sobre `service/`, **no
+> importa de `cli/`**; el núcleo no importa `fastapi` — import perezoso): `app.py`
+> (`create_app(ws, *, token, cors_origins)` monta routers + CORS + handlers globales, workspace
+> singleton), `routers/reads.py` (los **6 GET** de §0.1), `routers/curate.py` (el **POST** de curación),
+> `security.py` (token Bearer efímero `secrets.token_urlsafe`), `deps.py` (workspace singleton +
+> `require_token` 401 + `WriteLock` global), `envelopes.py` (mapeo código→HTTP, reusa
+> `service.build_envelope`/`code_for`). **7 endpoints:** `GET /api/workspace`, `/api/rounds`,
+> `/api/paper/{id}`, `/api/paper/{id}/scent`, `/api/network/{kind}`, `/api/compare?a=&b=`,
+> `POST /api/paper/{id}/curate` (body `{decision}`). Sube a **`service/curate.py`** la orquestación de
+> accept/reject (`accept_papers`/`reject_papers`/`curate_paper`, `decided_at` inyectado en la frontera);
+> `run_accept`/`run_reject` quedan como **shims que delegan** (firma intacta). Entra el **19º subcomando
+> `b2g gui`** (`cli/commands/gui.py`: uvicorn sobre la API, bind `127.0.0.1`, exit 3 si falta `[gui]`,
+> sirve `gui/static/` si existe —frontend G4 aún no—) y el extra **`[gui]` = `fastapi` + `uvicorn`**
+> (`pyproject.toml`). Las **4 bifurcaciones se resolvieron como recomendado** (ver §Bifurcaciones G3
+> abajo): **B-G3-1** (auth = token Bearer efímero; sin/inválido → **401**), **B-G3-2** (código 5 →
+> **409**; excepción inesperada → **500** `INTERNAL_ERROR`, NO 409), **B-G3-3** (**retry cross-process
+> diferido**: v1 síncrona + lock global serializado), **B-G3-4** (curación API toma `ws.library_path`, no
+> el workspace completo: mutar el corpus solo necesita la ruta al `.duckdb`). **El contrato externo del
+> CLI no cambió** (`tests/unit/test_cli.py` intacto) — no requiere ADR nuevo. Contrato exacto de la API:
+> [`API.md`](../API.md) §0.2. El resto de la epic (`frontend/` G4, empaquetado G5) **sigue TARGET**.
+
 **Alcance**
 
 - `src/bib2graph/api/` (**costura opt-in**): FastAPI **delgado** que llama a `service/`, **reusa el
@@ -281,6 +303,25 @@ CLI). Es el transporte que habilita toda la épica D en la SPA (G4).
 - *No testear* uvicorn/el browser de `b2g gui` (plumbing); sí la **función** que arma la app.
 
 **Se vuelve posible:** que la SPA hable HTTP/JSON con el workspace local reusando el contrato.
+
+### Bifurcaciones G3 (resueltas, AS-BUILT 2026-06-18)
+
+Las cuatro se resolvieron como recomendado y quedaron reflejadas en el AS-BUILT del banner y en
+[`API.md`](../API.md) §0.2:
+
+- **B-G3-1 — ¿cómo se autentica la API local?** Resuelto: **token Bearer efímero**
+  (`secrets.token_urlsafe(32)` generado en el arranque de `b2g gui`, header
+  `Authorization: Bearer <token>`, verificación `secrets.compare_digest`). Sin token / token inválido →
+  **401** (dependencia `require_token`, fuera del contrato de exit codes 0–5: la auth no existe en el CLI).
+- **B-G3-2 — código 5 (store) → ¿409 o 503?** Resuelto: **409** (conflicto de store ocupado/corrupto;
+  `503` se descartó). Y una **excepción inesperada** (bug interno, no mapeada por `code_for`) → **500**
+  `INTERNAL_ERROR`, deliberadamente distinto del 409 para no sugerirle a la SPA reintentar.
+- **B-G3-3 — ¿retry de escrituras?** Resuelto: **diferido** — v1 es **síncrona + lock global
+  serializado** (una escritura a la vez, mantiene single-writer ADR 0019); jobs async/SSE y retry
+  cross-process quedan fuera de v1.
+- **B-G3-4 — ¿la curación API toma el workspace o la ruta del store?** Resuelto: **`ws.library_path`**
+  (la ruta al `.duckdb`), no el workspace completo — mutar el corpus paper-a-paper solo necesita el
+  archivo; coherente con la firma de `service/curate.py` (`store_path`, compartida con los shims del CLI).
 
 ---
 
