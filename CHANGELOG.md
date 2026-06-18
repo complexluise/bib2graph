@@ -11,6 +11,35 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.6.0](https://github.com/complexluise/bib2graph/compare/v0.5.0...v0.6.0) (2026-06-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** la opción global --store se elimina por completo del CLI. Pasarla produce el error estándar de Click ("No such option: --store"). El modo degenerado (.duckdb suelto sin workspace.json) deja de resolverse: la única unidad de persistencia es la carpeta con workspace.json. Un .duckdb legacy se adopta con `b2g init .`.
+
+### Features
+
+* **cli:** eliminar --store y el modo degenerado; workspace única forma canónica ([#75](https://github.com/complexluise/bib2graph/issues/75)) ([#85](https://github.com/complexluise/bib2graph/issues/85)) ([a5e46a2](https://github.com/complexluise/bib2graph/commit/a5e46a262081a20ba4841cfebd99fb2c4800211e))
+* **networks:** b2g build --corpus-scope (filtrar redes por curación) ([#56](https://github.com/complexluise/bib2graph/issues/56)) ([#82](https://github.com/complexluise/bib2graph/issues/82)) ([cb3df4b](https://github.com/complexluise/bib2graph/commit/cb3df4baf3c6366272a98984146d2e28a81a8021))
+* **preprocess:** auto normalize+dedup en ingesta, rapidfuzz core, b2g thesaurus ([#88](https://github.com/complexluise/bib2graph/issues/88)) ([#94](https://github.com/complexluise/bib2graph/issues/94)) ([d09aeae](https://github.com/complexluise/bib2graph/commit/d09aeaeac351401ba26df723cc4afa053f61ceff))
+
+
+### Bug Fixes
+
+* **curate:** --dump excluye semillas; agrega --scope y columnas de revisión ([#72](https://github.com/complexluise/bib2graph/issues/72), [#58](https://github.com/complexluise/bib2graph/issues/58), [#59](https://github.com/complexluise/bib2graph/issues/59)) ([#81](https://github.com/complexluise/bib2graph/issues/81)) ([daf268c](https://github.com/complexluise/bib2graph/commit/daf268caa3914e6a77db23b3f700790d26a2004f))
+* **foraging:** backward chaining deja de persistir placeholders fantasma ([#54](https://github.com/complexluise/bib2graph/issues/54)) ([#79](https://github.com/complexluise/bib2graph/issues/79)) ([e26ec2b](https://github.com/complexluise/bib2graph/commit/e26ec2bcbab69dd3d43a10784507b2e3ecbc36dc))
+* **foraging:** forward chaining materializa metadata real ([#78](https://github.com/complexluise/bib2graph/issues/78)) ([#80](https://github.com/complexluise/bib2graph/issues/80)) ([ec640d9](https://github.com/complexluise/bib2graph/commit/ec640d953eb48f772ae7f40d59c21a61da37679e))
+
+
+### Documentation
+
+* ejemplo YAML, clusters.csv solo redes de paper, curación auto opt-in; versiona notas 11/13 ([#73](https://github.com/complexluise/bib2graph/issues/73), [#74](https://github.com/complexluise/bib2graph/issues/74), [#65](https://github.com/complexluise/bib2graph/issues/65)) ([#83](https://github.com/complexluise/bib2graph/issues/83)) ([3e3429e](https://github.com/complexluise/bib2graph/commit/3e3429e226d2f97eb4e762cfe59591625e6507bc))
+* **features:** corregir B3 — el scent es bibliométrico (R4), no frecuencia de enlace ([#91](https://github.com/complexluise/bib2graph/issues/91)) ([8c8e81b](https://github.com/complexluise/bib2graph/commit/8c8e81b74826cb3b7e4b83d47ff3fc423d9c4701))
+* **features:** escenarios BDD/Gherkin por historia de usuario (PRD §7) + freshness PRD ([#87](https://github.com/complexluise/bib2graph/issues/87)) ([cac4c5f](https://github.com/complexluise/bib2graph/commit/cac4c5ffdab2c21757bec7d1007432bdd44cdb0d))
+* **roadmap:** B3 scent — R4 hecho, no pendiente (traza + banner) ([#92](https://github.com/complexluise/bib2graph/issues/92)) ([1a53115](https://github.com/complexluise/bib2graph/commit/1a531152aba3adcc1a329a4284b905172a647717))
+* sanear coherencia de artefactos de entrada (README, conteos, residuos) ([#70](https://github.com/complexluise/bib2graph/issues/70)) ([984edc8](https://github.com/complexluise/bib2graph/commit/984edc83993e28cb70db7fd8dedef63b27ba85da))
+
 ## [0.5.0](https://github.com/complexluise/bib2graph/compare/v0.4.0...v0.5.0) (2026-06-17)
 
 
