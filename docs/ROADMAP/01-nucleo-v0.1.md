@@ -9,11 +9,13 @@
 **Alcance**
 
 - Estructura del paquete y `pyproject.toml` con **núcleo** (`pyarrow`, `pydantic`, `networkx`,
-  `click`, `tqdm`, **`duckdb`**, **`httpx`** como cliente OpenAlex) y extras opt-in (`[bibtex]`,
-  `[zotero]`, `[s2]`, `[neo4j]`, `[viz]`, `[dedup]`, `[llm]`). **La lista canónica de extras vive
-  en `pyproject.toml`** (fuente de verdad); el ADR 0005 fija el *principio* (núcleo liviano +
-  import perezoso), no la lista, que crece por hito. *(El extra `[llm]` se declaró en Hito 0 pero quedó
-  **eliminado** en R4 — ADR 0022: el producto no usa IA generativa.)*
+  `click`, `tqdm`, **`duckdb`**, **`httpx`** como cliente OpenAlex, **`rapidfuzz`** desde #88) y
+  extras opt-in (`[bibtex]`, `[zotero]`, `[s2]`, `[neo4j]`, `[viz]`, `[dedup]`, `[llm]`). **La lista
+  canónica de extras vive en `pyproject.toml`** (fuente de verdad); el ADR 0005 fija el *principio*
+  (núcleo liviano + import perezoso), no la lista, que crece por hito. *(El extra `[llm]` se declaró
+  en Hito 0 pero quedó **eliminado** en R4 — ADR 0022: el producto no usa IA generativa. El extra
+  `[dedup]` también quedó **eliminado** en #88 — ADR 0031: el dedup es automático en la ingesta y
+  `rapidfuzz` pasó al núcleo.)*
 - **Tooling LOCAL desde el día uno** (ADR 0006): `ruff`, `mypy`, `pytest`, `pre-commit` y
   `commitizen` (linter de Conventional Commits + `cz bump --dry-run` para previsualizar el bump).
   SemVer estricto, `CONTRIBUTING.md`. **La automatización de releases (`release-please` + CI/PyPI)

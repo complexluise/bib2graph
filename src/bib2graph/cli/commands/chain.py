@@ -6,6 +6,7 @@ Transiciona el CycleState a FORAGED tras persistir con éxito.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -13,6 +14,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DependencyError, handle_errors
+from bib2graph.cli._ingest import normalize_and_dedup
 from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
@@ -99,17 +101,20 @@ def run_chain(
         # decorador @handle_errors las captura por tipo y emite exit 4.
         # AttributeError genuino se propaga limpio (no se disfraza de exit 3).
 
-        # Merge de candidatos forward materializados en el corpus.
-        # Los IDs backward (ranked.observed_refs) NO van al corpus — se persisten
-        # en la tabla auxiliar ``referenced_but_not_fetched`` (#54, opción B).
-        merged = corpus.merge(ranked.corpus)
         candidates_found = len(ranked.corpus)
-        total_papers = len(merged)
         ranking_preview = [
             {"id": id_, "scent": scent} for id_, scent in ranked.ranking[:10]
         ]
-        merged_backend_close = getattr(merged._backend, "close", None)
-        store.persist(merged)
+        # Merge primero, dedup después sobre el corpus COMPLETO (fix cross-biblioteca, #88).
+        # Los IDs backward (ranked.observed_refs) NO van al corpus — se persisten en la
+        # tabla auxiliar ``referenced_but_not_fetched`` (#54, opción B).
+        # El reloj se fija UNA vez por invocación (R2).
+        ingest_at = datetime.now(UTC)
+        merged = corpus.merge(ranked.corpus)
+        merged_deduped = normalize_and_dedup(merged, applied_at=ingest_at)
+        total_papers = len(merged_deduped)
+        merged_backend_close = getattr(merged_deduped._backend, "close", None)
+        store.persist_replace(merged_deduped)
 
         # #54: persistir IDs backward observados en la tabla auxiliar.
         # El backend del store (DuckDBBackend) ya tiene add_referenced_refs;

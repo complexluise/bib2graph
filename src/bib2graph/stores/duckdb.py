@@ -55,6 +55,24 @@ class DuckDBStore:
         """
         self._backend._upsert_table(corpus.to_arrow())
 
+    def persist_replace(self, corpus: Corpus) -> None:
+        """Reemplaza toda la tabla ``corpus`` con el contenido de ``corpus``.
+
+        Equivale a TRUNCATE + INSERT: el estado en disco queda siendo
+        exactamente el corpus dado, sin residuos de variantes previas.
+        Preserva las tablas hermanas (``loop_state_log``,
+        ``referenced_but_not_fetched``).
+
+        Úsalo en la ruta de ingesta (seed, restore, chain, thesaurus) donde
+        ya tenés el corpus completo y deduplcado en memoria.  Para el caso
+        «acumular papers de una nueva fuente sin dedup cross-biblioteca»,
+        seguí usando ``persist`` (upsert-concat D3).
+
+        Args:
+            corpus: El ``Corpus`` completo y final a persistir.
+        """
+        self._backend.overwrite_corpus(corpus.to_arrow())
+
     def load(self) -> Corpus:
         """Carga el corpus acumulado desde la biblioteca viva.
 

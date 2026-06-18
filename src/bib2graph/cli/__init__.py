@@ -1,6 +1,6 @@
 """cli — CLI agente-native ``b2g`` (Hito 6 + ADR 0029 workspace).
 
-Arma el grupo Click principal, registra los 17 subcomandos y expone
+Arma el grupo Click principal, registra los 18 subcomandos y expone
 ``main()`` como entry point del paquete.
 
 Entry point en ``pyproject.toml``:
@@ -8,7 +8,8 @@ Entry point en ``pyproject.toml``:
 
 Subcomandos:
     init, seed, chain, filter, build, enrich, monitor, export, snapshot,
-    status, inspect, validate, accept, reject, curate, networks, restore.
+    status, inspect, validate, accept, reject, curate, networks, restore,
+    thesaurus.
 
 Cada subcomando lleva:
   - ``--json``: salida JSON estructurada (envelope versionado, §API.md).
@@ -52,6 +53,7 @@ from bib2graph.cli.commands.restore import restore_cmd
 from bib2graph.cli.commands.seed import seed_cmd
 from bib2graph.cli.commands.snapshot import snapshot_cmd
 from bib2graph.cli.commands.status import status_cmd
+from bib2graph.cli.commands.thesaurus import thesaurus_cmd
 from bib2graph.cli.commands.validate import validate_cmd
 
 
@@ -97,7 +99,8 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
     error accionable (exit 1) que sugiere 'b2g init' o '--workspace'.
 
     Subcomandos: init, seed, chain, filter, build, enrich, monitor, export,
-    snapshot, status, inspect, validate, accept, reject, curate, networks, restore.
+    snapshot, status, inspect, validate, accept, reject, curate, networks,
+    restore, thesaurus.
 
     Ejemplo:
         b2g init mi-investigacion
@@ -109,7 +112,7 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
     ctx.obj["workspace"] = workspace
 
 
-# Registrar los 17 subcomandos
+# Registrar los 18 subcomandos
 b2g.add_command(init_cmd)
 b2g.add_command(seed_cmd)
 b2g.add_command(chain_cmd)
@@ -127,6 +130,7 @@ b2g.add_command(reject_cmd)
 b2g.add_command(curate_cmd)
 b2g.add_command(networks_cmd)
 b2g.add_command(restore_cmd)
+b2g.add_command(thesaurus_cmd)
 
 
 def main() -> int:
