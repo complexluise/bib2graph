@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="b2g-token" content="__B2G_TOKEN__" />
+    <title>bib2graph — Observatorio bibliométrico</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      // Inyección del token desde el servidor (b2g gui reemplaza el placeholder)
+      // Si window.__B2G_TOKEN__ no está definido, se usa null (modo dev: el token
+      // se pasa manualmente o desde la variable de entorno VITE_B2G_TOKEN).
+      window.__B2G_TOKEN__ = "__B2G_TOKEN__";
+    </script>
+  </head>
+  <body class="h-full bg-obs-bg text-text-primary font-sans antialiased">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

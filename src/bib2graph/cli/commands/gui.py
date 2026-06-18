@@ -4,6 +4,10 @@ Levanta uvicorn sobre la API local FastAPI, sirve los assets pre-build del
 frontend (si existen en ``src/bib2graph/gui/static/index.html``), e imprime la
 URL con el token efímero.
 
+Wiring del token (G4, B-G4-3): al servir ``index.html``, reemplaza el
+placeholder ``__B2G_TOKEN__`` con el token real.  Los demás assets (JS, CSS,
+etc.) se sirven con ``StaticFiles`` sin modificación.
+
 El import de ``fastapi`` y ``uvicorn`` es **perezoso**: se hace dentro de
 ``run_gui`` para que el núcleo no los importe al arrancar el CLI sin el extra
 ``[gui]``.  Si faltan, lanza ``DependencyError`` (exit 3) con un mensaje
@@ -17,10 +21,40 @@ Flags:
 
 from __future__ import annotations
 
+from typing import Any
+
 import click
 
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._store import resolve_workspace
+
+# Placeholder que el frontend espera en index.html y en window.__B2G_TOKEN__
+_TOKEN_PLACEHOLDER = "__B2G_TOKEN__"
+
+
+def _make_index_response(static_dir: object, token: str) -> object:
+    """Construye una respuesta HTMLResponse con el token inyectado en index.html.
+
+    Lee el ``index.html`` del directorio estático, reemplaza todas las
+    ocurrencias del placeholder ``__B2G_TOKEN__`` con el token efímero y
+    devuelve una ``HTMLResponse`` lista para ser usada como respuesta de
+    un endpoint de FastAPI.
+
+    Args:
+        static_dir: ``pathlib.Path`` del directorio de assets.
+        token: Token efímero generado en el arranque.
+
+    Returns:
+        ``HTMLResponse`` con el HTML modificado.
+    """
+    from pathlib import Path
+
+    from fastapi.responses import HTMLResponse
+
+    index_path = Path(str(static_dir)) / "index.html"
+    html = index_path.read_text(encoding="utf-8")
+    html = html.replace(_TOKEN_PLACEHOLDER, token)
+    return HTMLResponse(content=html)
 
 
 def run_gui(
@@ -35,6 +69,10 @@ def run_gui(
     Verifica que ``fastapi`` y ``uvicorn`` estén instalados **antes** de
     importar ``bib2graph.api`` (import perezoso).  Si faltan → ``DependencyError``
     (exit 3) con sugerencia accionable.
+
+    Cuando el frontend está buildeado (``gui/static/index.html`` existe),
+    inyecta el token en el HTML servido reemplazando el placeholder
+    ``__B2G_TOKEN__`` (G4, B-G4-3).
 
     Args:
         workspace_ctx: Dict ``ctx.obj`` del grupo Click (para ``resolve_workspace``).
@@ -64,7 +102,6 @@ def run_gui(
     token = generate_token()
 
     # Import de la API solo después de verificar que fastapi/uvicorn están disponibles
-    # Servir assets del frontend si existen (G4+); en G3 solo API
     import importlib.resources as _res
     from pathlib import Path
 
@@ -85,9 +122,21 @@ def run_gui(
     app = create_app(ws, token=token, cors_origins=None)
 
     if static_dir is not None:
+        from fastapi import Request
         from fastapi.staticfiles import StaticFiles
 
-        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+        # Ruta raíz: sirve index.html con el token inyectado (B-G4-3)
+        @app.get("/", include_in_schema=False)  # type: ignore[untyped-decorator]
+        async def serve_index(_request: Request) -> Any:
+            """Sirve index.html con el token Bearer inyectado."""
+            return _make_index_response(static_dir, token)
+
+        # Assets estáticos (JS, CSS, imágenes, fuentes)
+        app.mount(
+            "/",
+            StaticFiles(directory=str(static_dir), html=False),
+            name="static",
+        )
         click.echo(f"Frontend servido desde: {static_dir}")
     else:
         click.echo(
