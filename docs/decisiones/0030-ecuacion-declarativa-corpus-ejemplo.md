@@ -274,7 +274,7 @@ El `equation.yaml` del ejemplo es **autodescriptivo** (ecuación + corpus + READ
   Nota 09 dejó abierto sobre estabilidad de la composición de comunidades (se valida en 9b).
 - (−) **Dos modos en `b2g seed`** (`--equation`/`--spec`) **+ comando `restore` nuevo:** más
   ramas de validación de uso y un subcomando más (**17º**). Mitigación: el patrón de modos
-  mutuamente excluyentes ya existe (`curate`, `--workspace`/`--store`); `restore` es inverso de
+  mutuamente excluyentes ya existe (p. ej. `curate` con `--dump`/`--from-csv`); `restore` es inverso de
   `snapshot`.
 - (−) **Datos en git (9b):** se romperá la regla "ningún dato al repo" con una excepción acotada
   (`examples/`). Mitigación: curado, reducido (~100–150 filas), parquet (no `.duckdb`), y una

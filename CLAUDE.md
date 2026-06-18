@@ -22,10 +22,11 @@ Modelo **GitFlow-lite** — detalle en [`AGENTS.md`](AGENTS.md) §Flujo de traba
 ## Reglas que no se negocian
 
 - **uv** para todo (`uv sync`, `uv run …`); no `pip`, no editar `[project.dependencies]` a mano.
-- **Workspace por investigación** (ADR 0029): una investigación = una carpeta. Se arranca con
-  `b2g init <name>` (o `b2g init .`) y, trabajando **dentro** de ella, los comandos se resuelven por
-  ambiente (sin `--store`). `--workspace`/`--store` son opcionales y mutuamente excluyentes; el
-  `.duckdb` suelto sigue válido (workspace degenerado).
+- **Workspace por investigación** (ADR 0029): una investigación = una carpeta con `workspace.json`,
+  **única** unidad canónica. Se arranca con `b2g init <name>` (o `b2g init .`) y, trabajando
+  **dentro** de ella, los comandos se resuelven por ambiente. La opción global `--workspace` es
+  opcional; **`--store` y el modo degenerado del `.duckdb` suelto fueron eliminados (#75, BREAKING)** —
+  un `.duckdb` legacy se adopta con `b2g init .`.
 - **Conventional Commits** estricto. Un PR = una idea, con sus tests.
 - Gate antes de PR: `uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest`.
 - **Leer `docs/ROADMAP/` antes de empezar un hito** (historias del PRD §7, DoD, tests TDD).

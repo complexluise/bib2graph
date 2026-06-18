@@ -112,9 +112,10 @@ Capacidades opcionales como extras (lección de v0: núcleo liviano): `uv sync -
 
 De una ecuación a un GraphML, sobre la biblioteca viva, **sin escribir código**. Una investigación
 = un **workspace** (carpeta autocontenida): se arranca con `b2g init <nombre>` (o `b2g init .`) y,
-trabajando **dentro** de ella, los comandos resuelven el store por ambiente (sin `--store`). El
-`.duckdb` suelto vía `--store` sigue válido (modo degenerado, retrocompat); ver ADR
-[0029](docs/decisiones/0029-workspace-por-investigacion.md). Cada comando acepta `--json` (envelope
+trabajando **dentro** de ella, los comandos resuelven el store por ambiente. La carpeta con
+`workspace.json` es la **única** unidad canónica; un `.duckdb` legacy se adopta con `b2g init .` en su
+carpeta (la opción `--store` y el modo degenerado fueron eliminados en #75, ver ADR
+[0029](docs/decisiones/0029-workspace-por-investigacion.md)). Cada comando acepta `--json` (envelope
 versionado) para orquestar desde un agente:
 
 ```bash

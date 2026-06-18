@@ -281,8 +281,9 @@ class Workspace:
           4. Ninguno → ``WorkspaceNotFoundError``.
 
         El modo degenerado (--store archivo.duckdb suelto) fue eliminado en #75.
-        El flag ``--store`` en el CLI emite exit 1 con mensaje accionable antes de
-        llegar aquí.
+        El flag ``--store`` ya no existe en el CLI: pasarlo produce el error
+        estándar de Click ("No such option"). La única unidad canónica es la
+        carpeta con ``workspace.json``.
 
         Args:
             workspace: Ruta a la carpeta del workspace (--workspace).

@@ -62,11 +62,12 @@ de estados explícita** (`LoopState`: `SEEDED → FORAGED → FILTERED → BUILT
 [0016](decisiones/0016-maquina-estados-lazo.md)): **una investigación = un archivo `.duckdb`**, su
 estado se consulta con `b2g status`.
 
-> **TARGET (propuesto, no as-built) — ADR [0029](decisiones/0029-workspace-por-investigacion.md)
-> (2026-06-16):** "una investigación = un archivo" evolucionaría a "una investigación = un
-> **workspace** (carpeta `workspace.json` + db + redes/snapshots/exports)", con `b2g init` y `--store`
-> opcional vía resolución ambiente. Propuesta pendiente de firma; el `.duckdb` suelto sigue siendo
-> el modelo as-built.
+> **AS-BUILT — ADR [0029](decisiones/0029-workspace-por-investigacion.md) (2026-06-16; enmienda
+> BREAKING #75, 2026-06-17):** "una investigación = un archivo" evolucionó a "una investigación = un
+> **workspace** (carpeta `workspace.json` + db + redes/snapshots/exports)", con `b2g init` + resolución
+> ambiente (`--workspace` opcional > `B2G_WORKSPACE` > walk-up del cwd). La carpeta con
+> `workspace.json` es la **única** unidad canónica: `--store` y el modo degenerado del `.duckdb` suelto
+> fueron **eliminados** (#75); un `.duckdb` legacy se adopta con `b2g init .`.
 
 *El final siguen siendo las redes; lo nuevo es **cómo se llega a ellas** (forrajeo asistido) y
 que **la colección vive** (berry growing).*
