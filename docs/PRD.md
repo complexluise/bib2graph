@@ -131,6 +131,16 @@ lazo en vez de inferir el punto del ciclo a partir del contenido.
 
 No es una herramienta para usuario final no técnico: no hay GUI ni servicio web en V1.
 
+> **ENMIENDA (2026-06-18) — ADR [0027](decisiones/0027-pivote-posicionamiento-gui-local.md)
+> (Aceptada).** El texto de arriba se conserva como historia, pero el alcance **cambia**: entra una
+> **GUI local opt-in para el investigador semi-técnico** (tesista/docente), instalable por **pip/uv**
+> (extra `[gui]`), **local-first** (corre en `127.0.0.1` sobre el workspace local, ADR 0029). El **CLI
+> sigue siendo la columna agente-native** (ADR 0010/0021): la GUI es un frontend **adicional y par**,
+> no un sucesor. **Hosting, servidor MCP y Claude-Web quedan FUERA** (descartados, no diferidos);
+> binario/Tauri diferido a v2. La GUI sigue **gateada por la epic [#34](https://github.com/complexluise/bib2graph/issues/34)**:
+> no se implementa hasta validar un **caso real reproducido por un tercero** (TARGET, no AS-BUILT). La
+> arquitectura está en ADR [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md) y `ARCHITECTURE.md`.
+
 ## 4. Propuesta de valor
 
 - **Consciente, no caja negra.** La ecuación de búsqueda es **ciudadana de primera clase**: se
@@ -230,13 +240,20 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 - **Fallback fuzzy/semántico del thesaurus por LLM/embeddings** → **RETIRADO** (ADR
   [0022](decisiones/0022-producto-sin-ia-generativa.md)/[0011](decisiones/0011-thesaurus-multilingue.md)
   enmendado): el thesaurus es **curado y determinista**; lo que no matchea queda fuera, sin inventar
-  conceptos con un modelo. El **dedup fuzzy determinista** (`rapidfuzz`, extra `[dedup]`, Hito 7) sí
-  queda — no es semántico ni LLM.
+  conceptos con un modelo. El **dedup fuzzy determinista** (`rapidfuzz`, **en el núcleo**, automático en
+  la ingesta — ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md), #88; el extra
+  `[dedup]` se eliminó) sí queda — no es semántico ni LLM.
 - **Resolución de `references_doi` a DOI canónico** (OpenAlex las entrega como URLs internas) y
   fetch de **citantes-con-citas** para co-citación → trabajo del `Enricher`, fuera del primer
   flujo de V1.
 - **Lectura de PDFs full-text** → futuro.
 - **GUI / web / servicio gestionado** → fuera.
+  > **ENMIENDA (2026-06-18) — ADR [0027](decisiones/0027-pivote-posicionamiento-gui-local.md)
+  > (Aceptada).** Se **supersede parcialmente** este punto: entra una **GUI local opt-in** (extra
+  > `[gui]`, `127.0.0.1`, semi-técnicos), gateada por [#34](https://github.com/complexluise/bib2graph/issues/34)
+  > (TARGET; código tras el caso real validado por un tercero). Lo que **sigue fuera**: **web/hosting,
+  > servicio gestionado, servidor MCP y Claude-Web** (descartados); binario/Tauri **diferido a v2**. El
+  > CLI sigue siendo la columna (ADR 0010/0021). Arquitectura: ADR [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md).
 - **WoS / Scopus / RIS / CSV / BibTeX como backbone** → OpenAlex primero; el resto, `Source`
   futura. BibTeX queda como `Source` **secundaria** para sembrar desde *pearls*.
 - **Neo4j** → **DESCARTADO (decisión del PO, 2026-06-17): no se hace.** **Ya no es sustrato** y
@@ -310,7 +327,8 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   (en/es/pt) curado y auditable, para que conceptos equivalentes en distintos idiomas colapsen en
   la red de co-ocurrencia (p. ej. *intercambio ecológico desigual* ≡ *unequal exchange*) y no
   queden dispersos. *(Sin fallback semántico/LLM: el thesaurus es determinista — ADR 0022/0011. El
-  dedup fuzzy determinista de keywords fuera del thesaurus es el Hito 7, `[dedup]`.)*
+  dedup fuzzy determinista de keywords fuera del thesaurus corre automático en la ingesta con
+  `rapidfuzz` en el núcleo — ADR 0031, #88; ya no es el extra `[dedup]`.)*
 - **C3** · Como investigador, quiero aplicar **criterios de inclusión/exclusión** (año, tipo,
   idioma, mínimo de citas) y ver el **conteo en cada filtro**, para curar con trazabilidad
   (estilo flujo PRISMA).
@@ -415,7 +433,7 @@ remediación R1–R5 completa** (2026-06-16)— vive en el `ROADMAP.md`: el terr
 3. ✅ Implementación por hitos en curso (coder): **Hitos 0–6 + 1.5 terminados** (núcleo del corpus
    stateful sobre `TabularBackend`, proyectores/analizadores/export, biblioteca viva en DuckDB,
    fuentes OpenAlex/BibTeX, forrajeo + `Preprocessor` + filtros PRISMA, y el **CLI agente-native
-   `b2g`** — 17 subcomandos, ADR [0021](decisiones/0021-cli-agente-native-contrato.md) +
+   `b2g`** — 19 subcomandos (incl. `thesaurus`, ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md), y `gui`, ADR [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md), Hito G3), ADR [0021](decisiones/0021-cli-agente-native-contrato.md) +
    [0025](decisiones/0025-enricher-cocitacion-openalex.md) (`enrich`, Ciclo 8a) +
    [0029](decisiones/0029-workspace-por-investigacion.md) (`init` + workspace)). Con ello
    v0.2 alcanza las capacidades del **flujo** `seed → … → export`. **El red-team de la
