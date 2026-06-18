@@ -1,6 +1,8 @@
 # 0027 — Pivote de posicionamiento: GUI local opt-in para semi-técnicos
 
-- **Estado:** Propuesta — pendiente de firma del PO ([Nota 12](../Notas/12-arquitectura-gui-encuadre.md))
+- **Estado:** Aceptada — **firmada por el PO (2026-06-18)**. La enmienda al PRD §3/§5.2 se aplica como
+  bloque fechado a partir de la firma. GUI sigue gateada por [#34](https://github.com/complexluise/bib2graph/issues/34)
+  (no se implementa hasta el caso real validado por un tercero).
 - **Fecha:** 2026-06-18
 - **Gatea a:** [0028](0028-arquitectura-gui-api-capa-servicios.md) (arquitectura GUI/API). La
   arquitectura no se baja a `ARCHITECTURE.md` ni se escribe código hasta que este pivote se firme.

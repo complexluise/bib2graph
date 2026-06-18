@@ -39,9 +39,10 @@ Qué se vuelve posible/fácil y qué se vuelve costoso/imposible. Trade-offs hon
 
 > Los ADR se numeran **por orden de creación**, no se reservan en general. **0027** (pivote de
 > posicionamiento GUI) y **0028** (arquitectura GUI/API + capa de servicios) existen ya como
-> *Propuesta* (2026-06-18), derivados de la [Nota 12](../Notas/12-arquitectura-gui-encuadre.md)
-> (revisada 2026-06-18): **0027 gatea 0028** y, al firmarse, enmienda el PRD. Siguen **pendientes de
-> firma del PO**. (El workspace —prerequisito GUI— ya es **0029**, Aceptada/AS-BUILT.)
+> *Aceptada* (firmados 2026-06-18), derivados de la [Nota 12](../Notas/12-arquitectura-gui-encuadre.md)
+> (revisada 2026-06-18): **0027 gatea 0028** y enmienda el PRD §3/§5.2. Son **TARGET** — la GUI sigue
+> gateada por [#34](https://github.com/complexluise/bib2graph/issues/34) (código tras el caso real
+> validado por un tercero). (El workspace —prerequisito GUI— ya es **0029**, Aceptada/AS-BUILT.)
 
 | ADR | Título | Estado |
 |-----|--------|--------|
@@ -71,8 +72,8 @@ Qué se vuelve posible/fácil y qué se vuelve costoso/imposible. Trade-offs hon
 | [0024](0024-orden-d3-columna-secuencia-duckdb.md) | Orden D3 en DuckDB vía columna de secuencia interna (`_seq`) | Aceptada · AS-BUILT (2026-06-16) |
 | [0025](0025-enricher-cocitacion-openalex.md) | `Enricher` opt-in sobre OpenAlex (núcleo): refs→DOI + co-citación; supersede el `[s2]` del DoD del Hito 8 | Aceptada · AS-BUILT COMPLETO (2026-06-16): 8a + 8b → Hito 8 completo |
 | [0026](0026-dedup-fuzzy-determinista.md) | Dedup fuzzy determinista con `rapidfuzz` (autores + keywords, función de librería); `splink` diferido a post-V1 | Aceptada · AS-BUILT (2026-06-16): Hito 7 · **supersedida en parte por [0031](0031-preprocesamiento-automatico-en-ingesta.md)** (2026-06-18): el dedup pasa de función de librería sin subcomando a **automático en la ingesta**; el algoritmo sigue vigente |
-| [0027](0027-pivote-posicionamiento-gui-local.md) | Pivote de posicionamiento: GUI local opt-in para semi-técnicos (gatea 0028) | **Propuesta** (2026-06-18) — pendiente de firma ([Nota 12](../Notas/12-arquitectura-gui-encuadre.md)); enmienda PRD §3/§5.2 al firmar |
-| [0028](0028-arquitectura-gui-api-capa-servicios.md) | Arquitectura GUI/API/frontend: capa de servicios neutral (`service/`) + CLI/API como adaptadores + empaquetado (`[gui]`, wheel con frontend) | **Propuesta** (2026-06-18) — pendiente de firma; gateado por [0027](0027-pivote-posicionamiento-gui-local.md). Sube el contrato (envelope/errores/exit-code) de `cli/` a `service/`; relacionada 0010/0019/0021/0029 |
+| [0027](0027-pivote-posicionamiento-gui-local.md) | Pivote de posicionamiento: GUI local opt-in para semi-técnicos (gatea 0028) | **Aceptada** (firmada 2026-06-18) — enmienda PRD §3/§5.2 (bloque fechado); GUI gateada por [#34](https://github.com/complexluise/bib2graph/issues/34) |
+| [0028](0028-arquitectura-gui-api-capa-servicios.md) | Arquitectura GUI/API/frontend: capa de servicios neutral (`service/`) + CLI/API como adaptadores + empaquetado (`[gui]`, wheel con frontend) | **Aceptada** (firmada 2026-06-18) — **TARGET**, gateado por [0027](0027-pivote-posicionamiento-gui-local.md). Sube el contrato (envelope/errores/exit-code) de `cli/` a `service/`; enmienda 0021, relacionada 0010/0019/0029 |
 | [0029](0029-workspace-por-investigacion.md) | Workspace por investigación: carpeta autocontenida (`workspace.json` + db + redes/snapshots/exports) + resolución ambiente | **Aceptada — AS-BUILT** (2026-06-16; remanentes #32 cerrados 2026-06-17). **Enmienda BREAKING #75 (2026-06-17):** `--store` eliminado del CLI y fin del modo degenerado — la carpeta con `workspace.json` es la única unidad canónica; `.duckdb` legacy se adopta con `b2g init .`. Enmienda 0009/0019/0021; prerequisito GUI (#34) |
 | [0030](0030-ecuacion-declarativa-corpus-ejemplo.md) | Ecuación declarativa (`equation.yaml`, `seed --spec`) + `restore` de corpus curado (sin red) + corpus de ejemplo commiteado (`examples/valoraciones/`) + `seed --from-bib` (BibTeX) + filtro de año | **Aceptada — AS-BUILT** (9a + 9b + Ciclo 10, 2026-06-17): `restore`+`equation.yaml` cargable; `examples/valoraciones/` + gate R2; **`seed --from-bib` + `examples/bibtex/` + filtro de año real (#50 cerrado)**. Enmienda 0029; relacionada 0005/0006/0007/0016/0017/0018; prereq. Ciclo #33 → gate GUI (#34) |
 | [0031](0031-preprocesamiento-automatico-en-ingesta.md) | Preprocesamiento automático en la ingesta (normalize + dedup sobre el corpus completo mergeado, cross-biblioteca); `rapidfuzz` al núcleo (`[dedup]` eliminado); `thesaurus` = único paso explícito (18° subcomando, transversal); `persist_replace`/`overwrite_corpus` | **Aceptada — AS-BUILT** (2026-06-18, #88). **Supersede en parte [0026](0026-dedup-fuzzy-determinista.md)** (invocación del dedup) y la enmienda `[dedup]` de [0005](0005-dependencias-extras.md). Relacionada 0011/0017/0022/0024/0016; revisión asistida de clusters → epic GUI (#34) |

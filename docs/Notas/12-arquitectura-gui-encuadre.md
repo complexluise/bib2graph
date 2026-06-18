@@ -146,3 +146,10 @@ páginas. Antes es overhead; markdown del repo renderiza en GitHub y lo lee el a
 **Pendiente: firma del PO sobre A–G.** Con la firma: el architect redacta los borradores de **ADR
 0027/0028/0029** (estado *Propuesta*), baja el **TARGET** a `ARCHITECTURE.md`/`PRD.md` y crea el
 esqueleto de `docs/user/` **cuando** arranque la GUI. **Sin tocar código** (GUI gateada por #34).
+
+> ✅ **FIRMADO 2026-06-18.** El PO aceptó A–G con el ajuste del bloque de revisión (la convergencia es
+> la **capa de servicios neutral**, no `run_<cmd>`): *"de acuerdo con el plan; acepto que es más
+> superficie, pero es necesario para la adopción"*. **ADR [0027](../decisiones/0027-pivote-posicionamiento-gui-local.md)
+> y [0028](../decisiones/0028-arquitectura-gui-api-capa-servicios.md) → Aceptada.** E (workspace) ya era
+> AS-BUILT (ADR 0029). **Resta** bajar el TARGET a `PRD.md` §3/§5.2 y `ARCHITECTURE.md` (§1, §2, nueva
+> §4.4, §6.3, §7). Sigue **sin tocar código** (GUI gateada por #34).

@@ -1,6 +1,9 @@
 # 0028 — Arquitectura GUI/API/frontend: capa de servicios neutral + adaptadores
 
-- **Estado:** Propuesta — pendiente de firma del PO ([Nota 12](../Notas/12-arquitectura-gui-encuadre.md))
+- **Estado:** Aceptada — **firmada por el PO (2026-06-18)** ("de acuerdo con el plan; acepto que es más
+  superficie, pero es necesario para la adopción"). Es el **TARGET**: GUI gateada por
+  [#34](https://github.com/complexluise/bib2graph/issues/34); el código se construye tras 0027 firmado
+  (ya) y el caso real validado por un tercero.
 - **Fecha:** 2026-06-18
 - **Gateado por:** [0027](0027-pivote-posicionamiento-gui-local.md) (pivote de posicionamiento). No se
   baja a `ARCHITECTURE.md` ni se escribe código hasta que 0027 se firme.
