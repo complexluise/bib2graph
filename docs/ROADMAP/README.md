@@ -195,7 +195,7 @@ Testcontainers). El núcleo es todo `unit`.
 
 ## Índice del ROADMAP
 
-Este ROADMAP se divide en cuatro tramos por grupos de hitos. Este README es el documento
+Este ROADMAP se divide en cinco tramos por grupos de hitos. Este README es el documento
 limpio y actual; el cuerpo de cada hito vive en su archivo:
 
 - **[01 · Núcleo y biblioteca viva (Hitos 0–3 + 1.5)](01-nucleo-v0.1.md)** — andamiaje, `Corpus`,
@@ -210,6 +210,13 @@ limpio y actual; el cuerpo de cada hito vive en su archivo:
 - **[04 · Lo que viene (Hitos 7–11 + costuras futuras)](04-lo-que-viene.md)** — dedup fuzzy,
   `Enricher` de co-citación, `NetworkSpec` YAML; viz (Hito 10 diferido a la GUI #34) y Zotero/Neo4j
   (Hito 11 descartado, PO 2026-06-17). **Lo que viene (hacia v1.0).**
+- **[05 · GUI local (Hitos G1–G5)](05-gui.md)** — **MVP AS-BUILT (G1–G5), gate #34 pendiente** (ADR
+  [0027](../decisiones/0027-pivote-posicionamiento-gui-local.md)/[0028](../decisiones/0028-arquitectura-gui-api-capa-servicios.md),
+  Aceptados 2026-06-18): capa de servicios neutral + CLI/API adaptadores (G1), lecturas de servicio
+  (G2), API local FastAPI + extra `[gui]` + `b2g gui` (G3), frontend nuevo SPA (G4), empaquetado +
+  CI JS (G5) — **los 5 hitos de build están AS-BUILT**. Lo único pendiente es el **gate del tercero
+  (#34)**, que **no es construcción** (criterio de aceptación de producto, al final). La GUI **es** la
+  capa de lectura visual (épica D; Hito 10 viz absorbido aquí).
 
 
 ## Trazabilidad historias ↔ hitos (resumen)
@@ -228,11 +235,11 @@ limpio y actual; el cuerpo de cada hito vive en su archivo:
 | C1 dedup/normalización autores/inst. | 5 ✅ (det.) + 7 ✅ (fuzzy) | `normalize` conservador + dedup fuzzy `rapidfuzz` (autores; keywords en C2; instituciones diferidas), ADR 0026 |
 | C2 thesaurus multilingüe | 5 ✅ + 7 ✅ (fuzzy) | `apply_thesaurus` (sobrescribe `keywords_id` desde `keywords_raw`); dedup fuzzy de keywords fuera del thesaurus en Hito 7 (`deduplicate_keywords`, ADR 0026) |
 | C3 filtros incl/excl con conteo | 5 ✅ (lógica) + 6 ✅ (CLI `filter`) | flujo PRISMA; marcan `rejected`, no borran; `b2g filter` con conteos por paso |
-| C4 aceptar/rechazar + biblioteca viva | 1 (modelo) + 1.5 (backend) + 3 (persist DuckDB) + 6 ✅ (CLI `accept`/`reject`) | `accept`/`reject` ahora subcomandos CLI (`b2g accept/reject --ids`); biblioteca viva = DuckDB nativo; `curate`+GUI = futuro. *(Sincronización con Zotero descartada —PO 2026-06-17, ex-Hito 11—, no planificada.)* |
-| D1 cinco proyecciones | 2 + 8 ✅ (co-citación) | co-citación end-to-end vía `b2g enrich` (8b); `Networks.quick` → 4/5 redes según `cited_by_id` |
-| D2 métricas y comunidades | 2 | |
-| D3 asortatividad + composición + proxy | 2 | |
-| D4 export GraphML/CSV | 2 | |
-| E1 snapshot reproducible | 1 + 6 ✅ | `Corpus.snapshot` + `b2g snapshot` |
-| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) + cleanup pre-v0.3 ✅ (`monitor`) + 8 ✅ (`enrich`) + workspace ✅ (`init`) | `b2g` **17 subcomandos** (Hito 6 entregó 11; `monitor` se sumó en el cleanup pre-v0.3 → `MONITORED`; `enrich` en el Hito 8 —refs→DOI + co-citación, `--max-citing`—, ADR 0025, sin transición; `init` con el workspace, ADR 0029), envelope `--json` versionado, exit 0–5 (ADR 0021) |
+| C4 aceptar/rechazar + biblioteca viva | 1 (modelo) + 1.5 (backend) + 3 (persist DuckDB) + 6 ✅ (CLI `accept`/`reject`) + **G4 (GUI, TARGET #34)** | `accept`/`reject` subcomandos CLI (`b2g accept/reject --ids`) + `b2g curate` (CSV); biblioteca viva = DuckDB nativo. La **curación visual** va en la **GUI ([05](05-gui.md) G4, TARGET gateado por #34)**. *(Sincronización con Zotero descartada —PO 2026-06-17, ex-Hito 11—, no planificada.)* |
+| D1 cinco proyecciones | 2 + 8 ✅ (co-citación) + **G2/G4 (lectura visual, TARGET #34)** | co-citación end-to-end vía `b2g enrich` (8b); `Networks.quick` → 4/5 redes según `cited_by_id`. La **lectura visual** de las redes va en la **GUI ([05](05-gui.md), TARGET #34)** — Hito 10 viz absorbido ahí |
+| D2 métricas y comunidades | 2 + **G2/G4 (visual, TARGET #34)** | servidas y visualizadas por la GUI |
+| D3 asortatividad + composición + proxy | 2 + **G2/G4 (visual, TARGET #34)** | composición por comunidad visualizada por la GUI |
+| D4 export GraphML/CSV | 2 | la GUI lee en pantalla; el export a archivo sigue en el núcleo (Gephi/VOSviewer) |
+| E1 snapshot reproducible | 1 + 6 ✅ + **G2/G4 (diff de rondas, TARGET #34)** | `Corpus.snapshot` + `b2g snapshot`; el **diff de rondas** ("git de la investigación", diferenciador ADR 0027) se sirve/visualiza en la GUI ([05](05-gui.md)) |
+| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) + cleanup pre-v0.3 ✅ (`monitor`) + 8 ✅ (`enrich`) + workspace ✅ (`init`) + #88 ✅ (`thesaurus`) + **G1/G2/G3 ✅ (contrato neutral + lecturas + API)** | `b2g` **19 subcomandos** (Hito 6 entregó 11; `monitor` en el cleanup pre-v0.3 → `MONITORED`; `enrich` en el Hito 8 —refs→DOI + co-citación, `--max-citing`—, ADR 0025, sin transición; `init` con el workspace, ADR 0029; `thesaurus` 18º, ADR 0031/#88; `gui` 19º, ADR 0028/Hito G3), envelope `--json` versionado, exit 0–5 (ADR 0021). El contrato **subió a `service/`** (G1) y lo reusa la **API local** por HTTP (G3 ✅, `b2g gui`); el contrato externo no cambia |
 

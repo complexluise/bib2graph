@@ -33,10 +33,11 @@
   explícito), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `sources/equation.py` (capa declarativa de la
   ecuación, 9a), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/` con 18 subcomandos en `cli/commands/`, no un
+  El **CLI `b2g` es real** —paquete `cli/` con 19 subcomandos en `cli/commands/`, no un
   placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9; el 17° `b2g restore`
   rehidrata un corpus curado sin red, Ciclo 9a; el 18° `b2g thesaurus` aplica el thesaurus curado,
-  único paso explícito del preproc, #88, abajo)—.
+  único paso explícito del preproc, #88, abajo; el 19° `b2g gui` levanta la API local FastAPI, Hito G3
+  del MVP GUI, ADR 0028)—.
   **645 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
@@ -53,6 +54,33 @@
   `_write_artifacts` (mismos GraphML + metrics.json + clusters.csv que `build`); **NO** transiciona el
   `CycleState` ni sella `.corpus_hash` (transversal al lazo, como `enrich`/`curate`). `pyyaml` pasó a
   dependencia del núcleo (import perezoso). **516 tests verdes**. Ver `docs/API.md` §10.
+- **MVP GUI — Hitos G1–G5 COMPLETOS · build entero del MVP (AS-BUILT 2026-06-18, ADR
+  [0028](docs/decisiones/0028-arquitectura-gui-api-capa-servicios.md)):** los 5 hitos de construcción
+  están **AS-BUILT** en `feat/gui-g1-capa-servicios` — G1 (capa de servicios neutral + contrato subido),
+  G2 (6 lecturas read-only en `service/reads.py`), G3 (API local FastAPI + extra `[gui]` + 19º
+  subcomando `b2g gui`), G4 (SPA `frontend/`), G5 (empaquetado). Lo único pendiente es el **gate #34**
+  (un tercero usa la GUI sin ayuda para reproducir/curar `examples/valoraciones/`), que **NO es
+  construcción**: es el criterio de aceptación/descarte de producto de la epic, al final (ADR 0027
+  §Gate). Detalle por hito en `docs/ROADMAP/05-gui.md`.
+  - **G4 — SPA `frontend/`** (paquete JS del monorepo, **`pnpm` —nunca npm**): React 18 + Vite + TS
+    estricto + Cytoscape/fcose + Zustand + Tailwind + TanStack Query, dirección visual **D-2
+    "Observatorio"** (oscuro, grafo-céntrico, design tokens propios en `tailwind.config.js`). Consume los
+    **7 endpoints reales** de la API G3 (`src/{client,types,store,components,lib,styles}`): 3 columnas
+    (rondas/grafo/candidato) + curar (refetch, sin Louvain client-side) + diff de rondas; cliente tipado
+    que des-envuelve `schema="1"` (`error.code` **string**, header `Bearer`) y tipos que espejan los DTO
+    reales. **Wiring del token (B-G4-3):** `b2g gui` **inyecta el token en el `index.html` servido**
+    (`cli/commands/gui.py::_make_index_response` reemplaza el placeholder `__B2G_TOKEN__`; ruta `GET /`
+    sirve el HTML con token sin exigir Bearer, `StaticFiles` —`html=False`— sirve los assets); el frontend
+    lo lee de `window.__B2G_TOKEN__`. El **build** sale a `src/bib2graph/gui/static/` (`outDir`,
+    `base: "./"`) y **NO se commitea** (gitignoreado). **Tests vitest (14).**
+  - **G5 — empaquetado:** el wheel **vendorea el build del frontend** vía
+    `[tool.hatch.build.targets.wheel.force-include]` de hatchling (`src/bib2graph/gui/static` →
+    `bib2graph/gui/static`) → `b2g gui` funciona **sin Node** desde el wheel; clone fresco sin `pnpm
+    build` previo → `uv build` **falla ruidosamente** (no wheel mudo). `ci.yml` suma el job **`frontend`**
+    (setup-node 20 + pnpm `install`/`lint`/`test:run`/`build`, corre siempre); `publish-testpypi.yml`
+    hace `pnpm build` **antes** del `uv build` (Trusted Publishing intacto, `release-please.yml` no se
+    tocó). `tests/unit/test_packaging_config.py` (**2 tests**) guarda la config `force-include`. Ver
+    §`frontend/` abajo, `docs/API.md` §0.2 y `docs/ROADMAP/05-gui.md` §G5.
 - **#88 — preprocesamiento automático en la ingesta (AS-BUILT 2026-06-18, ADR
   [0031](docs/decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** `normalize` + dedup
   fuzzy corren **automáticamente** en `seed`/`seed_from_bib`/`chain`/`restore` (helper
@@ -268,8 +296,9 @@ El proyecto se gestiona con **uv** (entorno + lockfile + versión de Python). **
 
 - **Setup dev completo:** `uv sync` (crea `.venv`, instala núcleo + dev-deps desde `uv.lock`)
   y `uv run pre-commit install`.
-- **Con una capacidad opcional:** `uv sync --extra bibtex` (el único extra poblado hoy; siembra
-  BibTeX). Sin dev-deps: `uv sync --no-dev`. *(No hay extra `[llm]`: **se eliminó** en la remediación
+- **Con una capacidad opcional:** `uv sync --extra bibtex` (siembra BibTeX) o `uv sync --extra gui`
+  (`fastapi` + `uvicorn` para `b2g gui` / la API local, AS-BUILT G3, ADR 0028) — los dos extras poblados
+  hoy. Sin dev-deps: `uv sync --no-dev`. *(No hay extra `[llm]`: **se eliminó** en la remediación
   R4 — el producto no usa IA generativa, ADR 0022. Tampoco hay extra `[dedup]`: `rapidfuzz` pasó al
   núcleo en #88 porque el dedup es automático en la ingesta, ADR 0031.)*
 - **Agregar dependencias:** `uv add <pkg>` (núcleo) · `uv add --dev <pkg>` (desarrollo) ·
@@ -390,15 +419,37 @@ src/bib2graph/
   networks/            # Projector, Analyzer, NetworkSpec (resolution + extra="forbid"), load_specs (YAML, Hito 9),
                        # NetworkArtifact, Networks, cluster_table (#31)
   exporters/           # GraphML, CSV
+  service/             # CAPA DE SERVICIOS NEUTRAL (ADR 0028, AS-BUILT G1+G2+G3 del MVP GUI): contrato
+                       # compartido por CLI/API, agnóstico de transporte (sin print/sys.exit/Click/
+                       # FastAPI). envelope.py = build_envelope + ENVELOPE_SCHEMA_VERSION; errors.py =
+                       # jerarquía B2GError (+ Usage/Data/Dependency/Network/StoreError) + code_for
+                       # (mapeo puro error→exit code 0–5). reads.py (G2 ✅) = 6 lecturas read-only de la SPA
+                       # sobre un Workspace resuelto: get_workspace/list_rounds/get_paper/get_scent/
+                       # get_network/compare_rounds (ronda=snapshot; sin red/mutación/transición; API.md §0.1).
+                       # curate.py (G3 ✅) = orquestación de curación SUBIDA desde cli/: accept_papers/
+                       # reject_papers/curate_paper (toma store_path; decided_at inyectado en la frontera);
+                       # run_accept/run_reject del CLI son shims que delegan (firma intacta). API.md §0.2.
+                       # cli/ re-exporta el contrato (subido desde cli/_envelope.py·_errors.py) y conserva
+                       # solo el I/O del adaptador. La migración del resto de la orquestación run_<cmd> sigue TARGET.
+  api/                 # API LOCAL FastAPI (ADR 0028, AS-BUILT G3 del MVP GUI): adaptador DELGADO sobre
+                       # service/ (NO importa de cli/; el núcleo NO importa fastapi —import perezoso, extra
+                       # [gui]). app.py = create_app(ws, *, token, cors_origins); routers/reads.py (6 GET)
+                       # + routers/curate.py (POST); security.py = token Bearer efímero; deps.py = workspace
+                       # singleton + require_token (401) + WriteLock global; envelopes.py = mapeo código→HTTP
+                       # (0→200,1→400,2→422,3→501,4→502,5→409; inesperado→500 INTERNAL_ERROR), reusa
+                       # service.build_envelope/code_for. La SPA (frontend/, G4) y el empaquetado del wheel
+                       # (G5: force-include) están AS-BUILT; solo queda el gate #34 (validación, no build). API.md §0.2.
   stores/              # DuckDBStore (núcleo, por defecto: biblioteca viva);
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
                        # _ingest.py = helper normalize_and_dedup (auto-preproc en la ingesta, ADR 0031);
-                       # cli/commands/ = 18 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
+                       # cli/commands/ = 19 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
                        # init scaffold de workspace —ADR 0029, curate dump/import CSV —#22+#26,
                        # networks capa declarativa YAML —Hito 9, restore rehidrata corpus curado sin
-                       # red →FILTERED —ADR 0030/9a, thesaurus aplica thesaurus curado transversal —#88/ADR 0031).
+                       # red →FILTERED —ADR 0030/9a, thesaurus aplica thesaurus curado transversal —#88/ADR 0031,
+                       # gui levanta la API local FastAPI —Hito G3 del MVP GUI/ADR 0028, extra [gui];
+                       # G4: _make_index_response inyecta el token en el index.html servido vía ruta GET /).
                        # CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
   workspace.py         # Workspace (init/open/resolve; snapshots_dir/exports_dir/networks_dir;
@@ -413,6 +464,32 @@ tests/
 La estructura es orientativa (ADR 0006): un módulo plano (`corpus.py`) o un paquete
 (`sources/`) es decisión del implementador según crezca. Lo fijo son los **nombres del
 dominio** y los **contratos de `docs/API.md`**.
+
+### `frontend/` — la SPA (paquete JS, NO Python; AS-BUILT G4, ADR 0028)
+
+El **único subárbol JS** del repo. El resto del monorepo es Python con **uv**; `frontend/` es
+JavaScript con **`pnpm` (SIEMPRE pnpm, nunca npm** — preferencia firme del PO). Es la SPA "tool for
+thought" del MVP GUI (React 18 + Vite + TS estricto + Cytoscape/fcose + Zustand + Tailwind + TanStack
+Query), dirección visual **D-2 "Observatorio"** (oscuro, grafo-céntrico; design tokens propios en
+`tailwind.config.js`).
+
+```
+frontend/                       # NO va al wheel; su build (gui/static/) sí (vendoreado vía force-include, G5)
+  package.json                  # packageManager: pnpm@…; scripts dev/build/test:run/lint
+  pnpm-lock.yaml                # lockfile reproducible
+  vite.config.ts                # outDir → ../src/bib2graph/gui/static ; base "./" ; alias @ → frontend/src
+  index.html                    # placeholder del token (<meta b2g-token> + window.__B2G_TOKEN__)
+  src/{client,types,store,components,lib,styles}/   # cliente tipado, DTO espejo, estado, UI
+  src/__tests__/                # vitest (14)
+```
+
+Comandos (desde `frontend/`): **`pnpm lint`** (`tsc --noEmit`) · **`pnpm test:run`** (vitest, 14) ·
+**`pnpm build`** (`tsc --noEmit && vite build` → escribe `src/bib2graph/gui/static/`). El **alias `@`**
+resuelve a `frontend/src/`. El **build output** (`src/bib2graph/gui/static/`) está **gitignoreado**
+(no se commitea; lo vendorea el wheel vía `force-include`, G5 AS-BUILT). El cliente consume los 7 endpoints reales de la API G3
+(`docs/API.md` §0.2): des-envuelve el envelope `schema="1"`, ramea por `error.code` (**string**) y
+manda `Authorization: Bearer <token>` (token leído de `window.__B2G_TOKEN__`, inyectado por `b2g gui`
+en el `index.html` servido).
 
 ### Manejo de errores
 
