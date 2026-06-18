@@ -264,9 +264,11 @@ candidato lo explica la **estructura visible** (con qué del corpus se acopla/co
 Determinístico e idempotente: canonicalización **conservadora** de nombres de autor
 (`authors_id`: lowercase + acentos + espacios) y `language` (ISO 639-1 primario), y
 **normalización de keywords vía thesaurus multilingüe** (en/es/pt; dict `canónico → aliases` en
-JSON portable; ADR 0011). Lo *fuzzy* (dedup aproximado de autores y keywords) vive en el extra
-`[dedup]` (`rapidfuzz`, determinista; Hito 7 ✅, ADR
-[0026](decisiones/0026-dedup-fuzzy-determinista.md); `splink` diferido a post-V1). **No hay fallback
+JSON portable; ADR 0011). Lo *fuzzy* (dedup aproximado de autores y keywords) corre
+**automáticamente en la ingesta** con `rapidfuzz` **en el núcleo** (ADR
+[0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md), #88 — **supersede** en parte
+[0026](decisiones/0026-dedup-fuzzy-determinista.md): el dedup deja de ser función de librería y el
+extra `[dedup]` se elimina, `rapidfuzz` pasa al núcleo; `splink` sigue diferido a post-V1). **No hay fallback
 semántico/LLM del thesaurus** (ADR
 [0011](decisiones/0011-thesaurus-multilingue.md) enmendado / 0022): el thesaurus es **curado y
 determinista**; lo que no matchea queda fuera, sin inventar conceptos con un modelo.
@@ -511,9 +513,11 @@ trabajo posterior, pero la API se **diseña con estos principios desde el hito 1
    faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` mediante un
    **pre-check `hasattr` en el borde** (p. ej. `chain.py` antes del `Forager`). Ver ADR 0021 §D.
 
-Son **17 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
+Son **18 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
 `inspect`, `validate`, `accept`, `reject`, **`monitor`**, **`enrich`**, **`init`**, **`curate`**,
-**`networks`**, **`restore`**); `build`/`export` están
+**`networks`**, **`restore`**, **`thesaurus`**); el 18° **`thesaurus`** —único paso de
+normalización explícito— lo sumó el ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)
+(#88, 2026-06-18). `build`/`export` están
 **separados** y el `CycleState` transiciona automáticamente por comando (ADR 0021). El 12°
 **`monitor`** (cleanup pre-v0.3) re-chequea citantes nuevos del corpus (forward chaining) y
 transiciona a `MONITORED`. El 13° **`enrich`** (Hito 8 = Ciclos 8a + 8b, ADR
@@ -570,24 +574,26 @@ el `.duckdb` ante un workspace mal apuntado (falla accionable); los comandos de 
 > del frontend + abre el browser; adaptador de "arranque local"). **Conteo:** hoy el CLI tiene
 > **18 subcomandos** (verificado: 18 `add_command` en `src/bib2graph/cli/__init__.py`, incl.
 > `thesaurus` agregado por ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)),
-> así que `b2g gui` sería el **19º** (ADR 0028 §3 y la
-> [Nota 12](Notas/12-arquitectura-gui-encuadre.md) punto 6 ya alineados a "18 → 19º"). *(Drift
-> preexistente, fuera de esta enmienda GUI: el conteo "Son 17 subcomandos" del AS-BUILT de arriba sigue
-> desactualizado por #88 —falta `thesaurus`—; pendiente de saneo aparte.)*
+> así que `b2g gui` sería el **19º** (consistente con el AS-BUILT de §6.3 —18 incl. `thesaurus`—, el
+> ADR 0028 §3 y la [Nota 12](Notas/12-arquitectura-gui-encuadre.md) punto 6, todos alineados a "18 → 19º").
 
 ## 7. Layout de dependencias (extras)
 
 ```
 core         pyarrow, pydantic, networkx, click, tqdm,
-             duckdb, <cliente OpenAlex>                 (siempre; biblioteca viva + backbone)
+             duckdb, rapidfuzz, <cliente OpenAlex>      (siempre; biblioteca viva + backbone +
+                                                         dedup fuzzy determinista en ingesta)
 [zotero]     pyzotero                                   ─┐
 [s2]         (cliente Semantic Scholar; reservado para   │ costuras / capacidades opcionales
               señal adicional, NO el Enricher —ADR 0025)  │
 [neo4j]      neomodel / driver oficial                   │ (futuras marcadas como no
-[viz]        matplotlib, seaborn                          │ implementadas)
-[dedup]      rapidfuzz (fuzzy DETERMINISTA; splink         │
-              diferido a post-V1 —ADR 0026)               ─┘
+[viz]        matplotlib, seaborn                          │ implementadas)                    ─┘
 ```
+
+> El extra **`[dedup]` se eliminó** (ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md),
+> #88): `rapidfuzz` pasó al **núcleo** porque el dedup ahora es automático en la ingesta (supersede en
+> parte ADR [0026](decisiones/0026-dedup-fuzzy-determinista.md) / la enmienda `[dedup]` de ADR
+> [0005](decisiones/0005-dependencias-extras.md)).
 
 El extra **`[llm]` se elimina** (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)): el
 producto no usa IA generativa, así que no hay cliente LLM ni para forrajeo ni para thesaurus.
