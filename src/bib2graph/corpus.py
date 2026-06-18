@@ -325,6 +325,55 @@ class Corpus:
         return self._backend.filter_view("accepted")
 
     # ------------------------------------------------------------------
+    # Vista de scope por estado de curación (issue #56)
+    # ------------------------------------------------------------------
+
+    def scoped(self, scope: str) -> Corpus:
+        """Devuelve un Corpus nuevo con el subconjunto de filas según el scope.
+
+        Vista pura: no muta el original; dos llamadas con el mismo scope
+        devuelven corpora con el mismo ``corpus_hash``.
+
+        Valores de scope:
+        - ``'all'``: corpus completo (sin filtrar).
+        - ``'accepted'``: ``is_seed == True`` OR ``curation_status == 'accepted'``.
+        - ``'seeds_only'``: ``is_seed == True``.
+
+        Args:
+            scope: Uno de ``'all'``, ``'accepted'``, ``'seeds_only'``.
+
+        Returns:
+            Nuevo ``Corpus`` con el subconjunto de filas.
+
+        Raises:
+            ValueError: Si el scope no es reconocido.
+        """
+        import pyarrow.compute as pc
+
+        if scope == "all":
+            return Corpus(self._backend, self._manifest)
+
+        table = self._backend.to_arrow()
+
+        if scope == "seeds_only":
+            mask = table.column(Col.IS_SEED)
+            filtered = table.filter(mask)
+        elif scope == "accepted":
+            is_seed_mask = table.column(Col.IS_SEED)
+            is_accepted_mask = pc.equal(  # type: ignore[attr-defined]
+                table.column(Col.CURATION_STATUS), CurationStatus.ACCEPTED
+            )
+            mask = pc.or_(is_seed_mask, is_accepted_mask)  # type: ignore[attr-defined]
+            filtered = table.filter(mask)
+        else:
+            raise ValueError(
+                f"scope '{scope}' no reconocido. Use: all, accepted, seeds_only."
+            )
+
+        new_backend = InMemoryBackend(filtered)
+        return Corpus(new_backend, self._manifest)
+
+    # ------------------------------------------------------------------
     # Mutación (semántica de valor: devuelven Corpus nuevo)
     # ------------------------------------------------------------------
 

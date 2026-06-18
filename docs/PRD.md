@@ -62,11 +62,12 @@ de estados explícita** (`LoopState`: `SEEDED → FORAGED → FILTERED → BUILT
 [0016](decisiones/0016-maquina-estados-lazo.md)): **una investigación = un archivo `.duckdb`**, su
 estado se consulta con `b2g status`.
 
-> **TARGET (propuesto, no as-built) — ADR [0029](decisiones/0029-workspace-por-investigacion.md)
-> (2026-06-16):** "una investigación = un archivo" evolucionaría a "una investigación = un
-> **workspace** (carpeta `workspace.json` + db + redes/snapshots/exports)", con `b2g init` y `--store`
-> opcional vía resolución ambiente. Propuesta pendiente de firma; el `.duckdb` suelto sigue siendo
-> el modelo as-built.
+> **AS-BUILT — ADR [0029](decisiones/0029-workspace-por-investigacion.md) (2026-06-16; enmienda
+> BREAKING #75, 2026-06-17):** "una investigación = un archivo" evolucionó a "una investigación = un
+> **workspace** (carpeta `workspace.json` + db + redes/snapshots/exports)", con `b2g init` + resolución
+> ambiente (`--workspace` opcional > `B2G_WORKSPACE` > walk-up del cwd). La carpeta con
+> `workspace.json` es la **única** unidad canónica: `--store` y el modo degenerado del `.duckdb` suelto
+> fueron **eliminados** (#75); un `.duckdb` legacy se adopta con `b2g init .`.
 
 *El final siguen siendo las redes; lo nuevo es **cómo se llega a ellas** (forrajeo asistido) y
 que **la colección vive** (berry growing).*
@@ -362,9 +363,9 @@ precisada por el ADR [0015](decisiones/0015-corpus-tabular-backend.md):
   persistencia de 1.0 (DuckDB nativo lo es). Reabrible solo si aparece demanda real, como hito nuevo.
 
 Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.2), `API.md` (§1, §4) y
-`ROADMAP.md` (Hitos 1.5/3). El estado de construcción (Hitos 0–6 + 1.5 terminados; v0.2 cubre el
-**flujo**, con la **tanda de remediación R1–R5 pendiente** antes de los Hitos 7–11) vive en el
-`ROADMAP.md`.
+`ROADMAP.md` (Hitos 1.5/3). El estado de construcción —**Hitos 0–9 + 1.5 terminados** y la **tanda de
+remediación R1–R5 completa** (2026-06-16)— vive en el `ROADMAP.md`: el terreno **pre-GUI está completo**
+(Hito 10 viz absorbido en la epic GUI #34; Hito 11 Zotero/Neo4j descartado, PO 2026-06-17).
 
 ## 9. Criterios de "V1 hecha"
 
@@ -396,10 +397,13 @@ Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.
 
 ## 11. Próximos pasos
 
-> ⚠️ **Corrección 2026-06-15:** el punto 1 es **planning histórico ya saldado** (los ADR 0007–0021
+> ⚠️ **Corrección 2026-06-17:** el punto 1 es **planning histórico ya saldado** (los ADR 0007–0021
 > están escritos). Donde dice "tensiones a v2", leer **"tensiones RETIRADAS del producto"** (ADR
-> 0022); el thesaurus es **determinista sin fallback fuzzy/LLM** (ADR 0011 enmendado). El próximo
-> trabajo real es la **tanda de remediación R1–R5** del [`ROADMAP.md`](ROADMAP/README.md).
+> 0022); el thesaurus es **determinista sin fallback fuzzy/LLM** (ADR 0011 enmendado). La **tanda de
+> remediación R1–R5 ya está completa** (2026-06-16) y, sobre ella, los **Hitos 1–9 están construidos**
+> (ver punto 3, actualizado). El **terreno pre-GUI está completo**: el próximo trabajo real es la
+> **epic GUI #34** (la capa de lectura visual), no más backend. Estado vivo en el
+> [`ROADMAP.md`](ROADMAP/README.md).
 
 1. **Nuevos ADRs** (architect), además del [0007](decisiones/0007-openalex-backbone.md) ya
    redactado: wedge = forrajeo (~~tensiones a v2~~ → **retiradas**, ADR 0022); **biblioteca viva en
@@ -411,7 +415,7 @@ Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.
 3. ✅ Implementación por hitos en curso (coder): **Hitos 0–6 + 1.5 terminados** (núcleo del corpus
    stateful sobre `TabularBackend`, proyectores/analizadores/export, biblioteca viva en DuckDB,
    fuentes OpenAlex/BibTeX, forrajeo + `Preprocessor` + filtros PRISMA, y el **CLI agente-native
-   `b2g`** — 14 subcomandos, ADR [0021](decisiones/0021-cli-agente-native-contrato.md) +
+   `b2g`** — 17 subcomandos, ADR [0021](decisiones/0021-cli-agente-native-contrato.md) +
    [0025](decisiones/0025-enricher-cocitacion-openalex.md) (`enrich`, Ciclo 8a) +
    [0029](decisiones/0029-workspace-por-investigacion.md) (`init` + workspace)). Con ello
    v0.2 alcanza las capacidades del **flujo** `seed → … → export`. **El red-team de la

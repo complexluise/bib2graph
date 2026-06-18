@@ -337,8 +337,8 @@ def test_run_reject_marca_rechazado(tmp_path: Path) -> None:
 def test_exit_code_1_sin_workspace(tmp_path: Path) -> None:
     """Sin workspace disponible, resolve_library_path lanza UsageError (exit 1).
 
-    ADR 0029: --store y --workspace son ahora opcionales; la resolución ambiente
-    falla con UsageError (exit 1) cuando no hay workspace.json hacia arriba ni
+    ADR 0029 (#75): --store fue eliminado; --workspace es opcional. La resolución
+    ambiente falla con UsageError (exit 1) cuando no hay workspace.json hacia arriba ni
     B2G_WORKSPACE ni ningún flag.  resolve_library_path convierte la excepción.
     """
     from bib2graph.workspace import Workspace, WorkspaceNotFoundError

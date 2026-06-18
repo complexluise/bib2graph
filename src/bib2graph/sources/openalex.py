@@ -251,6 +251,10 @@ def _work_to_row(
     *,
     equation_id: str,
     fetched_at: str,
+    is_seed: bool = True,
+    action: str = "fetched",
+    chaining_hop: int | None = None,
+    source_tag: str = "openalex",
 ) -> dict[str, Any]:
     """Mapea un objeto JSON de OpenAlex a la fila del schema canónico.
 
@@ -262,6 +266,15 @@ def _work_to_row(
         work: Objeto JSON de un Work de OpenAlex.
         equation_id: ID de la ecuación que originó la búsqueda (para provenance).
         fetched_at: Timestamp ISO de la consulta.
+        is_seed: Si el paper es semilla (``True``) o candidato (``False``).
+            Default ``True`` (comportamiento histórico para ``seed``/``load``).
+        action: Tipo de evento de provenance (``'fetched'``, ``'fetched_by_id'``,
+            etc.).  Default ``'fetched'`` (comportamiento histórico).
+        chaining_hop: Profundidad del chaining (1 = primera expansión), o
+            ``None`` si no aplica (seed/load).  Default ``None``.
+        source_tag: Etiqueta de fuente para el evento de provenance.
+            Default ``'openalex'``; usar ``'chaining:forward'`` para el forward
+            chaining.
 
     Returns:
         Dict con todas las columnas del schema canónico.
@@ -329,10 +342,10 @@ def _work_to_row(
 
     # --- Provenance (evento inicial) ---
     provenance_event = ProvenanceEvent(
-        action="fetched",
+        action=action,
         equation_id=equation_id,
-        chaining_hop=None,
-        source="openalex",
+        chaining_hop=chaining_hop,
+        source=source_tag,
         fetched_at=fetched_at,
         decided_by=None,
         decided_at=None,
@@ -349,7 +362,7 @@ def _work_to_row(
         Col.LANGUAGE: work.get("language"),
         Col.PUBLISHER: None,
         Col.RESEARCH_AREAS: None,
-        Col.IS_SEED: True,
+        Col.IS_SEED: is_seed,
         Col.CURATION_STATUS: CurationStatus.CANDIDATE,
         Col.PROVENANCE: ProvenanceEvent.dump_list([provenance_event]),
         Col.AUTHORS_RAW: authors_raw or None,
@@ -649,9 +662,15 @@ class OpenAlexSource:
         works, _ = self._fetch_all_with_retry(filter_str)
         rows: list[dict[str, Any]] = []
         for work in works:
-            row = _work_to_row(work, equation_id=equation_id, fetched_at=fetched_at)
-            # Sobrescribir is_seed y provenance para forward chaining
-            row[Col.IS_SEED] = False
+            # is_seed=False: los citantes son candidatos, no semillas.
+            # La provenance se sobreescribe para agregar chaining_hop=1 (no
+            # soportado como parámetro de _work_to_row: es específico de fetch_citing).
+            row = _work_to_row(
+                work,
+                equation_id=equation_id,
+                fetched_at=fetched_at,
+                is_seed=False,
+            )
             provenance_event = ProvenanceEvent(
                 action="fetched",
                 equation_id=None,
@@ -724,6 +743,75 @@ class OpenAlexSource:
 
         return resultado
 
+    def fetch_works_by_ids(self, ids: list[str]) -> Corpus:
+        """Trae works completos de OpenAlex a partir de una lista de IDs.
+
+        Batchea la consulta en lotes de hasta 100 IDs por request, usando el
+        filtro ``openalex_id:W1|W2|...`` con ``select=_FIELDS`` (todos los
+        campos del schema canónico).  Reutiliza ``_fetch_batch_select`` y
+        el retry/backoff de la infraestructura existente.
+
+        Los works resultantes se marcan como ``is_seed=False`` (son candidatos,
+        no semillas de una ecuación) con ``curation_status=CANDIDATE`` y
+        ``provenance[action="fetched_by_id"]``.
+
+        IDs inexistentes en OpenAlex son simplemente omitidos sin error: el
+        filtro OR devuelve solo los works encontrados.
+
+        Las filas del ``Corpus`` retornado se ordenan por ``id`` canónico (D1)
+        para garantizar determinismo entre corridas (ADR 0017).
+
+        Args:
+            ids: Lista de IDs de OpenAlex (p. ej. ``["W12345", "W67890"]``).
+                Se acepta con o sin prefijo URL; se normalizan a ID corto.
+
+        Returns:
+            ``Corpus`` con los works encontrados.  ``is_seed=False``,
+            ``curation_status=CANDIDATE``, ``provenance[action="fetched_by_id"]``.
+            Vacío si ningún ID es encontrado.
+        """
+        if not ids:
+            table = pa.table(
+                {col: [] for col in CORPUS_SCHEMA.names},
+                schema=CORPUS_SCHEMA,
+            )
+            return Corpus.from_arrow(table)
+
+        # Normalizar IDs a la forma corta (W...) por si vienen como URL
+        normalized = [_oa_id_short(i) or i for i in ids]
+
+        fetched_at = datetime.now(UTC).isoformat()
+        all_rows: list[dict[str, Any]] = []
+        batch_size = 100
+
+        for start in range(0, len(normalized), batch_size):
+            lote = normalized[start : start + batch_size]
+            filter_str = "openalex_id:" + "|".join(lote)
+            works = self._fetch_batch_select(filter_str, select=_FIELDS)
+            for work in works:
+                row = _work_to_row(
+                    work,
+                    equation_id="fetched_by_id",
+                    fetched_at=fetched_at,
+                    is_seed=False,
+                    action="fetched_by_id",
+                )
+                all_rows.append(row)
+
+        rows_with_ids = _rows_with_ids(all_rows)
+
+        # Orden determinista por id canónico (ADR 0017)
+        rows_with_ids.sort(key=lambda r: str(r.get(Col.ID, "")))
+
+        if rows_with_ids:
+            table = pa.Table.from_pylist(rows_with_ids, schema=CORPUS_SCHEMA)
+        else:
+            table = pa.table(
+                {col: [] for col in CORPUS_SCHEMA.names},
+                schema=CORPUS_SCHEMA,
+            )
+        return Corpus.from_arrow(table)
+
     def _fetch_batch_select(
         self, filter_str: str, *, select: str
     ) -> list[dict[str, Any]]:
@@ -769,6 +857,95 @@ class OpenAlexSource:
         assert last_exc is not None
         raise last_exc
 
+    def _fetch_citing_pages(
+        self,
+        ids: list[str],
+        *,
+        max_per_paper: int | None = None,
+    ) -> tuple[dict[str, list[str]], dict[str, dict[str, Any]]]:
+        """Núcleo compartido de paginación y atribución para los citantes en lote.
+
+        Realiza el batcheo OR (≤50 IDs por request), la paginación con cursor,
+        la atribución semilla-a-semilla y el presupuesto por semilla.  Conserva
+        el objeto ``work`` completo de cada citante único, de modo que los
+        llamadores pueden elegir descartarlo (``fetch_citing_batch``) o
+        aprovecharlo (``fetch_citing_batch_with_works``).
+
+        Args:
+            ids: IDs cortos de OpenAlex ya normalizados (p. ej. ``["W111"]``).
+            max_per_paper: Presupuesto máximo de citantes por semilla.
+                ``None`` = sin tope.
+
+        Returns:
+            Tupla ``(attribution, works_map)`` donde:
+            - ``attribution``: ``{seed_id: [citer_id, ...]}``, orden alfabético,
+              acotado a ``max_per_paper``.
+            - ``works_map``: ``{citer_id: work_json}`` con el objeto JSON completo
+              (campos ``_FIELDS``) de cada citante distinto.  El último objeto
+              visto gana si el mismo citante aparece en varias páginas (idempotente
+              porque el JSON es el mismo).
+        """
+        batch_size = 50  # límite empírico de OpenAlex para OR en cites:
+
+        result: dict[str, list[str]] = {}
+        works_map: dict[str, dict[str, Any]] = {}
+
+        for start in range(0, len(ids), batch_size):
+            lote = ids[start : start + batch_size]
+            lote_set = set(lote)
+            batch_acc: dict[str, set[str]] = {tid: set() for tid in lote}
+
+            filter_str = "cites:" + "|".join(lote)
+
+            cursor: str = "*"
+            with self._client() as client:
+                while True:
+                    if max_per_paper is not None and all(
+                        len(batch_acc[tid]) >= max_per_paper for tid in lote
+                    ):
+                        break
+
+                    page_works = self._fetch_page_with_retry(
+                        client, filter_str, cursor=cursor
+                    )
+                    if page_works is None:
+                        break  # pragma: no cover
+
+                    works_list, next_cursor = page_works
+
+                    for work in works_list:
+                        citer_oa_id = _oa_id_short(work.get("id"))
+                        if not citer_oa_id:
+                            continue
+                        ref_urls: list[str] = work.get("referenced_works") or []
+                        citer_refs: set[str] = {
+                            short
+                            for r in ref_urls
+                            if r and (short := _oa_id_short(r)) is not None
+                        }
+                        for tid in lote_set & citer_refs:
+                            if (
+                                max_per_paper is None
+                                or len(batch_acc[tid]) < max_per_paper
+                            ):
+                                batch_acc[tid].add(citer_oa_id)
+                        # Conservar el work JSON (último visto gana, es idempotente)
+                        works_map[citer_oa_id] = work
+
+                    if not next_cursor or not works_list:
+                        break
+                    cursor = next_cursor
+
+            for tid in lote:
+                existing = set(result.get(tid) or [])
+                merged = existing | batch_acc[tid]
+                if max_per_paper is not None:
+                    result[tid] = sorted(merged)[:max_per_paper]
+                else:
+                    result[tid] = sorted(merged)
+
+        return result, works_map
+
     def fetch_citing_batch(
         self, ids: list[str], *, max_per_paper: int | None = None
     ) -> dict[str, list[str]]:
@@ -788,6 +965,10 @@ class OpenAlexSource:
         El filtro ``cites:W1|W2`` es un OR válido en la API de OpenAlex: devuelve
         todos los works que citan al menos uno de los IDs listados.
 
+        Thin wrapper sobre ``_fetch_citing_pages`` que descarta el mapa de works
+        para mantener la firma/contrato actual (usado por el ``OpenAlexEnricher``,
+        Hito 8b).
+
         Args:
             ids: Lista de IDs cortos de OpenAlex (p. ej. ``["W111", "W222"]``).
                 Se normalizan a ID corto internamente.
@@ -803,75 +984,44 @@ class OpenAlexSource:
         """
         if not ids:
             return {}
-
         normalized = [_oa_id_short(i) or i for i in ids]
-        batch_size = 50  # límite empírico de OpenAlex para OR en cites:
+        attribution, _ = self._fetch_citing_pages(
+            normalized, max_per_paper=max_per_paper
+        )
+        return attribution
 
-        result: dict[str, list[str]] = {}
+    def fetch_citing_batch_with_works(
+        self, ids: list[str], *, max_per_paper: int | None = None
+    ) -> tuple[dict[str, list[str]], dict[str, dict[str, Any]]]:
+        """Como ``fetch_citing_batch`` pero conserva los objetos JSON completos.
 
-        for start in range(0, len(normalized), batch_size):
-            lote = normalized[start : start + batch_size]
-            lote_set = set(lote)
-            # Acumulador de sets para idempotencia interna (elimina dupes entre páginas)
-            batch_acc: dict[str, set[str]] = {tid: set() for tid in lote}
+        Misma lógica de paginación, atribución y presupuesto que
+        ``fetch_citing_batch``, sin red extra: los works ya vienen en las
+        páginas que se traen para la atribución.  Reutiliza ``_fetch_citing_pages``
+        (no duplica la lógica).
 
-            # Filtro OR: cites:W1|W2 es un OR válido en OpenAlex (devuelve works que
-            # citan al menos uno de los IDs; no requiere repetir el predicado por ID).
-            filter_str = "cites:" + "|".join(lote)
+        Diseñado para el forward chaining del ``Forager`` (#78, opción A1):
+        permite materializar filas con metadata real (título/año/autores) en vez
+        de placeholders ``[candidate:W...]``.
 
-            # Paginar con cursor, atribuyendo página a página con presupuesto por semilla
-            cursor: str = "*"
-            with self._client() as client:
-                while True:
-                    # Verificar si todas las semillas del lote ya están satisfechas
-                    if max_per_paper is not None and all(
-                        len(batch_acc[tid]) >= max_per_paper for tid in lote
-                    ):
-                        break
+        Args:
+            ids: Lista de IDs cortos de OpenAlex (p. ej. ``["W111", "W222"]``).
+                Se normalizan a ID corto internamente.
+            max_per_paper: Presupuesto máximo de citantes por semilla.
+                ``None`` = sin tope.
 
-                    # Fetch con retry/backoff
-                    page_works = self._fetch_page_with_retry(
-                        client, filter_str, cursor=cursor
-                    )
-                    if page_works is None:
-                        # Error irrecuperable tras reintentos (ya propagado)
-                        break  # pragma: no cover
-
-                    works_list, next_cursor = page_works
-
-                    # Atribuir cada citante de la página a los seeds que realmente cita
-                    for work in works_list:
-                        citer_oa_id = _oa_id_short(work.get("id"))
-                        if not citer_oa_id:
-                            continue
-                        ref_urls: list[str] = work.get("referenced_works") or []
-                        citer_refs: set[str] = {
-                            short
-                            for r in ref_urls
-                            if r and (short := _oa_id_short(r)) is not None
-                        }
-                        # Intersección: seeds que este citante realmente cita
-                        for tid in lote_set & citer_refs:
-                            if (
-                                max_per_paper is None
-                                or len(batch_acc[tid]) < max_per_paper
-                            ):
-                                batch_acc[tid].add(citer_oa_id)
-
-                    if not next_cursor or not works_list:
-                        break
-                    cursor = next_cursor
-
-            # Consolidar en el resultado global (orden determinista: alfabético)
-            for tid in lote:
-                existing = set(result.get(tid) or [])
-                merged = existing | batch_acc[tid]
-                if max_per_paper is not None:
-                    result[tid] = sorted(merged)[:max_per_paper]
-                else:
-                    result[tid] = sorted(merged)
-
-        return result
+        Returns:
+            Tupla ``(attribution, works_map)`` donde:
+            - ``attribution``: ``{seed_id: [citer_id, ...]}``, orden alfabético,
+              idéntico al retorno de ``fetch_citing_batch`` con los mismos args.
+            - ``works_map``: ``{citer_id: work_json}`` con el objeto JSON completo
+              (campos ``_FIELDS``: título, año, autores, referencias, etc.) de
+              cada citante distinto traído en las páginas de la atribución.
+        """
+        if not ids:
+            return {}, {}
+        normalized = [_oa_id_short(i) or i for i in ids]
+        return self._fetch_citing_pages(normalized, max_per_paper=max_per_paper)
 
     def _fetch_page_with_retry(
         self,

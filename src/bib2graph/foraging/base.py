@@ -55,16 +55,27 @@ class GrowthPreview(BaseModel):
 class RankedCandidates(BaseModel):
     """Resultado del ``Forager.chain()``: candidatos rankeados por scent.
 
-    El corpus contiene SOLO los candidatos nuevos (no mergeado con el
-    corpus semilla). El ranking es una lista estable ordenada por scent
-    descendente, con desempate por id ascendente.
+    El corpus contiene SOLO los candidatos nuevos materializados (forward:
+    filas reales; backward: vacío — los IDs backward van a ``observed_refs``).
+    El corpus NO se mergeó con el corpus semilla.
+    El ranking es una lista estable ordenada por scent descendente, con
+    desempate por id ascendente.
 
     Attributes:
-        corpus: Corpus de candidatos con ``curation_status='candidate'``.
+        corpus: Corpus de candidatos materializados con
+            ``curation_status='candidate'`` (solo forward; backward = vacío).
         ranking: Lista ``(id, information_scent)`` ordenada por scent desc.
+            Incluye tanto candidatos forward (materializados) como backward
+            (solo IDs observados, sin fila en corpus).
+        observed_refs: IDs de OpenAlex observados en backward chaining pero
+            NO materializados como filas del corpus (opción B — #54).  Son
+            los candidatos backward que se persisten en la tabla auxiliar
+            ``referenced_but_not_fetched`` por el comando CLI, no en el corpus.
+            Vacío en chaining puramente forward.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     corpus: Corpus
     ranking: list[tuple[str, float]]
+    observed_refs: list[str] = []

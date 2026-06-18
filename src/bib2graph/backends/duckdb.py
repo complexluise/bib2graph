@@ -110,6 +110,20 @@ _DDL_LOOP_STATE_MIGRATE = """
 ALTER TABLE loop_state_log ADD COLUMN round INTEGER DEFAULT 0
 """
 
+# #54 (opción B): tabla hermana de loop_state_log — acumula IDs observados en
+# backward chaining pero no materializados en el corpus.  Append-only, sin
+# constraint UNIQUE: la idempotencia de escritura la garantiza el comando chain
+# (que solo escribe los IDs nuevos del lote en curso, no re-escribe anteriores).
+# ``observed_at`` usa ``now()`` de DuckDB (mismo patrón que ``recorded_at`` en
+# loop_state_log: reloj en la frontera del backend, no inyectado desde el núcleo).
+_DDL_REFERENCED_BUT_NOT_FETCHED = """
+CREATE TABLE IF NOT EXISTS referenced_but_not_fetched (
+    ref_id      VARCHAR NOT NULL,
+    cycle_round INTEGER NOT NULL DEFAULT 0,
+    observed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+"""
+
 # ADR 0024: migración liviana para bases pre-existentes sin columna ``_seq``.
 # Se suprime el error si la columna ya existe (CatalogException o BinderException).
 # El backfill usa ``rowid`` como proxy de orden de inserción original; es inocuo
@@ -300,6 +314,8 @@ class DuckDBBackend:
         # Backfill: asigna _seq = rowid a filas legacy sin _seq asignado.
         # Es inocuo cuando no hay NULLs (WHERE _seq IS NULL no toca nada).
         self._con.execute(_DDL_CORPUS_BACKFILL_SEQ)
+        # #54: tabla auxiliar para IDs backward observados pero no materializados.
+        self._con.execute(_DDL_REFERENCED_BUT_NOT_FETCHED)
         self._register_udfs()
 
     def _register_udfs(self) -> None:
@@ -395,6 +411,17 @@ class DuckDBBackend:
                 new_backend._con.execute(
                     "INSERT INTO loop_state_log (state, round, recorded_at) VALUES (?, ?, ?)",
                     [state_val, round_val, at_val],
+                )
+            # #54: copiar la tabla referenced_but_not_fetched (hermana de loop_state_log)
+            ref_rows = self._con.execute(
+                "SELECT ref_id, cycle_round, observed_at "
+                "FROM referenced_but_not_fetched ORDER BY observed_at"
+            ).fetchall()
+            for ref_id_val, cycle_round_val, observed_at_val in ref_rows:
+                new_backend._con.execute(
+                    "INSERT INTO referenced_but_not_fetched "
+                    "(ref_id, cycle_round, observed_at) VALUES (?, ?, ?)",
+                    [ref_id_val, cycle_round_val, observed_at_val],
                 )
             return new_backend
         else:
@@ -637,6 +664,62 @@ class DuckDBBackend:
         )
 
     # ------------------------------------------------------------------
+    # Extensiones propias: referenced_but_not_fetched (#54)
+    # ------------------------------------------------------------------
+
+    def add_referenced_refs(self, ref_ids: list[str], *, cycle_round: int) -> int:
+        """Appendea IDs backward observados a ``referenced_but_not_fetched``.
+
+        No duplica IDs ya presentes (idempotencia basada en existencia): solo
+        inserta los que aún no están en la tabla, independientemente del
+        ``cycle_round``.  El ``observed_at`` lo provee ``now()`` de DuckDB.
+
+        Args:
+            ref_ids: IDs de OpenAlex observados en backward chaining.
+            cycle_round: Número de ronda del ciclo en curso.
+
+        Returns:
+            Número de IDs nuevos insertados (0 si todos ya existían).
+        """
+        if not ref_ids:
+            return 0
+        # IDs ya presentes (cualquier ronda — el contrato es append sin duplicar).
+        existing_rows = self._con.execute(
+            "SELECT ref_id FROM referenced_but_not_fetched"
+        ).fetchall()
+        existing: set[str] = {r[0] for r in existing_rows}
+        new_ids = [rid for rid in ref_ids if rid not in existing]
+        for rid in new_ids:
+            self._con.execute(
+                "INSERT INTO referenced_but_not_fetched (ref_id, cycle_round) "
+                "VALUES (?, ?)",
+                [rid, cycle_round],
+            )
+        return len(new_ids)
+
+    def referenced_refs_count(self) -> int:
+        """Número de IDs en ``referenced_but_not_fetched``.
+
+        Returns:
+            Conteo total de filas en la tabla auxiliar.
+        """
+        row = self._con.execute(
+            "SELECT COUNT(*) FROM referenced_but_not_fetched"
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def referenced_refs(self) -> list[str]:
+        """Lista de IDs en ``referenced_but_not_fetched``, ordenados por ``observed_at``.
+
+        Returns:
+            Lista de ``ref_id`` en orden de inserción.
+        """
+        rows = self._con.execute(
+            "SELECT ref_id FROM referenced_but_not_fetched ORDER BY observed_at"
+        ).fetchall()
+        return [r[0] for r in rows]
+
+    # ------------------------------------------------------------------
     # Extensión: query SQL libre
     # ------------------------------------------------------------------
 
@@ -652,6 +735,33 @@ class DuckDBBackend:
         """
         with contextlib.suppress(Exception):
             self._con.close()
+
+    def overwrite_corpus(self, table: pa.Table) -> None:
+        """Reemplaza TODA la tabla ``corpus`` con el contenido de ``table``.
+
+        Hace TRUNCATE + INSERT (no upsert) para que el estado en disco sea
+        exactamente ``table``, sin residuos de filas previas.  Preserva las
+        tablas hermanas (``loop_state_log``, ``referenced_but_not_fetched``).
+
+        Úsalo solo en la ruta de ingesta (``seed``, ``restore``, ``chain``,
+        ``thesaurus``) donde ya tenés el corpus completo y correcto en
+        memoria.  El upsert normal (``_upsert_table``) sigue siendo correcto
+        para el caso «mismo paper desde dos fuentes» (D3); este método NO lo
+        reemplaza en ese contexto.
+
+        ADR 0024: reasigna ``_seq`` desde 0 sobre la tabla limpia, manteniendo
+        el orden de filas que viene en ``table`` (que ya salió de
+        ``to_arrow()`` con ``ORDER BY _seq`` original).
+
+        Args:
+            table: Tabla Arrow con exactamente el contenido final a persistir.
+                Debe cumplir ``CORPUS_SCHEMA``.
+        """
+        self._con.execute("DELETE FROM corpus")
+        rows = table.to_pylist()
+        for i, row in enumerate(rows):
+            params = [*_row_to_params(row), i + 1]
+            self._con.execute(_UPSERT_SQL, params)
 
     def query(self, sql: str) -> pa.Table:
         """Ejecuta una consulta SQL sobre el backend y devuelve tabla Arrow.

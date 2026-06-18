@@ -61,15 +61,15 @@ dependencies = [
     # comunidades Louvain; DECLARADO, nunca usado sin declarar (lección 7)
     "pyyaml>=6.0.3",
     # parser de specs declarativas (NetworkSpec YAML, Hito 9)
+    "rapidfuzz>=3,<4",
+    # dedup fuzzy determinista (core desde #88; antes extra [dedup])
 ]
 
 [project.optional-dependencies]
-zotero = []
+# zotero/neo4j: ex-Hito 11, DESCARTADO (PO 2026-06-17). Se reabrirían como hito
+# nuevo si hay demanda real; no se declaran como extras vacíos engañosos.
 s2 = []
 neo4j = []
-dedup = [
-    "rapidfuzz>=3,<4",
-]
 viz = []
 bibtex = [
     "bibtexparser>=1.4.4",
@@ -168,6 +168,10 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = "bibtexparser.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "rapidfuzz.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

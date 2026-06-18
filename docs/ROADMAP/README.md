@@ -86,8 +86,8 @@ OIDC), no el push de tags. Cortes acordados:
 > filter → build → export`, NO a la totalidad del producto. En v0.1/v0.2 faltaba la **co-citación
 > end-to-end** (`cited_by_id` quedaba vacío tras el seed → 0 aristas hasta el 2º nivel de fetch);
 > el **Hito 8 ✅ (Ciclos 8a + 8b)** la cerró: `b2g enrich` puebla `cited_by_id`. Y el
-> *information scent* es —en el AS-BUILT— una **heurística de frecuencia de enlace** (la remediación
-> R4 lo eleva a scent bibliométrico vía proyectores). **Corrección 2026-06-15 (ADR 0022):** lo que
+> *information scent*, que en el AS-BUILT de v0.2 era una **heurística de frecuencia de enlace**, fue
+> **elevado por la remediación R4 ✅** a scent bibliométrico vía proyectores (acoplamiento hacia atrás, determinista). **Corrección 2026-06-15 (ADR 0022):** lo que
 > antes figuraba acá como "stub/futuro de IA" —`explain_candidate`, el extra `[llm]` y la **máquina
 > de tensiones**— **NO es futuro: se RETIRA** (el producto no usa IA generativa). Ver
 > [`Notas/06-critica-as-built-v0.2.md`](../Notas/06-critica-as-built-v0.2.md) y la **tanda R1–R5** abajo.
@@ -223,7 +223,7 @@ limpio y actual; el cuerpo de cada hito vive en su archivo:
 | A5 ecuaciones que mutan + acumular | 3 + 6 ✅ | biblioteca viva + re-seed por CLI (`b2g seed` acumula vía `--store`) |
 | B1 back/forward chaining | 5 ✅ | `Forager.chain` (backward puro / forward red vía `fetch_citing`) |
 | B2 profundidad + preview | 5 ✅ | `preview` SIN red (`forward_requires_fetch`), `max_candidates`; `depth>1` futuro |
-| B3 ranking por estructura | 5 ✅ (frecuencia de enlace) → **R4** (proyectores) | as-built = frecuencia de enlace (ADR 0020); R4 lo eleva a scent **bibliométrico vía proyectores** (acoplamiento/co-citación/centralidad), determinista |
+| B3 ranking por estructura | 5 ✅ → **R4 ✅** (proyectores) | scent **bibliométrico vía proyectores** (R4 hecho): `compute_backward_scent` usa `collect_item_to_papers` (acoplamiento hacia atrás), determinista, sin IA. (El AS-BUILT de v0.2 era frecuencia de enlace, ADR 0020) |
 | ~~B4 explicación opcional de IA~~ | **RETIRADA** (R4) | `explain_candidate`/`[llm]` **eliminados** (ADR 0022): el producto no usa IA generativa. El "porqué" lo explica la estructura visible, no un LLM |
 | C1 dedup/normalización autores/inst. | 5 ✅ (det.) + 7 ✅ (fuzzy) | `normalize` conservador + dedup fuzzy `rapidfuzz` (autores; keywords en C2; instituciones diferidas), ADR 0026 |
 | C2 thesaurus multilingüe | 5 ✅ + 7 ✅ (fuzzy) | `apply_thesaurus` (sobrescribe `keywords_id` desde `keywords_raw`); dedup fuzzy de keywords fuera del thesaurus en Hito 7 (`deduplicate_keywords`, ADR 0026) |
@@ -234,5 +234,5 @@ limpio y actual; el cuerpo de cada hito vive en su archivo:
 | D3 asortatividad + composición + proxy | 2 | |
 | D4 export GraphML/CSV | 2 | |
 | E1 snapshot reproducible | 1 + 6 ✅ | `Corpus.snapshot` + `b2g snapshot` |
-| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) + cleanup pre-v0.3 ✅ (`monitor`) + 8 ✅ (`enrich`) + workspace ✅ (`init`) | `b2g` **14 subcomandos** (Hito 6 entregó 11; `monitor` se sumó en el cleanup pre-v0.3 → `MONITORED`; `enrich` en el Hito 8 —refs→DOI + co-citación, `--max-citing`—, ADR 0025, sin transición; `init` con el workspace, ADR 0029), envelope `--json` versionado, exit 0–5 (ADR 0021) |
+| E2 CLI `--json` + exit codes | 0 (principios) + 6 ✅ (CLI) + cleanup pre-v0.3 ✅ (`monitor`) + 8 ✅ (`enrich`) + workspace ✅ (`init`) | `b2g` **17 subcomandos** (Hito 6 entregó 11; `monitor` se sumó en el cleanup pre-v0.3 → `MONITORED`; `enrich` en el Hito 8 —refs→DOI + co-citación, `--max-citing`—, ADR 0025, sin transición; `init` con el workspace, ADR 0029), envelope `--json` versionado, exit 0–5 (ADR 0021) |
 

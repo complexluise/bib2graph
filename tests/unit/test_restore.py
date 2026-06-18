@@ -274,19 +274,21 @@ def test_restore_cmd_sin_red(tmp_path: Path) -> None:
 
     from bib2graph.cli import b2g
     from bib2graph.stores.duckdb import DuckDBStore
+    from bib2graph.workspace import Workspace
 
     rows = [_make_corpus_row(id="P1"), _make_corpus_row(id="P2")]
     parquet_path = tmp_path / "corpus.parquet"
     _make_parquet(parquet_path, rows)
 
-    store_path = tmp_path / "test.duckdb"
+    ws_dir = tmp_path / "ws"
+    ws = Workspace.init(ws_dir, "test")
 
     runner = CliRunner()
     result = runner.invoke(
         b2g,
         [
-            "--store",
-            str(store_path),
+            "--workspace",
+            str(ws_dir),
             "restore",
             "--from-corpus",
             str(parquet_path),
@@ -304,7 +306,7 @@ def test_restore_cmd_sin_red(tmp_path: Path) -> None:
     assert envelope["schema"] == "1"
 
     # Verificar que el store tiene los papers
-    store = DuckDBStore(store_path)
+    store = DuckDBStore(ws.library_path)
     corpus = store.load()
     assert len(corpus) == 2
 
@@ -315,19 +317,21 @@ def test_restore_cmd_envelope_contiene_state(tmp_path: Path) -> None:
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
+    from bib2graph.workspace import Workspace
 
     rows = [_make_corpus_row(id="P1")]
     parquet_path = tmp_path / "corpus.parquet"
     _make_parquet(parquet_path, rows)
 
-    store_path = tmp_path / "test.duckdb"
+    ws_dir = tmp_path / "ws"
+    Workspace.init(ws_dir, "test")
 
     runner = CliRunner()
     result = runner.invoke(
         b2g,
         [
-            "--store",
-            str(store_path),
+            "--workspace",
+            str(ws_dir),
             "restore",
             "--from-corpus",
             str(parquet_path),
@@ -384,15 +388,17 @@ def test_restore_cmd_sin_from_corpus_falla(tmp_path: Path) -> None:
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
+    from bib2graph.workspace import Workspace
 
-    store_path = tmp_path / "test.duckdb"
+    ws_dir = tmp_path / "ws"
+    Workspace.init(ws_dir, "test")
 
     runner = CliRunner()
     result = runner.invoke(
         b2g,
         [
-            "--store",
-            str(store_path),
+            "--workspace",
+            str(ws_dir),
             "restore",
         ],
     )

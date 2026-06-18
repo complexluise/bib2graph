@@ -9,7 +9,7 @@ Tests prescriptos:
 - Idempotencia: segunda pasada no cambia el Corpus.
 - Determinismo: dos corridas con el mismo corpus → mismo corpus_hash.
 - ``_raw`` intacto: ``authors_raw``/``keywords_raw`` no cambian.
-- Import faltante: sin rapidfuzz → ``ImportError`` accionable.
+- rapidfuzz es núcleo (#88): import siempre disponible, funciones ejecutan sin extras.
 - Threshold configurable: mismo par colapsa o no según el umbral.
 - PreprocRef registrado en el Manifest.
 - Corpus de entrada no mutado (semántica de valor).
@@ -19,7 +19,6 @@ Marcador: ``unit`` (sin red, sin I/O).
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 import pyarrow as pa
@@ -361,45 +360,49 @@ class TestIdempotenciaDeterminismo:
 
 
 # ---------------------------------------------------------------------------
-# Test de import faltante (sin rapidfuzz → ImportError accionable)
+# Tests de disponibilidad de rapidfuzz (ahora es dependencia del núcleo, #88)
 # ---------------------------------------------------------------------------
 
 
-class TestImportFaltante:
-    def test_sin_rapidfuzz_authors_lanza_import_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Sin rapidfuzz instalado, deduplicate_authors lanza ImportError accionable."""
-        corpus = _make_corpus(_base_row("P1", authors_id=["john smith"]))
+class TestRapidfuzzCore:
+    def test_import_bib2graph_sin_error(self) -> None:
+        """``import bib2graph`` no lanza ImportError: rapidfuzz es núcleo (#88)."""
+        import importlib
 
-        # Simular ausencia de rapidfuzz inyectando None en sys.modules
-        monkeypatch.setitem(sys.modules, "rapidfuzz", None)  # type: ignore[call-overload]
-        monkeypatch.setitem(sys.modules, "rapidfuzz.fuzz", None)  # type: ignore[call-overload]
+        mod = importlib.import_module("bib2graph")
+        assert mod is not None
 
-        with pytest.raises(ImportError, match="uv sync --extra dedup"):
-            deduplicate_authors(corpus)
+    def test_import_dedup_sin_error(self) -> None:
+        """``import bib2graph.preprocessors.dedup`` no lanza ImportError."""
+        import importlib
 
-    def test_sin_rapidfuzz_keywords_lanza_import_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Sin rapidfuzz instalado, deduplicate_keywords lanza ImportError accionable."""
-        corpus = _make_corpus(_base_row("P1", keywords_id=["machine learning"]))
+        mod = importlib.import_module("bib2graph.preprocessors.dedup")
+        assert mod is not None
 
-        monkeypatch.setitem(sys.modules, "rapidfuzz", None)  # type: ignore[call-overload]
-        monkeypatch.setitem(sys.modules, "rapidfuzz.fuzz", None)  # type: ignore[call-overload]
-
-        with pytest.raises(ImportError, match="uv sync --extra dedup"):
-            deduplicate_keywords(corpus)
-
-    def test_importar_modulo_sin_rapidfuzz_no_falla(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Importar bib2graph.preprocessors no falla aunque rapidfuzz no esté."""
-        # El módulo ya está importado; verificamos que no hay efectos de import
-        # Sólo comprobamos que el símbolo existe sin llamar a la función
+    def test_deduplicate_authors_es_callable(self) -> None:
+        """``deduplicate_authors`` está disponible sin extras adicionales."""
         from bib2graph.preprocessors import deduplicate_authors as da
 
         assert callable(da)
+
+    def test_deduplicate_keywords_es_callable(self) -> None:
+        """``deduplicate_keywords`` está disponible sin extras adicionales."""
+        from bib2graph.preprocessors import deduplicate_keywords as dk
+
+        assert callable(dk)
+
+    def test_deduplicate_authors_funciona_sin_extras(self) -> None:
+        """``deduplicate_authors`` ejecuta sin ImportError (rapidfuzz disponible)."""
+        corpus = _make_corpus(_base_row("P1", authors_id=["john smith"]))
+        # No debe lanzar ImportError ni ninguna excepción
+        result = deduplicate_authors(corpus)
+        assert result is not None
+
+    def test_deduplicate_keywords_funciona_sin_extras(self) -> None:
+        """``deduplicate_keywords`` ejecuta sin ImportError (rapidfuzz disponible)."""
+        corpus = _make_corpus(_base_row("P1", keywords_id=["machine learning"]))
+        result = deduplicate_keywords(corpus)
+        assert result is not None
 
 
 # ---------------------------------------------------------------------------

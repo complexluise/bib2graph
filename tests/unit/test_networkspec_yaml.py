@@ -374,9 +374,11 @@ def test_networks_cmd_escribe_artefactos(tmp_path: Path) -> None:
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
+    from bib2graph.workspace import Workspace
 
-    store_path = tmp_path / "test.duckdb"
-    _seed_store(store_path)
+    ws_dir = tmp_path / "ws"
+    ws = Workspace.init(ws_dir, "test")
+    _seed_store(ws.library_path)
 
     yaml_content = "networks:\n  - kind: bibliographic_coupling\n"
     spec_file = tmp_path / "redes.yaml"
@@ -388,8 +390,8 @@ def test_networks_cmd_escribe_artefactos(tmp_path: Path) -> None:
     result = runner.invoke(
         b2g,
         [
-            "--store",
-            str(store_path),
+            "--workspace",
+            str(ws_dir),
             "networks",
             "--spec",
             str(spec_file),
@@ -415,12 +417,14 @@ def test_networks_cmd_no_transiciona_cycle_state(tmp_path: Path) -> None:
 
     from bib2graph.cli import b2g
     from bib2graph.stores.duckdb import DuckDBStore
+    from bib2graph.workspace import Workspace
 
-    store_path = tmp_path / "test.duckdb"
-    _seed_store(store_path)
+    ws_dir = tmp_path / "ws"
+    ws = Workspace.init(ws_dir, "test")
+    _seed_store(ws.library_path)
 
     # Capturar el estado antes
-    store_before = DuckDBStore(store_path)
+    store_before = DuckDBStore(ws.library_path)
     state_before = store_before.backend.loop_state()
 
     yaml_content = "networks:\n  - kind: bibliographic_coupling\n"
@@ -433,8 +437,8 @@ def test_networks_cmd_no_transiciona_cycle_state(tmp_path: Path) -> None:
     result = runner.invoke(
         b2g,
         [
-            "--store",
-            str(store_path),
+            "--workspace",
+            str(ws_dir),
             "networks",
             "--spec",
             str(spec_file),
@@ -446,7 +450,7 @@ def test_networks_cmd_no_transiciona_cycle_state(tmp_path: Path) -> None:
     assert result.exit_code == 0, f"Salida inesperada: {result.output}"
 
     # El CycleState no debe haber cambiado
-    store_after = DuckDBStore(store_path)
+    store_after = DuckDBStore(ws.library_path)
     state_after = store_after.backend.loop_state()
     assert state_after == state_before
 
@@ -457,9 +461,11 @@ def test_networks_cmd_json_envelope_correcto(tmp_path: Path) -> None:
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
+    from bib2graph.workspace import Workspace
 
-    store_path = tmp_path / "test.duckdb"
-    _seed_store(store_path)
+    ws_dir = tmp_path / "ws"
+    ws = Workspace.init(ws_dir, "test")
+    _seed_store(ws.library_path)
 
     yaml_content = "networks:\n  - kind: bibliographic_coupling\n"
     spec_file = tmp_path / "redes.yaml"
@@ -471,8 +477,8 @@ def test_networks_cmd_json_envelope_correcto(tmp_path: Path) -> None:
     result = runner.invoke(
         b2g,
         [
-            "--store",
-            str(store_path),
+            "--workspace",
+            str(ws_dir),
             "networks",
             "--spec",
             str(spec_file),
@@ -501,9 +507,11 @@ def test_networks_cmd_yaml_invalido_emite_data_error(tmp_path: Path) -> None:
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
+    from bib2graph.workspace import Workspace
 
-    store_path = tmp_path / "test.duckdb"
-    _seed_store(store_path)
+    ws_dir = tmp_path / "ws"
+    ws = Workspace.init(ws_dir, "test")
+    _seed_store(ws.library_path)
 
     # Kind inexistente → DataError en el loader
     yaml_content = "networks:\n  - kind: red_inexistente\n"
@@ -514,8 +522,8 @@ def test_networks_cmd_yaml_invalido_emite_data_error(tmp_path: Path) -> None:
     result = runner.invoke(
         b2g,
         [
-            "--store",
-            str(store_path),
+            "--workspace",
+            str(ws_dir),
             "networks",
             "--spec",
             str(spec_file),

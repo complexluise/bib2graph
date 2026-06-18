@@ -1,6 +1,6 @@
 # 0030 — Ecuación declarativa (`equation.yaml`) + `restore` de corpus curado + corpus de ejemplo commiteado
 
-- **Estado:** **Aceptada — AS-BUILT ✅** (9a + 9b + Ciclo 10 completos, 2026-06-17). 9a: `restore` +
+- **Estado:** **Aceptada — AS-BUILT ✅** (9a + 9b + Ciclo 10 + Ciclo B completos, 2026-06-17). 9a: `restore` +
   `equation.yaml` cargable; **9b: workspace de ejemplo `examples/valoraciones/` (corpus 137 filas)
   + gate de reproducibilidad R2** (7 tests; cierra el Ciclo #33). **Ciclo 10: `seed --from-bib`
   (3er modo, sin red) + filtro de año real (`min_year`/`max_year`) + `examples/bibtex/`** (cierra
@@ -274,7 +274,7 @@ El `equation.yaml` del ejemplo es **autodescriptivo** (ecuación + corpus + READ
   Nota 09 dejó abierto sobre estabilidad de la composición de comunidades (se valida en 9b).
 - (−) **Dos modos en `b2g seed`** (`--equation`/`--spec`) **+ comando `restore` nuevo:** más
   ramas de validación de uso y un subcomando más (**17º**). Mitigación: el patrón de modos
-  mutuamente excluyentes ya existe (`curate`, `--workspace`/`--store`); `restore` es inverso de
+  mutuamente excluyentes ya existe (p. ej. `curate` con `--dump`/`--from-csv`); `restore` es inverso de
   `snapshot`.
 - (−) **Datos en git (9b):** se romperá la regla "ningún dato al repo" con una excepción acotada
   (`examples/`). Mitigación: curado, reducido (~100–150 filas), parquet (no `.duckdb`), y una

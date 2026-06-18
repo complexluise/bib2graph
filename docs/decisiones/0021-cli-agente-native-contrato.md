@@ -258,3 +258,16 @@ accionable que sugiere `b2g init`.
 El cambio es **aditivo/retrocompatible**: la resolución ambiente solo cubre el caso en que falta el
 flag; el resto del contrato (envelope `schema="1"`, exit codes, transiciones) **no cambia**. El set
 de subcomandos pasa de 13 a **14** con el alta de `b2g init` (scaffold del workspace).
+
+## Enmienda — `--store` eliminado del CLI (BREAKING, [#75](https://github.com/complexluise/bib2graph/issues/75), 2026-06-17)
+
+> **Supera la enmienda 2026-06-16 de arriba** (que dejaba `--store` "opcional"). Aquella queda como
+> historia; el §E pasa a su forma final. Implementado por la enmienda 2026-06-17 de
+> [0029](0029-workspace-por-investigacion.md) (ver su detalle).
+
+`--store` **se elimina por completo del CLI**: ya no está registrada como opción global en Click.
+Pasarla produce el **error estándar de Click** (`No such option: --store`, con su exit code), no un
+mensaje custom de migración. La **única forma canónica** de apuntar a la persistencia es
+`--workspace <carpeta>` o la resolución ambiente (`B2G_WORKSPACE` > walk-up del cwd buscando
+`workspace.json`). El modo degenerado (`.duckdb` suelto) **deja de existir**: un `.duckdb` legacy se
+adopta como workspace con `b2g init .` en su carpeta. Es un **BREAKING change** del contrato CLI.

@@ -1,6 +1,15 @@
 # 0026 — Deduplicación fuzzy determinista con `rapidfuzz` (splink diferido)
 
-- **Estado:** Aceptada · **AS-BUILT (2026-06-16)** (Hito 7 implementado en esta rama)
+> **Supersedida en parte por [0031](0031-preprocesamiento-automatico-en-ingesta.md) (2026-06-18, #88):**
+> el **algoritmo** de este ADR (token_sort_ratio + Union-Find + canónico más-frecuente, determinista)
+> **sigue vigente**, pero su **invocación cambia**: el dedup deja de ser "función de librería sin
+> subcomando CLI" y pasa a ejecutarse **automáticamente en la ingesta** (sobre el corpus completo
+> mergeado, cross-biblioteca), y `rapidfuzz` deja el extra `[dedup]` para ir al **núcleo**. El cuerpo
+> de abajo queda como historia inmutable del corte del Hito 7. Ver 0031.
+
+- **Estado:** Aceptada · **AS-BUILT (2026-06-16)** (Hito 7) · **supersedida en parte por
+  [0031](0031-preprocesamiento-automatico-en-ingesta.md)** (2026-06-18): invocación del dedup
+  (automático en ingesta) y `rapidfuzz` al núcleo; el algoritmo sigue vigente
 - **Fecha:** 2026-06-16
 - **Decidido por:** IA (Claude Opus 4.8), validado por el Product Owner proxy
   (ver [`registro-ia.md`](registro-ia.md))

@@ -30,7 +30,6 @@ Marcador: ``unit`` (sin red, sin I/O real).
 
 from __future__ import annotations
 
-import json
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -306,8 +305,13 @@ class TestForagerBackward:
         assert isinstance(ranked, RankedCandidates)
         assert len(ranked.ranking) == 2
 
-    def test_candidatos_marcados_correctamente(self) -> None:
-        """Los candidatos tienen is_seed=False, candidate, provenance hop=1."""
+    def test_candidatos_backward_en_observed_refs(self) -> None:
+        """Backward chaining: IDs observados van a observed_refs, NO al corpus (#54).
+
+        Opción B: los candidatos backward no se materializan como filas-fantasma.
+        El ranking sigue presente; los IDs salen por observed_refs para persistirse
+        en referenced_but_not_fetched.
+        """
         rows = [_base_row("P1", references_id=["REF_A"])]
         corpus = _make_corpus(*rows)
 
@@ -315,19 +319,16 @@ class TestForagerBackward:
         forager = Forager(source, depth=1)
         ranked = forager.chain(corpus, direction="backward")
 
+        # El corpus NO tiene filas-fantasma backward
         cand_table = ranked.corpus.to_arrow().to_pylist()
-        assert len(cand_table) == 1
-        cand = cand_table[0]
-
-        assert cand["is_seed"] is False
-        assert cand["curation_status"] == "candidate"
-
-        provenance = json.loads(cand["provenance"])
-        assert isinstance(provenance, list)
-        assert len(provenance) >= 1
-        event = provenance[0]
-        assert event["chaining_hop"] == 1
-        assert "backward" in event["source"]
+        assert len(cand_table) == 0, (
+            "Backward chaining no debe materializar filas en corpus (#54)"
+        )
+        # Los IDs backward van a observed_refs
+        assert "REF_A" in ranked.observed_refs
+        # El ranking sigue presente (la señal de scent es útil)
+        assert len(ranked.ranking) == 1
+        assert ranked.ranking[0][0] == "REF_A"
 
     def test_chain_no_muta_corpus_entrada(self) -> None:
         """chain() no muta el corpus de entrada."""
@@ -785,3 +786,365 @@ class TestExplainCandidateRetirado:
 
         with pytest.raises(ModuleNotFoundError):
             importlib.import_module("bib2graph.foraging.explain")
+
+
+# ---------------------------------------------------------------------------
+# #78 — Forward chaining materializa metadata real (opción A1)
+# ---------------------------------------------------------------------------
+
+
+def _citing_work_full(
+    citer_oa_id: str,
+    *,
+    cites_ids: list[str],
+    title: str = "Real Title",
+    year: int = 2024,
+    authors: list[str] | None = None,
+) -> dict[str, Any]:
+    """Objeto Work de OpenAlex con todos los campos de ``_FIELDS`` poblados.
+
+    Simula el JSON que devuelve la API de OpenAlex con ``select=_FIELDS``:
+    los mismos campos que ``fetch_citing_batch_with_works`` conserva para
+    que ``_work_to_row`` pueda mapearlos al schema canónico.
+    """
+    authorships: list[dict[str, Any]] = []
+    for i, name in enumerate(authors or ["Autor Uno"]):
+        authorships.append(
+            {
+                "author": {
+                    "id": f"https://openalex.org/A{i + 1}",
+                    "display_name": name,
+                    "orcid": None,
+                },
+                "institutions": [],
+            }
+        )
+    return {
+        "id": f"https://openalex.org/{citer_oa_id}",
+        "doi": f"https://doi.org/10.9999/{citer_oa_id.lower()}",
+        "title": title,
+        "display_name": title,
+        "publication_year": year,
+        "language": "en",
+        "abstract_inverted_index": {"Resumen": [0], "real": [1]},
+        "authorships": authorships,
+        "keywords": [{"id": "https://openalex.org/K1", "display_name": "test kw"}],
+        "referenced_works": [f"https://openalex.org/{oa_id}" for oa_id in cites_ids],
+        "primary_location": {
+            "source": {"display_name": "Journal of Tests", "id": None}
+        },
+        "type": "article",
+    }
+
+
+def _make_batch_transport_full(
+    citing_works: list[dict[str, Any]],
+) -> httpx.MockTransport:
+    """MockTransport que responde a ``cites:`` con works con _FIELDS completos."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url_str = str(request.url)
+        if "cites" in url_str:
+            payload = {
+                "results": citing_works,
+                "meta": {"next_cursor": None},
+            }
+        else:
+            payload = {"results": [], "meta": {"next_cursor": None}}
+        return httpx.Response(200, json=payload)
+
+    return httpx.MockTransport(handler)
+
+
+class TestForwardChainingMetadataReal:
+    """#78 — Forward chaining materializa metadata real (opción A1).
+
+    Las filas forward del corpus deben tener título real (no ``[candidate:W...]``),
+    año, autores y referencias correctas. El método viejo ``fetch_citing_batch``
+    (usado por el Enricher, Hito 8b) debe mantener su firma y contrato intactos.
+    """
+
+    def test_forward_filas_tienen_titulo_real(self) -> None:
+        """Filas forward del corpus: título real, no placeholder ``[candidate:``.
+
+        Espejo del test del backward en #54: la materialización forward ya no
+        usa ``[candidate:W...]`` sino el título real de OpenAlex.
+        """
+        rows = [
+            _base_row(
+                "P1",
+                openalex_id="W1",
+                references_id=None,
+                curation_status="candidate",
+            )
+        ]
+        corpus = _make_corpus(*rows)
+
+        citing_work = _citing_work_full(
+            "W9999",
+            cites_ids=["W1"],
+            title="Artículo de Prueba Real",
+            year=2023,
+            authors=["García López, A.", "Pérez Ruiz, B."],
+        )
+        transport = _make_batch_transport_full([citing_work])
+        source = OpenAlexSource(transport=transport)
+
+        forager = Forager(source, depth=1)
+        ranked = forager.chain(corpus, direction="forward")
+
+        cand_rows = ranked.corpus.to_arrow().to_pylist()
+        assert len(cand_rows) == 1, "Debe haber exactamente 1 candidato forward"
+        titulo = cand_rows[0].get("title", "")
+        assert not titulo.startswith("[candidate:"), (
+            f"El título no debe ser un placeholder; es: {titulo!r}"
+        )
+        assert titulo == "Artículo de Prueba Real", (
+            f"El título debe ser el real de OpenAlex; es: {titulo!r}"
+        )
+
+    def test_forward_filas_tienen_anio_y_autores(self) -> None:
+        """Filas forward: año y autores poblados (no None)."""
+        rows = [_base_row("P1", openalex_id="W1", references_id=None)]
+        corpus = _make_corpus(*rows)
+
+        citing_work = _citing_work_full(
+            "W8888",
+            cites_ids=["W1"],
+            title="Paper con Autores",
+            year=2022,
+            authors=["Autor Uno"],
+        )
+        transport = _make_batch_transport_full([citing_work])
+        source = OpenAlexSource(transport=transport)
+
+        forager = Forager(source, depth=1)
+        ranked = forager.chain(corpus, direction="forward")
+
+        cand_rows = ranked.corpus.to_arrow().to_pylist()
+        assert len(cand_rows) == 1
+        assert cand_rows[0]["year"] == 2022, (
+            f"El año debe ser 2022; es {cand_rows[0]['year']}"
+        )
+        assert cand_rows[0]["authors_raw"] is not None, "Los autores no deben ser None"
+        assert "Autor Uno" in (cand_rows[0]["authors_raw"] or []), (
+            "El autor real debe aparecer en authors_raw"
+        )
+
+    def test_corpus_forward_sin_placeholders(self) -> None:
+        """Ninguna fila del corpus forward matchea el patrón ``^\\[candidate:``."""
+        rows = [
+            _base_row(f"P{i}", openalex_id=f"W{i}", references_id=None)
+            for i in range(1, 4)
+        ]
+        corpus = _make_corpus(*rows)
+
+        # 3 citantes, cada uno cita al menos una semilla
+        citing_works = [
+            _citing_work_full(
+                f"W{900 + i}",
+                cites_ids=[f"W{i}"],
+                title=f"Paper Real {i}",
+                year=2020 + i,
+            )
+            for i in range(1, 4)
+        ]
+        transport = _make_batch_transport_full(citing_works)
+        source = OpenAlexSource(transport=transport)
+
+        forager = Forager(source, depth=1)
+        ranked = forager.chain(corpus, direction="forward")
+
+        cand_rows = ranked.corpus.to_arrow().to_pylist()
+        assert len(cand_rows) > 0, "Deben existir candidatos forward"
+        placeholders = [
+            r["title"]
+            for r in cand_rows
+            if (r.get("title") or "").startswith("[candidate:")
+        ]
+        assert placeholders == [], (
+            f"El corpus forward no debe tener placeholders; hay: {placeholders}"
+        )
+
+    def test_forward_is_seed_false_chaining_hop_1(self) -> None:
+        """Filas forward: is_seed=False y provenance con chaining_hop=1."""
+        import json
+
+        rows = [_base_row("P1", openalex_id="W1", references_id=None)]
+        corpus = _make_corpus(*rows)
+
+        citing_work = _citing_work_full("W7777", cites_ids=["W1"])
+        transport = _make_batch_transport_full([citing_work])
+        source = OpenAlexSource(transport=transport)
+
+        forager = Forager(source, depth=1)
+        ranked = forager.chain(corpus, direction="forward")
+
+        cand_rows = ranked.corpus.to_arrow().to_pylist()
+        assert len(cand_rows) == 1
+        row = cand_rows[0]
+        assert row["is_seed"] is False, "Los candidatos forward deben ser is_seed=False"
+        # Verificar chaining_hop=1 en provenance
+        provenance_raw = row.get("provenance")
+        assert provenance_raw is not None, "La provenance no debe ser None"
+        events = json.loads(provenance_raw) if isinstance(provenance_raw, str) else []
+        assert len(events) >= 1
+        assert events[0].get("chaining_hop") == 1, (
+            f"chaining_hop debe ser 1; es {events[0].get('chaining_hop')!r}"
+        )
+
+    def test_corpus_hash_estable_entre_corridas(self) -> None:
+        """Mismo corpus + mismo mock → mismo corpus_hash (determinismo #78)."""
+        rows = [_base_row("P1", openalex_id="W1", references_id=None)]
+        corpus = _make_corpus(*rows)
+
+        citing_work = _citing_work_full(
+            "W6666", cites_ids=["W1"], title="Paper Determinista"
+        )
+
+        def make_run() -> str:
+            transport = _make_batch_transport_full([citing_work])
+            source = OpenAlexSource(transport=transport)
+            forager = Forager(source, depth=1)
+            ranked = forager.chain(corpus, direction="forward")
+            return ranked.corpus._backend.corpus_hash()
+
+        hash1 = make_run()
+        hash2 = make_run()
+        assert hash1 == hash2, (
+            f"corpus_hash debe ser estable entre corridas; "
+            f"primera={hash1!r}, segunda={hash2!r}"
+        )
+
+    def test_fetch_citing_batch_no_regresion_firma(self) -> None:
+        """``fetch_citing_batch`` devuelve ``dict[str, list[str]]`` (no-regresión Enricher).
+
+        El Enricher de Hito 8b llama a ``fetch_citing_batch`` y espera solo la
+        atribución, sin works. Este test verifica que la firma y el contrato del
+        método viejo se mantienen intactos tras la refactorización de #78.
+        """
+        citing_work = _citing_work_full("W5555", cites_ids=["W1"])
+        transport = _make_batch_transport_full([citing_work])
+        source = OpenAlexSource(transport=transport)
+
+        result = source.fetch_citing_batch(["W1"])
+
+        # La firma debe ser dict[str, list[str]]
+        assert isinstance(result, dict), (
+            f"fetch_citing_batch debe devolver dict; devuelve {type(result)}"
+        )
+        assert "W1" in result, "W1 debe aparecer como clave"
+        citer_ids = result["W1"]
+        assert isinstance(citer_ids, list), (
+            f"Los valores deben ser list[str]; son {type(citer_ids)}"
+        )
+        assert all(isinstance(c, str) for c in citer_ids), (
+            "Todos los citer_ids deben ser strings"
+        )
+        assert "W5555" in citer_ids, "W5555 debe estar atribuido a W1"
+
+    def test_fetch_citing_batch_with_works_devuelve_tupla(self) -> None:
+        """``fetch_citing_batch_with_works`` devuelve ``(dict, dict)`` con works JSON.
+
+        Verifica la firma del método nuevo (#78 A1): primera componente = atribución
+        idéntica a ``fetch_citing_batch``; segunda = ``{citer_id: work_json}``.
+        """
+        citing_work = _citing_work_full(
+            "W4444",
+            cites_ids=["W1"],
+            title="Paper con Works",
+        )
+        transport = _make_batch_transport_full([citing_work])
+        source = OpenAlexSource(transport=transport)
+
+        result = source.fetch_citing_batch_with_works(["W1"])
+
+        assert isinstance(result, tuple) and len(result) == 2, (
+            "fetch_citing_batch_with_works debe devolver una tupla (attribution, works_map)"
+        )
+        attribution, works_map = result
+
+        # Atribución idéntica a fetch_citing_batch
+        assert isinstance(attribution, dict)
+        assert "W1" in attribution
+        assert "W4444" in attribution["W1"]
+
+        # works_map tiene el JSON completo del citante
+        assert isinstance(works_map, dict)
+        assert "W4444" in works_map, "El works_map debe tener la entrada del citante"
+        work_json = works_map["W4444"]
+        assert work_json.get("title") == "Paper con Works", (
+            f"El work_json debe tener el título real; tiene {work_json.get('title')!r}"
+        )
+
+    def test_backward_no_regresion_observed_refs(self) -> None:
+        """No-regresión #54: backward sigue generando observed_refs, no corpus rows.
+
+        El backward chaining no se toca en #78; este test verifica que la
+        refactorización no lo rompió.
+        """
+        rows = [_base_row("P1", references_id=["REF_B"], openalex_id="W1")]
+        corpus = _make_corpus(*rows)
+
+        source = OpenAlexSource(transport=_make_batch_transport_full([]))
+        forager = Forager(source, depth=1)
+        ranked = forager.chain(corpus, direction="backward")
+
+        # El corpus backward NO tiene filas materializadas
+        cand_rows = ranked.corpus.to_arrow().to_pylist()
+        assert len(cand_rows) == 0, (
+            "Backward chaining no debe materializar filas en corpus (#54)"
+        )
+        # Los IDs backward van a observed_refs
+        assert "REF_B" in ranked.observed_refs, "REF_B debe estar en observed_refs"
+
+    def test_build_forward_candidate_row_eliminado(self) -> None:
+        """``_build_forward_candidate_row`` fue eliminado (#78, como #54 eliminó backward).
+
+        No debe existir en bib2graph.foraging.forager.
+        """
+        import bib2graph.foraging.forager as forager_mod
+
+        assert not hasattr(forager_mod, "_build_forward_candidate_row"), (
+            "_build_forward_candidate_row fue eliminado en #78: "
+            "no debe existir en bib2graph.foraging.forager"
+        )
+
+
+# ---------------------------------------------------------------------------
+# #78 — Test de red real (fuera del gate por defecto)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.network
+def test_forward_chaining_red_real_titulo_no_nulo() -> None:
+    """Forward chaining contra OpenAlex real: los citantes tienen título no nulo.
+
+    Fuera del gate por defecto (``addopts -m "not network"``).
+    Correr explícito con: ``uv run pytest -m network``.
+
+    Usa un paper conocido como semilla para verificar que los citantes
+    traídos por el forward chaining tienen metadata real.
+    """
+    # W2741809807 = "Attention is all you need" (Vaswani et al., 2017)
+    # — paper muy citado, garantiza ≥1 citante devuelto
+    rows = [
+        _base_row(
+            "attn",
+            openalex_id="W2741809807",
+            references_id=None,
+        )
+    ]
+    corpus = _make_corpus(*rows)
+
+    source = OpenAlexSource(email="trama.complejidad@gmail.com")
+    forager = Forager(source, depth=1, max_citing_per_paper=3)
+    ranked = forager.chain(corpus, direction="forward")
+
+    cand_rows = ranked.corpus.to_arrow().to_pylist()
+    assert len(cand_rows) > 0, "Debe haber al menos 1 citante forward real"
+    for row in cand_rows:
+        titulo = row.get("title") or ""
+        assert titulo and not titulo.startswith("[candidate:"), (
+            f"El título debe ser real (no placeholder); es: {titulo!r}"
+        )

@@ -1,17 +1,29 @@
 > ← Volver al [índice del ROADMAP](README.md)
 
-# LO QUE VIENE (Hitos 7–11, actualizados a la nueva realidad)
+# LO QUE VIENE (Hitos 7–9 HECHOS; 10 y 11 reevaluados)
+
+> **Estado (2026-06-17):** los **Hitos 7, 8 y 9 están COMPLETOS ✅** (dedup fuzzy, `Enricher`
+> de co-citación end-to-end, `NetworkSpec` YAML). Los Hitos 10 y 11 **dejaron de ser trabajo por
+> venir:** el **10 (viz)** se **absorbe en la epic GUI #34** (la GUI es la capa de lectura visual) y el
+> **11 (Zotero/Neo4j)** quedó **DESCARTADO** (decisión del PO, reabrible solo si aparece demanda real).
 
 > **Tras la remediación R1–R5.** Estos hitos son los opcionales/de cierre hacia v1.0, ya
 > reconciliados con el modelo nuevo (sin IA generativa, scent bibliométrico, FSM cíclico).
 
-## Hito 7 — Deduplicación fuzzy (extra `[dedup]`) — **COMPLETO ✅**
+## Hito 7 — Deduplicación fuzzy (`rapidfuzz`; automática en la ingesta desde #88) — **COMPLETO ✅**
 
 > **Hito 7 COMPLETO ✅ (2026-06-16, ADR [0026](../decisiones/0026-dedup-fuzzy-determinista.md)):**
 > `deduplicate_authors`/`deduplicate_keywords` con **`rapidfuzz`** (determinista), **autores +
 > keywords** (instituciones **diferidas** — `institutions_id` no está normalizada
 > determinísticamente hoy). **Función de librería, sin subcomando CLI** (decisión del PO). `splink`
 > (probabilístico/pesado) **diferido a post-V1**.
+>
+> **Enmienda #88 (2026-06-18, ADR [0031](../decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):**
+> el dedup deja de ser "función de librería sin CLI" y pasa a ejecutarse **automáticamente en la
+> ingesta** (`seed`/`seed_from_bib`/`chain`/`restore`, sobre el corpus completo mergeado ⇒
+> cross-biblioteca, helper `cli/_ingest.py::normalize_and_dedup`). **`rapidfuzz` pasa al núcleo** y
+> **el extra `[dedup]` se elimina** (el import ya no es perezoso). El thesaurus es el único paso
+> explícito del preproc (`b2g thesaurus`, 18° subcomando). El **algoritmo** de abajo no cambia.
 
 **Alcance**
 
@@ -27,13 +39,15 @@
 - **✅** Combina variantes por similitud por encima de un `threshold` **por-campo** configurable;
   **determinista** (`token_sort_ratio` + Union-Find + canónico más-frecuente/desempate-id) e
   idempotente.
-- **✅** Importación **perezosa** del extra `[dedup]` (= `rapidfuzz`): sin él, `ImportError` claro que
-  apunta al extra (`uv sync --extra dedup`).
+- **✅ (en el corte 0026; SUPERADO por #88/ADR 0031):** importación **perezosa** del extra
+  `[dedup]` (= `rapidfuzz`). Desde #88 **`rapidfuzz` está en el núcleo** y el extra `[dedup]` se
+  eliminó (el dedup es automático en la ingesta): ya no hay import perezoso ni `uv sync --extra dedup`.
 
 **Tests (TDD — los justos)**
 
 - Mapeo de un par de nombres/keywords casi-iguales por encima/por debajo del umbral.
-- Que sin el extra instalado el error sea explícito (mock del import faltante).
+- ~~Que sin el extra instalado el error sea explícito~~ **(obsoleto desde #88: `rapidfuzz` es núcleo,
+  no hay extra que pueda faltar).**
 
 **Se vuelve posible:** redes de autor/keyword limpias de duplicados aproximados.
 
@@ -252,7 +266,8 @@ No se prometen ni se cablean clientes que no se usan.
   - **9b ✅ HECHO (2026-06-17):** **workspace de ejemplo `examples/valoraciones/`** (corpus curado
     congelado en `corpus.parquet`, **137 filas: 7 `accepted` / 130 `candidate` / 107 seeds**, reducción
     determinista del corpus real del PO CC0/OpenAlex + `equation.yaml` de procedencia + `README.md` +
-    `build_corpus.py` de regeneración) como **excepción al `.gitignore`** de datos de usuario
+    `build_corpus.py` de regeneración — *nota: el Ciclo B (más abajo) **superseded** este `build_corpus.py`;
+    la procedencia del ejemplo pasó a ser **receta CLI**, así que no leer esto como exigencia viva*) como **excepción al `.gitignore`** de datos de usuario
     (`!examples/` + regla defensiva `examples/**/*.duckdb`). El **gate de reproducibilidad R2**
     (`tests/unit/test_example_r2_gate.py`, 7 tests) corre `restore --from-corpus` → `build` →
     `networks`/`clusters` **sin red** sobre el corpus real y verifica **`corpus_hash` estable** +
@@ -315,7 +330,7 @@ No se prometen ni se cablean clientes que no se usan.
 > "inserción de IA nº2") **ya no son costuras futuras: se borran**. El producto **no usa IA
 > generativa**; el extra `[llm]` se elimina (Hito R4). El sensemaking de tensiones es **humano**,
 > asistido por las redes. El **dedup fuzzy del thesaurus** que sí queda (Hito 7) es **determinista**
-> (`rapidfuzz`, extra `[dedup]`; Hito 7 ✅), no semántico/LLM. La única "inteligencia" que asiste es el
+> (`rapidfuzz`, núcleo desde #88; Hito 7 ✅), no semántico/LLM. La única "inteligencia" que asiste es el
 > **scent bibliométrico** (Hito R4), que no es IA.
 
 ---

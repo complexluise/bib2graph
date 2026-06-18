@@ -4,7 +4,8 @@
 > clean-room** construida de adentro hacia afuera (docs → núcleo puro y tests → costuras).
 > **Estado (v0.3): Hitos 0–6 + 1.5 construidos, remediación R1–R5 COMPLETA, Hito 8 COMPLETO**
 > (Enricher OpenAlex: refs→DOI + co-citación end-to-end) **y Hito 7 COMPLETO** (dedup fuzzy
-> determinista `rapidfuzz`, extra `[dedup]`), tras el red-team de la Nota 06 y el modelo
+> determinista `rapidfuzz`, **automático en la ingesta desde #88; `rapidfuzz` en el núcleo, sin extra
+> `[dedup]`** — ADR 0031), tras el red-team de la Nota 06 y el modelo
 > nuevo (ADR 0022/0023; el producto **no usa IA generativa** — el desarrollo SÍ es asistido por IA,
 > pero el scent es bibliométrico determinista) **y el Hito 9 COMPLETO** (capa declarativa
 > `NetworkSpec` YAML: `load_specs` + `resolution` + 16° subcomando `b2g networks`). Ver
@@ -28,13 +29,15 @@
   `corpus.py`, `cycle.py` (FSM cíclico de dominio, R3),
   `backends/` (`TabularBackend` + `InMemoryBackend` + `DuckDBBackend`), `stores/`
   (`DuckDBStore`), `sources/` (`OpenAlexSource`, `BibtexSource`), `foraging/` (`Forager`,
-  scent bibliométrico), `preprocessors/` (normalize + thesaurus), `filters/` (PRISMA),
+  scent bibliométrico), `preprocessors/` (normalize + dedup automáticos en la ingesta + thesaurus
+  explícito), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `sources/equation.py` (capa declarativa de la
   ecuación, 9a), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/` con 17 subcomandos en `cli/commands/`, no un
+  El **CLI `b2g` es real** —paquete `cli/` con 18 subcomandos en `cli/commands/`, no un
   placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9; el 17° `b2g restore`
-  rehidrata un corpus curado sin red, Ciclo 9a, abajo)—.
-  **571 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
+  rehidrata un corpus curado sin red, Ciclo 9a; el 18° `b2g thesaurus` aplica el thesaurus curado,
+  único paso explícito del preproc, #88, abajo)—.
+  **645 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
   (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2). **`b2g snapshot`/`b2g export` resuelven por
@@ -50,6 +53,19 @@
   `_write_artifacts` (mismos GraphML + metrics.json + clusters.csv que `build`); **NO** transiciona el
   `CycleState` ni sella `.corpus_hash` (transversal al lazo, como `enrich`/`curate`). `pyyaml` pasó a
   dependencia del núcleo (import perezoso). **516 tests verdes**. Ver `docs/API.md` §10.
+- **#88 — preprocesamiento automático en la ingesta (AS-BUILT 2026-06-18, ADR
+  [0031](docs/decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** `normalize` + dedup
+  fuzzy corren **automáticamente** en `seed`/`seed_from_bib`/`chain`/`restore` (helper
+  `cli/_ingest.py::normalize_and_dedup` sobre el corpus **completo mergeado** ⇒ dedup
+  **cross-biblioteca**); el corpus queda siempre normalizado y deduplicado. **`rapidfuzz` pasa al
+  núcleo** (`[project.dependencies]`; **el extra `[dedup]` se elimina**, import ya no perezoso).
+  Nuevo **18° subcomando `b2g thesaurus --from <archivo>`** (único paso explícito del preproc,
+  transversal al FSM). La ingesta y `thesaurus` persisten con **`persist_replace`** /
+  `overwrite_corpus` (DELETE+INSERT, preservan tablas hermanas; evita que el upsert-concat D3
+  reintroduzca variantes). `build`/`networks` siguen puros. Deuda conocida: dedup O(n²) por ingesta
+  (optimización futura) y skip #93 (`test_run_seed_from_bib_reseed_incrementa_ronda`, crash
+  `BibDataString`/`pyparsing` en reseed mismo-proceso; no afecta el CLI real). La **revisión asistida
+  de clusters ambiguos** se difiere a la epic GUI #34. Ver `docs/API.md` §6/§11/§4.1.
 - **Ciclo B — `examples/valoraciones/` rehecho 100% por CLI (AS-BUILT 2026-06-17, ADR
   [0030](docs/decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md) §Ciclo B):** materializa el
   principio **CLI-puro** del PO. `build_corpus.py` **eliminado**; el ejemplo se arma y reproduce
@@ -97,6 +113,28 @@
   trayendo los citantes de las semillas aceptadas vía `OpenAlexSource.fetch_citing_batch` (batcheo OR
   ≤50 con presupuesto por semilla) y los une (idempotente, sin crecer el corpus). `b2g enrich` con
   `--max-citing` (tope por semilla); `Networks.quick` → 4 o 5 redes según haya `cited_by_id`.
+- **Forward chaining materializa metadata REAL** (#78, 2026-06-17, AS-BUILT CERRADO): el forward del
+  `Forager` (`b2g chain`) **ya no persiste placeholders `[candidate:W...]`** — materializa filas reales
+  (título/año/autores). Causa raíz: `fetch_citing_batch` traía la metadata completa (`_FIELDS`) y la
+  descartaba; el fix A1 (cero red extra) la conserva vía el método nuevo
+  **`OpenAlexSource.fetch_citing_batch_with_works(ids, *, max_per_paper) -> (attribution, works_map)`**
+  (`fetch_citing_batch` queda intacto, thin wrapper). `_build_forward_candidate_row` eliminado; `_work_to_row`
+  ganó `chaining_hop`/`source_tag` (defaults backward-compat). **Asimetría deliberada** con el backward
+  (#54): el backward observa sin materializar, el forward materializa (citantes pocos, acotados, se curan,
+  metadata ya en la request). Con #78, el materializador on-demand #71 queda **solo para backward**.
+  **645 tests verdes**, verifier PASA. Ver `docs/API.md` §2 (`fetch_citing_batch_with_works`)/§5 y ADR
+  [0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) §AS-BUILT #78.
+- **Backward chaining sin placeholders** (#54, 2026-06-17): el backward del `Forager`
+  (`b2g chain`) **ya no persiste filas-fantasma `[candidate:W...]` en el corpus** (revierte el
+  comportamiento de Hito 5 — la promesa de "no contaminan" era **falsa**: los stubs llegaron a ser
+  ~la mitad del corpus y entraban al `corpus_hash`; Notas 09/12). Los IDs observados salen por
+  `RankedCandidates.observed_refs` y `b2g chain` los persiste en la tabla append-only hermana
+  **`referenced_but_not_fetched`** (`backends/base.py` Protocol + `DuckDBBackend`/`InMemoryBackend`:
+  `add_referenced_refs`/`referenced_refs_count`/`referenced_refs`), **fuera del `corpus_hash`** (arregla
+  la contaminación previa). `b2g status` suma `referenced_not_fetched`; `b2g chain` suma
+  `observed_refs_count`. **El forward arrastraba el MISMO footgun**, **cerrado en #78** (arriba). Ver
+  `docs/API.md` §5/§4 y ADR [0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)
+  §AS-BUILT #54.
 - **Forward chaining del `Forager` batcheado** (#21, 2026-06-16): el forward del `Forager`
   (`b2g chain`/`b2g monitor`) **ya no es N+1** — reusa `OpenAlexSource.fetch_citing_batch` (batcheo OR
   + cap por semilla `max_citing_per_paper`/`--max-citing`, default 50) con preview sin red. **Opera
@@ -121,8 +159,10 @@
   "máquina de tensiones"); **R5** — robustez (bulk-load, UTF-8 en la frontera, retry, footguns).
   Ver `docs/ROADMAP/` (Hitos R1–R5). Tras la remediación se construyeron el **Hito 8** (Enricher
   OpenAlex: refs→DOI + co-citación end-to-end) y el **Hito 7 ✅** (dedup fuzzy determinista
-  `rapidfuzz`, extra `[dedup]`: `deduplicate_authors`/`deduplicate_keywords`, función de librería sin
-  CLI; ADR [0026](docs/decisiones/0026-dedup-fuzzy-determinista.md)), el **Hito 9 ✅** (`NetworkSpec`
+  `rapidfuzz`: `deduplicate_authors`/`deduplicate_keywords`; ADR
+  [0026](docs/decisiones/0026-dedup-fuzzy-determinista.md) — **automático en la ingesta y `rapidfuzz`
+  al núcleo desde #88, ADR [0031](docs/decisiones/0031-preprocesamiento-automatico-en-ingesta.md)**),
+  el **Hito 9 ✅** (`NetworkSpec`
   YAML) y el **Ciclo #33 ✅** (ecuación declarativa + `restore` + corpus de ejemplo, 9a+9b). Con #33
   cerrado, **todo el terreno pre-GUI está completo**; lo que sigue es la epic GUI #34. El entorno se
   levanta con `uv sync`.
@@ -133,17 +173,19 @@
   [#39](https://github.com/complexluise/bib2graph/issues/39)): una investigación = un **workspace =
   carpeta** (`workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/`exports/`). Nuevo módulo
   `src/bib2graph/workspace.py` (`Workspace`, `WorkspaceManifest`; el núcleo NO importa `duckdb`) +
-  **14° subcomando `b2g init`**. `--store` pasó a **opcional** y se agregó **`--workspace`** (ambos
-  opcionales, mutuamente excluyentes) con **resolución ambiente** (flag > env `B2G_WORKSPACE` >
-  walk-up del cwd buscando `workspace.json`). El `.duckdb` suelto sigue válido (workspace degenerado).
+  **14° subcomando `b2g init`**. Se agregó **`--workspace`** (opcional) con **resolución ambiente**
+  (flag > env `B2G_WORKSPACE` > walk-up del cwd buscando `workspace.json`).
   `b2g status` suma `workspace: {root, source}`; `b2g build` sella `networks/.corpus_hash`. **422
-  tests verdes**, 14 subcomandos. Flujo: `b2g init <name>` → trabajar **dentro** de la carpeta sin
-  `--store`. **Remanentes cerrados (#32, AS-BUILT 2026-06-17):** `b2g snapshot`/`b2g export` ya
-  resuelven por workspace (`--out-dir` pasó a override opcional → `<workspace>/snapshots|exports/`;
-  modo degenerado = dir hermano) y `b2g status` suma `networks_cache_stale: bool` + `warnings`
+  tests verdes**, 14 subcomandos. Flujo: `b2g init <name>` → trabajar **dentro** de la carpeta.
+  **Remanentes cerrados (#32, AS-BUILT 2026-06-17):** `b2g snapshot`/`b2g export` ya
+  resuelven por workspace (`--out-dir` pasó a override opcional → `<workspace>/snapshots|exports/`)
+  y `b2g status` suma `networks_cache_stale: bool` + `warnings`
   accionable cuando el `networks/.corpus_hash` no coincide con el corpus vivo (**avisa, NO regenera**:
   invalidación por hash, no build-system). `Workspace` ganó `read_networks_corpus_hash()` /
   `is_networks_cache_stale()`. Con esto el modelo workspace queda **completo** (no quedan remanentes).
+  **BREAKING (#75, 2026-06-17):** la opción `--store` se **eliminó por completo** del CLI (pasarla da
+  el error estándar de Click `No such option`) y el **modo degenerado dejó de existir** — la carpeta
+  con `workspace.json` es la **única** unidad canónica; un `.duckdb` legacy se adopta con `b2g init .`.
 - **Curación a escala vía CSV** (#22 + #26, 2026-06-16): nuevo **15° subcomando `b2g curate`**
   (`cli/commands/curate.py`) con dos modos mutuamente excluyentes — **`--dump`** escribe
   `curacion.csv` (default `<workspace>/exports/`; `--out` override; `--all` para todo el corpus, default
@@ -226,9 +268,10 @@ El proyecto se gestiona con **uv** (entorno + lockfile + versión de Python). **
 
 - **Setup dev completo:** `uv sync` (crea `.venv`, instala núcleo + dev-deps desde `uv.lock`)
   y `uv run pre-commit install`.
-- **Con una capacidad opcional:** `uv sync --extra s2` / `--extra zotero` / `--extra neo4j` /
-  `--extra dedup` / `--extra viz`. Sin dev-deps: `uv sync --no-dev`. *(No hay extra `[llm]`:
-  **se eliminó** en la remediación R4 — el producto no usa IA generativa, ADR 0022.)*
+- **Con una capacidad opcional:** `uv sync --extra bibtex` (el único extra poblado hoy; siembra
+  BibTeX). Sin dev-deps: `uv sync --no-dev`. *(No hay extra `[llm]`: **se eliminó** en la remediación
+  R4 — el producto no usa IA generativa, ADR 0022. Tampoco hay extra `[dedup]`: `rapidfuzz` pasó al
+  núcleo en #88 porque el dedup es automático en la ingesta, ADR 0031.)*
 - **Agregar dependencias:** `uv add <pkg>` (núcleo) · `uv add --dev <pkg>` (desarrollo) ·
   `uv add --optional <extra> <pkg>` (capacidad opcional).
 - **Tests (toda la suite):** `uv run pytest`
@@ -332,11 +375,15 @@ src/bib2graph/
                        # equation.py (EquationSpec + load_equation_spec, capa declarativa de la
                        # ecuación —seed --spec, 9a); RIS, CSV (futuro, no publicar)
   backends/            # TabularBackend (Protocol) + InMemoryBackend (núcleo puro) +
-                       # DuckDBBackend (biblioteca viva, carga perezosa de duckdb; persiste cycle)
+                       # DuckDBBackend (biblioteca viva, carga perezosa de duckdb; persiste cycle).
+                       # #54: tabla hermana referenced_but_not_fetched (IDs observados por el backward
+                       # sin materializar) → add_referenced_refs/referenced_refs_count/referenced_refs,
+                       # fuera del corpus_hash
   foraging/            # Forager (chaining + ranking por scent BIBLIOMÉTRICO vía proyectores, Hito R4).
                        # SIN explain.py / explain_candidate / [llm] (eliminados, ADR 0022)
-  preprocessors/       # normalize + thesaurus multilingüe DETERMINISTA, sin fallback LLM (núcleo);
-                       # dedup fuzzy DETERMINISTA en [dedup]
+  preprocessors/       # normalize + dedup fuzzy DETERMINISTA (rapidfuzz NÚCLEO, automáticos en la
+                       # ingesta, ADR 0031) + thesaurus multilingüe DETERMINISTA explícito, sin
+                       # fallback LLM
   filters/             # filtros de inclusión/exclusión con conteo PRISMA (núcleo)
   enrichers/           # OpenAlexEnricher opt-in, NÚCLEO (Hito 8 ✅: refs→DOI 8a + co-citación 8b → pobla cited_by_id);
                        # Enricher Protocol; S2 ([s2]) reservado para señal adicional, NO el Enricher (ADR 0025)
@@ -347,10 +394,12 @@ src/bib2graph/
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
-                       # cli/commands/ = 17 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
+                       # _ingest.py = helper normalize_and_dedup (auto-preproc en la ingesta, ADR 0031);
+                       # cli/commands/ = 18 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
                        # init scaffold de workspace —ADR 0029, curate dump/import CSV —#22+#26,
                        # networks capa declarativa YAML —Hito 9, restore rehidrata corpus curado sin
-                       # red →FILTERED —ADR 0030/9a). CLI = API
+                       # red →FILTERED —ADR 0030/9a, thesaurus aplica thesaurus curado transversal —#88/ADR 0031).
+                       # CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
   workspace.py         # Workspace (init/open/resolve; snapshots_dir/exports_dir/networks_dir;
                        # read_networks_corpus_hash/is_networks_cache_stale —staleness #32) +

@@ -151,13 +151,29 @@
 > que el ADR [0029](decisiones/0029-workspace-por-investigacion.md) dejó "fuera de corte".
 > **`b2g snapshot` y `b2g export`** se resuelven por ambiente: `--out-dir` pasó de obligatorio a
 > **override OPCIONAL**; sin él, `snapshot` escribe en **`<workspace>/snapshots/`** y `export` en
-> **`<workspace>/exports/`** (resolución vía `resolve_workspace`, igual que `build`; modo degenerado =
-> dir hermano del `.duckdb`, sin regresión). **`b2g status`** suma el campo aditivo
+> **`<workspace>/exports/`** (resolución vía `resolve_workspace`, igual que `build`). **`b2g status`** suma el campo aditivo
 > **`data["networks_cache_stale"]: bool`** + un `warnings` accionable cuando el `networks/.corpus_hash`
 > sellado **no coincide** con el `corpus_hash` del corpus vivo (aviso "ejecutá `b2g build`"; **NO**
 > regenera — invalidación por hash, no build-system, ADR 0029). `schema="1"` intacto. `Workspace` ganó
 > `read_networks_corpus_hash()` e `is_networks_cache_stale(live_hash)` (los accessors
 > `snapshots_dir`/`exports_dir`/`networks_dir` ya existían). Ver §convenciones CLI.
+>
+> **Sincronizado con la eliminación de `--store` — [#75](https://github.com/complexluise/bib2graph/issues/75) (BREAKING, 2026-06-17):**
+> la opción global **`--store` se ELIMINA por completo** del CLI (ya no registrada en Click; pasarla
+> da el error estándar `No such option: --store`). El **modo degenerado** (`.duckdb` suelto sin
+> `workspace.json`) **deja de existir**: la única unidad canónica es la carpeta con `workspace.json`,
+> y un `.duckdb` legacy se adopta con **`b2g init .`**. La resolución ambiente pierde la rama
+> `--store`: `--workspace` > `B2G_WORKSPACE` > walk-up del cwd. Ver §convenciones CLI y ADR 0029
+> (enmienda 2026-06-17).
+>
+> **Sincronizado con el preprocesamiento automático en la ingesta — #88 (AS-BUILT, 2026-06-18, ADR
+> [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** `seed`/`seed_from_bib`/`chain`/
+> `restore` aplican **`normalize` + dedup fuzzy automáticamente** sobre el corpus completo mergeado
+> (helper `cli/_ingest.py::normalize_and_dedup`), así que **dejan el corpus siempre normalizado y
+> deduplicado cross-biblioteca** (§6 + §11). Persisten con **`persist_replace`** (§4.1), no upsert.
+> Nuevo **18° subcomando `b2g thesaurus --from <archivo>`** (único paso explícito del preproc,
+> transversal al FSM). **`rapidfuzz` pasa al núcleo; el extra `[dedup]` se elimina.** `build`/`networks`
+> siguen puros (el corpus ya entra deduplicado). Ver §6, §11, §4.1 y el listado de subcomandos.
 
 ## Convenciones
 
@@ -174,17 +190,20 @@ El CLI `b2g` (paquete `bib2graph.cli`, entry point `b2g = "bib2graph.cli:main"`)
 **construido** con el contrato del ADR [0021](decisiones/0021-cli-agente-native-contrato.md). Cada
 subcomando lleva `--json` (envelope estable/versionado) y exit codes (`0` éxito · `1` uso · `2`
 datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado). **Sin estado entre
-invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opciones globales
-**opcionales** `--workspace`/`--store`, ver abajo).
+invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción global **opcional**
+`--workspace`; `--store` fue eliminada en [#75](https://github.com/complexluise/bib2graph/issues/75),
+ver abajo).
 
-**Set de 17 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+**Set de 18 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
 y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
 pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
 [0025](decisiones/0025-enricher-cocitacion-openalex.md); el 14° `init` con el workspace, ADR
 [0029](decisiones/0029-workspace-por-investigacion.md); el 15° `curate` con la curación a escala,
 #22 + #26; el 16° `networks` con la capa declarativa YAML, Hito 9; el 17° `restore` con la
 rehidratación de corpus curado sin red, Ciclo 9a, ADR
-[0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)):
+[0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md); el 18° `thesaurus` con el
+preprocesamiento automático en la ingesta, #88, ADR
+[0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -196,7 +215,10 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
   `workspace: {root, source}` (la raíz resuelta y de dónde salió — flag/env/cwd); `schema="1"`
   intacto. **AS-BUILT #32 (2026-06-17):** suma también el campo aditivo `networks_cache_stale: bool`
   (+ `warnings` accionable cuando la cache de `networks/` quedó obsoleta respecto al corpus vivo;
-  avisa, NO regenera — ver §`build`/`export`/`snapshot` abajo). `inspect`, `validate`.
+  avisa, NO regenera — ver §`build`/`export`/`snapshot` abajo). **AS-BUILT #54 (2026-06-17):** `status`
+  suma el campo aditivo `referenced_not_fetched` (nº de IDs que el backward chaining observó sin
+  materializar — tabla `referenced_but_not_fetched`, §4/§5; `schema="1"` intacto), y `b2g chain` suma
+  `observed_refs_count` a su envelope JSON. `inspect`, `validate`.
 - **`seed`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md), Ciclo 9a + Ciclo
   10 AS-BUILT 2026-06-17): tiene **exactamente TRES modos mutuamente excluyentes** (exactamente uno
   requerido; pasar más de uno o ninguno → error de uso, exit 1):
@@ -267,6 +289,17 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
   fetch), `--json`. `data` = `{enriched, references_resolved, ...}`. **NO transiciona el
   `CycleState`** (ortogonal al lazo): se puede enriquecer en cualquier estado sin perturbar el FSM.
   `build` sigue puro/sin red.
+- **`thesaurus`** (#88, ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md), 18°
+  subcomando): aplica un **thesaurus multilingüe curado** al corpus —**`--from <archivo>`**
+  (requerido, JSON formato ADR 0011)— sobrescribiendo `keywords_id` con los conceptos canónicos del
+  mapa (`Preprocessor.apply_thesaurus`, §6). Es el **único paso explícito del preproc**: requiere el
+  mapeo del usuario, por eso no es automático (a diferencia de `normalize`+dedup, que corren solos en
+  la ingesta). **NO transiciona el `CycleState`** (transversal al lazo, igual que `enrich`/`curate`/
+  `networks`). Persiste con **`persist_replace`** (§4.1): el thesaurus reemplaza los `keywords_id` del
+  corpus completo; el upsert-concat reintroduciría los canónicos viejos junto a los nuevos si el mapeo
+  cambió. `data` = `{keywords_mapped, keywords_total, aliases_loaded, applied_at}`; `--json` con
+  `schema="1"`. Errores accionables: thesaurus inexistente o con formato inválido → `DataError`
+  (exit 2).
 - **`init`** (ADR [0029](decisiones/0029-workspace-por-investigacion.md)): **scaffold de un
   workspace**. `b2g init <name>` crea `<name>/` con `workspace.json` + `library.duckdb` +
   `networks/`/`snapshots/`/`exports/`; **`b2g init .`** inicializa el cwd. Si la carpeta ya es un
@@ -277,12 +310,21 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
   viable con `accept`/`reject` por `--ids` uno a uno). **Dos modos mutuamente excluyentes** (exactamente
   uno; pasar ambos o ninguno → error de uso, exit 1):
   - **`--dump`** escribe un CSV revisable offline (Excel/Calc). Default
-    `<workspace>/exports/curacion.csv`; **`--out`** lo override. Por defecto solo los **candidatos**
-    (`curation_status == 'candidate'`); **`--all`** vuelca **todo** el corpus. Columnas (orden estable):
-    `id, openalex_id, title, year, authors, scent_score, cluster, decision, note`. **`id`/`openalex_id`/
-    `title`/`year`/`authors` son read-only**; el humano edita **`decision`** y **`note`**. `decision`
-    refleja el `curation_status` actual (`candidate`→`undecided`, `accepted`→`accepted`,
-    `rejected`→`rejected`). `data` = `{csv_path, papers_exported, columns}`.
+    `<workspace>/exports/curacion.csv`; **`--out`** lo override. **`--scope [candidates|seeds|all]`**
+    (default `candidates`) elige qué papers volcar: `candidates` = forrajeados a revisar
+    (`curation_status == 'candidate'` **AND** `is_seed == False`, **excluye semillas** —arregla #72,
+    donde el dump arrastraba seeds); `seeds` = semillas originales (`is_seed == True`); `all` = todo el
+    corpus. **`--all`** queda como **alias deprecado de `--scope all`** (tiene precedencia si se pasan
+    ambos). Sin candidatos (scope `candidates`/`seeds` vacío) → error accionable que sugiere `--scope all`
+    o `b2g chain`. Columnas (16, orden estable): `id, openalex_id, title, year, authors, venue, doi,
+    keywords, cited_by_count, references_count, is_seed, openalex_url, scent_score, cluster, decision,
+    note`. **Todas read-only salvo `decision` y `note`** (las editables por el humano). `venue` sale de
+    `source`; `keywords` se une con `" | "` (igual que `authors`); `openalex_url` se deriva del
+    `openalex_id` (`https://openalex.org/<id>`). **`cited_by_count`/`references_count` hoy salen vacías**:
+    no existen como escalares en el schema canónico de 23 columnas, así que la columna queda como
+    placeholder para llenado manual (limitación conocida, no falla). `decision` refleja el
+    `curation_status` actual (`candidate`→`undecided`, `accepted`→`accepted`, `rejected`→`rejected`).
+    `data` = `{csv_path, papers_exported, columns}`.
   - **`--from-csv <archivo>`** aplica las decisiones en lote y persiste: `accepted`→`accept`,
     `rejected`→`reject`, `undecided`→no-op (case-insensitive). **Idempotente** (reimportar el mismo CSV
     = mismo `corpus_hash`; el reloj `decided_at` se inyecta en la **frontera CLI**, R2/ADR 0017, fuera
@@ -309,34 +351,53 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
   YAML malformado / spec inválida → `DataError` (exit 2); falta `python-louvain` → `DependencyError`
   (exit 3).
 
-**`--workspace` / `--store` globales (ambos OPCIONALES, mutuamente excluyentes).** Van en el grupo
-`b2g`, **antes** del subcomando. Una investigación = un **workspace** (carpeta marcada por
-`workspace.json`; ADR [0029](decisiones/0029-workspace-por-investigacion.md), AS-BUILT). El estado
-vive en su `library.duckdb`; el CLI es stateful **vía archivo**, no vía proceso.
+**`--workspace` global (OPCIONAL).** Va en el grupo `b2g`, **antes** del subcomando. Una
+investigación = un **workspace** (carpeta marcada por `workspace.json`; ADR
+[0029](decisiones/0029-workspace-por-investigacion.md), AS-BUILT). El estado vive en su
+`library.duckdb`; el CLI es stateful **vía archivo**, no vía proceso.
 
-- **`--workspace <carpeta>`** apunta a la raíz de un workspace; **`--store <archivo.duckdb>`** apunta
-  a un `.duckdb` suelto (**workspace degenerado**, retrocompatible — los artefactos caen en su dir
-  hermano). Pasarlos **juntos** = error de uso (exit 1).
-- **Resolución ambiente** cuando no se pasa ninguno (patrón git/cargo), precedencia de mayor a menor:
-  (1) `--workspace`/`--store` explícito, (2) `B2G_WORKSPACE` (variable de entorno), (3) **walk-up**
-  del cwd buscando `workspace.json`. Sin ninguno → **error accionable** que sugiere `b2g init`.
+- **`--workspace <carpeta>`** apunta a la raíz de un workspace. **`--store` fue ELIMINADA del CLI
+  ([#75](https://github.com/complexluise/bib2graph/issues/75), BREAKING):** ya no está registrada
+  como opción global, así que pasarla produce el **error estándar de Click** (`No such option:
+  --store`). El **modo degenerado** (`.duckdb` suelto sin `workspace.json`) **dejó de existir**: un
+  `.duckdb` legacy se adopta con **`b2g init .`** en su carpeta.
+- **Resolución ambiente** cuando no se pasa `--workspace` (patrón git/cargo), precedencia de mayor a
+  menor: (1) `--workspace` explícito, (2) `B2G_WORKSPACE` (variable de entorno), (3) **walk-up** del
+  cwd buscando `workspace.json`. Sin ninguno → **error accionable** que sugiere `b2g init`.
 
 **`build` y `export` separados** (decisión del PO, ADR 0021 §B): `build` computa `Networks.quick`
 (4 redes) y escribe artefactos a `<workspace>/networks/<kind>/` (+ transiciona a `BUILT`);
 `export --format graphml|csv` **relee** esos artefactos (fuente resuelta vía `ws.networks_dir`) y
 los serializa (sin transición). **AS-BUILT #32 (2026-06-17):** `export --out-dir` pasó a **override
-OPCIONAL** — sin él, escribe en **`<workspace>/exports/`** (resolución ambiente como `build`; modo
-degenerado = dir hermano del `.duckdb`). **AS-BUILT #31 (2026-06-17):** `build` también escribe **`clusters.csv`** (tabla de
+OPCIONAL** — sin él, escribe en **`<workspace>/exports/`** (resolución ambiente como `build`).
+**AS-BUILT #31 (2026-06-17):** `build` también escribe **`clusters.csv`** (tabla de
 resumen de comunidades, §7.2) en `<networks_dir>/<kind>/` **solo** para redes de **paper** con
 comunidades detectadas (listas con separador `|`); en el envelope `--json`, cada entrada de
 `data["networks"]` suma `clusters_csv` (ruta del archivo) **condicionalmente** —solo cuando ese
-archivo se generó—.
+archivo se generó—. **Qué artefactos emite cada red:** **todas** escriben `network.graphml` +
+`metrics.json`; **`clusters.csv` lo emiten ÚNICAMENTE las redes de paper** —`bibliographic_coupling`
+y `cocitation`— (con comunidades). Las redes `author_collab`, `institution_collab` y
+`keyword_cooccurrence` **NO** emiten `clusters.csv` **por diseño**: sus nodos ya son
+autores/instituciones/keywords, y `cluster_table` (§7.2) resume comunidades **de papers** cruzando
+nodo→corpus por `Col.ID` — ese mapeo no existe para nodos que no son papers, así que devuelve `[]`
+(no crash) y el comando omite el archivo. Lo mismo aplica a `b2g networks --spec` (comparten
+`_write_artifacts`).
+
+**`build --corpus-scope [all|accepted|seeds_only]` (AS-BUILT #56):** filtra el corpus por estado de
+curación **antes** de proyectar (vía `Corpus.scoped`, §1.2). **Default `all`** = corpus completo
+(opt-in, sin cambio de comportamiento). `accepted` = semillas (`is_seed=True`) + papers aceptados;
+`seeds_only` = solo semillas. El `networks/.corpus_hash` se sella con el hash del corpus **FILTRADO**
+(no del vivo completo), y `clusters.csv`/`decorate` reflejan exactamente ese subset (sin drift). Si el
+scope deja **0 papers**: **exit 0** + `warning` accionable ("corré `b2g curate`… o usá
+`--corpus-scope=all`") — **no** es error; escribe `networks/` vacío con `.corpus_hash` vacío. El
+envelope `--json` suma `data["corpus_scope"]` (y `warnings`). **NO confundir con `NetworkSpec.scope`
+(§10):** ejes distintos. `--corpus-scope` filtra el **corpus entero** por curación (un input al
+`build`); `NetworkSpec.scope` (`full`/`seeds_only`) es **por-red declarativa** sobre `is_seed`.
 
 **`snapshot` (AS-BUILT #32, 2026-06-17):** `b2g snapshot` sella una foto reproducible del estado vivo
 (parquet + `manifest.json`, ADR 0017). **`--out-dir` pasó a override OPCIONAL** — sin él, escribe en
-**`<workspace>/snapshots/`** (resolución ambiente vía `resolve_workspace`, igual que `build`); en modo
-degenerado (`--store` suelto) cae en el dir hermano del `.duckdb` (sin regresión). No transiciona el
-`CycleState`.
+**`<workspace>/snapshots/`** (resolución ambiente vía `resolve_workspace`, igual que `build`). No
+transiciona el `CycleState`.
 
 **Staleness de la cache de redes (AS-BUILT #32, 2026-06-17):** `b2g status` suma el campo aditivo
 `data["networks_cache_stale"]: bool` (`schema="1"` intacto) y, cuando es `true`, un `warnings`
@@ -380,9 +441,9 @@ faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` co
 `hasattr` en el comando** (p. ej. `chain` antes del `Forager`). Un `AttributeError` inesperado se
 propaga limpio.
 
-**Borde: el error de uso sale SIN envelope.** Ante un error de uso (p. ej. `--workspace` y `--store`
-juntos, una opción requerida faltante, o ningún store/workspace resoluble), Click aborta el parseo
-**antes** de entrar al comando: se emite el mensaje de uso de Click en **stderr** y
+**Borde: el error de uso sale SIN envelope.** Ante un error de uso (p. ej. una opción requerida
+faltante, una opción desconocida como `--store` —eliminada en #75—, o ningún workspace resoluble),
+Click aborta el parseo **antes** de entrar al comando: se emite el mensaje de uso de Click en **stderr** y
 exit code `1`, **sin** envelope JSON. El envelope versionado solo cubre errores que ocurren
 **dentro** de la ejecución del comando.
 
@@ -513,6 +574,17 @@ class Corpus:
     def seeds(self) -> pa.Table:        """Vista is_seed == True."""
     def candidates(self) -> pa.Table:   """Vista curation_status == 'candidate'."""
     def accepted(self) -> pa.Table:     """Vista curation_status == 'accepted' (la biblioteca curada)."""
+
+    def scoped(self, scope: str) -> "Corpus":
+        """Vista PURA por estado de curación: devuelve un Corpus NUEVO con el subconjunto de filas
+        (no muta el original). Valores: `'all'` = corpus completo; `'accepted'` = `is_seed == True`
+        OR `curation_status == 'accepted'`; `'seeds_only'` = `is_seed == True`. Scope inválido →
+        `ValueError` accionable. Determinista: dos llamadas con el mismo scope dan corpora con el
+        mismo `corpus_hash` (subset estable). `'all'` reusa el backend; los otros materializan el
+        filtro en un `InMemoryBackend`. Lo usa `b2g build --corpus-scope` para sellar el hash del
+        corpus FILTRADO. Issue #56. **NO confundir con `NetworkSpec.scope`** (§10): aquel es un
+        eje por-red (`full`/`seeds_only`) sobre `is_seed`; `scoped()` filtra el corpus entero por
+        curación antes de proyectar."""
 
     def with_manifest(self, manifest: Manifest) -> "Corpus":
         """Devuelve un Corpus nuevo con el MISMO contenido y otro Manifest (semántica de valor:
@@ -647,7 +719,23 @@ class TabularBackend(Protocol):
     def corpus_hash(self) -> str: ...        # D2, order-independent, sobre el contenido
     def __len__(self) -> int: ...
     def __eq__(self, other: object) -> bool: ...   # igualdad canónica por corpus_hash (D2)
+
+    # AS-BUILT #54 (2026-06-17): tabla hermana `referenced_but_not_fetched` (append-only, par de
+    # loop_state_log) — los IDs que el backward chaining OBSERVA sin materializar en el corpus (§5).
+    # FUERA de la tabla `corpus` y del corpus_hash (son estado, no contenido; ADR 0017).
+    def add_referenced_refs(self, ref_ids: list[str], *, cycle_round: int) -> "TabularBackend": ...
+        # Registra IDs observados (idempotente por existencia de `ref_id`; observed_at = now() del backend).
+    def referenced_refs_count(self) -> int: ...    # nº de IDs observados distintos
+    def referenced_refs(self) -> pa.Table: ...     # los IDs observados (ref_id, cycle_round, observed_at)
 ```
+
+> **AS-BUILT #54 (2026-06-17) — `referenced_but_not_fetched`.** El backward chaining (§5) dejó de
+> crear filas-fantasma `[candidate:W...]` en el `corpus`. Sus IDs observados se registran en esta
+> tabla append-only (hermana de `loop_state_log`), implementada por `DuckDBBackend` (DDL + migración
+> liviana + copia en snapshot/`_clone`) e `InMemoryBackend`. **No entra al `corpus_hash`** (tabla
+> aparte, no columna del corpus → no toca el schema de [ADR 0013](decisiones/0013-identidad-hash-merge-corpus.md);
+> coherente con [ADR 0017](decisiones/0017-reproducibilidad-historia-snapshot.md): es estado, no
+> contenido). Materializar un observado a fila real vía `fetch_works_by_ids` (#55) está diferido a #71.
 
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
@@ -743,6 +831,13 @@ def load_equation_spec(path: str | Path) -> EquationSpec:
 | `ScieloSource` / `RedalycSource` / `LaReferenciaSource` | futuro | Fuentes regionales, mínimo universal. Declaradas, no implementadas (ADR 0018). |
 | `RisSource` / `CsvSource` | futuro | No implementados. |
 
+> **AS-BUILT #78 (2026-06-17) — el forward materializa metadata REAL (ADR
+> [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) §AS-BUILT #78).** Se agrega
+> `OpenAlexSource.fetch_citing_batch_with_works` (abajo): el forward chaining (§5) deja de persistir
+> placeholders `[candidate:W...]` y materializa filas reales conservando la metadata que
+> `fetch_citing_batch` ya traía y descartaba (**cero red extra**). `fetch_citing_batch` queda intacto
+> (thin wrapper). Gate verde, 645 tests.
+
 **Capacidades de `OpenAlexSource` fuera del Protocol `Source`** (específicas del backbone, no
 contrato universal; las consumen el `Forager` y el `Enricher`):
 
@@ -754,9 +849,31 @@ contrato universal; las consumen el `Forager` y el `Enricher`):
   página a página** (cruza `referenced_works` del citante con el set objetivo, por short-id). Con
   **presupuesto por semilla**: corta la paginación cuando **todas** las semillas del lote alcanzan
   `max_per_paper` (acota el *fetch*, no solo la columna; **sin starvation** entre semillas; mata el
-  N+1 diferido de R5). Lo consume el `OpenAlexEnricher` (§3) para poblar `cited_by_id`.
+  N+1 diferido de R5). Lo consume el `OpenAlexEnricher` (§3) para poblar `cited_by_id`. **AS-BUILT
+  #78 (2026-06-17): firma y contrato INTACTOS** —sigue devolviendo solo el mapeo de atribución— pero
+  internamente es un **thin wrapper** sobre `_fetch_citing_pages` que **descarta `works_map`** (la
+  metadata que ya viaja en la misma request). El Enricher 8b no cambia.
+- **`fetch_citing_batch_with_works(ids, *, max_per_paper) -> tuple[dict[seed_id, list[citer_id]], dict[citer_id, work]]`**
+  (#78, 2026-06-17, Forager forward chaining): la **variante que conserva la metadata**. Misma red,
+  mismo batcheo/atribución/presupuesto que `fetch_citing_batch` (comparten `_fetch_citing_pages`),
+  pero devuelve además el `works_map` (`citer_id → work JSON con _FIELDS`) que `fetch_citing_batch`
+  tira. **Cero red extra**: la metadata ya venía en la query de citantes y antes se descartaba. La
+  consume `Forager._fetch_forward` para materializar filas REALES (título/año/autores) en vez de
+  placeholders `[candidate:W...]`. Ver §5 y ADR
+  [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md) §AS-BUILT #78.
 - **`fetch_dois_for(ids) -> dict`** (Hito 8a): resuelve `references_id`→DOI batcheando por OR (lotes
   ≤100, `select=id,doi`).
+- **`fetch_works_by_ids(ids) -> Corpus`** (#55): materializa works arbitrarios desde sus IDs OpenAlex,
+  batcheando por OR (`openalex_id:W1|W2|...`, lotes ≤100, reusa `_fetch_batch_select`). Devuelve un
+  `Corpus` con `is_seed=False`, `curation_status=CANDIDATE`, `provenance[action="fetched_by_id"]`. IDs
+  inexistentes se **omiten sin error**; orden **determinista** (filas ordenadas por `id` canónico);
+  lista vacía → `Corpus` vacío **sin tocar la red**. Es el primitivo que materializa lo observado por
+  el backward chaining (ver #54). Reusa `_work_to_row` parametrizado (`is_seed`/`action`), que centraliza
+  el mapeo JSON→Arrow para `seed`/`fetch_citing`/`fetch_works_by_ids`/forward chaining (sin duplicar).
+  **AS-BUILT #78 (2026-06-17): `_work_to_row` ganó `chaining_hop: int | None = None` y
+  `source_tag: str = "openalex"`** (defaults backward-compat → los callers viejos no cambian); el
+  forward chaining lo invoca con `chaining_hop=1, source_tag="chaining:forward"` para materializar
+  citantes reales. *(Validado contra OpenAlex real vía test `@pytest.mark.network`.)*
 
 **Reporte de cobertura/calidad** (concepto declarado, concreto **v0.2+**; ADR 0018): por
 seed/source, mide % de refs resueltas, % con DOI, distribución idioma/región y completitud del
@@ -842,8 +959,11 @@ persistente.
 
 El contrato `TabularBackend` (Protocol) y su firma completa viven en **§1.4** (núcleo): `to_arrow`,
 `add_paper`, `merge(other_table: pa.Table)`, `apply_curation(ids, *, action, by)`, `filter_view`,
-`corpus_hash`, `__len__`, `__eq__`. El `DuckDBBackend` lo implementa en SQL (Hito 3); el `Store` de
-abajo es la costura de persistencia/intercambio **externa**, distinta del backend del `Corpus`.
+`corpus_hash`, `__len__`, `__eq__` y —AS-BUILT #54 (2026-06-17)— `add_referenced_refs(ref_ids, *,
+cycle_round)`/`referenced_refs_count()`/`referenced_refs()` (tabla hermana append-only
+`referenced_but_not_fetched`, fuera del `corpus_hash`; §1.4 + §5). El `DuckDBBackend` lo implementa en
+SQL (Hito 3); el `Store` de abajo es la costura de persistencia/intercambio **externa**, distinta del
+backend del `Corpus`.
 
 ```python
 class Store(Protocol):
@@ -879,11 +999,22 @@ mutaciones subsiguientes tocan el archivo en disco).
 ```python
 class DuckDBStore:
     def __init__(self, path: str | Path) -> None: ...   # abre/crea el .duckdb; StoreLockedError si bloqueado
-    def persist(self, corpus: Corpus) -> None: ...       # merge idempotente por id en la biblioteca viva
+    def persist(self, corpus: Corpus) -> None: ...       # merge idempotente por id (upsert-concat D3) en la biblioteca viva
+    def persist_replace(self, corpus: Corpus) -> None: ...# DELETE+INSERT de la tabla `corpus`: el estado en disco
+                                                          # queda EXACTAMENTE el corpus dado; preserva las tablas
+                                                          # hermanas (loop_state_log, referenced_but_not_fetched)
     def load(self) -> Corpus: ...                         # corpus acumulado, respaldado por el DuckDBBackend
     @property
     def backend(self) -> "DuckDBBackend": ...            # acceso al backend para las extensiones de abajo
 ```
+
+> **`persist_replace` vs `persist` (#88, ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)).**
+> La **ingesta automática** (`seed`/`seed_from_bib`/`chain`/`restore`) y **`b2g thesaurus`** persisten
+> con **`persist_replace`** (→ `DuckDBBackend.overwrite_corpus`, DELETE+INSERT reasignando `_seq`
+> desde 0, ADR 0024), porque ya tienen el corpus **completo, normalizado y deduplicado** en memoria y
+> el upsert-concat D3 (`persist`) **reintroduciría** las variantes que el dedup cross-biblioteca acaba
+> de colapsar. **`persist`/upsert queda intacto** para el resto de los llamadores (caso "mismo paper
+> desde dos fuentes", D3). Ambos preservan las tablas hermanas.
 
 **Extensiones del `DuckDBBackend`, FUERA del Protocol `Store`/`TabularBackend`** (se acceden vía
 `store.backend.…`): son específicas de DuckDB y no parte del contrato genérico:
@@ -944,6 +1075,23 @@ El comando `b2g status` consume `loop_state()`/`loop_round()`/`available_transit
 > proyección** (puro), nunca al revés. El producto **no usa IA generativa**.
 > `explain_candidate`/`foraging/explain.py`/`[llm]` quedaron **eliminados**.
 
+> **AS-BUILT #54 (2026-06-17) — ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)
+> §AS-BUILT #54:** el backward chaining **deja de persistir placeholders** en el corpus. Los IDs
+> observados salen por `RankedCandidates.observed_refs` y se persisten en la tabla hermana
+> `referenced_but_not_fetched` (§4), **fuera del `corpus_hash`** (arregla la contaminación previa).
+> El **forward arrastra el mismo footgun** (placeholder de título), abierto como **#78** — NO está
+> limpio. Materializador on-demand diferido a #71. Gate verde, 636 tests.
+
+> **AS-BUILT #78 (2026-06-17) — ADR [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)
+> §AS-BUILT #78:** el **forward chaining ya NO persiste placeholders** `[candidate:W...]` — materializa
+> **filas REALES** (título/año/autores) con la metadata que `fetch_citing_batch` ya traía de la red y
+> descartaba (opción A1, **cero red extra**, vía el método nuevo `fetch_citing_batch_with_works`, §2).
+> `_build_forward_candidate_row` eliminado. **Asimetría deliberada** (no incoherencia): el backward
+> *observa sin materializar* (refs numerosas, no curadas, sin metadata local → `referenced_but_not_fetched`),
+> el forward *materializa* (citantes pocos, acotados por cap, **se curan**, metadata ya en la request).
+> Regla común: **el corpus nunca contiene placeholders**. Con esto, el materializador on-demand #71
+> queda **solo para backward**. Gate verde, **645 tests**, verifier PASA.
+
 El *information scent* es **estructura bibliométrica de cita con el corpus** (ADR
 [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md), AS-BUILT R4). Es una **función pura**
 sobre el primitivo `collect_item_to_papers` (índice `{ref → corpus-papers que lo citan}`):
@@ -998,8 +1146,16 @@ class GrowthPreview(BaseModel):
     forward_requires_fetch: bool = False   # True si se pidió forward/both → forward desconocido sin red
 
 class RankedCandidates(BaseModel):
-    corpus: Corpus                     # SOLO los candidatos nuevos (no mergeado con el corpus semilla)
+    corpus: Corpus                     # SOLO los candidatos nuevos (no mergeado con el corpus semilla).
+                                       # Forward (#78): materializa filas con metadata REAL (título/año/
+                                       # autores), NO placeholders — vía fetch_citing_batch_with_works.
+                                       # Backward (#54): NO materializa filas — observa, ver observed_refs.
     ranking: list[tuple[str, float]]   # (id, information_scent), desc scent / asc id
+    observed_refs: list[str] = []      # AS-BUILT #54 (2026-06-17): IDs observados por el backward SIN
+                                       # materializarlos en .corpus (orden de ranking, respeta
+                                       # max_candidates). El backward observa; el forward materializa.
+                                       # b2g chain los persiste en `referenced_but_not_fetched` (§4),
+                                       # fuera del corpus_hash. Materializar = diferido a #71.
 
 # RETIRADO (ADR 0022): `explain_candidate` y el extra `[llm]` se ELIMINAN del producto.
 # El producto no usa IA generativa. El "porqué" de un candidato lo explica la ESTRUCTURA
@@ -1035,28 +1191,49 @@ class RankedCandidates(BaseModel):
 - **`fetch_citing` (singular) con retry/backoff** ante 429/5xx (`_fetch_all_with_retry`: exponential
   backoff, 3 intentos) sigue disponible; el forward del Forager lo consume ahora vía la variante
   **batcheada** `fetch_citing_batch`.
-- **Candidatos backward = stubs id-only**: título placeholder `[candidate:{id}]`, `openalex_id`
-  poblado, resto nulo, `is_seed=False`, `curation_status='candidate'`, `provenance` con
-  `chaining_hop=1`. No contaminan las redes; son curables/enriquecibles después (gap conocido).
+- **AS-BUILT (#54, 2026-06-17) — el backward NO materializa stubs: observa sin contaminar.** El
+  backward chaining **ya no crea filas-fantasma `[candidate:W...]` en el corpus** (revierte el
+  comportamiento de Hito 5 — la promesa de "no contaminan" era **falsa**: los stubs llegaron a ser
+  ~la mitad del corpus y entraban al `corpus_hash`; Notas 09/12). Los IDs observados por el ranking
+  backward salen por **`RankedCandidates.observed_refs: list[str]`** (orden de ranking, respeta
+  `max_candidates`) y `b2g chain` los persiste en la tabla hermana **`referenced_but_not_fetched`**
+  (§4), **fuera** del `corpus` y del `corpus_hash`. La materialización on-demand (rehidratar un
+  observado a fila real vía `fetch_works_by_ids`, #55) está **diferida a #71** (con #78 cerrado, #71
+  queda **solo para backward**). El **forward sí materializa** filas en `.corpus` —y **con #78
+  (2026-06-17) lo hace con metadata REAL** (título/año/autores), **ya no** con placeholders
+  `[candidate:W...]`: la metadata viaja en la misma request de citantes (`fetch_citing_batch_with_works`,
+  §2). Asimetría deliberada: el backward observa, el forward materializa (ver §AS-BUILT #78 arriba).
 - **`preview` y `chain` no mutan** el corpus de entrada (semántica de valor).
 
 ---
 
-## 6. Núcleo — `Preprocessor` + filtros PRISMA (v1 — construido, Hito 5)
+## 6. Núcleo — `Preprocessor` + filtros PRISMA (v1 — construido, Hito 5; auto-ingesta #88)
+
+> **Sincronizado con el preprocesamiento automático en la ingesta — #88 (AS-BUILT, 2026-06-18,
+> ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** `normalize` (+ el dedup
+> fuzzy de §11) corre **automáticamente en cada ingesta** vía el helper de frontera
+> `cli/_ingest.py::normalize_and_dedup` (sobre el corpus completo mergeado). `apply_thesaurus`, que
+> requiere el mapeo curado del usuario, queda como el **único paso explícito** del preproc:
+> **`b2g thesaurus --from <archivo>`** (18° subcomando, transversal, NO transiciona el FSM;
+> §convenciones CLI). Ambos métodos aceptan `applied_at` inyectado desde la frontera (R2, ADR 0017).
 
 ```python
 class Preprocessor:
-    """Determinístico e idempotente. La parte fuzzy vive en [dedup] (§11). Registra un
-    PreprocRef en el Manifest por cada operación aplicada."""
-    def normalize(self, corpus: Corpus) -> Corpus:
+    """Determinístico e idempotente. La parte fuzzy vive en §11 (ahora núcleo, no extra). Registra un
+    PreprocRef en el Manifest por cada operación aplicada. `applied_at` se inyecta desde la frontera
+    (R2): un único datetime.now(UTC) por invocación, igual que `decided_at` en curación."""
+    def normalize(self, corpus: Corpus, *, applied_at: datetime | None = None) -> Corpus:
         """Normalización CONSERVADORA (decisión b=A): authors_id (lowercase + quitar acentos +
-        colapso de espacios) y language (subtag ISO 639-1 primario). SIN fuzzy (eso es [dedup],
-        §11), SIN columna de periodización. Idempotente. NO muta el corpus de entrada."""
-    def apply_thesaurus(self, corpus: Corpus, thesaurus: dict | Path) -> Corpus:
+        colapso de espacios) y language (subtag ISO 639-1 primario). SIN fuzzy (eso es el dedup,
+        §11), SIN columna de periodización. Idempotente. NO muta el corpus de entrada. Corre
+        AUTOMÁTICAMENTE en la ingesta (helper `normalize_and_dedup`, ADR 0031)."""
+    def apply_thesaurus(self, corpus: Corpus, thesaurus: dict | Path, *,
+                        applied_at: datetime | None = None) -> Corpus:
         """Lee keywords_raw y SOBRESCRIBE keywords_id con los conceptos canónicos del thesaurus
         multilingüe CURADO (en/es/pt), dict canónico→aliases en JSON o Path a ese JSON.
         Determinista e idempotente (ADR 0011). SIN fallback semántico/LLM (ADR 0011 enmendado /
-        0022): lo que no matchea queda fuera, sin inventar conceptos con un modelo."""
+        0022): lo que no matchea queda fuera, sin inventar conceptos con un modelo. Paso EXPLÍCITO
+        (`b2g thesaurus`), NO automático: requiere el mapeo del usuario (ADR 0031)."""
 ```
 
 **Filtros de inclusión/exclusión** (funciones puras, flujo PRISMA; ADR
@@ -1198,6 +1375,11 @@ corpus para producir **una fila de resumen por comunidad**. Es el insumo tabular
 clusters (quién/qué/cuándo cae en cada comunidad), legible offline (Excel/Calc) y la base del
 `clusters.csv` que escribe `b2g build` (§convenciones CLI).
 
+> **Con `b2g build --corpus-scope` (#56):** el `clusters.csv` se computa sobre el corpus **FILTRADO**,
+> así que sus filas/conteos reflejan **solo** los nodos del subset (`accepted` / `seeds_only`), no el
+> corpus vivo completo. `build` pasa el mismo corpus filtrado a `cluster_table`, por lo que `size` y
+> los `*_count` cuadran con los nodos del grafo (sin drift).
+
 ```python
 def cluster_table(table: pa.Table, artifact: NetworkArtifact) -> list[dict[str, Any]]:
     """Una fila por comunidad de `artifact.communities`. Función pura (sin red, sin duckdb).
@@ -1208,9 +1390,12 @@ def cluster_table(table: pa.Table, artifact: NetworkArtifact) -> list[dict[str, 
 `networks/__init__.py` re-exporta `cluster_table`.
 
 **Restricción a redes de paper (V1):** solo aplica a los kinds cuyo nodo es un `Col.ID`
-(`bibliographic_coupling` / `cocitation`); para redes de **autor/keyword/institución** las comunidades
-agrupan entidades distintas a papers y la misma tabla no tiene sentido en V1 → devuelve `[]` (no
-crash). Si `artifact.communities is None` también devuelve `[]`.
+(`bibliographic_coupling` / `cocitation`); para `author_collab`, `institution_collab` y
+`keyword_cooccurrence` las comunidades agrupan entidades distintas a papers y la misma tabla no tiene
+sentido en V1 → devuelve `[]` (no crash). Si `artifact.communities is None` también devuelve `[]`.
+**Consecuencia en el CLI:** por esto **`clusters.csv` se emite ÚNICAMENTE para `bibliographic_coupling`
+y `cocitation`** (§convenciones CLI / §9); las otras tres redes escriben `network.graphml` +
+`metrics.json` pero **no** `clusters.csv`.
 
 **Columnas de cada fila** (orden estable):
 
@@ -1316,6 +1501,9 @@ class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
   (`cluster_table` no vacío, §7.2). Una fila por comunidad; las columnas de lista (`top_authors`/
   `top_keywords`) se serializan **con separador `|`**. No lo emite un `Exporter` —lo arma el comando
   `build` a partir de `cluster_table`—; las redes sin comunidades o no-paper no generan el archivo.
+  **Solo lo generan `bibliographic_coupling` y `cocitation`**: `author_collab`, `institution_collab`
+  y `keyword_cooccurrence` emiten `network.graphml` + `metrics.json` pero **no** `clusters.csv`, por
+  diseño (sus nodos no son papers; ver §7.2).
 
 ---
 
@@ -1406,6 +1594,32 @@ networks --spec`, §convenciones CLI).
 
   Se ejecuta vía el subcomando **`b2g networks --spec redes.yaml`** (§convenciones CLI). DoD del
   Hito 9 cubierto, incluida la **equivalencia build≡quick** (nodos + aristas + comunidades).
+
+  **Ejemplo mínimo de `networks.yaml` válido** (copiable) — clave raíz `networks:` = lista; lo único
+  obligatorio de cada entrada es **`kind`**:
+
+  ```yaml
+  networks:
+    - kind: bibliographic_coupling
+  ```
+
+  **Campos válidos de cada entrada** (nombres exactos; `kind` obligatorio, el resto con default):
+
+  | Campo | Valores / tipo | Default | Obligatorio |
+  |---|---|---|---|
+  | `kind` | `bibliographic_coupling` · `cocitation` · `author_collab` · `institution_collab` · `keyword_cooccurrence` | — | **sí** |
+  | `min_weight` | `int` (peso mínimo de arista) | `1` | no |
+  | `min_year` | `int` | `null` | no |
+  | `max_year` | `int` | `null` | no |
+  | `scope` | `full` · `seeds_only` | `full` | no |
+  | `clustering` | `louvain` · `label_prop` · `greedy_modularity` · `null` | `louvain` | no |
+  | `resolution` | `float` (solo Louvain; ignorado en los demás) | `1.0` | no |
+  | `assortativity_attribute` | `str` (atributo categórico, p. ej. `region`) | `null` | no |
+  | `layout` | `spring` · `kamada_kawai` · `circular` · `null` | `null` | no |
+
+  **`NetworkSpec` usa `extra="forbid"`:** cualquier campo fuera de la tabla **se rechaza** con un
+  `ValueError` accionable (no se ignora en silencio). Error común: **`name:` NO es un campo** — no hay
+  forma de nombrar una red en el spec; usá un comentario YAML (`#`) si querés anotarla.
 - **AS-BUILT #25 — artefactos decorados:** `_build_artifact` (en `facade.py`) aplica `decorate`
   (§7.1) sobre el grafo, así que `build`/`quick` devuelven artefactos con `label` legible + atributos
   de nodo (`year`/`is_seed`/`curation_status`/`degree_centrality`/`community`) listos para el export
@@ -1413,41 +1627,70 @@ networks --spec`, §convenciones CLI).
 
 ---
 
-## 11. Deduplicación fuzzy (extra `[dedup]`, v1 — construido, Hito 7)
+## 11. Deduplicación fuzzy — AUTOMÁTICA en la ingesta (`rapidfuzz` núcleo, v1 — construido, Hito 7 + #88)
 
-**Construido** (Hito 7, ADR [0026](decisiones/0026-dedup-fuzzy-determinista.md)). Dedup fuzzy
-**determinista** con `rapidfuzz` (extra `[dedup]`, import perezoso): el complemento aproximado de la
-normalización conservadora del `Preprocessor` (§6). **Funciones de librería**, exportadas desde
-`bib2graph.preprocessors` (no hay subcomando CLI — decisión del PO). Operan sobre la columna `_id`
-(`authors_id`/`keywords_id`), **nunca** sobre `_raw`, y corren **después** de `normalize` y
-`apply_thesaurus` (orden: normalize → thesaurus → dedup).
+> **Sincronizado con el preprocesamiento automático en la ingesta — #88 (AS-BUILT, 2026-06-18,
+> ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** el dedup deja de ser
+> "función de librería sin subcomando" (corte 0026) y pasa a ejecutarse **automáticamente en cada
+> ingesta** (`seed`/`seed_from_bib`/`chain`/`restore`). **`rapidfuzz` pasa al núcleo**
+> (`[project.dependencies]`); **el extra `[dedup]` se ELIMINA** y el import deja de ser perezoso. El
+> **algoritmo** de 0026 (token_sort_ratio + Union-Find + canónico) **no cambia**: cambia *quién lo
+> invoca y cuándo*. `b2g thesaurus` es el único paso explícito del preproc (§convenciones CLI, §6).
+
+**Dedup fuzzy determinista** con `rapidfuzz` (núcleo desde #88): el complemento aproximado de la
+normalización conservadora del `Preprocessor` (§6). Las funciones siguen exportadas desde
+`bib2graph.preprocessors`, pero **se invocan automáticamente** desde el helper de frontera
+`cli/_ingest.py::normalize_and_dedup`, no a mano. Operan sobre la columna `_id`
+(`authors_id`/`keywords_id`), **nunca** sobre `_raw`.
 
 ```python
+# Helper de frontera — punto único de la ingesta (cli/_ingest.py)
+def normalize_and_dedup(corpus: Corpus, *, applied_at: datetime | None = None) -> Corpus:
+    """normalize → deduplicate_authors(0.92) → deduplicate_keywords(0.90), en ese orden, sobre el
+    corpus COMPLETO YA MERGEADO (existing + incoming) ⇒ dedup CROSS-BIBLIOTECA. NO aplica thesaurus
+    (eso es el paso explícito `b2g thesaurus`). `applied_at` se inyecta desde la frontera (R2)."""
+
+# Funciones de librería (ADR 0026, intactas; ahora invocadas por el helper, no a mano)
 def deduplicate_authors(corpus: Corpus, *, threshold: float = 0.92) -> Corpus:
     """Colapsa variantes de `authors_id` por similitud de nombres (fuzzy DETERMINISTA). Lo trivial
-    ya lo hizo el Preprocessor (§6); esto es el complemento aproximado. Requiere extra [dedup]."""
+    ya lo hizo el Preprocessor (§6); esto es el complemento aproximado."""
 
 def deduplicate_keywords(corpus: Corpus, *, threshold: float = 0.90) -> Corpus:
-    """Colapsa variantes de `keywords_id` fuera del thesaurus por similitud de cadenas. Requiere
-    extra [dedup]."""
+    """Colapsa variantes de `keywords_id` fuera del thesaurus por similitud de cadenas."""
 ```
 
-**Notas de contrato** (Hito 7, ADR [0026](decisiones/0026-dedup-fuzzy-determinista.md)):
+**Notas de contrato** (Hito 7 + #88, ADR [0026](decisiones/0026-dedup-fuzzy-determinista.md) /
+[0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):
 
+- **Automático en la ingesta, cross-biblioteca:** las cuatro rutas
+  (`seed`/`seed_from_bib`/`chain`/`restore`) hacen `existing.merge(incoming)` →
+  `normalize_and_dedup(corpus_completo)` → `store.persist_replace(...)`. Corre sobre el corpus
+  **completo** (no el lote) para deduplicar contra toda la biblioteca acumulada; se persiste con
+  **`persist_replace`** (DELETE+INSERT, §4.1) porque el upsert-concat D3 (`persist`) reintroduciría
+  las variantes colapsadas. `build`/`networks` siguen **puros** (el corpus ya entra deduplicado).
 - **`threshold` por-campo** (autores `0.92` / keywords `0.90`; **ambas** lo reciben): se compara con
-  `rapidfuzz.fuzz.token_sort_ratio` (0–100) contra `threshold * 100`.
+  `rapidfuzz.fuzz.token_sort_ratio` (0–100) contra `threshold * 100`. Umbrales fijos en
+  `cli/_ingest.py` (ADR 0031).
 - **Determinista e idempotente:** los pares ≥ umbral forman **componentes conexas** vía Union-Find
   (iteración ordenada); el **canónico** del cluster es la variante más frecuente (papers distintos)
   con desempate por `id` ascendente; se preserva el **orden de primera aparición** y **nunca se toca
   `_raw`**. Mismo corpus + threshold + versión de `rapidfuzz` → mismo resultado (verificado
   cross-`PYTHONHASHSEED`); converge en una pasada. **NO usa IA** (similitud de cadenas, no
   semántica/LLM; ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)).
-- **Extra `[dedup]` con import perezoso:** sin él, `ImportError` accionable → `uv sync --extra
-  dedup`. Registra un `PreprocRef` en el `Manifest` con `{library, rapidfuzz_version, scorer,
-  threshold, n_clusters_collapsed}` (reproducibilidad a igual versión del scorer, ADR 0017).
+- **`rapidfuzz` en el núcleo (#88):** `rapidfuzz>=3,<4` en `[project.dependencies]`; el import de
+  `preprocessors/dedup.py` es de nivel de módulo (ya **no** perezoso, ya **no** hay extra `[dedup]`
+  ni `uv sync --extra dedup`). Registra un `PreprocRef` en el `Manifest` con
+  `{library, rapidfuzz_version, scorer, threshold, n_clusters_collapsed}` (reproducibilidad a igual
+  versión del scorer, ADR 0017).
 - **Campos en V1:** autores + keywords. **Instituciones diferidas** (`institutions_id` no está
   normalizada determinísticamente hoy). `splink` (record-linkage probabilístico) **diferido a
   post-V1** (ADR 0026).
+- **Diferido a la epic GUI (#34):** la **revisión asistida de clusters ambiguos** (sugerir N
+  canónicos → el humano elige, determinista vía scores de `rapidfuzz`, **sin IA generativa**) requiere
+  superficie interactiva; hoy el dedup automático aplica el canónico determinista sin confirmar
+  (ADR 0031). **Deuda conocida:** el dedup por ingesta es O(n²) sobre el corpus completo
+  (optimización futura) y `test_run_seed_from_bib_reseed_incrementa_ronda` queda **skip** (#93,
+  crash `BibDataString`/`pyparsing` en reseed mismo-proceso; no afecta el CLI real).
 
 ---
 
@@ -1498,6 +1741,8 @@ forager = Forager(OpenAlexSource(email="luis@sostaina.com"), depth=1, max_candid
 prev = forager.preview(seed.corpus)                     # backward exacto; forward → chain
 print(prev.estimated_new, prev.forward_requires_fetch)  # p. ej. 142  True
 ranked = forager.chain(seed.corpus)                     # forward fetchea citantes
+# AS-BUILT #54: el backward observa sin materializar → ranked.observed_refs (no van a ranked.corpus);
+# AS-BUILT #78: el forward materializa filas con metadata REAL (no placeholders). Ver §5.
 
 # 3') Curar lo forrajeado, normalizar y aplicar el thesaurus multilingüe determinista
 corpus = seed.corpus.merge(ranked.corpus).accept(ids=[...]).reject(ids=[...])
@@ -1533,8 +1778,9 @@ b2g export --format graphml --out-dir redes/ --json
 b2g status --json     # CycleState + round + curation_available + workspace + conteos
 ```
 
-Retrocompat: `b2g --store biblioteca.duckdb seed …` (sin `init`, `.duckdb` suelto = workspace
-degenerado) sigue siendo válido.
+Migración de un `.duckdb` legacy: corré **`b2g init .`** en su carpeta para adoptarlo como
+workspace (`--store` y el modo degenerado fueron eliminados en
+[#75](https://github.com/complexluise/bib2graph/issues/75)).
 
 El **modo declarativo** (`b2g networks --spec redes.yaml`, `NetworkSpec` desde YAML) está
 **construido** (Hito 9, AS-BUILT 2026-06-17): un YAML versionable describe qué redes calcular.

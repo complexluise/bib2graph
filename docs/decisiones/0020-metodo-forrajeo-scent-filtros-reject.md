@@ -278,3 +278,131 @@ semántica.
 
 > **Decidido por:** AS-BUILT verificado del #21 (2026-06-16, rama `feat/forager-cap-batching`); gate
 > verde, 422 tests. Ver `API.md` §5 y §2 (`fetch_citing_batch`).
+
+## AS-BUILT — 2026-06-17 (#54: el backward deja de persistir placeholders; revierte el "no contaminan" de la decisión B)
+
+> El cuerpo del ADR (decisión **B**) afirmaba que los candidatos backward se materializan como
+> **stubs id-only** en el corpus (título placeholder `[candidate:{id}]`, resto nulo) y que **"no
+> contaminan las redes"**. **Esa afirmación era FALSA** y este AS-BUILT la corrige; **no reescribe**
+> el cuerpo histórico (queda como rastro del error). Gate verde, **636 tests**; verifier PASA. Rama
+> `fix/backward-chaining-no-placeholders`.
+
+### El "no contaminan" era falso — los stubs SÍ contaminaron
+
+Las sesiones de QA con datos reales lo destaparon ([Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md),
+[Nota 13](../Notas/13-continuacion-sesion-valoraciones.md), "el bug de fondo del Forager"): los stubs
+`[candidate:W...]` **sí contaminaron**. Llegaron a ser **~la mitad del corpus** (filas-fantasma sin
+metadata real) y, peor, **entraron al `corpus_hash`** (eran filas del `corpus`, no ruido externo) —
+rompiendo la reproducibilidad y las redes legibles. La promesa de "curables/enriquecibles después"
+nunca tuvo un materializador que la sostuviera (la deuda quedó abierta como #71).
+
+### Opción B implementada — observar sin materializar
+
+El backward chaining **ya NO crea filas-fantasma en el corpus**. Los IDs observados (los candidatos
+que el ranking backward detecta) se exponen por **`RankedCandidates.observed_refs: list[str]`** (campo
+nuevo, en orden de ranking, respetando `max_candidates`) y se persisten en una **tabla append-only
+hermana, `referenced_but_not_fetched`** (par de `loop_state_log`, **fuera** de la tabla `corpus`). El
+ranking backward sobrevive intacto en `RankedCandidates.ranking`; se eliminó `_build_backward_candidate_row`.
+
+- **Protocol `TabularBackend`** (`backends/base.py`): tres métodos nuevos —
+  `add_referenced_refs(ref_ids, *, cycle_round)` (idempotente por existencia de `ref_id`),
+  `referenced_refs_count()`, `referenced_refs()`—, implementados por `DuckDBBackend` (DDL + migración
+  liviana + copia en snapshot/`_clone`; `observed_at` vía el `now()` del backend) e `InMemoryBackend`.
+- **`b2g chain`** persiste los `observed_refs` en la tabla (con `cycle_round`) y suma
+  `observed_refs_count` al envelope JSON. **`b2g status`** suma el campo aditivo `referenced_not_fetched`
+  (`schema="1"` intacto).
+
+### `corpus_hash` y materialización on-demand
+
+El **`corpus_hash` NO incluye los observados** (viven en la tabla hermana, no en `corpus`): esto
+**arregla la contaminación previa del hash** (antes los fantasmas SÍ entraban). El materializador
+on-demand —rehidratar un observado a fila real del corpus vía `fetch_works_by_ids` (#55) cuando el
+humano lo pida— está **diferido a #71** (NO construido en #54).
+
+### Coherencia con otros ADR
+
+- **NO toca [ADR 0013](0013-identidad-hash-merge-corpus.md):** el schema del `corpus` queda intacto;
+  `referenced_but_not_fetched` es una tabla aparte, no una columna nueva.
+- **Coherente con [ADR 0017](0017-reproducibilidad-historia-snapshot.md):** los IDs observados son
+  **estado** (qué vio el forrajeo), **no contenido bibliográfico** → fuera del `corpus_hash`, igual que
+  la procedencia y los timestamps. La identidad sigue siendo solo el contenido curado.
+
+### Seguimiento — el forward tiene el MISMO footgun (#78, NO arreglado en #54)
+
+El verifier confirmó que el **forward chaining arrastra el mismo problema**:
+`_build_forward_candidate_row` materializa filas con **título placeholder `[candidate:W...]`** (IDs de
+citantes sin metadata completa). #54 **solo arregló el backward**; el forward queda **abierto como
+issue #78**. Honestidad de estado: el forward **NO está limpio** — sigue poniendo placeholders de
+título en el corpus.
+
+**Lo que NO cambia:** backward = co-citación con el corpus (puro/local), forward = citación directa,
+filtros `rejected` (C), `apply_thesaurus` (D), `depth=1`, desempate por `id`, "solo el Forager toca la
+red".
+
+> **Decidido por:** AS-BUILT verificado del #54 (2026-06-17, rama `fix/backward-chaining-no-placeholders`);
+> gate verde, 636 tests, verifier PASA. Ver `API.md` §5 (`observed_refs`) y §4 (`referenced_but_not_fetched`).
+
+## AS-BUILT — 2026-06-17 (#78: el forward materializa metadata REAL; cierra el footgun de placeholder forward)
+
+> Seguimiento directo del AS-BUILT #54 (que reconoció el footgun forward como abierto). El cuerpo del
+> ADR (decisión **B**) describía el forward como dirección que **materializa filas** en el corpus, y
+> el AS-BUILT inicial las creaba con **título placeholder `[candidate:W...]`** (IDs de citantes sin
+> metadata). **Esa materialización era defectuosa** y este AS-BUILT la corrige; **no reescribe** el
+> cuerpo histórico (queda como rastro). Gate verde, **645 tests**; verifier PASA. Rama
+> `fix/forward-chaining-materialize`. **No reabre la decisión de método de forrajeo** (backward
+> puro/forward red, scent, filtros): solo corrige *cómo* el forward materializa la metadata — por eso
+> es enmienda al 0020, su dominio, y no un ADR nuevo.
+
+### El forward también arrastraba el footgun — causa raíz: la metadata se traía y se descartaba
+
+El verifier de #54 confirmó que el forward repetía el problema del backward: `_build_forward_candidate_row`
+materializaba filas con título placeholder `[candidate:W...]`. La causa raíz, sin embargo, **no** era
+falta de datos: `fetch_citing_batch` **ya pedía `_FIELDS` (metadata completa)** a OpenAlex y luego
+**los descartaba**, devolviendo solo el mapeo de atribución `dict[str, list[str]]`. La metadata real
+(título/año/autores) **ya viajaba en la misma request de red** y se tiraba.
+
+### Opción A1 implementada — conservar la metadata que ya viaja (cero red extra)
+
+El forward **ya NO persiste placeholders**; materializa **filas reales** (título/año/autores) **sin una
+sola request adicional**:
+
+- Se extrajo `_fetch_citing_pages` (privado, comparte paginación/atribución/presupuesto-por-semilla)
+  que devuelve `(attribution, works_map)`.
+- **`fetch_citing_batch(ids, *, max_per_paper) -> dict[str, list[str]]` queda como thin wrapper con su
+  firma y contrato INTACTOS** (descarta `works_map`) → el `OpenAlexEnricher` (8b, §3 de API.md) **no
+  se rompe**.
+- **Método público nuevo `OpenAlexSource.fetch_citing_batch_with_works(ids, *, max_per_paper) ->
+  (attribution, works_map)`**, que el `_fetch_forward` del Forager consume.
+- `_work_to_row` ganó params `chaining_hop: int | None = None` y `source_tag: str = "openalex"`
+  (defaults backward-compat; los callers viejos —`seed`/`fetch_citing`/`fetch_works_by_ids`— no
+  cambian). El forward llama `_work_to_row(work, is_seed=False, chaining_hop=1,
+  source_tag="chaining:forward")`.
+- `_build_forward_candidate_row` **ELIMINADO**.
+
+**Garantía verificada:** con `OpenAlexSource` real, todo citante atribuido está en `works_map` →
+nunca cae al fallback-placeholder (ese fallback solo aplica a sources sintéticos de test).
+
+### La regla común y la asimetría forward/backward (no es incoherencia)
+
+La **regla común** que mata el footgun en ambas direcciones: **el corpus nunca contiene placeholders
+`[candidate:W...]`**. Las direcciones la cumplen de forma distinta, y esa asimetría es **deliberada**,
+no un descuido:
+
+- **Backward observa sin materializar** (#54): las referencias son **numerosas**, **no se curan
+  activamente** y **su metadata no viaja** en la request local del seed (solo IDs en `references_id`).
+  Materializarlas inflaría el corpus con miles de filas-fantasma → se registran en la tabla hermana
+  `referenced_but_not_fetched` y se rehidratan on-demand (#71).
+- **Forward materializa** (#78): los citantes son **pocos** (acotados por `max_citing_per_paper`), **se
+  curan** (el humano los acepta/rechaza), y **su metadata ya viene** en la misma request de red de
+  `fetch_citing_batch_with_works`. Materializarlos con datos reales es lo correcto y es gratis.
+
+Por eso #71 (materializador on-demand) queda, con #78 en A, **solo para backward**: el forward ya no
+necesita rehidratar nada.
+
+**Lo que NO cambia:** backward = co-citación con el corpus (puro/local), forward = citación directa,
+filtros `rejected` (C), `apply_thesaurus` (D), `depth=1`, desempate por `id`, "solo el Forager toca la
+red", y el contrato de `fetch_citing_batch` (intacto).
+
+> **Decidido por:** AS-BUILT verificado del #78 (2026-06-17, rama `fix/forward-chaining-materialize`);
+> gate verde, 645 tests, verifier PASA. Seguimiento de #54/#55. Ver `API.md` §2
+> (`fetch_citing_batch_with_works`) y §5 (forward materializa metadata real).

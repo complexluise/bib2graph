@@ -1,6 +1,6 @@
 """cli — CLI agente-native ``b2g`` (Hito 6 + ADR 0029 workspace).
 
-Arma el grupo Click principal, registra los 17 subcomandos y expone
+Arma el grupo Click principal, registra los 18 subcomandos y expone
 ``main()`` como entry point del paquete.
 
 Entry point en ``pyproject.toml``:
@@ -8,19 +8,20 @@ Entry point en ``pyproject.toml``:
 
 Subcomandos:
     init, seed, chain, filter, build, enrich, monitor, export, snapshot,
-    status, inspect, validate, accept, reject, curate, networks, restore.
+    status, inspect, validate, accept, reject, curate, networks, restore,
+    thesaurus.
 
 Cada subcomando lleva:
   - ``--json``: salida JSON estructurada (envelope versionado, §API.md).
   - Exit codes 0-5 (ADR 0010).
-  - Sin estado entre invocaciones: el estado vive en el workspace / --store.
+  - Sin estado entre invocaciones: el estado vive en el workspace.
 
 ADR 0029 — resolución ambiente:
-  Las opciones globales ``--workspace`` y ``--store`` son OPCIONALES.
-  Si no se pasa ninguna, los comandos resuelven el workspace activo vía
+  La opción global ``--workspace`` es OPCIONAL.
+  Si no se pasa, los comandos resuelven el workspace activo vía
   ``Workspace.resolve(...)`` (B2G_WORKSPACE env o cwd walk).
-  ``--store`` se conserva para retrocompatibilidad con el modo degenerado
-  (un ``.duckdb`` suelto).
+  La opción ``--store`` fue eliminada (#75): pasarla produce el error estándar
+  de Click ("No such option"). El modo degenerado (.duckdb suelto) ya no existe.
 
 R5 — UTF-8 en la frontera:
   ``main()`` fuerza ``sys.stdout``/``sys.stderr`` a UTF-8 antes de que Click
@@ -52,6 +53,7 @@ from bib2graph.cli.commands.restore import restore_cmd
 from bib2graph.cli.commands.seed import seed_cmd
 from bib2graph.cli.commands.snapshot import snapshot_cmd
 from bib2graph.cli.commands.status import status_cmd
+from bib2graph.cli.commands.thesaurus import thesaurus_cmd
 from bib2graph.cli.commands.validate import validate_cmd
 
 
@@ -82,49 +84,35 @@ def _force_utf8() -> None:
         "hacia arriba desde el directorio actual (ADR 0029)."
     ),
 )
-@click.option(
-    "--store",
-    default=None,
-    type=click.Path(),
-    help=(
-        "Ruta directa al archivo .duckdb (modo degenerado, retrocompat). "
-        "Mutuamente excluyente con --workspace; no uses ambos. "
-        "Preferí --workspace para investigaciones nuevas."
-    ),
-)
 @click.pass_context
-def b2g(ctx: click.Context, workspace: str | None, store: str | None) -> None:
+def b2g(ctx: click.Context, workspace: str | None) -> None:
     """b2g — bib2graph CLI agente-native.
 
     Transforma corpus bibliográficos en redes bibliométricas reproducibles.
 
     El workspace activo se resuelve en este orden (ADR 0029):
       1. --workspace <carpeta>  (forma canónica)
-      2. --store <archivo.duckdb>  (modo degenerado, retrocompat — mutuamente excluyente con --workspace)
-      3. Variable de entorno B2G_WORKSPACE
-      4. workspace.json encontrado subiendo desde el directorio actual
+      2. Variable de entorno B2G_WORKSPACE
+      3. workspace.json encontrado subiendo desde el directorio actual
 
     Si no hay ninguno, los comandos que necesitan la biblioteca emiten un
     error accionable (exit 1) que sugiere 'b2g init' o '--workspace'.
 
     Subcomandos: init, seed, chain, filter, build, enrich, monitor, export,
-    snapshot, status, inspect, validate, accept, reject, curate, networks, restore.
+    snapshot, status, inspect, validate, accept, reject, curate, networks,
+    restore, thesaurus.
 
-    Ejemplo con workspace:
+    Ejemplo:
         b2g init mi-investigacion
         cd mi-investigacion
         b2g seed --equation "unequal exchange"
         b2g status --json
-
-    Ejemplo legado (--store):
-        b2g --store mi.duckdb seed --equation "unequal exchange"
     """
     ctx.ensure_object(dict)
     ctx.obj["workspace"] = workspace
-    ctx.obj["store"] = store
 
 
-# Registrar los 17 subcomandos
+# Registrar los 18 subcomandos
 b2g.add_command(init_cmd)
 b2g.add_command(seed_cmd)
 b2g.add_command(chain_cmd)
@@ -142,6 +130,7 @@ b2g.add_command(reject_cmd)
 b2g.add_command(curate_cmd)
 b2g.add_command(networks_cmd)
 b2g.add_command(restore_cmd)
+b2g.add_command(thesaurus_cmd)
 
 
 def main() -> int:
