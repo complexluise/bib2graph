@@ -11,6 +11,35 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.7.0](https://github.com/complexluise/bib2graph/compare/v0.6.0...v0.7.0) (2026-06-18)
+
+
+### Features
+
+* **api:** API local FastAPI + b2g gui + service/curate (G3) ([6cca1e0](https://github.com/complexluise/bib2graph/commit/6cca1e099925023511402cb5f1e0f57e7f6f9529))
+* **build:** wheel incluye el frontend (force-include) + job CI frontend (G5) ([f90a0f6](https://github.com/complexluise/bib2graph/commit/f90a0f6d3b5ea3147c35ccf7cec5e54a52c46e02))
+* **gui:** MVP de la GUI local (G1–G5) — capa de servicios + API + frontend + empaquetado ([feed3e4](https://github.com/complexluise/bib2graph/commit/feed3e4da2f97d2c8a22ed1359c255112b464d6a))
+* **gui:** SPA frontend D-2 "Observatorio" + wiring del token (G4) ([c40c81d](https://github.com/complexluise/bib2graph/commit/c40c81db7c22f35d07564bb2961e175ca1fd538d))
+* **service:** capa de servicios neutral; CLI como adaptador (G1) ([e9ea4b7](https://github.com/complexluise/bib2graph/commit/e9ea4b7f7e9c97d400a99e774b4a0b574c5bb496))
+* **service:** lecturas read-only para la GUI (G2) ([fc80c5d](https://github.com/complexluise/bib2graph/commit/fc80c5dfcd5f2c71e8f84140be8efab0a9c651d0))
+
+
+### Bug Fixes
+
+* **build:** force-include rompía el editable install sin frontend (.gitkeep) ([0ac9c77](https://github.com/complexluise/bib2graph/commit/0ac9c77104813f42f98d9fa3e06baecb9f4a442a))
+* **gui:** GET / devolvía 422 en vez de servir la SPA ([9ed70b1](https://github.com/complexluise/bib2graph/commit/9ed70b1d27f688aad711f68a06628a30159d9325))
+
+
+### Documentation
+
+* **api:** documentar capa service/ (API.md §0 + AGENTS estructura) ([4c57f45](https://github.com/complexluise/bib2graph/commit/4c57f454360d53ea08b5653983a54d19f42562ff))
+* documentar API local (G3 AS-BUILT) ([87f3fca](https://github.com/complexluise/bib2graph/commit/87f3fca566b08b58836bcc3cf79a990ebe7704f3))
+* documentar frontend G4 (AS-BUILT) ([5d1913e](https://github.com/complexluise/bib2graph/commit/5d1913ef104ff128e1320cfac82e0f26296e0ec9))
+* documentar lecturas service/ (G2 AS-BUILT) ([7b57f6a](https://github.com/complexluise/bib2graph/commit/7b57f6a28c25af44464ea5eb46778f0b2c5f09ea))
+* G5 AS-BUILT + MVP GUI completo (G1–G5) ([460d398](https://github.com/complexluise/bib2graph/commit/460d398f9f7c67bdf20de435f297f9a3d5793d81))
+* **gui:** preparar terreno GUI — capa de servicios + ADR 0027/0028 + TARGET ([#98](https://github.com/complexluise/bib2graph/issues/98)) ([6ff6d20](https://github.com/complexluise/bib2graph/commit/6ff6d201afca0aef6ece8a72e49a4edaf51d5278))
+* **roadmap:** roadmap del MVP GUI (tramo 05, hitos G1–G5) ([d73d472](https://github.com/complexluise/bib2graph/commit/d73d47218e772dc45f38899665e5a536ccda4564))
+
 ## [0.6.0](https://github.com/complexluise/bib2graph/compare/v0.5.0...v0.6.0) (2026-06-18)
 
 
