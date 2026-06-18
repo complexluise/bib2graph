@@ -174,6 +174,19 @@
 > Nuevo **18° subcomando `b2g thesaurus --from <archivo>`** (único paso explícito del preproc,
 > transversal al FSM). **`rapidfuzz` pasa al núcleo; el extra `[dedup]` se elimina.** `build`/`networks`
 > siguen puros (el corpus ya entra deduplicado). Ver §6, §11, §4.1 y el listado de subcomandos.
+>
+> **Sincronizado con la capa de servicios neutral — Hito G1 del MVP GUI (AS-BUILT, 2026-06-18, ADR
+> [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)):** se materializa la **capa de
+> servicios neutral `src/bib2graph/service/`** (§0). G1 **sube EL CONTRATO** desde `cli/`: el envelope
+> versionado (`build_envelope`/`ENVELOPE_SCHEMA_VERSION`), la jerarquía de errores tipados (`B2GError`
+> + subclases) y el **mapeo puro error→código** (`code_for`) ahora viven en `service/` (agnóstico de
+> transporte: sin `print`/`sys.exit`/Click/FastAPI). `cli/_envelope.py` y `cli/_errors.py` pasan a
+> **re-exportar** ese contrato y conservan solo el I/O del adaptador (`emit`/`emit_human`/`handle_errors`).
+> **El contrato externo del CLI no cambia** (envelope `schema="1"`, exit codes 0–5, ADR 0021): los
+> imports `from bib2graph.cli._envelope import build_envelope` / `from bib2graph.cli._errors import
+> B2GError, …` resuelven a los **mismos objetos**. Es la primera mitad del ports & adapters del ADR 0028
+> (el resto —`api/`, `b2g gui`, `frontend/`, lecturas `get_scent`/`get_network`/`search`— sigue siendo
+> TARGET, no construido). Ver §0.
 
 ## Convenciones
 
@@ -446,6 +459,76 @@ faltante, una opción desconocida como `--store` —eliminada en #75—, o ning�
 Click aborta el parseo **antes** de entrar al comando: se emite el mensaje de uso de Click en **stderr** y
 exit code `1`, **sin** envelope JSON. El envelope versionado solo cubre errores que ocurren
 **dentro** de la ejecución del comando.
+
+---
+
+## 0. Capa de servicios `service/` — contrato neutral compartido (AS-BUILT G1, ADR 0028)
+
+> **AS-BUILT del Hito G1 del MVP GUI (2026-06-18, ADR
+> [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)).** Documenta una decisión **ya
+> tomada y firmada** (ADR 0028 Aceptada, PO 2026-06-18): el contrato del envelope/errores **sube** de
+> `cli/` a una capa neutral. **El contrato externo del CLI no cambia** (envelope `schema="1"`, exit
+> codes 0–5, ADR 0021) — por eso este movimiento **no requiere un ADR nuevo**.
+
+`src/bib2graph/service/` es la **capa de servicios neutral** de la que CLI (y, como TARGET, la API)
+son adaptadores delgados (ADR 0028, inversión de dependencia ports & adapters). G1 sube **EL CONTRATO**
+que antes vivía en `cli/_envelope.py`/`cli/_errors.py`; la **orquestación** (`run_<cmd>`) y las
+lecturas de la SPA (`get_scent`/`get_network`/`search`) **siguen siendo TARGET** (no construidas en G1).
+
+**Invariante de neutralidad de transporte (estricta).** `service/` es **agnóstica de transporte**:
+**sin `print`, `sin sys.exit`, sin Click, sin FastAPI**. Es el límite que mantiene el contrato
+reutilizable por cualquier adaptador. El I/O (`emit`/`emit_human` en `cli/_envelope.py`,
+`handle_errors`/`_emit_error_envelope` en `cli/_errors.py`) **se queda en el adaptador CLI**.
+
+**Contrato público** (re-exportado desde `bib2graph.service.__init__`):
+
+```python
+# service/envelope.py — envelope JSON común y versionado
+ENVELOPE_SCHEMA_VERSION: str = "1"   # versión del contrato del envelope (ADR 0021)
+
+def build_envelope(
+    *,
+    command: str,
+    ok: bool,
+    data: dict[str, Any],
+    exit_code: int,
+    warnings: list[str] | None = None,
+    error: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Construye el envelope JSON estable del contrato (schema="1").
+    {schema, ok, command, exit_code, data, warnings, error}. Función pura, sin I/O."""
+
+
+# service/errors.py — jerarquía de errores tipados (ADR 0021)
+class B2GError(Exception):
+    """Base de los errores accionables. Atributos de clase: exit_code: int, code: str;
+    instancia: .message. Subclases con su (exit_code, code):"""
+    exit_code: int = 1
+    code: str = "B2G_ERROR"
+
+class UsageError(B2GError):      exit_code = 1; code = "USAGE_ERROR"       # uso (opción faltante/inválida)
+class DataError(B2GError):       exit_code = 2; code = "DATA_ERROR"        # schema/ids/filtro inválido
+class DependencyError(B2GError): exit_code = 3; code = "DEPENDENCY_ERROR"  # ImportError / capacidad faltante
+class NetworkError(B2GError):    exit_code = 4; code = "NETWORK_ERROR"     # httpx.HTTPError / timeout
+class StoreError(B2GError):      exit_code = 5; code = "STORE_ERROR"       # store/snapshot bloqueado o corrupto
+
+
+def code_for(exc: BaseException) -> int:
+    """Mapeo PURO error→exit code (0–5, ADR 0021), sin I/O ni sys.exit:
+    B2GError → su .exit_code; OSError (incl. StoreLockedError) → 5; ImportError → 3;
+    httpx.HTTPError → 4. Excepción no mapeada → TypeError (el llamador decide).
+    Lo usan la capa de servicio y los adaptadores para derivar exit code / HTTP status
+    sin duplicar la política."""
+```
+
+**Adaptadores (el contrato se re-exporta, no se duplica).** `cli/_envelope.py` y `cli/_errors.py`
+hacen `from bib2graph.service... import ...` y re-exportan los **mismos objetos**, así que los imports
+existentes del CLI y los tests (`from bib2graph.cli._envelope import build_envelope`,
+`from bib2graph.cli._errors import B2GError, DataError, …`) siguen funcionando sin cambios. El
+decorador `handle_errors` (CLI) conserva su propia escalera `try/except` por tipo de error + el
+`sys.exit` y la emisión del envelope de error; `code_for` es el mapeo puro disponible para los
+adaptadores (incluida la API TARGET, que lo traducirá a HTTP status, ADR 0028 §7). El mapeo de
+`code_for` y el de `handle_errors` describen la **misma política** (ADR 0021 §D).
 
 ---
 

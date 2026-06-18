@@ -390,6 +390,13 @@ src/bib2graph/
   networks/            # Projector, Analyzer, NetworkSpec (resolution + extra="forbid"), load_specs (YAML, Hito 9),
                        # NetworkArtifact, Networks, cluster_table (#31)
   exporters/           # GraphML, CSV
+  service/             # CAPA DE SERVICIOS NEUTRAL (ADR 0028, AS-BUILT G1 del MVP GUI): contrato
+                       # compartido por CLI/API, agnóstico de transporte (sin print/sys.exit/Click/
+                       # FastAPI). envelope.py = build_envelope + ENVELOPE_SCHEMA_VERSION; errors.py =
+                       # jerarquía B2GError (+ Usage/Data/Dependency/Network/StoreError) + code_for
+                       # (mapeo puro error→exit code 0–5). cli/ re-exporta este contrato (subido desde
+                       # cli/_envelope.py·_errors.py) y conserva solo el I/O del adaptador. La
+                       # orquestación run_<cmd> y las lecturas de la SPA son TARGET, no construidas en G1.
   stores/              # DuckDBStore (núcleo, por defecto: biblioteca viva);
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
