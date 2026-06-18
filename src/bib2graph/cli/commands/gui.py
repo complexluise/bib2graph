@@ -57,6 +57,49 @@ def _make_index_response(static_dir: object, token: str) -> object:
     return HTMLResponse(content=html)
 
 
+def build_gui_app(ws: Any, token: str, static_dir: object | None) -> Any:
+    """Construye la app FastAPI de la GUI: API + (si hay frontend) index + assets.
+
+    Separada de ``run_gui`` para ser testeable sin uvicorn.  Cuando ``static_dir``
+    existe, monta la ruta raíz ``GET /`` que sirve ``index.html`` con el token
+    inyectado, más ``StaticFiles`` para los assets.
+
+    Args:
+        ws: ``Workspace`` resuelto.
+        token: Token efímero.
+        static_dir: ``pathlib.Path`` del frontend buildeado, o ``None`` si no existe.
+
+    Returns:
+        Instancia de ``FastAPI`` lista para ``uvicorn.run``.
+    """
+    from bib2graph.api import create_app
+
+    app = create_app(ws, token=token, cors_origins=None)
+
+    if static_dir is not None:
+        from fastapi.staticfiles import StaticFiles
+
+        # Ruta raíz: sirve index.html con el token inyectado (B-G4-3).
+        # serve_index NO declara parámetros a propósito: bajo
+        # `from __future__ import annotations` un `request: Request` quedaría como
+        # anotación-string que FastAPI resuelve contra los globals del módulo —
+        # donde `Request` NO está (es import local) — y lo tomaría como query param
+        # requerido → 422.  serve_index no necesita el request, así que no lo pide.
+        @app.get("/", include_in_schema=False)  # type: ignore[untyped-decorator]
+        async def serve_index() -> Any:
+            """Sirve index.html con el token Bearer inyectado."""
+            return _make_index_response(static_dir, token)
+
+        # Assets estáticos (JS, CSS, imágenes, fuentes)
+        app.mount(
+            "/",
+            StaticFiles(directory=str(static_dir), html=False),
+            name="static",
+        )
+
+    return app
+
+
 def run_gui(
     *,
     workspace_ctx: dict[str, object],
@@ -101,11 +144,9 @@ def run_gui(
     ws = resolve_workspace(workspace_ctx)
     token = generate_token()
 
-    # Import de la API solo después de verificar que fastapi/uvicorn están disponibles
+    # Resolver el static del frontend (G4/G5) — import perezoso
     import importlib.resources as _res
     from pathlib import Path
-
-    from bib2graph.api import create_app
 
     static_dir: Path | None = None
     try:
@@ -119,24 +160,9 @@ def run_gui(
     except Exception:
         static_dir = None
 
-    app = create_app(ws, token=token, cors_origins=None)
+    app = build_gui_app(ws, token, static_dir)
 
     if static_dir is not None:
-        from fastapi import Request
-        from fastapi.staticfiles import StaticFiles
-
-        # Ruta raíz: sirve index.html con el token inyectado (B-G4-3)
-        @app.get("/", include_in_schema=False)  # type: ignore[untyped-decorator]
-        async def serve_index(_request: Request) -> Any:
-            """Sirve index.html con el token Bearer inyectado."""
-            return _make_index_response(static_dir, token)
-
-        # Assets estáticos (JS, CSS, imágenes, fuentes)
-        app.mount(
-            "/",
-            StaticFiles(directory=str(static_dir), html=False),
-            name="static",
-        )
         click.echo(f"Frontend servido desde: {static_dir}")
     else:
         click.echo(

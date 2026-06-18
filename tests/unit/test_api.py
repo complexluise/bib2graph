@@ -469,3 +469,56 @@ def test_nucleo_no_importa_fastapi() -> None:
             assert (node.module or "").split(".")[0] not in forbidden, (
                 f"service importa de '{node.module}' — viola neutralidad"
             )
+
+
+# ---------------------------------------------------------------------------
+# 6. Wiring del frontend (build_gui_app) — REGRESIÓN GET / 422
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_build_gui_app_sirve_index_con_token(tmp_path: Path) -> None:
+    """REGRESIÓN: GET / sirve index.html con el token inyectado (no 422).
+
+    Bug real (caught en runtime, no por el verifier que reconstruía la app):
+    ``serve_index(_request: Request)`` bajo ``from __future__ import annotations``
+    hacía que FastAPI tratara ``_request`` como query param requerido → 422.
+    Este test ejercita el wiring REAL ``build_gui_app``, no una app reconstruida.
+    """
+    from fastapi.testclient import TestClient
+
+    from bib2graph.cli.commands.gui import build_gui_app
+
+    ws = _init_workspace(tmp_path)
+    _seed_store(ws, [_row(id="P1")])
+
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text(
+        '<meta name="b2g-token" content="__B2G_TOKEN__">', encoding="utf-8"
+    )
+
+    client = TestClient(build_gui_app(ws, "TESTTOK", static_dir))
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "TESTTOK" in resp.text
+    assert "__B2G_TOKEN__" not in resp.text  # placeholder reemplazado
+    # El wiring del static NO rompe la auth de los routers /api/*
+    assert client.get("/api/workspace").status_code == 401
+
+
+@pytest.mark.unit
+def test_build_gui_app_sin_static_solo_api(tmp_path: Path) -> None:
+    """Sin frontend buildeado (static_dir=None): GET / → 404; la API sigue montada."""
+    from fastapi.testclient import TestClient
+
+    from bib2graph.cli.commands.gui import build_gui_app
+
+    ws = _init_workspace(tmp_path)
+    _seed_store(ws, [_row(id="P1")])
+
+    client = TestClient(build_gui_app(ws, "TESTTOK", None))
+
+    assert client.get("/").status_code == 404
+    assert client.get("/api/workspace").status_code == 401
