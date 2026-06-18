@@ -88,6 +88,20 @@ reimplementarlo, y que las lecturas de servicio (G2) cuelguen de una capa neutra
 
 ## Hito G2 — Lecturas de servicio que el CLI no expone
 
+> **AS-BUILT (2026-06-18).** Construido en `feat/gui-g1-capa-servicios` (verifier PASA, gate verde).
+> `src/bib2graph/service/reads.py` expone las **6 lecturas read-only** (cada una recibe un `Workspace`
+> resuelto, abre el store en modo lectura y devuelve un `dict`/`list[dict]` serializable o lanza un
+> `B2GError`): `get_workspace`, `list_rounds`, `get_paper`, `get_scent`, `get_network`,
+> `compare_rounds` (el diferenciador). Las 3 bifurcaciones se resolvieron como recomendado: **B-G2-1 =
+> Opción A** (ronda = snapshot sellado; `list_rounds` usa el nuevo helper `Workspace.list_snapshots()`
+> y agrega una entrada sintética `id="live"`); **B-G2-2** (`get_scent` = score de acoplamiento real +
+> vecinos `coupling`/`references`/`cited_by`, NO 4 paneles cosméticos); **B-G2-3** (`get_network`
+> recomputa la red de la ronda **viva** con `Networks.build`+`decorate`; `kind` inválido → `DataError`;
+> la cache `networks/` por snapshot queda diferida a G3 y `mutated_hubs` de `compare_rounds` queda `[]`).
+> El **contrato externo del CLI no cambió** (`tests/unit/test_cli.py` intacto). Firmas exactas y forma
+> de los DTO de retorno: ver [`API.md`](../API.md) §0.1. El resto de la epic (API/`b2g gui`/`frontend/`,
+> G3–G5) **sigue TARGET**.
+
 **Alcance**
 
 - Exponer en `service/` **funciones de lectura** que la SPA necesita y que el CLI **nunca tuvo como
@@ -122,6 +136,111 @@ proyecciones leídas por `(round, kind)`), **D2** (métricas/comunidades servida
 
 **Se vuelve posible:** que la API (G3) sirva la lectura visual sin forzar granularidad imperativa de
 CLI (riesgo de producto de Nota 12).
+
+### Contrato de las 6 lecturas de G2 (encuadre 2026-06-18)
+
+> **Reconciliado con el AS-BUILT (2026-06-18):** este encuadre se construyó tal cual, con las 3
+> bifurcaciones resueltas como recomendado (B-G2-1 Opción A: ronda = snapshot; B-G2-2: scent = score de
+> acoplamiento + vecinos; B-G2-3: `get_network` solo la ronda viva). La firma real de cada lectura toma
+> el `Workspace` resuelto como primer argumento (`get_paper(ws, paper_id)`, `compare_rounds(ws,
+> round_a, round_b)`, etc.) — el encuadre de abajo las escribió sin `ws` por brevedad. El contrato
+> definitivo (firmas y DTO de retorno) vive en [`API.md`](../API.md) §0.1.
+
+> Encuadre del arquitecto antes de construir. Las firmas devuelven `dict` serializable o lanzan
+> `B2GError` tipado (agnóstico de transporte, ADR 0028). **El origen de cada campo está anclado al
+> núcleo real**; los campos del mock `app/src/` que el núcleo no sostiene hoy se marcan abajo.
+
+**Hallazgo de scoping (bifurcación PO).** El mock modela `Round` como entidad de primera clase con
+`id`, `parent_id`, `paper_ids[]`, `network_id`, `cycle_state`. **El núcleo no tiene eso.** "Ronda" hoy
+es un **contador entero** en `loop_state_log (state, round, recorded_at)` sobre **un único corpus vivo**
+(`cycle.py` `apply_transition`: `reseed` incrementa el contador). No hay corpus por ronda ni grafo de
+parentesco. La materialización real de "una foto de la investigación" son los **snapshots sellados**
+(`<workspace>/snapshots/<dir>/` con `manifest.json` + parquet, `corpus.snapshot()`). Ver bifurcación
+B-G2-1 abajo: G2 define `Round`/`compare_rounds` **sobre snapshots**, no sobre el contador.
+
+- `get_workspace() -> dict` — origen: `Workspace.resolve()` (`workspace.py`).
+  - `name` ← `manifest.name`; `root` ← `ws.root`; `created_at` ← `manifest.created_at`;
+    `bib2graph_version` ← `manifest.bib2graph_version`; `source` ← `ws.source`;
+    `loop_state` ← `backend.loop_state()` (str|null); `round` ← `backend.loop_round()` (int);
+    `total_papers` ← `len(corpus)`; `counts_by_status` ← GROUP BY `curation_status`.
+  - Mock-no-sostenido: `id` (no existe; usar `name`). Reusar `run_status` (migrar su lectura a servicio).
+
+- `list_rounds() -> list[dict]` — origen: **snapshots sellados** (`ws.snapshots_dir`) + `loop_state_log`.
+  - Por snapshot: `id` ← nombre del dir; `corpus_hash` ← `manifest.corpus_hash`;
+    `created_at` ← mtime del dir o campo del manifest; `total_papers` ← filas del parquet;
+    `schema_version` ← `manifest.schema_version`. La ronda **viva** (sin snapshot) se incluye como
+    entrada sintética con `id="live"`, `round` ← `loop_round()`, `loop_state` ← `loop_state()`.
+  - Mock-no-sostenido: `parent_id`, `paper_ids[]` (no se persiste linaje; `paper_ids` se deriva del
+    parquet del snapshot bajo demanda en `compare_rounds`, no se materializa en el listado),
+    `network_id`, `label`.
+
+- `get_paper(paper_id: str) -> dict` — origen: fila del corpus (`CORPUS_SCHEMA`, `corpus.py`).
+  - `id` ← `Col.ID`; `openalex_id` ← `Col.OPENALEX_ID`; `doi` ← `Col.DOI`; `title` ← `Col.TITLE`;
+    `year` ← `Col.YEAR`; `abstract` ← `Col.ABSTRACT`; `is_seed` ← `Col.IS_SEED`;
+    `curation_status` ← `Col.CURATION_STATUS`; `authors_raw` ← `Col.AUTHORS_RAW`;
+    `keywords_id` ← `Col.KEYWORDS_ID`; `references_id` ← `Col.REFERENCES_ID`;
+    `cited_by_id` ← `Col.CITED_BY_ID`; `provenance` ← `ProvenanceEvent.parse_list(Col.PROVENANCE)`.
+  - Lanza `DataError` si el id no existe (como `run_inspect`). Migrar la lectura de `run_inspect --id`.
+  - Mock-no-sostenido: `authors[]` como objetos `{id,name,orcid}` (el núcleo guarda `authors_raw[]`
+    paralelo a `authors_id[]`; no hay ORCID ni objeto autor — exponer ambas listas, no objetos);
+    `community`/`degree_centrality` (son **de red**, no del paper — viven en `get_network`, no acá);
+    `round_added` (no se persiste por paper; lo más cercano es `provenance[].chaining_hop`).
+
+- `get_scent(paper_id: str) -> dict` — origen: `foraging/scent.py` + índices de `projectors.py`.
+  - El scent del núcleo es **score escalar** (`compute_backward_scent`/`compute_forward_scent` → ranking
+    por `rank_candidates`), no las 4 listas del mock. Forma realista anclada a lo que el núcleo da hoy:
+    `paper_id`; `coupling` ← lista `{paper_id, title, weight}` de corpus-papers que **comparten
+    referencias** con el paper (acoplamiento bibliográfico vía `collect_item_to_papers` sobre
+    `references_id`); `references` ← `references_id` resueltos a `{paper_id, title}` cuando el id está
+    en el corpus; `cited_by` ← `cited_by_id` resueltos igual.
+  - Mock-no-sostenido / a confirmar con PO (bifurcación B-G2-2): `citations`/`coupling` con pesos
+    arbitrarios `1+degree*3` (cosmético del mock); `coauthors` con `shared_papers` (computable de
+    `authors_id`, pero **no es scent** — es co-autoría); `keywords` con `weight` decreciente (cosmético).
+    `compute_*_scent` está pensado para **candidatos fuera del corpus** (forrajeo), no para un paper ya
+    dentro. Para B3 ("¿por qué este candidato?") en la GUI, el scent honesto es el **score de
+    acoplamiento** y los vecinos compartidos, no 4 paneles inventados.
+
+- `get_network(round: str, kind: str) -> dict` — origen: artefactos en `<workspace>/networks/<kind>/`
+  (`b2g build`/`b2g networks`) o recomputo con `Networks.build` + `decorate`.
+  - `kind` usa los valores de `NetworkKind` del **núcleo** (`bibliographic_coupling`, `cocitation`,
+    `author_collab`, `institution_collab`, `keyword_cooccurrence`) — **NO** los del mock (`co_citation`,
+    `co_authorship`, `co_occurrence`, `institutions`): el frontend nuevo se siembra de estos.
+  - `nodes[]`: `{id, label, degree_centrality, community?, year?, is_seed?, curation_status?}` ← atributos
+    inyectados por `decorate.decorate_graph` (label/degree siempre; year/is_seed/curation/community solo
+    en redes de paper). `edges[]`: `{source, target, weight}` ← aristas del `nx.Graph`.
+    `metrics`: `{n_nodes, n_edges, density, num_components, avg_clustering, n_communities}` ←
+    `network_metrics(g)` + conteos del grafo + nº de comunidades distintas en `artifact.communities`.
+  - Mock-no-sostenido: `modularity` (no lo computa `network_metrics` hoy — omitir o derivar aparte);
+    `id`/`round_id` de red (no hay entidad red persistida con id; la clave es `(round,kind)`).
+    Para `round`: en G2 v1, `kind` se lee del `networks/` del corpus **vivo** (la cache de build); el
+    parámetro `round` apunta a un snapshot (ver B-G2-1) — si no hay redes por snapshot, `get_network`
+    solo sirve la ronda viva y lanza `DataError` accionable para snapshots sin redes construidas.
+
+- `compare_rounds(a: str, b: str) -> dict` — **el diferenciador** (ADR 0027). Origen: dos snapshots
+  sellados (parquets) cargados read-only y diffeados por `Col.ID`.
+  - `round_a`, `round_b`; `added_paper_ids` ← `ids(b) - ids(a)`; `removed_paper_ids` ← `ids(a) - ids(b)`;
+    `metrics_change` ← `[{metric, before, after}]` con `n_papers` (filas de cada parquet) y, si ambos
+    snapshots tienen `networks/` construido, `n_communities`/`density` por kind (de los `metrics.json`).
+  - Mock-no-sostenido: `mutated_hubs` con `degree_before/after` (requiere red por snapshot con
+    centralidad comparable; **diferido** salvo que ambos snapshots tengan redes construidas — marcar
+    como campo opcional vacío si no hay datos, no inventarlo).
+
+### Bifurcaciones para el PO (G2)
+
+- **B-G2-1 — ¿"Ronda" = snapshot o = contador?** Recomiendo: el contrato `Round`/`compare_rounds` de G2
+  se ancla a **snapshots sellados** (`b2g snapshot`), que son las únicas fotos reproducibles del corpus.
+  El `loop_round` entero se expone como metadato del workspace, no como entidad navegable. Implica que el
+  journey de validación debe **tomar snapshots** entre rondas para que el diff tenga dos lados. ¿Lo
+  aceptás, o querés materializar rondas de primera clase (corpus por ronda + linaje) — lo que es un
+  cambio de modelo de datos y un ADR nuevo?
+- **B-G2-2 — Forma de `get_scent`.** El scent del núcleo es un **score de acoplamiento** para candidatos,
+  no los 4 paneles del mock (coupling/citations/coauthors/keywords con pesos cosméticos). Recomiendo
+  exponer el scent honesto (score + vecinos compartidos) y dejar co-autoría/keywords como vistas
+  separadas si la UX las pide. ¿Confirmás, o querés que G2 calcule los 4 paneles (más superficie, pesos
+  a definir)?
+- **B-G2-3 — `get_network(round=...)`.** En v1 solo hay `networks/` para el corpus vivo (una cache por
+  workspace). Servir redes **por snapshot** exige construirlas por snapshot (no existe hoy). Recomiendo:
+  G2 sirve la red de la ronda viva; `round` distinto de "live" sin redes → `DataError` accionable. ¿OK?
 
 ---
 

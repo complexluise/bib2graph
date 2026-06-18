@@ -390,13 +390,15 @@ src/bib2graph/
   networks/            # Projector, Analyzer, NetworkSpec (resolution + extra="forbid"), load_specs (YAML, Hito 9),
                        # NetworkArtifact, Networks, cluster_table (#31)
   exporters/           # GraphML, CSV
-  service/             # CAPA DE SERVICIOS NEUTRAL (ADR 0028, AS-BUILT G1 del MVP GUI): contrato
+  service/             # CAPA DE SERVICIOS NEUTRAL (ADR 0028, AS-BUILT G1+G2 del MVP GUI): contrato
                        # compartido por CLI/API, agnóstico de transporte (sin print/sys.exit/Click/
                        # FastAPI). envelope.py = build_envelope + ENVELOPE_SCHEMA_VERSION; errors.py =
                        # jerarquía B2GError (+ Usage/Data/Dependency/Network/StoreError) + code_for
-                       # (mapeo puro error→exit code 0–5). cli/ re-exporta este contrato (subido desde
-                       # cli/_envelope.py·_errors.py) y conserva solo el I/O del adaptador. La
-                       # orquestación run_<cmd> y las lecturas de la SPA son TARGET, no construidas en G1.
+                       # (mapeo puro error→exit code 0–5). reads.py (G2 ✅) = 6 lecturas read-only de la SPA
+                       # sobre un Workspace resuelto: get_workspace/list_rounds/get_paper/get_scent/
+                       # get_network/compare_rounds (ronda=snapshot; sin red/mutación/transición; API.md §0.1).
+                       # cli/ re-exporta el contrato (subido desde cli/_envelope.py·_errors.py) y conserva
+                       # solo el I/O del adaptador. La migración de la orquestación run_<cmd> sigue TARGET.
   stores/              # DuckDBStore (núcleo, por defecto: biblioteca viva);
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)

@@ -187,6 +187,17 @@
 > B2GError, …` resuelven a los **mismos objetos**. Es la primera mitad del ports & adapters del ADR 0028
 > (el resto —`api/`, `b2g gui`, `frontend/`, lecturas `get_scent`/`get_network`/`search`— sigue siendo
 > TARGET, no construido). Ver §0.
+>
+> **Sincronizado con las 6 lecturas de servicio — Hito G2 del MVP GUI (AS-BUILT, 2026-06-18, ADR
+> [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)):** `src/bib2graph/service/reads.py`
+> suma las **6 lecturas read-only** que la SPA necesita y el CLI nunca expuso —`get_workspace`,
+> `list_rounds`, `get_paper`, `get_scent`, `get_network`, `compare_rounds`— cada una sobre un
+> `Workspace` resuelto, devolviendo `dict`/`list[dict]` serializable o lanzando `B2GError` (sin red, sin
+> mutación, sin transición de ciclo). **El contrato externo del CLI no cambia** (`test_cli.py` intacto),
+> así que **no requiere ADR nuevo**. Resuelve las bifurcaciones del encuadre como recomendado: ronda =
+> snapshot sellado, scent = score de acoplamiento + vecinos, `get_network` = red de la ronda viva
+> (cache por snapshot y `mutated_hubs` diferidos). El resto de la epic GUI (API/`b2g gui`/`frontend/`,
+> G3–G5) **sigue TARGET**. Ver §0.1.
 
 ## Convenciones
 
@@ -472,8 +483,10 @@ exit code `1`, **sin** envelope JSON. El envelope versionado solo cubre errores 
 
 `src/bib2graph/service/` es la **capa de servicios neutral** de la que CLI (y, como TARGET, la API)
 son adaptadores delgados (ADR 0028, inversión de dependencia ports & adapters). G1 sube **EL CONTRATO**
-que antes vivía en `cli/_envelope.py`/`cli/_errors.py`; la **orquestación** (`run_<cmd>`) y las
-lecturas de la SPA (`get_scent`/`get_network`/`search`) **siguen siendo TARGET** (no construidas en G1).
+que antes vivía en `cli/_envelope.py`/`cli/_errors.py`. Las **lecturas read-only de la SPA**
+(`get_scent`/`get_network`/`compare_rounds`/…) **se construyeron en G2** (`service/reads.py`, AS-BUILT
+2026-06-18 — ver §0.1). La migración de la **orquestación** (`run_<cmd>`) a `service/` **sigue siendo
+TARGET** (no construida en G1/G2).
 
 **Invariante de neutralidad de transporte (estricta).** `service/` es **agnóstica de transporte**:
 **sin `print`, `sin sys.exit`, sin Click, sin FastAPI**. Es el límite que mantiene el contrato
@@ -529,6 +542,80 @@ decorador `handle_errors` (CLI) conserva su propia escalera `try/except` por tip
 `sys.exit` y la emisión del envelope de error; `code_for` es el mapeo puro disponible para los
 adaptadores (incluida la API TARGET, que lo traducirá a HTTP status, ADR 0028 §7). El mapeo de
 `code_for` y el de `handle_errors` describen la **misma política** (ADR 0021 §D).
+
+### 0.1 Lecturas de servicio `service/reads.py` — las 6 lecturas de la SPA (AS-BUILT G2, ADR 0028)
+
+> **AS-BUILT del Hito G2 del MVP GUI (2026-06-18, ADR
+> [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)).** Documenta una decisión **ya tomada**:
+> G2 expone en `service/` las lecturas read-only que la SPA necesita y que el CLI **nunca tuvo como
+> subcomando** (scent, red por kind, rondas, diff de rondas, paper por id). **El contrato externo del CLI
+> no cambia** (`tests/unit/test_cli.py` intacto) — por eso este movimiento **no requiere un ADR nuevo**.
+> Forma del encuadre y bifurcaciones resueltas: [`ROADMAP/05-gui.md`](ROADMAP/05-gui.md) §G2.
+
+`src/bib2graph/service/reads.py` expone **6 funciones de lectura** (re-exportadas desde
+`bib2graph.service.__init__`). Cada una recibe un **`Workspace` ya resuelto** (la resolución ambiente
+vive en el adaptador CLI, ADR 0029), abre el store **read-only**, y devuelve un `dict`/`list[dict]`
+**serializable** o lanza un `B2GError` tipado. **Sin red, sin mutación, sin transición de ciclo**;
+determinismo R2 (mismo corpus → misma lectura). Decisiones de producto resueltas (bifurcaciones
+B-G2-1/2/3): **ronda = snapshot sellado** (no el contador `loop_round`), `get_scent` = **score de
+acoplamiento real + vecinos** (no 4 paneles cosméticos del mock), `get_network` = **red de la ronda
+viva recomputada** (cache `networks/` por snapshot diferida a G3).
+
+```python
+def get_workspace(ws: Workspace) -> dict[str, Any]:
+    """Estado del workspace activo. Devuelve:
+    {name, root, created_at, bib2graph_version, source, loop_state (str|None),
+     round (int), total_papers (int), counts_by_status (dict[str,int]),
+     transitions_available (list[str]), curation_available (list[str]),
+     networks_cache_stale (bool)}. Raises StoreError."""
+
+def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
+    """Snapshots sellados (vía Workspace.list_snapshots()) + una entrada sintética "live".
+    Por snapshot: {id, corpus_hash, created_at, total_papers, schema_version}.
+    Entrada viva: {id="live", round, loop_state, total_papers}. Raises StoreError.
+    Ronda = snapshot (B-G2-1 Opción A); el contador loop_round se ve en la entrada "live"."""
+
+def get_paper(ws: Workspace, paper_id: str) -> dict[str, Any]:
+    """Fila del corpus (CORPUS_SCHEMA) por id. Devuelve:
+    {id, openalex_id, doi, title, year, abstract, is_seed, curation_status,
+     authors_raw, authors_id, keywords_id, references_id, cited_by_id,
+     provenance (list, parseada del JSON)}.
+    Raises DataError si el id no existe; StoreError si el store falla."""
+
+def get_scent(ws: Workspace, paper_id: str) -> dict[str, Any]:
+    """Score de acoplamiento bibliográfico real + vecinos compartidos (B-G2-2). Devuelve:
+    {paper_id, score (int = nº de corpus-papers con >=1 referencia compartida),
+     coupling (list[{paper_id, title, weight}], ordenada por peso desc),
+     references (list[{paper_id, title}] resueltas al corpus),
+     cited_by (list[{paper_id, title}] resueltos al corpus)}.
+    Raises DataError si el id no existe; StoreError si el store falla."""
+
+def get_network(ws: Workspace, kind: str) -> dict[str, Any]:
+    """Red de la ronda VIVA recomputada con Networks.build + decorate (B-G2-3; función pura,
+    Louvain seeded por corpus_hash, R2). `kind` en NetworkKind del núcleo
+    (bibliographic_coupling, cocitation, author_collab, institution_collab,
+     keyword_cooccurrence). Devuelve:
+    {nodes (list[{id, label, degree_centrality, community?, year?, is_seed?, curation_status?}]),
+     edges (list[{source, target, weight}]),
+     metrics ({n_nodes, n_edges, density, num_components, avg_clustering, n_communities})}.
+    Raises DataError si kind es inválido o la red no se puede construir; StoreError si el store falla."""
+
+def compare_rounds(ws: Workspace, round_a: str, round_b: str) -> dict[str, Any]:
+    """EL DIFERENCIADOR (ADR 0027). Diff entre dos snapshots por Col.ID; "live" usa el corpus vivo.
+    Devuelve:
+    {round_a, round_b, added_paper_ids (ids en b no en a), removed_paper_ids (ids en a no en b),
+     mutated_hubs ([], DIFERIDO — requiere redes por snapshot, B-G2-3),
+     metrics_change (list[{metric, before, after}], hoy con n_papers; las métricas por red
+       solo aparecen si ambos snapshots tienen networks/<kind>/metrics.json, que hoy no se
+       materializa por snapshot)}.
+    Raises DataError si un snapshot no existe o no tiene corpus.parquet; StoreError si el store falla."""
+```
+
+**Nota de fidelidad al núcleo.** Los campos del mock `app/src/` que el núcleo no sostiene **no se
+inventaron**: `get_paper` expone `authors_raw`/`authors_id` (no objetos autor con ORCID), `get_scent`
+no emite los 4 paneles cosméticos, `get_network` no entrega `modularity` ni un id de red persistido, y
+`compare_rounds` deja `mutated_hubs=[]` mientras no haya redes por snapshot. El encuadre campo-por-campo
+y los "mock-no-sostenido" están en [`ROADMAP/05-gui.md`](ROADMAP/05-gui.md) §G2.
 
 ---
 

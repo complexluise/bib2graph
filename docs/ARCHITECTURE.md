@@ -61,10 +61,13 @@ bibliométrica determinista, sin IA**), **`Store`** (persistir — *DuckDB state
 iterativo** de exploración (sembrar → forrajear → curar → la idea muta → re-sembrar), y la
 biblioteca viva en DuckDB es el sustrato que lo sostiene entre corridas.
 
-> **TARGET (2026-06-18) — frontends de frontera + capa de servicios neutral, ADR
+> **PARCIALMENTE CONSTRUIDO (2026-06-18) — frontends de frontera + capa de servicios neutral, ADR
 > [0027](decisiones/0027-pivote-posicionamiento-gui-local.md)/[0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)
-> (Aceptados; GUI gateada por [#34](https://github.com/complexluise/bib2graph/issues/34) — NO
-> implementado).** Sobre ese núcleo + costuras se montan **tres frontends de frontera** — **CLI**
+> (Aceptados; GUI gateada por [#34](https://github.com/complexluise/bib2graph/issues/34)).** La **capa
+> de servicios neutral `src/bib2graph/service/` ya existe** (G1: contrato subido desde `cli/`; G2:
+> 6 lecturas read-only en `service/reads.py`, AS-BUILT 2026-06-18). La **API local** (FastAPI) y la
+> **SPA** (`frontend/`) **siguen TARGET, NO implementadas** (§4.4). Sobre ese núcleo + costuras se
+> montan **tres frontends de frontera** — **CLI**
 > (`b2g`, Click, la columna agente-native, ADR 0010/0021) · **API local** (FastAPI, opt-in `[gui]`) ·
 > **SPA** (frontend "tool for thought" en `frontend/`). Los tres **convergen en una capa de servicios
 > neutral** `src/bib2graph/service/` (agnóstica de transporte: sin `print`, `sys.exit`, Click ni
@@ -355,11 +358,20 @@ post-V1 (`[neo4j]`): un destino más, **ya no el sustrato** (ADR 0002).
 
 ### 4.4 `LocalApiServer` / API local (costura opt-in, `[gui]`) — `TARGET`, NO implementado
 
-> **TARGET (2026-06-18) — ADR [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)
-> (Aceptado; gateado por [#34](https://github.com/complexluise/bib2graph/issues/34)).** Esta sección
-> describe diseño **objetivo**, **no AS-BUILT**: la API/`service/`/SPA **no existen en el código** y no
-> se construyen hasta validar el caso real con un tercero (ADR 0027). El prototipo `app/server/` es
-> *throwaway* (referencia), con un `envelope()` propio que se **retira** a favor del contrato neutral.
+> **PARCIALMENTE CONSTRUIDO (2026-06-18) — ADR
+> [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md) (Aceptado; GUI gateada por
+> [#34](https://github.com/complexluise/bib2graph/issues/34)).** La **capa de servicios neutral
+> `src/bib2graph/service/` YA existe**: G1 subió el contrato (envelope/errores/`code_for`, §0 de
+> [`API.md`](API.md)) y **G2 (AS-BUILT 2026-06-18) construyó las 6 lecturas read-only de la SPA** en
+> `service/reads.py` —`get_workspace`/`list_rounds`/`get_paper`/`get_scent`/`get_network`/
+> `compare_rounds`, cada una sobre un `Workspace` resuelto (ADR 0029), devolviendo `dict` serializable o
+> `B2GError`, sin red/mutación/transición— justamente las lecturas que el CLI nunca expuso (ver
+> [`API.md`](API.md) §0.1 y [`ROADMAP/05-gui.md`](ROADMAP/05-gui.md) §G2). Lo que **sigue TARGET, NO
+> construido**: la **API** (`src/bib2graph/api/`, FastAPI), el subcomando **`b2g gui`** y la **SPA**
+> (`frontend/`) — no se construyen hasta validar el caso real con un tercero (ADR 0027). El prototipo
+> `app/server/` es *throwaway* (referencia), con un `envelope()` propio que se **retira** a favor del
+> contrato neutral. El resto de esta sección describe el diseño **objetivo** de esa frontera de
+> servidor.
 
 La **API local** es una **costura nueva de servidor** (no del núcleo): un adaptador **delgado** sobre
 la capa de servicios neutral `src/bib2graph/service/`, en `src/bib2graph/api/` (FastAPI). No
@@ -369,9 +381,11 @@ reimplementa lógica ni contrato: **reusa el mismo envelope `schema="1"` y la je
 - **Local-first, sin hosting:** bind a **`127.0.0.1`** + **token efímero** (no expone red; ADR 0027).
 - **Import perezoso:** el núcleo **no importa `fastapi`/`uvicorn`**; solo el adaptador API y el
   subcomando `b2g gui` los importan, y vienen en el extra **`[gui]`** (§7).
-- **Funciones de lectura que el CLI nunca expuso:** `service/` añade lecturas que la SPA necesita y no
-  mapean 1:1 a subcomandos (`get_scent(paper)`, `get_network(round, kind)`, `search_papers(...)`) —
-  por eso la convergencia es en **servicios**, no en **comandos**.
+- **Funciones de lectura que el CLI nunca expuso (AS-BUILT G2):** `service/reads.py` ya añade las
+  lecturas que la SPA necesita y no mapean 1:1 a subcomandos —`get_workspace`, `list_rounds`,
+  `get_paper`, `get_scent`, `get_network` (por kind, ronda viva), `compare_rounds` (diff de rondas, el
+  diferenciador)— por eso la convergencia es en **servicios**, no en **comandos**. La API (TARGET) las
+  consumirá vía HTTP. Ver [`API.md`](API.md) §0.1.
 - **Mapeo código→HTTP** (adaptador API, el envelope viaja igual en el body — la SPA lee `error.code`,
   no depende del status): `0`→200 · `1` (uso)→400 · `2` (datos)→422 · `3` (dependencia)→501 · `4`
   (red)→502 · `5` (store bloqueado/corrupto)→409/503.
