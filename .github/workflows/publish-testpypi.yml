@@ -42,8 +42,11 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build
-      - name: Build (sdist + wheel)
-        run: uv build
+      - name: Build wheel (directo del working tree, con el frontend ya buildeado)
+        # NO `uv build` a secas: eso arma sdist y el wheel DESDE el sdist, que
+        # excluye el frontend gitignored (gui/static) → force-include falla.
+        # `--wheel` construye el wheel directo del árbol (con el pnpm build de arriba).
+        run: uv build --wheel
       - name: Publish to TestPyPI (trusted publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
