@@ -70,9 +70,10 @@ Característica: Forrajear con chaining backward/forward rankeado por scent
     Entonces el exit code es 0
     Y "data.ranking_preview" es una lista de objetos "{id, scent}"
     Y la lista está ordenada de mayor a menor "scent" (lo más relevante primero)
-    # HONESTIDAD: el scent AS-BUILT es frecuencia de enlace (ADR 0020), determinista y sin IA.
-    # La promesa "scent bibliométrico vía proyectores (acoplamiento/centralidad)" es la
-    # remediación R4 declarada; verificá el método real del Forager antes de afirmar más.
+    # El scent es BIBLIOMÉTRICO (R4 hecho), determinista y sin IA: compute_backward_scent
+    # (foraging/scent.py) usa collect_item_to_papers de los proyectores
+    # (networks/projectors.py) — acoplamiento hacia atrás: cuántos papers del corpus
+    # referencian/citan al candidato. No es la heurística de frecuencia de enlace vieja.
 
   # --- B4 · RETIRADA (no es un Scenario) ---
   # B4 ("paso opcional de IA que explica por qué un candidato es relevante") fue RETIRADA
