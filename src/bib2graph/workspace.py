@@ -362,6 +362,65 @@ class Workspace:
             return False
         return sealed != live_corpus_hash
 
+    def list_snapshots(self) -> list[dict[str, Any]]:
+        """Escanea ``snapshots_dir`` y devuelve los metadatos de cada snapshot.
+
+        Para cada subdirectorio de ``snapshots/`` que contenga
+        ``corpus.parquet`` + ``manifest.json``, lee el manifest y cuenta las
+        filas del parquet.  Devuelve la lista ordenada por nombre de directorio
+        (lexicográfico, que coincide con el orden cronológico cuando los nombres
+        son timestamps o contadores).
+
+        Returns:
+            Lista de dicts
+            ``{id, corpus_hash, created_at, total_papers, schema_version}``,
+            ordenada por nombre del directorio snapshot.
+        """
+        import contextlib
+        import json as _json
+
+        snapshots: list[dict[str, Any]] = []
+
+        if not self.snapshots_dir.exists():
+            return snapshots
+
+        for snap_dir in sorted(self.snapshots_dir.iterdir()):
+            if not snap_dir.is_dir():
+                continue
+            parquet_path = snap_dir / "corpus.parquet"
+            if not parquet_path.exists():
+                continue
+
+            manifest_data: dict[str, Any] = {}
+            manifest_path = snap_dir / "manifest.json"
+            if manifest_path.exists():
+                with contextlib.suppress(_json.JSONDecodeError, OSError):
+                    manifest_data = _json.loads(
+                        manifest_path.read_text(encoding="utf-8")
+                    )
+
+            # Contar filas sin cargar todas las columnas
+            total_papers = 0
+            try:
+                import pyarrow.parquet as pq
+
+                meta = pq.read_metadata(parquet_path)  # type: ignore[no-untyped-call]
+                total_papers = meta.num_rows
+            except Exception:
+                pass
+
+            snapshots.append(
+                {
+                    "id": snap_dir.name,
+                    "corpus_hash": manifest_data.get("corpus_hash"),
+                    "created_at": manifest_data.get("created_at"),
+                    "total_papers": total_papers,
+                    "schema_version": manifest_data.get("schema_version"),
+                }
+            )
+
+        return snapshots
+
     def to_dict(self) -> dict[str, Any]:
         """Serializa el workspace a dict para el envelope JSON del CLI."""
         return {

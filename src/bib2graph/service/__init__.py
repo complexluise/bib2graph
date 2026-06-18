@@ -8,6 +8,8 @@ Contrato público re-exportado:
   - ``B2GError``, ``UsageError``, ``DataError``, ``DependencyError``,
     ``NetworkError``, ``StoreError`` — jerarquía de errores tipados.
   - ``code_for`` — helper de mapeo error→exit code (sin I/O).
+  - ``get_workspace``, ``list_rounds``, ``get_paper``, ``get_scent``,
+    ``get_network``, ``compare_rounds`` — lecturas del Hito G2 (ADR 0028).
 """
 
 from __future__ import annotations
@@ -22,6 +24,14 @@ from bib2graph.service.errors import (
     UsageError,
     code_for,
 )
+from bib2graph.service.reads import (
+    compare_rounds,
+    get_network,
+    get_paper,
+    get_scent,
+    get_workspace,
+    list_rounds,
+)
 
 __all__ = [
     "ENVELOPE_SCHEMA_VERSION",
@@ -33,4 +43,10 @@ __all__ = [
     "UsageError",
     "build_envelope",
     "code_for",
+    "compare_rounds",
+    "get_network",
+    "get_paper",
+    "get_scent",
+    "get_workspace",
+    "list_rounds",
 ]
