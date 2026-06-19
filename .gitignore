@@ -24,8 +24,15 @@ htmlcov/
 *.swp
 *.swo
 
-# Claude Code (worktrees y estado local de sesión)
-.claude/
+# Claude Code: los artefactos de equipo SE VERSIONAN (agentes, hooks, settings
+# compartido); el estado local de sesión (settings.local.json, worktrees/,
+# System_prompt.md) queda ignorado.
+.claude/*
+!.claude/settings.json
+!.claude/agents/
+!.claude/hooks/
+!.claude/commands/
+.claude/hooks/_*
 
 # OS
 .DS_Store
