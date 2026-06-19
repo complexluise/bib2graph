@@ -288,6 +288,39 @@ abre su PR de release → mergearlo crea el tag + GitHub Release.
 una idea; el commit/PR sigue Conventional Commits (abajo); no bumpear versión ni editar
 `CHANGELOG.md` a mano (lo hace release-please).
 
+## Tooling de agentes Claude Code (`.claude/`)
+
+El repo versiona su propia config de Claude Code para que **el equipo herede los roles y los
+guardarraíles** al clonar (project-level **gana** sobre la config de usuario). Se versiona
+`.claude/settings.json` + `.claude/agents/` + `.claude/hooks/`; queda ignorado el estado local
+(`settings.local.json`, `worktrees/`, `System_prompt.md`).
+
+**Subagentes** (`.claude/agents/*.md`), afinados a bib2graph y con **una frontera dura por rol**
+("cada uno es responsable de sus artefactos"):
+
+| Agente | Dueño de | Frontera (mecánica) |
+|---|---|---|
+| `architect` | `docs/` (+ docs raíz) | hook le niega escribir `src/`/`tests/` |
+| `coder` | `src/` + `tests/` | hook le niega escribir `docs/`/README/AGENTS/CONTRIBUTING |
+| `verifier` | nada (read-only) | sin `Write`/`Edit` en `tools` |
+
+Los orquesta `feature-cycle` (PO → architect → coder → verifier → architect).
+
+**Hooks `PreToolUse`** — hacen cumplir las reglas de forma **mecánica** (corren **incluso en modo
+bypass**, son más fuertes que los permisos). Se invocan con `uv run --no-sync --quiet python`
+(no `python` pelado: garantiza el intérprete vía uv y silencia el warning de deprecación):
+
+- **`hooks/guard.py`** (global, en `settings.json`): bloquea `npm` (usar pnpm), `pip install`
+  (usar uv), `git push` a `main`/`dev`, `git commit` estando parado en `main`/`dev`, y editar
+  `CHANGELOG.md` a mano. Son las reglas duras de §Flujo de trabajo, vueltas imposibles de violar.
+- **`hooks/fence.py`** (por agente, en el frontmatter de `coder`/`architect`): aplica la frontera
+  de la tabla de arriba según los directorios/archivos que recibe como argumento.
+
+**Caveat operativo:** los **agentes cargan al iniciar la sesión** (un agente nuevo o un cambio a
+su frontmatter no toma efecto hasta reiniciar). Los **hooks de `settings.json` sí recargan en
+caliente**. Si un guardarraíl bloquea algo legítimo, se afloja editando el script en
+`.claude/hooks/`.
+
 ## Comandos de build / lint / test
 
 El proyecto se gestiona con **uv** (entorno + lockfile + versión de Python). **No** uses

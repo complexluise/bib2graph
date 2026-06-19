@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-sync --quiet python .claude/hooks/guard.py"
+          }
+        ]
+      }
+    ]
+  }
+}
