@@ -43,7 +43,7 @@ from bib2graph.schemas import CORPUS_SCHEMA
 def _make_row(
     *,
     id: str,
-    openalex_id: str | None = None,
+    source_id: str | None = None,
     is_seed: bool = True,
     curation_status: str = CurationStatus.ACCEPTED,
     references_id: list[str] | None = None,
@@ -52,7 +52,7 @@ def _make_row(
     """Fila mínima compatible con el schema canónico."""
     return {
         "id": id,
-        "openalex_id": openalex_id,
+        "source_id": source_id,
         "doi": None,
         "title": f"Paper {id}",
         "year": 2020,
@@ -197,8 +197,8 @@ def test_cocitacion_end_to_end_cited_by_poblado() -> None:
     # Seeds: W100 y W200, ambas aceptadas
     corpus = _corpus_from_rows(
         [
-            _make_row(id="P1", openalex_id="W100"),
-            _make_row(id="P2", openalex_id="W200"),
+            _make_row(id="P1", source_id="W100"),
+            _make_row(id="P2", source_id="W200"),
         ]
     )
     # Citante C1 cita a W100 y W200
@@ -210,7 +210,7 @@ def test_cocitacion_end_to_end_cited_by_poblado() -> None:
 
     table = result.to_arrow()
     rows = table.to_pylist()
-    cited_by_map = {row["openalex_id"]: row.get("cited_by_id") or [] for row in rows}
+    cited_by_map = {row["source_id"]: row.get("cited_by_id") or [] for row in rows}
 
     assert "C1" in cited_by_map["W100"], "W100 debe tener C1 como citante"
     assert "C1" in cited_by_map["W200"], "W200 debe tener C1 como citante"
@@ -221,8 +221,8 @@ def test_cocitacion_end_to_end_proyector_produce_arista() -> None:
     """Tras enrich, CoCitationProjector produce ≥1 arista con peso correcto."""
     corpus = _corpus_from_rows(
         [
-            _make_row(id="P1", openalex_id="W100"),
-            _make_row(id="P2", openalex_id="W200"),
+            _make_row(id="P1", source_id="W100"),
+            _make_row(id="P2", source_id="W200"),
         ]
     )
     # C1 cita ambos → 1 arista de co-citación peso 1
@@ -245,8 +245,8 @@ def test_cocitacion_end_to_end_networks_quick_incluye_red() -> None:
     """Networks.quick incluye co-citación cuando hay cited_by_id poblado."""
     corpus = _corpus_from_rows(
         [
-            _make_row(id="P1", openalex_id="W100"),
-            _make_row(id="P2", openalex_id="W200"),
+            _make_row(id="P1", source_id="W100"),
+            _make_row(id="P2", source_id="W200"),
         ]
     )
     citing_works = [_citing_work("C1", ["W100", "W200"])]
@@ -272,8 +272,8 @@ def test_reatribucion_citantes_distintos_seeds() -> None:
     """Citantes que citan a distintos seeds → cited_by_id correcto por seed."""
     corpus = _corpus_from_rows(
         [
-            _make_row(id="P1", openalex_id="W100"),
-            _make_row(id="P2", openalex_id="W200"),
+            _make_row(id="P1", source_id="W100"),
+            _make_row(id="P2", source_id="W200"),
         ]
     )
     # C1 cita solo W100; C2 cita solo W200; C3 cita ambos
@@ -289,9 +289,7 @@ def test_reatribucion_citantes_distintos_seeds() -> None:
 
     table = result.to_arrow()
     rows = table.to_pylist()
-    cited_by_map = {
-        row["openalex_id"]: set(row.get("cited_by_id") or []) for row in rows
-    }
+    cited_by_map = {row["source_id"]: set(row.get("cited_by_id") or []) for row in rows}
 
     # W100 debe tener C1 y C3 (no C2)
     assert cited_by_map["W100"] == {"C1", "C3"}, (
@@ -306,7 +304,7 @@ def test_reatribucion_citantes_distintos_seeds() -> None:
 @pytest.mark.unit
 def test_reatribucion_citante_sin_referencias_no_se_asigna() -> None:
     """Un citante sin references_id no contamina ningún cited_by_id."""
-    corpus = _corpus_from_rows([_make_row(id="P1", openalex_id="W100")])
+    corpus = _corpus_from_rows([_make_row(id="P1", source_id="W100")])
     # C_empty no tiene referenced_works → no cita a nadie
     citing_works = [_citing_work("C_empty", [])]
     transport = _make_cited_by_transport(citing_works)
@@ -328,7 +326,7 @@ def test_reatribucion_citante_sin_referencias_no_se_asigna() -> None:
 @pytest.mark.unit
 def test_enrich_cited_by_idempotente() -> None:
     """Re-enrich no duplica en cited_by_id."""
-    corpus = _corpus_from_rows([_make_row(id="P1", openalex_id="W100")])
+    corpus = _corpus_from_rows([_make_row(id="P1", source_id="W100")])
     citing_works = [_citing_work("C1", ["W100"])]
     transport = _make_cited_by_transport(citing_works)
 
@@ -348,7 +346,7 @@ def test_enrich_cited_by_idempotente() -> None:
 @pytest.mark.unit
 def test_enrich_cited_by_enricher_ref_no_duplica() -> None:
     """El EnricherRef 'openalex_cited_by' no se duplica al re-enriquecer."""
-    corpus = _corpus_from_rows([_make_row(id="P1", openalex_id="W100")])
+    corpus = _corpus_from_rows([_make_row(id="P1", source_id="W100")])
     citing_works = [_citing_work("C1", ["W100"])]
     transport = _make_cited_by_transport(citing_works)
 
@@ -368,7 +366,7 @@ def test_enrich_cited_by_enricher_ref_no_duplica() -> None:
 @pytest.mark.unit
 def test_tope_max_citing_per_paper() -> None:
     """max_citing_per_paper=2 trunca cited_by_id a 2 citantes por paper."""
-    corpus = _corpus_from_rows([_make_row(id="P1", openalex_id="W100")])
+    corpus = _corpus_from_rows([_make_row(id="P1", source_id="W100")])
     # 5 citantes que citan a W100
     citing_works = [_citing_work(f"C{i}", ["W100"]) for i in range(1, 6)]
     transport = _make_cited_by_transport(citing_works)
@@ -385,7 +383,7 @@ def test_tope_max_citing_per_paper() -> None:
 @pytest.mark.unit
 def test_tope_none_no_trunca() -> None:
     """max_citing_per_paper=None no trunca (devuelve todos los citantes)."""
-    corpus = _corpus_from_rows([_make_row(id="P1", openalex_id="W100")])
+    corpus = _corpus_from_rows([_make_row(id="P1", source_id="W100")])
     # 10 citantes
     citing_works = [_citing_work(f"C{i}", ["W100"]) for i in range(1, 11)]
     transport = _make_cited_by_transport(citing_works)
@@ -409,10 +407,10 @@ def test_no_seed_no_se_enriquece() -> None:
     """Papers con is_seed=False no se incluyen como objetivo de cited_by_id."""
     corpus = _corpus_from_rows(
         [
-            _make_row(id="P1", openalex_id="W100"),  # seed + accepted
+            _make_row(id="P1", source_id="W100"),  # seed + accepted
             _make_row(
                 id="P2",
-                openalex_id="W200",
+                source_id="W200",
                 is_seed=False,
                 curation_status=CurationStatus.ACCEPTED,
             ),  # NO seed
@@ -427,7 +425,7 @@ def test_no_seed_no_se_enriquece() -> None:
     table = result.to_arrow()
     rows_data = table.to_pylist()
     cited_by_map = {
-        row["openalex_id"]: set(row.get("cited_by_id") or []) for row in rows_data
+        row["source_id"]: set(row.get("cited_by_id") or []) for row in rows_data
     }
 
     # W100 (seed aceptada) debe tener C1
@@ -441,10 +439,10 @@ def test_candidato_no_se_enriquece() -> None:
     """Papers con curation_status=candidate no se incluyen como objetivo."""
     corpus = _corpus_from_rows(
         [
-            _make_row(id="P1", openalex_id="W100"),  # seed + accepted
+            _make_row(id="P1", source_id="W100"),  # seed + accepted
             _make_row(
                 id="P2",
-                openalex_id="W200",
+                source_id="W200",
                 curation_status=CurationStatus.CANDIDATE,
             ),  # candidato
         ]
@@ -458,7 +456,7 @@ def test_candidato_no_se_enriquece() -> None:
     table = result.to_arrow()
     rows_data = table.to_pylist()
     cited_by_map = {
-        row["openalex_id"]: set(row.get("cited_by_id") or []) for row in rows_data
+        row["source_id"]: set(row.get("cited_by_id") or []) for row in rows_data
     }
 
     # W100 (aceptada) sí
@@ -478,7 +476,7 @@ def test_networks_quick_sin_cited_by_omite_cocitacion_sin_fallar() -> None:
     rows = [
         {
             "id": f"P{i}",
-            "openalex_id": None,
+            "source_id": None,
             "doi": None,
             "title": f"Paper {i}",
             "year": 2020,
@@ -525,7 +523,7 @@ def test_networks_quick_con_cited_by_incluye_cocitacion() -> None:
     rows = [
         {
             "id": "P1",
-            "openalex_id": "W100",
+            "source_id": "W100",
             "doi": None,
             "title": "Paper 1",
             "year": 2020,
@@ -550,7 +548,7 @@ def test_networks_quick_con_cited_by_incluye_cocitacion() -> None:
         },
         {
             "id": "P2",
-            "openalex_id": "W200",
+            "source_id": "W200",
             "doi": None,
             "title": "Paper 2",
             "year": 2020,
@@ -596,12 +594,12 @@ def test_corpus_sin_seeds_aceptados_0_fetch() -> None:
         [
             _make_row(
                 id="P1",
-                openalex_id="W100",
+                source_id="W100",
                 curation_status=CurationStatus.CANDIDATE,
             ),
             _make_row(
                 id="P2",
-                openalex_id="W200",
+                source_id="W200",
                 is_seed=False,
                 curation_status=CurationStatus.ACCEPTED,
             ),
@@ -625,13 +623,13 @@ def test_enrich_no_pierde_papers_con_semillas() -> None:
     """El corpus enriquecido tiene exactamente los mismos papers que el original."""
     corpus = _corpus_from_rows(
         [
-            _make_row(id="P1", openalex_id="W100"),
+            _make_row(id="P1", source_id="W100"),
             _make_row(
                 id="P2",
-                openalex_id="W200",
+                source_id="W200",
                 curation_status=CurationStatus.CANDIDATE,
             ),
-            _make_row(id="P3", openalex_id=None),
+            _make_row(id="P3", source_id=None),
         ]
     )
     citing_works = [_citing_work("C1", ["W100"])]
@@ -652,7 +650,7 @@ def test_enrich_no_pierde_papers_con_semillas() -> None:
 def test_fetch_citing_batch_loteo_50_ids() -> None:
     """Con 60 seeds aceptadas, fetch_citing_batch hace ≥2 requests (lotes ≤50)."""
     n = 60
-    rows = [_make_row(id=f"P{i}", openalex_id=f"W{i:06d}") for i in range(1, n + 1)]
+    rows = [_make_row(id=f"P{i}", source_id=f"W{i:06d}") for i in range(1, n + 1)]
     corpus = _corpus_from_rows(rows)
 
     transport, counters = _make_counting_cited_by_transport([])
@@ -670,7 +668,7 @@ def test_fetch_citing_batch_loteo_50_ids() -> None:
 def test_fetch_citing_batch_50_ids_exactos() -> None:
     """Con 50 seeds exactas, fetch_citing_batch hace 1 sola request."""
     n = 50
-    rows = [_make_row(id=f"P{i}", openalex_id=f"W{i:06d}") for i in range(1, n + 1)]
+    rows = [_make_row(id=f"P{i}", source_id=f"W{i:06d}") for i in range(1, n + 1)]
     corpus = _corpus_from_rows(rows)
 
     transport, counters = _make_counting_cited_by_transport([])
@@ -693,8 +691,8 @@ def test_papers_sin_openalex_id_no_son_objetivo() -> None:
     # Todas sin openalex_id → no hay targets válidos
     corpus = _corpus_from_rows(
         [
-            _make_row(id="P1", openalex_id=None),
-            _make_row(id="P2", openalex_id=None),
+            _make_row(id="P1", source_id=None),
+            _make_row(id="P2", source_id=None),
         ]
     )
 
@@ -717,7 +715,7 @@ def test_run_enrich_8b_claves_en_salida(tmp_path: Any) -> None:
     from bib2graph.cli.commands.enrich import run_enrich
     from bib2graph.stores.duckdb import DuckDBStore
 
-    rows = [_make_row(id="P1", openalex_id="W100")]
+    rows = [_make_row(id="P1", source_id="W100")]
     table = pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
     corpus = Corpus.from_arrow(table)
     store = DuckDBStore(tmp_path / "test.duckdb")
@@ -744,7 +742,7 @@ def test_run_enrich_8b_claves_en_salida(tmp_path: Any) -> None:
 @pytest.mark.unit
 def test_enricher_ref_cited_by_en_manifest() -> None:
     """Tras enrich, el Manifest tiene EnricherRef 'openalex_cited_by'."""
-    corpus = _corpus_from_rows([_make_row(id="P1", openalex_id="W100")])
+    corpus = _corpus_from_rows([_make_row(id="P1", source_id="W100")])
     citing_works = [_citing_work("C1", ["W100"])]
     transport = _make_cited_by_transport(citing_works)
 
@@ -857,8 +855,8 @@ def test_presupuesto_por_semilla_sin_starvation() -> None:
 
     corpus = _corpus_from_rows(
         [
-            _make_row(id="P1", openalex_id="W100"),
-            _make_row(id="P2", openalex_id="W200"),
+            _make_row(id="P1", source_id="W100"),
+            _make_row(id="P2", source_id="W200"),
         ]
     )
     enricher = _make_enricher(transport, max_citing_per_paper=3)
@@ -866,9 +864,7 @@ def test_presupuesto_por_semilla_sin_starvation() -> None:
 
     table = result.to_arrow()
     rows = table.to_pylist()
-    cited_by_map = {
-        row["openalex_id"]: set(row.get("cited_by_id") or []) for row in rows
-    }
+    cited_by_map = {row["source_id"]: set(row.get("cited_by_id") or []) for row in rows}
 
     # W100 no debe superar el tope
     assert len(cited_by_map["W100"]) <= 3, (
@@ -902,7 +898,7 @@ def test_tope_detiene_paginacion_cuando_todas_satisfechas() -> None:
 
     transport, counters = _make_paginated_cited_by_transport([page1, page2])
 
-    corpus = _corpus_from_rows([_make_row(id="P1", openalex_id="W100")])
+    corpus = _corpus_from_rows([_make_row(id="P1", source_id="W100")])
     enricher = _make_enricher(transport, max_citing_per_paper=1)
     result = enricher.enrich(corpus)
 
@@ -942,8 +938,8 @@ def test_tope_detiene_paginacion_dos_semillas_ambas_satisfechas() -> None:
 
     corpus = _corpus_from_rows(
         [
-            _make_row(id="P1", openalex_id="W100"),
-            _make_row(id="P2", openalex_id="W200"),
+            _make_row(id="P1", source_id="W100"),
+            _make_row(id="P2", source_id="W200"),
         ]
     )
     enricher = _make_enricher(transport, max_citing_per_paper=2)
@@ -957,9 +953,7 @@ def test_tope_detiene_paginacion_dos_semillas_ambas_satisfechas() -> None:
 
     table = result.to_arrow()
     rows = table.to_pylist()
-    cited_by_map = {
-        row["openalex_id"]: set(row.get("cited_by_id") or []) for row in rows
-    }
+    cited_by_map = {row["source_id"]: set(row.get("cited_by_id") or []) for row in rows}
     assert len(cited_by_map["W100"]) == 2
     assert len(cited_by_map["W200"]) == 2
 
@@ -991,8 +985,8 @@ def test_sin_tope_pagina_todo_y_atribuye() -> None:
 
     corpus = _corpus_from_rows(
         [
-            _make_row(id="P1", openalex_id="W100"),
-            _make_row(id="P2", openalex_id="W200"),
+            _make_row(id="P1", source_id="W100"),
+            _make_row(id="P2", source_id="W200"),
         ]
     )
     enricher = _make_enricher(transport, max_citing_per_paper=None)
@@ -1005,9 +999,7 @@ def test_sin_tope_pagina_todo_y_atribuye() -> None:
 
     table = result.to_arrow()
     rows = table.to_pylist()
-    cited_by_map = {
-        row["openalex_id"]: set(row.get("cited_by_id") or []) for row in rows
-    }
+    cited_by_map = {row["source_id"]: set(row.get("cited_by_id") or []) for row in rows}
 
     # W100: C1, C3, C4
     assert cited_by_map["W100"] == {"C1", "C3", "C4"}, (

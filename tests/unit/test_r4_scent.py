@@ -12,7 +12,7 @@ Backward score(X) = |{Pi ∈ corpus : X ∈ Pi.references_id}|
   → usa collect_item_to_papers(corpus, Col.ID, Col.REFERENCES_ID)
 
 Forward score(Y) — citación directa al corpus (fix forward-scent, Wohlin):
-  corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+  corpus_ids = {Pi.id | Pi.source_id : Pi ∈ corpus}
   forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
   → cuántos corpus-papers cita Y directamente
   → robusto ante references_id ralas en el corpus (no degenera a 0)
@@ -46,13 +46,13 @@ pytestmark = pytest.mark.unit
 def _row(
     id: str,
     *,
-    openalex_id: str | None = None,
+    source_id: str | None = None,
     references_id: list[str] | None = None,
     is_seed: bool = True,
 ) -> dict[str, Any]:
     return {
         "id": id,
-        "openalex_id": openalex_id,
+        "source_id": source_id,
         "doi": None,
         "title": f"Paper {id}",
         "year": 2020,
@@ -115,12 +115,12 @@ class TestBackwardScentStructural:
     def test_candidato_con_mismo_id_corpus_excluido(self) -> None:
         """Un candidato que coincide con el id de un corpus-paper no rankea."""
         rows = [
-            _row("P1", openalex_id="W1", references_id=["P2", "EXT_A"]),
-            _row("P2", openalex_id="W2", references_id=["EXT_A"]),
+            _row("P1", source_id="W1", references_id=["P2", "EXT_A"]),
+            _row("P2", source_id="W2", references_id=["EXT_A"]),
         ]
         scent = compute_backward_scent(rows)
         assert "P2" not in scent, "P2 es corpus-paper, no debe ser candidato"
-        assert "W2" not in scent, "W2 es openalex_id de P2, no debe ser candidato"
+        assert "W2" not in scent, "W2 es source_id de P2, no debe ser candidato"
         assert scent.get("EXT_A") == 2.0
 
     def test_score_unico_por_paper_aunque_ref_repetida(self) -> None:
@@ -144,7 +144,7 @@ class TestForwardScentStructural:
     """Forward score vía citación directa al corpus — calculado a mano.
 
     La fórmula es:
-        corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+        corpus_ids = {Pi.id | Pi.source_id : Pi ∈ corpus}
         forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
 
     CAMBIO vs. as-built R4: el viejo score era acoplamiento bibliográfico
@@ -153,8 +153,8 @@ class TestForwardScentStructural:
     su lista de referencias). Es robusto ante corpus con references_id ralas.
 
     Corpus sintético:
-      P1 (id="P1", openalex_id="W1")
-      P2 (id="P2", openalex_id="W2")
+      P1 (id="P1", source_id="W1")
+      P2 (id="P2", source_id="W2")
 
     corpus_ids = {"P1", "W1", "P2", "W2"}
 
@@ -167,8 +167,8 @@ class TestForwardScentStructural:
 
     def test_orden_conocido_calculado_a_mano(self) -> None:
         corpus = [
-            _row("P1", openalex_id="W1"),
-            _row("P2", openalex_id="W2"),
+            _row("P1", source_id="W1"),
+            _row("P2", source_id="W2"),
         ]
         citing = [
             _row("Y1", references_id=["P1", "W2"], is_seed=False),
@@ -183,7 +183,7 @@ class TestForwardScentStructural:
             "Y1 cita P1 y W2 (ambos en corpus_ids) → score = 2"
         )
         assert scent.get("Y2") == 1.0, "Y2 cita P1 (en corpus_ids) → score = 1"
-        assert scent.get("Y3") == 1.0, "Y3 cita W2 (openalex_id de P2) → score = 1"
+        assert scent.get("Y3") == 1.0, "Y3 cita W2 (source_id de P2) → score = 1"
         assert "Y4" not in scent, "Y4 no cita ningún corpus-paper → excluido"
 
         ranked = rank_candidates(scent)
@@ -192,8 +192,8 @@ class TestForwardScentStructural:
     def test_desempate_estable_por_id_ascendente(self) -> None:
         """Y2 e Y3 tienen score 1; Y2 < Y3 alfabéticamente → Y2 primero."""
         corpus = [
-            _row("P1", openalex_id="W1"),
-            _row("P2", openalex_id="W2"),
+            _row("P1", source_id="W1"),
+            _row("P2", source_id="W2"),
         ]
         citing = [
             _row("Y3", references_id=["P1"], is_seed=False),
@@ -208,7 +208,7 @@ class TestForwardScentStructural:
     def test_candidato_en_corpus_excluido(self) -> None:
         """Un candidato forward que ya está en el corpus no aparece."""
         corpus = [
-            _row("P1", openalex_id="W1", references_id=["BG1"]),
+            _row("P1", source_id="W1", references_id=["BG1"]),
         ]
         citing = [
             _row("P1", references_id=["W1"], is_seed=False),  # mismo id que corpus
@@ -218,7 +218,7 @@ class TestForwardScentStructural:
 
     def test_citante_sin_match_en_corpus_excluido(self) -> None:
         """Si Y no cita ningún corpus-paper, queda excluido (score = 0)."""
-        corpus = [_row("P1", openalex_id="W1")]
+        corpus = [_row("P1", source_id="W1")]
         citing = [_row("Y1", references_id=["BG1"], is_seed=False)]
         scent = compute_forward_scent(corpus, citing)
         assert scent == {}
@@ -229,7 +229,7 @@ class TestForwardScentStructural:
         AS-BUILT (acoplamiento): si corpus tiene references_id=None, el índice
         ref_to_corpus_papers queda vacío → score=0 para todo citante → pérdida.
 
-        CON FIX (citación directa): Y cita a corpus-papers por su id/openalex_id;
+        CON FIX (citación directa): Y cita a corpus-papers por su id/source_id;
         references_id del corpus no importa → score > 0 para citantes reales.
 
         Escenario del steering:
@@ -239,13 +239,13 @@ class TestForwardScentStructural:
           - Con fix: score(Y) = 2
         """
         corpus = [
-            _row("C1", openalex_id="OA1", references_id=None),
-            _row("C2", openalex_id="OA2", references_id=None),
+            _row("C1", source_id="OA1", references_id=None),
+            _row("C2", source_id="OA2", references_id=None),
         ]
         citing = [
             _row(
                 "Y",
-                references_id=["OA1", "OA2"],  # cita a C1 y C2 por openalex_id
+                references_id=["OA1", "OA2"],  # cita a C1 y C2 por source_id
                 is_seed=False,
             ),
         ]
@@ -279,13 +279,13 @@ class TestDeterminismo:
     def test_forward_determinista(self) -> None:
         # corpus_ids = {"P1", "W1", "P2"}
         corpus = [
-            _row("P1", openalex_id="W1"),
+            _row("P1", source_id="W1"),
             _row("P2"),
         ]
         citing = [
             # Y1 cita P1 (corpus-id) → score = 1
             _row("Y1", references_id=["P1"], is_seed=False),
-            # Y2 cita W1 (openalex_id de P1) y P2 → score = 2
+            # Y2 cita W1 (source_id de P1) y P2 → score = 2
             _row("Y2", references_id=["W1", "P2"], is_seed=False),
         ]
         scent1 = compute_forward_scent(corpus, citing)

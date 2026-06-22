@@ -26,8 +26,8 @@ _LIST_STR = pa.list_(pa.string())
 
 def _make_minimal_row(
     *,
-    id: str = "oa:aabbccdd11223344",
-    openalex_id: str | None = "W12345",
+    id: str = "doi:aabbccdd11223344",
+    source_id: str | None = "W12345",
     doi: str | None = "10.1000/xyz123",
     title: str = "Intercambio ecológico desigual",
     year: int | None = 2020,
@@ -53,7 +53,7 @@ def _make_minimal_row(
     """Construye un dict de fila mínima con todos los campos del schema."""
     return {
         "id": id,
-        "openalex_id": openalex_id,
+        "source_id": source_id,
         "doi": doi,
         "title": title,
         "year": year,
@@ -96,16 +96,16 @@ def corpus_dos_papers() -> Corpus:
     """Corpus con dos papers distintos."""
     rows = [
         _make_minimal_row(
-            id="oa:aabbccdd11223344",
-            openalex_id="W12345",
+            id="doi:aabbccdd11223344",
+            source_id="W12345",
             doi="10.1000/xyz123",
             title="Intercambio ecológico desigual",
             year=2020,
             keywords_raw=["ecology", "exchange"],
         ),
         _make_minimal_row(
-            id="oa:bbccdd1122334455",
-            openalex_id="W67890",
+            id="doi:bbccdd1122334455",
+            source_id="W67890",
             doi="10.2000/abc456",
             title="Metabolismo social",
             year=2021,
@@ -156,7 +156,7 @@ def test_from_arrow_falla_tipo_incorrecto() -> None:
             "id",
             "title",
             "curation_status",
-            "openalex_id",
+            "source_id",
             "doi",
             "abstract",
             "source",
@@ -192,8 +192,8 @@ def corpus_con_nulos() -> Corpus:
     """Corpus con filas que tienen columnas de lista y provenance nulos."""
     rows = [
         _make_minimal_row(
-            id="oa:aabbccdd11223344",
-            openalex_id="W12345",
+            id="doi:aabbccdd11223344",
+            source_id="W12345",
             doi="10.1000/xyz123",
             title="Intercambio ecológico desigual",
             year=2020,
@@ -203,8 +203,8 @@ def corpus_con_nulos() -> Corpus:
             provenance=None,
         ),
         _make_minimal_row(
-            id="oa:bbccdd1122334455",
-            openalex_id="W67890",
+            id="doi:bbccdd1122334455",
+            source_id="W67890",
             doi="10.2000/abc456",
             title="Metabolismo social",
             year=2021,
@@ -258,18 +258,18 @@ def test_merge_idempotente_corpus_hash_estable(corpus_con_nulos: Corpus) -> None
 
 @pytest.mark.unit
 def test_merge_dedup_duplicados_mixtos() -> None:
-    """merge deduplica cuando el mismo paper llega por openalex_id y por doi.
+    """merge deduplica cuando el mismo paper llega por source_id y por doi.
 
-    Escenario: paper A identificado por openalex_id W99999 en corpus_a,
-    y el mismo paper con doi '10.9999/dup' en corpus_b. D1 garantiza que
-    ambos generan el mismo ``id`` cuando se usa openalex_id primero.
+    Escenario: paper A identificado por source_id W99999 en corpus_a,
+    y el mismo paper con doi '10.9999/dup' en corpus_b. D1' garantiza que
+    ambos generan el mismo ``id`` cuando se usa doi primero (ADR 0036).
     En este test forzamos el mismo ``id`` en ambos para simular dedup real.
     """
     # Mismo id, distintos valores en keywords_raw
-    shared_id = "oa:deadbeef12345678"
+    shared_id = "src:deadbeef12345678"
     row_a = _make_minimal_row(
         id=shared_id,
-        openalex_id="W99999",
+        source_id="W99999",
         doi=None,
         title="Paper duplicado",
         year=2019,
@@ -277,7 +277,7 @@ def test_merge_dedup_duplicados_mixtos() -> None:
     )
     row_b = _make_minimal_row(
         id=shared_id,
-        openalex_id="W99999",
+        source_id="W99999",
         doi="10.9999/dup",
         title="Paper duplicado",
         year=2019,
@@ -300,7 +300,7 @@ def test_merge_union_listas() -> None:
     shared_id = "doi:cafecafecafecafe"
     row_a = _make_minimal_row(
         id=shared_id,
-        openalex_id=None,
+        source_id=None,
         doi="10.1111/union",
         title="Union test",
         year=2022,
@@ -308,7 +308,7 @@ def test_merge_union_listas() -> None:
     )
     row_b = _make_minimal_row(
         id=shared_id,
-        openalex_id=None,
+        source_id=None,
         doi="10.1111/union",
         title="Union test",
         year=2022,
@@ -331,7 +331,7 @@ def test_merge_preserva_provenance_append_only() -> None:
     de merge cuando SÍ hay eventos de provenance: los eventos de ambos corpus
     se unen sin duplicación.
     """
-    shared_id = "oa:feedfeedfeedfeed"
+    shared_id = "doi:feedfeedfeedfeed"
     evento_a = json.dumps(
         [
             {

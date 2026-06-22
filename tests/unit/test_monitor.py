@@ -42,7 +42,7 @@ _SAMPLE_WORKS: list[dict[str, Any]] = json.loads(
 def _make_row(
     *,
     id: str,
-    openalex_id: str | None = None,
+    source_id: str | None = None,
     title: str = "Test",
     curation_status: str = "candidate",
 ) -> dict[str, Any]:
@@ -55,7 +55,7 @@ def _make_row(
     """
     return {
         "id": id,
-        "openalex_id": openalex_id,
+        "source_id": source_id,
         "doi": None,
         "title": title,
         "year": 2020,
@@ -93,8 +93,8 @@ def _seed_store(
 
     if rows is None:
         rows = [
-            _make_row(id="P1", openalex_id="W2741809807"),
-            _make_row(id="P2", openalex_id="W9999999999"),
+            _make_row(id="P1", source_id="W2741809807"),
+            _make_row(id="P2", source_id="W9999999999"),
         ]
     table = pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
     corpus = Corpus.from_arrow(table)
@@ -242,7 +242,7 @@ def test_monitor_desde_built_transiciona_a_monitored(tmp_path: Path) -> None:
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "from_built.duckdb"
-    rows = [_make_row(id="P1", openalex_id="W2741809807")]
+    rows = [_make_row(id="P1", source_id="W2741809807")]
 
     table = pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
     corpus = Corpus.from_arrow(table)

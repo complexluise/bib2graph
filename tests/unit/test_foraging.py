@@ -18,7 +18,7 @@ enlace se AJUSTAN a la nueva fórmula estructural:
 - Backward: score = |{Pi ∈ corpus : X ∈ Pi.references_id}| — numéricamente
   igual al viejo conteo, pero computable vía ``collect_item_to_papers``.
 - Forward (fix forward-scent, Wohlin):
-    corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+    corpus_ids = {Pi.id | Pi.source_id : Pi ∈ corpus}
     forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
   (citación directa al corpus: cuántos corpus-papers cita Y explícitamente).
   CAMBIO RESPECTO DEL AS-BUILT R4: el viejo score era acoplamiento bibliográfico
@@ -58,7 +58,7 @@ pytestmark = pytest.mark.unit
 def _base_row(
     id: str,
     *,
-    openalex_id: str | None = None,
+    source_id: str | None = None,
     is_seed: bool = True,
     references_id: list[str] | None = None,
     cited_by_id: list[str] | None = None,
@@ -66,7 +66,7 @@ def _base_row(
 ) -> dict[str, Any]:
     return {
         "id": id,
-        "openalex_id": openalex_id,
+        "source_id": source_id,
         "doi": None,
         "title": f"Paper {id}",
         "year": 2020,
@@ -132,13 +132,13 @@ class TestComputeBackwardScent:
     def test_excluye_ids_del_corpus(self) -> None:
         """Los ids que ya son papers del corpus no son candidatos."""
         rows = [
-            _base_row("P1", openalex_id="W1", references_id=["P2", "REF_X"]),
-            _base_row("P2", openalex_id="W2", references_id=["REF_X"]),
+            _base_row("P1", source_id="W1", references_id=["P2", "REF_X"]),
+            _base_row("P2", source_id="W2", references_id=["REF_X"]),
         ]
         scent = compute_backward_scent(rows)
         # P2 está en el corpus (como id), no debe aparecer como candidato
         assert "P2" not in scent
-        # W2 es openalex_id de P2, tampoco debe aparecer
+        # W2 es source_id de P2, tampoco debe aparecer
         assert "W2" not in scent
         # REF_X sí es candidato nuevo
         assert "REF_X" in scent
@@ -169,20 +169,20 @@ class TestComputeForwardScent:
     """Forward scent: citación directa al corpus (fix forward-scent, Wohlin).
 
     score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
-    donde corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+    donde corpus_ids = {Pi.id | Pi.source_id : Pi ∈ corpus}
 
     CAMBIO RESPECTO DEL AS-BUILT R4 (ADR 0020 enmienda, fix forward-scent):
     El viejo score era acoplamiento bibliográfico:
       |{Pi ∈ corpus : Pi.references_id ∩ Y.references_id ≠ ∅}|
     que degeneraba a 0 cuando el corpus tiene references_id ralas.
     El nuevo score es citación directa al corpus: cuántos corpus-papers
-    aparecen en Y.references_id (usando id u openalex_id del corpus).
+    aparecen en Y.references_id (usando id u source_id del corpus).
     """
 
     def test_citacion_directa_basica(self) -> None:
         """Corpus sin references_id: la citación directa funciona igual.
 
-        corpus_ids = {"P1", "P2"} (ids de los papers, sin openalex_id)
+        corpus_ids = {"P1", "P2"} (ids de los papers, sin source_id)
 
         Citantes:
           CITER_A cita [P1, P2, OTHER] → 2 corpus-ids en refs → score = 2
@@ -219,13 +219,13 @@ class TestComputeForwardScent:
         # CITER_C no cita ningún corpus-paper → excluido
         assert "CITER_C" not in scent
 
-    def test_openalex_id_match(self) -> None:
-        """El score usa openalex_id del corpus además de id."""
+    def test_source_id_match(self) -> None:
+        """El score usa source_id del corpus además de id."""
         corpus_rows = [
-            _base_row("P1", openalex_id="W_OA1", references_id=None),
+            _base_row("P1", source_id="W_OA1", references_id=None),
         ]
         citing_rows = [
-            # Cita al corpus-paper por su openalex_id
+            # Cita al corpus-paper por su source_id
             _base_row("CITER_X", references_id=["W_OA1"], is_seed=False),
         ]
         scent = compute_forward_scent(corpus_rows, citing_rows)
@@ -234,8 +234,8 @@ class TestComputeForwardScent:
     def test_orden_de_ranking_forward(self) -> None:
         """Candidato que cita más corpus-papers sale primero."""
         corpus_rows = [
-            _base_row("P1", openalex_id="W1", references_id=None),
-            _base_row("P2", openalex_id="W2", references_id=None),
+            _base_row("P1", source_id="W1", references_id=None),
+            _base_row("P2", source_id="W2", references_id=None),
         ]
         # CITER_X cita W1 y P2 (= dos corpus-papers) → score = 2
         citing_rows_x = [
@@ -362,7 +362,7 @@ class TestForagerPreviewNoRed:
 
     def test_preview_both_cero_fetch_citing(self) -> None:
         """preview(direction='both') no debe llamar a fetch_citing."""
-        rows = [_base_row("P1", openalex_id="W1", references_id=["REF_A"])]
+        rows = [_base_row("P1", source_id="W1", references_id=["REF_A"])]
         corpus = _make_corpus(*rows)
         source, calls = self._make_counting_source()
 
@@ -374,7 +374,7 @@ class TestForagerPreviewNoRed:
 
     def test_preview_forward_cero_fetch_citing(self) -> None:
         """preview(direction='forward') no debe llamar a fetch_citing."""
-        rows = [_base_row("P1", openalex_id="W1", references_id=None)]
+        rows = [_base_row("P1", source_id="W1", references_id=None)]
         corpus = _make_corpus(*rows)
         source, calls = self._make_counting_source()
 
@@ -386,7 +386,7 @@ class TestForagerPreviewNoRed:
 
     def test_preview_forward_marca_forward_requires_fetch(self) -> None:
         """preview(forward) marca forward_requires_fetch=True y forward=0."""
-        rows = [_base_row("P1", openalex_id="W1", references_id=["REF_A"])]
+        rows = [_base_row("P1", source_id="W1", references_id=["REF_A"])]
         corpus = _make_corpus(*rows)
         source, _ = self._make_counting_source()
 
@@ -399,7 +399,7 @@ class TestForagerPreviewNoRed:
 
     def test_preview_both_marca_forward_requires_fetch(self) -> None:
         """preview(both) marca forward_requires_fetch=True y forward=0."""
-        rows = [_base_row("P1", openalex_id="W1", references_id=["REF_A", "REF_B"])]
+        rows = [_base_row("P1", source_id="W1", references_id=["REF_A", "REF_B"])]
         corpus = _make_corpus(*rows)
         source, _ = self._make_counting_source()
 
@@ -441,7 +441,7 @@ class TestForagerForward:
         """MockTransport que responde a consultas ``cites:`` con los works dados.
 
         Devuelve los works para cualquier request con ``cites`` en el filtro.
-        Responde vacío a otras consultas (p. ej. ``openalex_id:``).
+        Responde vacío a otras consultas (p. ej. ``source_id:``).
         """
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -464,14 +464,14 @@ class TestForagerForward:
         El forward chaining ahora opera solo sobre semillas aceptadas
         (``is_seed=True AND curation_status=accepted``).
 
-        El corpus tiene P1 (openalex_id="W1", aceptada) sin references_id.
+        El corpus tiene P1 (source_id="W1", aceptada) sin references_id.
         El citante (W9999) cita "W1" directamente → score = 1 → entra al ranking.
         """
         # Corpus con 1 semilla aceptada, sin references_id (estado común tras un seed)
         rows = [
             _base_row(
                 "P1",
-                openalex_id="W1",
+                source_id="W1",
                 references_id=None,
                 curation_status="accepted",  # requerido para forward chaining
             )
@@ -523,7 +523,7 @@ class TestForagerForward:
         rows = [
             _base_row(
                 "P1",
-                openalex_id="W1",
+                source_id="W1",
                 references_id=None,
                 curation_status="accepted",
             )
@@ -540,7 +540,7 @@ class TestForagerForward:
             f"llamó {len(batch_calls)} veces"
         )
         assert "W1" in batch_calls[0], (
-            "El lote debe incluir el openalex_id de la semilla aceptada"
+            "El lote debe incluir el source_id de la semilla aceptada"
         )
         # El candidato W9999 está en el ranking
         assert len(ranked.ranking) == 1
@@ -562,7 +562,7 @@ class TestForagerForward:
                 return {}  # sin candidatos; basta verificar el conteo
 
         rows = [
-            _base_row(f"P{i}", openalex_id=f"W{i}", curation_status="accepted")
+            _base_row(f"P{i}", source_id=f"W{i}", curation_status="accepted")
             for i in range(1, 4)
         ]
         corpus = _make_corpus(*rows)
@@ -576,7 +576,7 @@ class TestForagerForward:
             f"3 semillas deben batchear en 1 llamada; se hicieron {len(batch_calls)}"
         )
         assert set(batch_calls[0]) == {"W1", "W2", "W3"}, (
-            f"El lote debe contener los 3 openalex_ids; contiene {batch_calls[0]}"
+            f"El lote debe contener los 3 source_ids; contiene {batch_calls[0]}"
         )
 
     def test_forward_alcance_solo_seeds(self) -> None:
@@ -599,19 +599,19 @@ class TestForagerForward:
         rows = [
             _base_row(
                 "P1",
-                openalex_id="W1",
+                source_id="W1",
                 curation_status="candidate",  # semilla candidate: sí entra
                 is_seed=True,
             ),
             _base_row(
                 "P2",
-                openalex_id="W2",
+                source_id="W2",
                 curation_status="accepted",
                 is_seed=False,  # no-semilla: no entra aunque esté aceptada
             ),
             _base_row(
                 "P3",
-                openalex_id="W3",
+                source_id="W3",
                 curation_status="candidate",
                 is_seed=True,  # semilla candidate: sí entra
             ),
@@ -646,9 +646,7 @@ class TestForagerForward:
                 return {"W1": ["W9"]}
 
         rows = [
-            _base_row(
-                "P1", openalex_id="W1", curation_status="candidate", is_seed=True
-            ),
+            _base_row("P1", source_id="W1", curation_status="candidate", is_seed=True),
         ]
         corpus = _make_corpus(*rows)
         source = TrackingSource()
@@ -675,9 +673,7 @@ class TestForagerForward:
 
         rows = [
             # is_seed=False (candidato de chaining previo): no hay semillas
-            _base_row(
-                "P1", openalex_id="W1", curation_status="accepted", is_seed=False
-            ),
+            _base_row("P1", source_id="W1", curation_status="accepted", is_seed=False),
         ]
         corpus = _make_corpus(*rows)
         source = TrackingSource()
@@ -700,7 +696,7 @@ class TestForagerForward:
                 # Devolver más citantes de los permitidos para verificar el cap
                 return {"W1": [f"C{i}" for i in range(100)]}
 
-        rows = [_base_row("P1", openalex_id="W1", curation_status="accepted")]
+        rows = [_base_row("P1", source_id="W1", curation_status="accepted")]
         corpus = _make_corpus(*rows)
         source = TrackingSource()
 
@@ -722,7 +718,7 @@ class TestForagerForward:
             def load(self, path: str) -> None:
                 return None
 
-        rows = [_base_row("P1", openalex_id="W1", curation_status="accepted")]
+        rows = [_base_row("P1", source_id="W1", curation_status="accepted")]
         corpus = _make_corpus(*rows)
         forager = Forager(SimpleFakeSource(), depth=1)  # type: ignore[arg-type]
 
@@ -740,7 +736,7 @@ class TestForagerForward:
                 batch_call_count[0] += 1
                 return {"W1": ["W9999"]}
 
-        rows = [_base_row("P1", openalex_id="W1", curation_status="accepted")]
+        rows = [_base_row("P1", source_id="W1", curation_status="accepted")]
         corpus = _make_corpus(*rows)
         source = TrackingSource()
 
@@ -873,7 +869,7 @@ class TestForwardChainingMetadataReal:
         rows = [
             _base_row(
                 "P1",
-                openalex_id="W1",
+                source_id="W1",
                 references_id=None,
                 curation_status="candidate",
             )
@@ -905,7 +901,7 @@ class TestForwardChainingMetadataReal:
 
     def test_forward_filas_tienen_anio_y_autores(self) -> None:
         """Filas forward: año y autores poblados (no None)."""
-        rows = [_base_row("P1", openalex_id="W1", references_id=None)]
+        rows = [_base_row("P1", source_id="W1", references_id=None)]
         corpus = _make_corpus(*rows)
 
         citing_work = _citing_work_full(
@@ -934,7 +930,7 @@ class TestForwardChainingMetadataReal:
     def test_corpus_forward_sin_placeholders(self) -> None:
         """Ninguna fila del corpus forward matchea el patrón ``^\\[candidate:``."""
         rows = [
-            _base_row(f"P{i}", openalex_id=f"W{i}", references_id=None)
+            _base_row(f"P{i}", source_id=f"W{i}", references_id=None)
             for i in range(1, 4)
         ]
         corpus = _make_corpus(*rows)
@@ -970,7 +966,7 @@ class TestForwardChainingMetadataReal:
         """Filas forward: is_seed=False y provenance con chaining_hop=1."""
         import json
 
-        rows = [_base_row("P1", openalex_id="W1", references_id=None)]
+        rows = [_base_row("P1", source_id="W1", references_id=None)]
         corpus = _make_corpus(*rows)
 
         citing_work = _citing_work_full("W7777", cites_ids=["W1"])
@@ -995,7 +991,7 @@ class TestForwardChainingMetadataReal:
 
     def test_corpus_hash_estable_entre_corridas(self) -> None:
         """Mismo corpus + mismo mock → mismo corpus_hash (determinismo #78)."""
-        rows = [_base_row("P1", openalex_id="W1", references_id=None)]
+        rows = [_base_row("P1", source_id="W1", references_id=None)]
         corpus = _make_corpus(*rows)
 
         citing_work = _citing_work_full(
@@ -1083,7 +1079,7 @@ class TestForwardChainingMetadataReal:
         El backward chaining no se toca en #78; este test verifica que la
         refactorización no lo rompió.
         """
-        rows = [_base_row("P1", references_id=["REF_B"], openalex_id="W1")]
+        rows = [_base_row("P1", references_id=["REF_B"], source_id="W1")]
         corpus = _make_corpus(*rows)
 
         source = OpenAlexSource(transport=_make_batch_transport_full([]))
@@ -1131,7 +1127,7 @@ def test_forward_chaining_red_real_titulo_no_nulo() -> None:
     rows = [
         _base_row(
             "attn",
-            openalex_id="W2741809807",
+            source_id="W2741809807",
             references_id=None,
         )
     ]

@@ -128,7 +128,7 @@ def _entry_to_row(
     )
 
     return {
-        Col.OPENALEX_ID: None,
+        Col.SOURCE_ID: None,
         Col.DOI: doi,
         Col.TITLE: str(entry.get("title") or "").strip() or "",
         Col.YEAR: year,

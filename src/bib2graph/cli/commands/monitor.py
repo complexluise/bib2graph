@@ -4,7 +4,7 @@ Re-chequea OpenAlex por nuevos citantes del corpus (forward chaining),
 mergea los candidatos nuevos a la biblioteca viva y transiciona el
 CycleState a MONITORED (paso 8 del ciclo, Ellis).
 
-Requiere que el corpus tenga al menos una semilla con ``openalex_id``
+Requiere que el corpus tenga al menos una semilla con ``source_id``
 conocido (de lo contrario el forward chaining no encuentra nada).  Si no
 hay corpus ni estado previo, falla con un error accionable.
 """

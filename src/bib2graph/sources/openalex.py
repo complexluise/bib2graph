@@ -352,8 +352,8 @@ def _work_to_row(
     )
 
     return {
-        # id se calcula en Corpus.add_paper (D1)
-        Col.OPENALEX_ID: openalex_id,
+        # id se calcula en Corpus.add_paper (D1', ADR 0036)
+        Col.SOURCE_ID: openalex_id,
         Col.DOI: doi,
         Col.TITLE: work.get("title") or work.get("display_name") or "",
         Col.YEAR: work.get("publication_year"),
@@ -681,11 +681,11 @@ class OpenAlexSource:
                 decided_at=None,
             )
             row[Col.PROVENANCE] = ProvenanceEvent.dump_list([provenance_event])
-            # Calcular id canónico (D1) para que Forager y compute_forward_scent
+            # Calcular id canónico (D1', ADR 0036) para que Forager y compute_forward_scent
             # puedan identificar el candidato
             row["id"] = _compute_id(
-                openalex_id=row.get("openalex_id"),
                 doi=row.get("doi"),
+                source_id=row.get("source_id"),
                 title=str(row.get("title") or ""),
                 year=row.get("year"),
             )

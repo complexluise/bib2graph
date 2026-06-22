@@ -19,7 +19,7 @@ papers del corpus citan X, es que X es un antecedente compartido del campo
 
 ### Forward — candidato Y que cita papers del corpus
 
-    corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+    corpus_ids = {Pi.id | Pi.source_id : Pi ∈ corpus}
     forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
 
 *Interpretación bibliométrica*: cuántos corpus-papers cita Y directamente
@@ -69,7 +69,7 @@ def compute_backward_scent(
 
     Un candidato backward es un id que aparece en ``references_id`` de al
     menos un paper del corpus, pero que NO es el ``id`` ni el
-    ``openalex_id`` de ningún paper ya en el corpus.
+    ``source_id`` de ningún paper ya en el corpus.
 
     Score = ``|{Pi ∈ corpus : X ∈ Pi.references_id}|``
     (acoplamiento hacia atrás: cuántos corpus-papers apuntan al candidato).
@@ -78,6 +78,10 @@ def compute_backward_scent(
     ``collect_item_to_papers(corpus, Col.ID, Col.REFERENCES_ID)``, que
     construye el índice ``{ref_id → [corpus_paper_ids_que_lo_citan]}``.
 
+    La exclusión de candidatos duplicados usa tanto Col.ID como Col.SOURCE_ID
+    porque los IDs de motor (W… de OpenAlex) aparecen en references_id y deben
+    cruzar contra el source_id W… del corpus para no re-proponer papers ya presentes.
+
     Args:
         corpus_rows: Lista de filas del corpus como dicts (``to_pylist()``).
 
@@ -85,15 +89,17 @@ def compute_backward_scent(
         Dict ``{candidate_id: score}`` donde score = nº de corpus-papers
         que listan al candidato en ``references_id``.
     """
-    # ids ya presentes en el corpus (para excluir candidatos duplicados)
+    # ids ya presentes en el corpus (para excluir candidatos duplicados).
+    # Se incluye tanto Col.ID como Col.SOURCE_ID: las references_id de OpenAlex
+    # son IDs de motor (W…) y deben cruzar contra el source_id W… del corpus.
     corpus_ids: set[str] = set()
     for row in corpus_rows:
         id_val = row.get(Col.ID)
-        openalex_id_val = row.get(Col.OPENALEX_ID)
+        source_id_val = row.get(Col.SOURCE_ID)
         if id_val:
             corpus_ids.add(str(id_val))
-        if openalex_id_val:
-            corpus_ids.add(str(openalex_id_val))
+        if source_id_val:
+            corpus_ids.add(str(source_id_val))
 
     # Primitivo del proyector: {ref_id → [paper_ids del corpus que lo citan]}
     # Usamos Col.ID como id_col para registrar qué corpus-paper hace la cita.
@@ -114,11 +120,11 @@ def compute_forward_scent(
     """Calcula el scent forward para cada candidato citante.
 
     Un candidato forward es un paper (en ``citing_rows``) que cita papers
-    del corpus pero que aún NO es ``id``/``openalex_id`` de ningún corpus-paper.
+    del corpus pero que aún NO es ``id``/``source_id`` de ningún corpus-paper.
 
     ## Fórmula (citación directa al corpus — Wohlin)
 
-        corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+        corpus_ids = {Pi.id | Pi.source_id : Pi ∈ corpus}
         forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
 
     *Interpretación*: cuántos corpus-papers cita Y directamente.  Este score
@@ -144,17 +150,19 @@ def compute_forward_scent(
         Dict ``{citing_id: score}`` donde score = nº de corpus-papers
         citados directamente por el candidato Y.
     """
-    # corpus_ids: ids y openalex_ids del corpus
+    # corpus_ids: ids y source_ids del corpus
     # — sirven para (a) excluir candidatos ya presentes y
     #   (b) intersectar con Y.references_id para el score de citación directa.
+    # Se incluye tanto Col.ID como Col.SOURCE_ID: las references_id de OpenAlex
+    # son IDs de motor (W…) y deben cruzar contra el source_id W… del corpus.
     corpus_ids: set[str] = set()
     for row in corpus_rows:
         id_val = row.get(Col.ID)
-        openalex_id_val = row.get(Col.OPENALEX_ID)
+        source_id_val = row.get(Col.SOURCE_ID)
         if id_val:
             corpus_ids.add(str(id_val))
-        if openalex_id_val:
-            corpus_ids.add(str(openalex_id_val))
+        if source_id_val:
+            corpus_ids.add(str(source_id_val))
 
     scent: dict[str, float] = {}
     for row in citing_rows:
