@@ -174,3 +174,37 @@ class TabularBackend(Protocol):
             Lista de ``ref_id``.
         """
         ...
+
+    def add_external_id(self, paper_id: str, engine: str, id: str) -> None:
+        """Registra un ID externo para un paper dado un motor (ADR 0036 opción C).
+
+        Idempotente: si ya existe una entrada ``(paper_id, engine)``, el valor
+        se reemplaza (un ID por motor por paper).
+
+        Args:
+            paper_id: ID interno del paper en el corpus.
+            engine: Nombre del motor / fuente del ID (p. ej. ``'openalex'``,
+                ``'semanticscholar'``, ``'doi'``).
+            id: El ID externo correspondiente a ese motor.
+        """
+        ...
+
+    def external_ids_for(self, paper_id: str) -> dict[str, str]:
+        """Devuelve todos los IDs externos registrados para un paper.
+
+        Args:
+            paper_id: ID interno del paper en el corpus.
+
+        Returns:
+            Diccionario ``{engine: id}`` con todos los IDs registrados para
+            ese paper.  Vacío si el paper no tiene IDs externos registrados.
+        """
+        ...
+
+    def all_external_ids(self) -> list[tuple[str, str, str]]:
+        """Devuelve todas las entradas de la tabla ``external_ids``.
+
+        Returns:
+            Lista de tuplas ``(paper_id, engine, id)`` en orden no definido.
+        """
+        ...

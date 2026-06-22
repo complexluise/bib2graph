@@ -12,6 +12,7 @@ Contrato público re-exportado:
     ``get_network``, ``compare_rounds`` — lecturas del Hito G2 (ADR 0028).
   - ``accept_papers``, ``reject_papers``, ``curate_paper`` — escrituras del
     Hito G3 (ADR 0028).
+  - ``resolve_dois`` — resolución DOI→source_id (ADR 0035).
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from bib2graph.service.reads import (
     get_workspace,
     list_rounds,
 )
+from bib2graph.service.resolve import resolve_dois
 
 __all__ = [
     "ENVELOPE_SCHEMA_VERSION",
@@ -55,4 +57,5 @@ __all__ = [
     "get_workspace",
     "list_rounds",
     "reject_papers",
+    "resolve_dois",
 ]

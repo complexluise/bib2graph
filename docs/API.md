@@ -234,6 +234,21 @@
 > (`release-please.yml` no se tocó). **No cambia ningún contrato** (CLI ni HTTP) — no requiere ADR nuevo.
 > **Con G5, los 5 hitos G1–G5 del MVP GUI están AS-BUILT**; lo único pendiente es el **gate #34**
 > (validación con un tercero, criterio de aceptación de producto, **no** es construcción).
+>
+> **Sincronizado con la resolución DOI→`source_id` (flujo BibTeX e2e) — issues #110/#112 (AS-BUILT,
+> ADR [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)):** se cierra el **GAP-1** del flujo
+> BibTeX: los papers sembrados con `seed --from-bib` traen `doi` pero **no `source_id`**, y sin
+> `source_id` los comandos `enrich`/`chain` devuelven **0**. Suma el **20° subcomando `b2g resolve`**
+> (`cli/commands/resolve.py` → `service/resolve.py::resolve_dois`): filtra papers con `doi != NULL`
+> **AND** `source_id IS NULL`, consulta OpenAlex (batcheado, `fetch_dois_to_openalex_ids`) y puebla
+> `source_id`; **idempotente** (los que ya tienen `source_id` no se tocan) y **NO transiciona el
+> `CycleState`** (ortogonal al lazo, igual que `enrich`). Además, **`seed --from-bib` gana el flag
+> `--resolve`** que encadena la resolución en el mismo comando reusando el store ya abierto
+> (`service/resolve.py::_resolve_dois_on_store`, **sin reabrir el `.duckdb`** — el reopen en el mismo
+> proceso corrompía las UDFs de DuckDB → segfault exit 139, #110/#93). **GAP-2 / #112:** `--email`
+> pasa a estar **permitido con `--from-bib`** cuando se usa junto a `--resolve` (se propaga al polite
+> pool en la resolución). Solo `source_id` (no `external_ids`, diferido #120). Ver §2 + §convenciones
+> CLI.
 
 ## Convenciones
 
@@ -254,7 +269,7 @@ invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción
 `--workspace`; `--store` fue eliminada en [#75](https://github.com/complexluise/bib2graph/issues/75),
 ver abajo).
 
-**Set de 19 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+**Set de 20 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
 y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
 pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
 [0025](decisiones/0025-enricher-cocitacion-openalex.md); el 14° `init` con el workspace, ADR
@@ -265,7 +280,9 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
 preprocesamiento automático en la ingesta, #88, ADR
 [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md); el 19° **`gui`** con la API
 local + frontend, Hito G3 del MVP GUI, ADR
-[0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)):
+[0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md); el 20° **`resolve`** con la
+resolución DOI→`source_id` del flujo BibTeX e2e, issues #110/#112, ADR
+[0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -297,6 +314,19 @@ local + frontend, Hito G3 del MVP GUI, ADR
     **`DependencyError`, exit 3** (patrón `[dedup]`); archivo inexistente / `.bib` mal formado →
     `DataError`, exit 2.
 
+    **`--resolve` (solo con `--from-bib`; issues #110/#112, ADR
+    [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)):** tras cargar el `.bib`, **encadena la
+    resolución DOI→`source_id`** en el mismo comando (equivale a correr `b2g resolve` a continuación,
+    abajo). Cierra el **GAP-1** del flujo BibTeX e2e: sin `source_id`, `enrich`/`chain` darían 0.
+    Reusa el **store ya abierto** por seed (`service/resolve.py::_resolve_dois_on_store`) en vez de
+    reabrir el `.duckdb`: el reopen en el mismo proceso corrompía las UDFs de DuckDB → segfault
+    (exit 139, #110/#93). Cuando se pasa `--resolve`, el envelope `--json` **suma** `data["resolve"] =
+    {resolved, total_with_doi, already_resolved, total_papers}` a las métricas de seed. **`--email`
+    pasa a estar PERMITIDO con `--from-bib` cuando está `--resolve`** (se propaga al polite pool en la
+    resolución; cierra GAP-2 / #112). **Reglas de uso (exit 1):** `--email` + `--from-bib` **sin**
+    `--resolve` → error (`--email` solo sirve si hay resolución); `--resolve` **sin** `--from-bib` →
+    error (sugiere `b2g resolve` para un corpus existente).
+
   **No existe `seed --from-corpus`** (la rehidratación de un parquet curado es `restore`, abajo).
   Flags ergonómicos de OpenAlex (#14 + #30, **solo con `--equation`/`--spec`**): **`--max-results INT`**
   propaga a `OpenAlexSource(max_results=...)` —sin flag, el default del source = 200— para exploración
@@ -309,10 +339,12 @@ local + frontend, Hito G3 del MVP GUI, ADR
   agregando `from_publication_date:<min_year>-01-01` y/o `to_publication_date:<max_year>-12-31` como
   predicado de filtro **separado por coma, fuera** de la expresión `search` (sintaxis idiomática de
   rango; reportado en el `translation_report`).
-  Con `--spec`, todos estos parámetros vienen del YAML (paridad 1:1 flag ⇄ campo). **Combinar
-  cualquier flag de OpenAlex (`--exclude`/`--max-results`/`--native`/`--email`/`--min-year`/`--max-year`)
-  con `--from-bib` → error de uso, exit 1** (falla fuerte, no ignora en silencio). En modo `--native`,
-  `--min-year`/`--max-year` no se aplican (nativo = sin traducción).
+  Con `--spec`, todos estos parámetros vienen del YAML (paridad 1:1 flag ⇄ campo). **Combinar los flags
+  de OpenAlex `--exclude`/`--max-results`/`--native`/`--min-year`/`--max-year` con `--from-bib` → error
+  de uso, exit 1** (falla fuerte, no ignora en silencio). **`--email` es la excepción** (#112): se
+  permite con `--from-bib` cuando va junto a `--resolve` (ver `--resolve` arriba); `--email` +
+  `--from-bib` sin `--resolve` → error. En modo `--native`, `--min-year`/`--max-year` no se aplican
+  (nativo = sin traducción).
 - **`restore`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md), Ciclo 9a, 17°
   subcomando): **rehidrata un corpus ya curado desde un parquet, SIN red** — inverso de `snapshot`,
   como `load` es a `dump`. **`--from-corpus <parquet>`** (requerido) lee el parquet con el schema
@@ -378,11 +410,12 @@ local + frontend, Hito G3 del MVP GUI, ADR
     donde el dump arrastraba seeds); `seeds` = semillas originales (`is_seed == True`); `all` = todo el
     corpus. **`--all`** queda como **alias deprecado de `--scope all`** (tiene precedencia si se pasan
     ambos). Sin candidatos (scope `candidates`/`seeds` vacío) → error accionable que sugiere `--scope all`
-    o `b2g chain`. Columnas (16, orden estable): `id, openalex_id, title, year, authors, venue, doi,
+    o `b2g chain`. Columnas (16, orden estable): `id, source_id, title, year, authors, venue, doi,
     keywords, cited_by_count, references_count, is_seed, openalex_url, scent_score, cluster, decision,
     note`. **Todas read-only salvo `decision` y `note`** (las editables por el humano). `venue` sale de
-    `source`; `keywords` se une con `" | "` (igual que `authors`); `openalex_url` se deriva del
-    `openalex_id` (`https://openalex.org/<id>`). **`cited_by_count`/`references_count` hoy salen vacías**:
+    `source`; `keywords` se une con `" | "` (igual que `authors`); `openalex_url` es una **columna
+    derivada OpenAlex-específica**: se construye `https://openalex.org/<source_id>` solo cuando el
+    `source_id` parece un ID de OpenAlex (`W…`), si no queda vacía. **`cited_by_count`/`references_count` hoy salen vacías**:
     no existen como escalares en el schema canónico de 23 columnas, así que la columna queda como
     placeholder para llenado manual (limitación conocida, no falla). `decision` refleja el
     `curation_status` actual (`candidate`→`undecided`, `accepted`→`accepted`, `rejected`→`rejected`).
@@ -423,6 +456,22 @@ local + frontend, Hito G3 del MVP GUI, ADR
   import perezoso): si falta → `DependencyError`, **exit 3** con sugerencia `uv sync --extra gui`. **NO
   transiciona** el `CycleState`. La API es un adaptador delgado sobre `service/` (reusa el envelope
   `schema="1"` + `code_for`, no reimplementa el contrato); el mapeo código→HTTP y la auth viven en §0.2.
+- **`resolve`** (issues #110/#112, AS-BUILT, ADR
+  [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md), 20° subcomando): **resuelve los DOIs del
+  corpus a IDs de OpenAlex (`source_id`)** — cierra el **GAP-1** del flujo BibTeX e2e. Los papers
+  sembrados con `seed --from-bib` traen `doi` pero **no `source_id`**; sin `source_id`,
+  `enrich`/`chain` devuelven **0**. `resolve` filtra los papers con `doi != NULL` **AND**
+  `source_id IS NULL`, consulta OpenAlex (batcheado, `OpenAlexSource.fetch_dois_to_openalex_ids` vía
+  `service/resolve.py::resolve_dois`) y **puebla `source_id`** en esas filas; persiste con
+  `persist_replace`. **Idempotente:** los papers que ya tienen `source_id` no se tocan (re-correr da
+  el mismo resultado). Solo `source_id` (no `external_ids`, diferido #120). Flags: **`--email`**
+  (polite pool de OpenAlex, recomendado), **`--json`** (envelope `schema="1"`) y la resolución de
+  workspace por ambiente (`--workspace` global, igual que los demás). `data` =
+  `{resolved, total_with_doi, already_resolved, total_papers}`. **NO transiciona el `CycleState`**
+  (ortogonal al lazo, igual que `enrich`). Errores accionables: falla de red contra OpenAlex →
+  `NetworkError` (exit 4); store bloqueado → `StoreError` (exit 5). La misma resolución se puede
+  encadenar en la siembra con `seed --from-bib --resolve` (§`seed` arriba), que reusa el store abierto
+  sin reabrir el `.duckdb` (`_resolve_dois_on_store`).
 
 **`--workspace` global (OPCIONAL).** Va en el grupo `b2g`, **antes** del subcomando. Una
 investigación = un **workspace** (carpeta marcada por `workspace.json`; ADR
@@ -626,7 +675,7 @@ def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
 
 def get_paper(ws: Workspace, paper_id: str) -> dict[str, Any]:
     """Fila del corpus (CORPUS_SCHEMA) por id. Devuelve:
-    {id, openalex_id, doi, title, year, abstract, is_seed, curation_status,
+    {id, source_id, doi, title, year, abstract, is_seed, curation_status,
      authors_raw, authors_id, keywords_id, references_id, cited_by_id,
      provenance (list, parseada del JSON)}.
     Raises DataError si el id no existe; StoreError si el store falla."""
@@ -801,8 +850,8 @@ cambia el contenedor, no el núcleo de análisis**.
 
 | Columna | Tipo Arrow | Nullable | Notas |
 |---|---|---|---|
-| `id` | `string` | no | id interno estable (hash de `openalex_id`/`doi`) |
-| `openalex_id` | `string` | sí | id de OpenAlex (`W...`); fuente primaria (ADR 0007) |
+| `id` | `string` | no | id interno estable (hash de `doi`/`source_id`; ver §1.1 *Identidad*, ADR [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)) |
+| `source_id` | `string` | sí | id del **motor de extracción** que entregó el paper (p. ej. `W...` para OpenAlex). Agnóstico al motor (ADR [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)): el nombre del motor vive en `provenance.source`, no en la columna |
 | `doi` | `string` | sí | DOI normalizado |
 | `title` | `string` | no | título completo |
 | `year` | `int32` | sí | año de publicación |
@@ -824,6 +873,15 @@ cambia el contenedor, no el núcleo de análisis**.
 
 El schema exacto vive en `bib2graph.schemas`. La validación se hace en `Corpus.from_arrow()` y en
 cada `Source.seed()/load()`.
+
+> **Tabla lateral `external_ids(paper_id, engine, id)` (ADR
+> [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md), opción C — INFRA PRESENTE, SIN
+> POBLAR):** el backend expone los métodos `external_ids_for(paper_id)` y `all_external_ids()`
+> (`src/bib2graph/backends/base.py`) para registrar, 1↔N, los IDs que cada motor (OpenAlex, Semantic
+> Scholar, …) asignó al mismo paper, unificados por el DOI como ancla. **Hoy esta tabla NO se puebla
+> todavía**: su consumo —el cruce/deduplicación **cross-motor**— está diferido a la llegada del 2º
+> motor (follow-up [#120](https://github.com/complexluise/bib2graph/issues/120)). La identidad y la
+> dedup actuales se resuelven solo por el `id` canónico (DOI primero; ver §1.1 *Identidad*).
 
 > **TARGET (capa base, ADR [0023](decisiones/0023-capa-constants-modelos-schema.md), Hito R1):** los
 > nombres de columna salen de `bib2graph.constants.Col(StrEnum)` y `curation_status` de
@@ -861,10 +919,13 @@ evento tiene la forma:
 `accept()`/`reject()` **agregan** un evento (`action='accepted'`/`'rejected'`, con `decided_by` y
 `decided_at`) sin borrar los previos. `None`/cadena vacía equivalen a "sin eventos".
 
-**`id` estable y determinista** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md), D1):
-`id = f"{prefix}:{sha256(valor)[:16]}"` con precedencia `openalex_id` (`oa:`) → `doi` normalizado
-(`doi:`) → `title+year` (`tt:`). El mismo paper produce el mismo `id` entre corridas; es la base
-de la dedup en `merge` y en la biblioteca viva.
+**`id` estable y determinista** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md), D1;
+precedencia invertida por ADR [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md), D1'):
+`id = f"{prefix}:{sha256(valor)[:16]}"` con precedencia `doi` normalizado (`doi:`) → `source_id`
+(`src:`) → `title+year` (`tt:`). El **DOI es el ancla universal e interoperable entre motores** (un
+paper con DOI tiene el mismo `id` venga de OpenAlex, de Semantic Scholar o de un `.bib`); `source_id`
+es el fallback para papers sin DOI, antes de caer a `title+year` (frágil). El mismo paper produce el
+mismo `id` entre corridas; es la base de la dedup en `merge` y en la biblioteca viva.
 
 ### 1.2 `Corpus` (wrapper)
 
@@ -1626,7 +1687,7 @@ completo** (crítica #2). La **co-citación** es la más cara (segundo nivel de 
   fetch del `OpenAlexEnricher` (ADR 0007/0025), y `Networks.quick` la incluye cuando esa columna
   está poblada (§10).
 - **Los proyectores siguen PUROS — NO setean atributos de nodo** (ADR 0014, AS-BUILT #25): producen
-  un `nx.Graph` con **ids crudos** como nodos (`oa:…`, `I185261750`, un ORCID), **sin** `label`. La
+  un `nx.Graph` con **ids crudos** como nodos (`doi:…`, `I185261750`, un ORCID), **sin** `label`. La
   legibilidad (label + atributos) la inyecta la **capa `decorate` (§7.1)**, que es la **frontera**
   entre la proyección pura y el export/GUI. Esta separación es deliberada (ADR 0014).
 
@@ -1699,7 +1760,7 @@ clusters (quién/qué/cuándo cae en cada comunidad), legible offline (Excel/Cal
 ```python
 def cluster_table(table: pa.Table, artifact: NetworkArtifact) -> list[dict[str, Any]]:
     """Una fila por comunidad de `artifact.communities`. Función pura (sin red, sin duckdb).
-    Cruza nodo→fila por Col.ID (id canónico), NUNCA por openalex_id. Devuelve [] si el kind
+    Cruza nodo→fila por Col.ID (id canónico), NUNCA por source_id. Devuelve [] si el kind
     no es de paper o si no hay comunidades. Orden determinista por `cluster` ascendente."""
 ```
 
@@ -1729,9 +1790,9 @@ y `cocitation`** (§convenciones CLI / §9); las otras tres redes escriben `netw
 
 **Notas de contrato** (#31, AS-BUILT 2026-06-17):
 
-- **Cruce por `Col.ID`, no `openalex_id`** (lección B6 de la
+- **Cruce por `Col.ID`, no `source_id`** (lección B6 de la
   [Nota 09](Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)): el nodo del grafo **es** un `Col.ID`
-  (`oa:…`); indexar por `openalex_id` (`W…`) daría 0 cruces. Un nodo sin match en el corpus **suma al
+  (`doi:…`/`src:…`); indexar por `source_id` (`W…`) daría 0 cruces. Un nodo sin match en el corpus **suma al
   `size`** pero no aporta año/autores/keywords.
 - **Determinista** (ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)): el top de
   autores/keywords se ordena por **`(-frecuencia, nombre alfabético ascendente)`** — desempate
@@ -1843,6 +1904,11 @@ class NetworkSpec(BaseModel):
                              # siendo función pura del corpus_hash, R2).
     assortativity_attribute: str | None = None     # p. ej. "region"
     layout: Literal["spring", "kamada_kawai", "circular"] | None = None
+    keyword_filter: list[str] | None = None  # Issue #113: sub-red temática. Filtra el corpus ANTES
+                                             # de proyectar a los papers cuyo keywords_raw matchee
+                                             # (ANY, substring, case-insensitive) algún término.
+                                             # None/[] = sin filtro. Param de spec, FUERA del
+                                             # corpus_hash (como min_weight/scope).
 
 
 def load_specs(path: str | Path) -> list[NetworkSpec]:
@@ -1875,6 +1941,19 @@ class Networks:
 **Modo quick** (v1) cubre baja fricción; **modo spec** (Hito 9, YAML) cubre el pipeline declarativo
 versionable, vía `load_specs(redes.yaml)` + `Networks.build` por red (y el subcomando `b2g
 networks --spec`, §convenciones CLI).
+
+**Sub-redes temáticas (`keyword_filter`, issue #113):** cada red declarada puede acotar el corpus a
+un tema antes de proyectar — útil para comparar sub-redes (p. ej. T4 vs T7) sin pre-filtrar el corpus
+entero ni escribir scripts. El match es **ANY** (un paper entra si algún término matchea), por
+**substring case-insensitive** sobre `keywords_raw` (display names). `None`/`[]` = sin filtro.
+
+```yaml
+networks:
+  - kind: keyword_cooccurrence
+    keyword_filter: ["complex", "ecolog"]   # papers con keywords tipo "Complexity"/"Ecological..."
+  - kind: bibliographic_coupling
+    keyword_filter: ["assessment"]
+```
 
 **Notas de contrato** (Hito 2, ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md)):
 
@@ -2088,7 +2167,7 @@ b2g seed --equation '"unequal ecological exchange"' --max-results 50 \
          --email luis@sostaina.com --json   # --max-results: muestra chica · --exclude (repetible): negaciones, quedan en el translation_report
 b2g chain --direction both --max-candidates 300 --max-citing 50 --json
 b2g filter --year-gte 2010 --language en --language es --json
-b2g accept --ids oa:abc123 --ids oa:def456 --json
+b2g accept --ids doi:abc123 --ids doi:def456 --json
 b2g build --json                                 # escribe networks/ + sella networks/.corpus_hash
 b2g export --format graphml --out-dir redes/ --json
 b2g status --json     # CycleState + round + curation_available + workspace + conteos

@@ -68,7 +68,7 @@ class StoreLockedError(OSError):
 _DDL_CORPUS = """
 CREATE TABLE IF NOT EXISTS corpus (
     id                   VARCHAR NOT NULL PRIMARY KEY,
-    openalex_id          VARCHAR,
+    source_id            VARCHAR,
     doi                  VARCHAR,
     title                VARCHAR NOT NULL,
     year                 INTEGER,
@@ -124,6 +124,20 @@ CREATE TABLE IF NOT EXISTS referenced_but_not_fetched (
 )
 """
 
+# ADR 0036 (opción C): tabla lateral de IDs externos por motor (openalex, doi, etc.)
+# PK lógica (paper_id, engine): un id por motor por paper.  Escritura idempotente
+# vía INSERT OR REPLACE (upsert) — re-escribir el mismo (paper_id, engine) reemplaza
+# el valor anterior sin duplicar.  Lateral al corpus: NO entra en CORPUS_SCHEMA
+# ni en corpus_hash.
+_DDL_EXTERNAL_IDS = """
+CREATE TABLE IF NOT EXISTS external_ids (
+    paper_id VARCHAR NOT NULL,
+    engine   VARCHAR NOT NULL,
+    id       VARCHAR NOT NULL,
+    PRIMARY KEY (paper_id, engine)
+)
+"""
+
 # ADR 0024: migración liviana para bases pre-existentes sin columna ``_seq``.
 # Se suprime el error si la columna ya existe (CatalogException o BinderException).
 # El backfill usa ``rowid`` como proxy de orden de inserción original; es inocuo
@@ -155,7 +169,7 @@ def _build_upsert_sql() -> str:
     de primera aparición de filas ya existentes.
     """
     scalar_cols = [
-        "openalex_id",
+        "source_id",
         "doi",
         "title",
         "year",
@@ -314,8 +328,16 @@ class DuckDBBackend:
         # Backfill: asigna _seq = rowid a filas legacy sin _seq asignado.
         # Es inocuo cuando no hay NULLs (WHERE _seq IS NULL no toca nada).
         self._con.execute(_DDL_CORPUS_BACKFILL_SEQ)
+        # ADR 0036: migración liviana — renombra openalex_id → source_id si falta.
+        # Bases pre-ADR 0036 tienen la columna como openalex_id; se renombra.
+        with contextlib.suppress(duckdb.CatalogException, duckdb.BinderException):
+            self._con.execute(
+                "ALTER TABLE corpus RENAME COLUMN openalex_id TO source_id"
+            )
         # #54: tabla auxiliar para IDs backward observados pero no materializados.
         self._con.execute(_DDL_REFERENCED_BUT_NOT_FETCHED)
+        # ADR 0036 (opción C): tabla lateral de IDs externos por motor.
+        self._con.execute(_DDL_EXTERNAL_IDS)
         self._register_udfs()
 
     def _register_udfs(self) -> None:
@@ -422,6 +444,16 @@ class DuckDBBackend:
                     "INSERT INTO referenced_but_not_fetched "
                     "(ref_id, cycle_round, observed_at) VALUES (?, ?, ?)",
                     [ref_id_val, cycle_round_val, observed_at_val],
+                )
+            # ADR 0036: copiar la tabla lateral external_ids
+            ext_rows = self._con.execute(
+                "SELECT paper_id, engine, id FROM external_ids"
+            ).fetchall()
+            for paper_id_val, engine_val, id_val in ext_rows:
+                new_backend._con.execute(
+                    "INSERT OR REPLACE INTO external_ids (paper_id, engine, id) "
+                    "VALUES (?, ?, ?)",
+                    [paper_id_val, engine_val, id_val],
                 )
             return new_backend
         else:
@@ -718,6 +750,58 @@ class DuckDBBackend:
             "SELECT ref_id FROM referenced_but_not_fetched ORDER BY observed_at"
         ).fetchall()
         return [r[0] for r in rows]
+
+    # ------------------------------------------------------------------
+    # Extensiones propias: external_ids (ADR 0036 opción C)
+    # ------------------------------------------------------------------
+
+    def add_external_id(self, paper_id: str, engine: str, id: str) -> None:
+        """Registra un ID externo para un paper dado un motor.
+
+        Idempotente: si ya existe una entrada ``(paper_id, engine)``, el valor
+        se reemplaza (un ID por motor por paper).  La PK lógica
+        ``(paper_id, engine)`` garantiza que no haya duplicados.
+
+        Args:
+            paper_id: ID interno del paper en el corpus.
+            engine: Nombre del motor / fuente del ID (p. ej. ``'openalex'``,
+                ``'semanticscholar'``, ``'doi'``).
+            id: El ID externo correspondiente a ese motor.
+        """
+        self._con.execute(
+            "INSERT OR REPLACE INTO external_ids (paper_id, engine, id) "
+            "VALUES (?, ?, ?)",
+            [paper_id, engine, id],
+        )
+
+    def external_ids_for(self, paper_id: str) -> dict[str, str]:
+        """Devuelve todos los IDs externos registrados para un paper.
+
+        Args:
+            paper_id: ID interno del paper en el corpus.
+
+        Returns:
+            Diccionario ``{engine: id}`` con todos los IDs registrados para
+            ese paper.  Vacío si el paper no tiene IDs externos registrados.
+        """
+        rows = self._con.execute(
+            "SELECT engine, id FROM external_ids WHERE paper_id = ?",
+            [paper_id],
+        ).fetchall()
+        return {r[0]: r[1] for r in rows}
+
+    def all_external_ids(self) -> list[tuple[str, str, str]]:
+        """Devuelve todas las entradas de la tabla ``external_ids``.
+
+        Usado internamente para ``_clone()`` y tests de paridad.
+
+        Returns:
+            Lista de tuplas ``(paper_id, engine, id)`` en orden no definido.
+        """
+        rows = self._con.execute(
+            "SELECT paper_id, engine, id FROM external_ids"
+        ).fetchall()
+        return [(r[0], r[1], r[2]) for r in rows]
 
     # ------------------------------------------------------------------
     # Extensión: query SQL libre

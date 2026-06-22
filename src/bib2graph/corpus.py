@@ -65,32 +65,36 @@ def _lib_version() -> str:
 
 
 def _compute_id(
-    openalex_id: str | None,
     doi: str | None,
+    source_id: str | None,
     title: str,
     year: int | None,
 ) -> str:
-    """Computa el ``id`` canónico de un paper (D1).
+    """Computa el ``id`` canónico de un paper (D1', ADR 0036).
 
-    Precedencia: openalex_id > doi > título+año.
+    Precedencia: doi > source_id > título+año.
+
+    El DOI es el identificador interoperable entre motores: un paper con DOI
+    tiene el mismo ``id`` venga de OpenAlex, de Semantic Scholar o de un ``.bib``.
+    ``source_id`` es el fallback para papers sin DOI (antes de caer a título+año).
 
     Args:
-        openalex_id: ID de OpenAlex (``W...``).
-        doi: DOI normalizado (sin prefijo URL).
+        doi: DOI del paper (con o sin prefijo URL; se normaliza).
+        source_id: ID del motor de extracción (p. ej. ``W...`` de OpenAlex).
         title: Título del paper.
         year: Año de publicación.
 
     Returns:
-        ``id`` con prefijo ``oa:``, ``doi:`` o ``tt:``.
+        ``id`` con prefijo ``doi:``, ``src:`` o ``tt:``.
     """
-    if openalex_id:
-        valor = openalex_id
-        prefix = "oa"
-    elif doi:
+    if doi:
         valor = (
             doi.lower().removeprefix("https://doi.org/").removeprefix("http://doi.org/")
         )
         prefix = "doi"
+    elif source_id:
+        valor = source_id
+        prefix = "src"
     else:
         title_norm = title.lower().strip()
         valor = f"{title_norm}|{year}"
@@ -120,10 +124,10 @@ def _rows_with_ids(rows: list[dict[str, object]]) -> list[dict[str, object]]:
         if not row_copy.get(Col.ID):
             raw_year = row_copy.get(Col.YEAR)
             row_copy[Col.ID] = _compute_id(
-                openalex_id=str(row_copy[Col.OPENALEX_ID])
-                if row_copy.get(Col.OPENALEX_ID)
-                else None,
                 doi=str(row_copy[Col.DOI]) if row_copy.get(Col.DOI) else None,
+                source_id=str(row_copy[Col.SOURCE_ID])
+                if row_copy.get(Col.SOURCE_ID)
+                else None,
                 title=str(row_copy.get(Col.TITLE, "")),
                 year=int(str(raw_year)) if raw_year is not None else None,
             )
@@ -381,7 +385,7 @@ class Corpus:
         """Agrega un paper validando la fila con ``PaperRow``.
 
         Si el ``id`` no está presente en el dict, lo calcula automáticamente
-        con la lógica de D1 (openalex_id > doi > título+año).
+        con la lógica de D1' (doi > source_id > título+año, ADR 0036).
 
         Args:
             row: Diccionario con los datos del paper. Debe incluir al menos
@@ -397,10 +401,10 @@ class Corpus:
         if not row_copy.get(Col.ID):
             raw_year = row_copy.get(Col.YEAR)
             row_copy[Col.ID] = _compute_id(
-                openalex_id=str(row_copy[Col.OPENALEX_ID])
-                if row_copy.get(Col.OPENALEX_ID)
-                else None,
                 doi=str(row_copy[Col.DOI]) if row_copy.get(Col.DOI) else None,
+                source_id=str(row_copy[Col.SOURCE_ID])
+                if row_copy.get(Col.SOURCE_ID)
+                else None,
                 title=str(row_copy.get(Col.TITLE, "")),
                 year=int(str(raw_year)) if raw_year is not None else None,
             )

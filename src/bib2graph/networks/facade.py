@@ -17,6 +17,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 import networkx as nx
+import pyarrow as pa
 
 from bib2graph.constants import NetworkKind
 from bib2graph.networks.analyzer import detect_communities, network_metrics
@@ -119,6 +120,41 @@ def _projector_for_kind(spec: NetworkSpec) -> Projector:
         raise ValueError(f"Kind de red no reconocido: '{kind}'")
 
 
+def _apply_keyword_filter(table: pa.Table, terms: list[str]) -> pa.Table:
+    """Filtra la tabla a filas cuyo ``keywords_raw`` matchee algún término.
+
+    Semántica ANY + substring case-insensitive: un paper entra si CUALQUIER
+    término del filtro matchea como substring (case-insensitive) contra
+    CUALQUIERA de sus keywords en ``keywords_raw``.
+
+    Implementación puramente Python/pyarrow: sin I/O, sin estado global,
+    determinista (cumple la regla de pureza del núcleo, AGENTS.md).
+
+    Args:
+        table: Tabla Arrow canónica del Corpus.
+        terms: Lista de términos a buscar (no vacía; el llamador garantiza esto).
+
+    Returns:
+        Tabla Arrow filtrada (puede estar vacía si ningún paper matchea).
+    """
+    terms_lower = [t.lower() for t in terms]
+    keywords_col = table.column("keywords_raw").to_pylist()
+
+    mask: list[bool] = []
+    for kws in keywords_col:
+        if not kws:  # None o lista vacía → no matchea
+            mask.append(False)
+            continue
+        # ANY: un término matchea cualquier keyword del paper
+        matched = any(
+            term in kw.lower() for kw in kws if kw is not None for term in terms_lower
+        )
+        mask.append(matched)
+
+    bool_array = pa.array(mask, type=pa.bool_())
+    return table.filter(bool_array)
+
+
 def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
     """Construye un ``NetworkArtifact`` a partir de un corpus y una spec.
 
@@ -127,6 +163,12 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
 
     R2: Louvain se siembra con un ``random_state`` derivado del
     ``corpus_hash`` de contenido (excluyendo provenance) para reproducibilidad.
+
+    Si ``spec.keyword_filter`` es una lista no vacía, la tabla Arrow del corpus
+    se subsettea antes de proyectar: solo entran los papers cuyas
+    ``keywords_raw`` matcheen (ANY, substring, case-insensitive) algún término
+    del filtro. Proyección y decoración operan sobre el subcorpus, garantizando
+    consistencia entre nodos, aristas y labels.
 
     Args:
         corpus: Corpus de origen.
@@ -137,6 +179,9 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
     """
     projector = _projector_for_kind(spec)
     table = corpus.to_arrow()
+
+    if spec.keyword_filter:
+        table = _apply_keyword_filter(table, spec.keyword_filter)
 
     g: _Graph = projector.project(
         table,

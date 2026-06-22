@@ -178,7 +178,8 @@ fila** (O(n²)). Cargar un corpus mediano deja de ser cuadrático.
 
 **Columnas** (esquema completo en [`API.md`](API.md) §1 — *pendiente de reconciliar*):
 
-- Identidad/metadatos: `id` (interno estable), `openalex_id`, `doi`, `title`, `year`,
+- Identidad/metadatos: `id` (interno estable; hash de `doi`/`source_id`, ADR 0036), `source_id`
+  (id del motor de extracción, agnóstico —antes `openalex_id`), `doi`, `title`, `year`,
   `abstract`, `source`, `language`, `publisher`, `research_areas`.
 - **Estado de pipeline / curación** (no contamina la entidad): `is_seed` (bool),
   `curation_status` (`candidate` / `accepted` / `rejected`), `provenance` (JSON: ecuación, salto

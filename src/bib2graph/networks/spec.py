@@ -54,6 +54,12 @@ class NetworkSpec(BaseModel):
             ``label_prop`` y ``greedy_modularity`` (sin error).
         assortativity_attribute: Atributo categórico para asortatividad.
         layout: Algoritmo de layout para visualización (futuro).
+        keyword_filter: Lista de términos temáticos. Si se provee (lista no
+            vacía), solo entran al build los papers cuyo ``keywords_raw``
+            contenga al menos un término que matchee (ANY) por substring
+            case-insensitive. Ej: ``["complex", "ecolog"]`` incluye papers con
+            keywords "Complexity" o "Ecological economics". ``None`` o lista
+            vacía = sin filtro (comportamiento por defecto).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -67,6 +73,7 @@ class NetworkSpec(BaseModel):
     resolution: float = 1.0
     assortativity_attribute: str | None = None
     layout: Literal["spring", "kamada_kawai", "circular"] | None = None
+    keyword_filter: list[str] | None = None
 
 
 def load_specs(path: str | Path) -> list[NetworkSpec]:
