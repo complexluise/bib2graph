@@ -364,6 +364,7 @@ class InMemoryBackend:
         table: pa.Table,
         *,
         referenced_refs: list[str] | None = None,
+        external_ids: dict[tuple[str, str], str] | None = None,
     ) -> None:
         """Constructor interno.
 
@@ -373,10 +374,15 @@ class InMemoryBackend:
             referenced_refs: Lista de IDs ya registrados en la tabla auxiliar
                 ``referenced_but_not_fetched`` (para clonar el estado en
                 operaciones que devuelven una nueva instancia).
+            external_ids: Diccionario ``{(paper_id, engine): id}`` con los IDs
+                externos registrados (ADR 0036 opción C).  Lateral al corpus:
+                no entra en CORPUS_SCHEMA ni en corpus_hash.
         """
         self._table = table
         # #54: IDs backward observados, en orden de inserción, sin duplicados.
         self._referenced_refs: list[str] = list(referenced_refs or [])
+        # ADR 0036: IDs externos por (paper_id, engine).  PK lógica (paper_id, engine).
+        self._external_ids: dict[tuple[str, str], str] = dict(external_ids or {})
 
     # ------------------------------------------------------------------
     # TabularBackend protocol
@@ -402,7 +408,9 @@ class InMemoryBackend:
         existing = self._table.to_pylist()
         existing.append(row)
         return InMemoryBackend(
-            _rows_to_table(existing), referenced_refs=self._referenced_refs
+            _rows_to_table(existing),
+            referenced_refs=self._referenced_refs,
+            external_ids=self._external_ids,
         )
 
     def merge(self, other_table: pa.Table) -> InMemoryBackend:
@@ -439,7 +447,9 @@ class InMemoryBackend:
                 result_rows.append(row)
 
         return InMemoryBackend(
-            _rows_to_table(result_rows), referenced_refs=self._referenced_refs
+            _rows_to_table(result_rows),
+            referenced_refs=self._referenced_refs,
+            external_ids=self._external_ids,
         )
 
     def apply_curation(
@@ -469,7 +479,9 @@ class InMemoryBackend:
             self._table.to_pylist(), ids, action, by, decided_at
         )
         return InMemoryBackend(
-            _rows_to_table(updated), referenced_refs=self._referenced_refs
+            _rows_to_table(updated),
+            referenced_refs=self._referenced_refs,
+            external_ids=self._external_ids,
         )
 
     def filter_view(self, view: Literal["seeds", "candidates", "accepted"]) -> pa.Table:
@@ -556,3 +568,50 @@ class InMemoryBackend:
             Lista de ``ref_id``.
         """
         return list(self._referenced_refs)
+
+    # ------------------------------------------------------------------
+    # Extensiones: external_ids (ADR 0036 opción C)
+    # ------------------------------------------------------------------
+
+    def add_external_id(self, paper_id: str, engine: str, id: str) -> None:
+        """Registra un ID externo para un paper dado un motor.
+
+        Idempotente: si ya existe una entrada ``(paper_id, engine)``, el valor
+        se reemplaza (un ID por motor por paper).
+
+        Args:
+            paper_id: ID interno del paper en el corpus.
+            engine: Nombre del motor / fuente del ID (p. ej. ``'openalex'``,
+                ``'semanticscholar'``, ``'doi'``).
+            id: El ID externo correspondiente a ese motor.
+        """
+        self._external_ids[(paper_id, engine)] = id
+
+    def external_ids_for(self, paper_id: str) -> dict[str, str]:
+        """Devuelve todos los IDs externos registrados para un paper.
+
+        Args:
+            paper_id: ID interno del paper en el corpus.
+
+        Returns:
+            Diccionario ``{engine: id}`` con todos los IDs registrados para
+            ese paper.  Vacío si el paper no tiene IDs externos registrados.
+        """
+        return {
+            engine: ext_id
+            for (pid, engine), ext_id in self._external_ids.items()
+            if pid == paper_id
+        }
+
+    def all_external_ids(self) -> list[tuple[str, str, str]]:
+        """Devuelve todas las entradas de la tabla ``external_ids``.
+
+        Usado internamente para tests de paridad con DuckDBBackend.
+
+        Returns:
+            Lista de tuplas ``(paper_id, engine, id)`` en orden no definido.
+        """
+        return [
+            (pid, engine, ext_id)
+            for (pid, engine), ext_id in self._external_ids.items()
+        ]
