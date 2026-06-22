@@ -49,7 +49,7 @@ pytestmark = pytest.mark.unit
 def _make_row(
     *,
     id: str,
-    openalex_id: str | None = None,
+    source_id: str | None = None,
     is_seed: bool = True,
     curation_status: str = CurationStatus.ACCEPTED,
     references_id: list[str] | None = None,
@@ -58,7 +58,7 @@ def _make_row(
     """Fila mínima compatible con el schema canónico."""
     return {
         "id": id,
-        "openalex_id": openalex_id,
+        "source_id": source_id,
         "doi": None,
         "title": f"Paper {id}",
         "year": 2020,
@@ -203,8 +203,8 @@ def test_run_enrich_puebla_cited_by_en_seeds_aceptadas(tmp_path: Path) -> None:
     from bib2graph.cli.commands.enrich import run_enrich
 
     rows = [
-        _make_row(id="P1", openalex_id="W100"),
-        _make_row(id="P2", openalex_id="W200"),
+        _make_row(id="P1", source_id="W100"),
+        _make_row(id="P2", source_id="W200"),
     ]
     store_path = tmp_path / "test.duckdb"
     _setup_store(store_path, rows)
@@ -226,7 +226,7 @@ def test_run_enrich_puebla_cited_by_en_seeds_aceptadas(tmp_path: Path) -> None:
     # Verificar persistencia: abrir el store y chequear cited_by_id
     corpus = _load_corpus_from_store(store_path)
     table = corpus.to_arrow()
-    rows_out = {r["openalex_id"]: r for r in table.to_pylist()}
+    rows_out = {r["source_id"]: r for r in table.to_pylist()}
 
     assert "C1" in (rows_out["W100"].get("cited_by_id") or []), (
         "W100 debe tener C1 en cited_by_id tras run_enrich"
@@ -252,8 +252,8 @@ def test_run_enrich_produce_red_cocitacion_con_arista_esperada(tmp_path: Path) -
     from bib2graph.networks.facade import Networks
 
     rows = [
-        _make_row(id="P1", openalex_id="W100"),
-        _make_row(id="P2", openalex_id="W200"),
+        _make_row(id="P1", source_id="W100"),
+        _make_row(id="P2", source_id="W200"),
     ]
     store_path = tmp_path / "test.duckdb"
     _setup_store(store_path, rows)
@@ -306,9 +306,9 @@ def test_run_enrich_idempotente_corpus_hash_y_cocitacion(tmp_path: Path) -> None
     from bib2graph.networks.facade import Networks
 
     rows = [
-        _make_row(id="P1", openalex_id="W100"),
-        _make_row(id="P2", openalex_id="W200"),
-        _make_row(id="P3", openalex_id="W300"),
+        _make_row(id="P1", source_id="W100"),
+        _make_row(id="P2", source_id="W200"),
+        _make_row(id="P3", source_id="W300"),
     ]
     store_path = tmp_path / "test.duckdb"
     _setup_store(store_path, rows)
@@ -383,8 +383,8 @@ def test_run_enrich_max_citing_acota_cited_by_id(tmp_path: Path) -> None:
     from bib2graph.cli.commands.enrich import run_enrich
 
     rows = [
-        _make_row(id="P1", openalex_id="W100"),
-        _make_row(id="P2", openalex_id="W200"),
+        _make_row(id="P1", source_id="W100"),
+        _make_row(id="P2", source_id="W200"),
     ]
     store_path = tmp_path / "test.duckdb"
     _setup_store(store_path, rows)
@@ -399,7 +399,7 @@ def test_run_enrich_max_citing_acota_cited_by_id(tmp_path: Path) -> None:
 
     corpus = _load_corpus_from_store(store_path)
     table = corpus.to_arrow()
-    rows_out = {r["openalex_id"]: r for r in table.to_pylist()}
+    rows_out = {r["source_id"]: r for r in table.to_pylist()}
 
     for oa_id in ["W100", "W200"]:
         cited = rows_out[oa_id].get("cited_by_id") or []
@@ -424,12 +424,12 @@ def test_run_enrich_sin_seeds_aceptadas_no_altera_corpus(tmp_path: Path) -> None
     rows = [
         _make_row(
             id="P1",
-            openalex_id="W100",
+            source_id="W100",
             curation_status=CurationStatus.CANDIDATE,  # NO aceptada
         ),
         _make_row(
             id="P2",
-            openalex_id="W200",
+            source_id="W200",
             is_seed=False,  # NO seed
             curation_status=CurationStatus.ACCEPTED,
         ),

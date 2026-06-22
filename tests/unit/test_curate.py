@@ -56,7 +56,7 @@ def _make_corpus_row(
     title: str = "Test Paper",
     year: int = 2020,
     curation_status: str = "candidate",
-    openalex_id: str | None = None,
+    source_id: str | None = None,
     authors_raw: list[str] | None = None,
     is_seed: bool = False,
     doi: str | None = None,
@@ -67,7 +67,7 @@ def _make_corpus_row(
     """Fila mínima con schema completo para tests."""
     return {
         "id": id,
-        "openalex_id": openalex_id,
+        "source_id": source_id,
         "doi": doi,
         "title": title,
         "year": year,
@@ -942,7 +942,7 @@ def test_dump_columnas_nuevas_existen_y_traen_datos(tmp_path: Path) -> None:
     rows = [
         _make_corpus_row(
             id="P1",
-            openalex_id="W12345",
+            source_id="W12345",
             doi="10.1234/test",
             source="Journal of Testing",
             keywords_raw=["machine learning", "graphs"],
@@ -1003,7 +1003,7 @@ def test_dump_openalex_url_vacio_sin_id(tmp_path: Path) -> None:
     from bib2graph.cli.commands.curate import run_curate_dump
 
     store_path = tmp_path / "test.duckdb"
-    rows = [_make_corpus_row(id="P1", openalex_id=None)]
+    rows = [_make_corpus_row(id="P1", source_id=None)]
     _seed_store(store_path, rows)
 
     out = tmp_path / "curacion.csv"
@@ -1032,7 +1032,7 @@ def test_round_trip_con_columnas_nuevas(tmp_path: Path) -> None:
     rows = [
         _make_corpus_row(
             id="PA",
-            openalex_id="W111",
+            source_id="W111",
             doi="10.1/a",
             source="Nature",
             keywords_raw=["ecology"],

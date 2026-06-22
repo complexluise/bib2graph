@@ -33,7 +33,7 @@ class Col(StrEnum):
 
     # Identificadores
     ID = "id"
-    OPENALEX_ID = "openalex_id"
+    SOURCE_ID = "source_id"
     DOI = "doi"
 
     # Metadatos bibliográficos

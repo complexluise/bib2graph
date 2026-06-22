@@ -17,7 +17,7 @@ lee, lo que garantiza el round-trip sin fricción.
 
 Columnas (readonly salvo decision/note):
     id              — identificador canónico del paper (readonly)
-    openalex_id     — identificador OpenAlex (readonly)
+    source_id       — identificador del motor de extracción (readonly)
     title           — título (readonly)
     year            — año de publicación (readonly)
     authors         — lista de autores separada por \" | \" (readonly)
@@ -27,7 +27,7 @@ Columnas (readonly salvo decision/note):
     cited_by_count  — conteo de citaciones; vacío si no está en el corpus (readonly)
     references_count— conteo de referencias; vacío si no está en el corpus (readonly)
     is_seed         — True si es semilla original (readonly)
-    openalex_url    — URL directa a OpenAlex (derivada de openalex_id) (readonly)
+    openalex_url    — URL directa a OpenAlex (derivada de source_id si es W…) (readonly)
     scent_score     — best-effort desde provenance del candidato; vacío si no hay
     cluster         — reservado para futura integración de redes; siempre vacío hoy
     decision        — editable: accepted | rejected | undecided
@@ -61,8 +61,9 @@ Semántica de scope (#72 / #58):
     manualmente si quiere.
 
 ``openalex_url`` derivada:
-    Si hay ``openalex_id`` (ej. ``W2741809807``), la URL es
-    ``https://openalex.org/<openalex_id>``. Si no hay id, queda vacío.
+    Si hay ``source_id`` (ej. ``W2741809807`` de OpenAlex), la URL es
+    ``https://openalex.org/<source_id>``. Si no hay source_id o no es un ID
+    de OpenAlex (W…), queda vacío.
 
 Idempotencia:
     Reimportar el mismo CSV produce el mismo estado. ``accept``/``reject`` del
@@ -101,7 +102,7 @@ CURATE_CSV_FILENAME = "curacion.csv"
 # Las columnas readonly van primero; decision y note son las editables.
 CSV_COLUMNS = [
     "id",
-    "openalex_id",
+    "source_id",
     "title",
     "year",
     "authors",
@@ -188,10 +189,11 @@ def _keywords_display(row: dict[str, Any]) -> str:
 
 
 def _openalex_url(row: dict[str, Any]) -> str:
-    """Deriva la URL de OpenAlex a partir del openalex_id de la fila.
+    """Deriva la URL de OpenAlex a partir del source_id de la fila.
 
-    Formato: ``https://openalex.org/<openalex_id>``.
-    Devuelve cadena vacía si no hay openalex_id.
+    Solo aplica cuando el source_id es un ID de OpenAlex (W…).
+    Formato: ``https://openalex.org/<source_id>``.
+    Devuelve cadena vacía si no hay source_id o no parece un ID de OpenAlex.
 
     Args:
         row: Fila de la tabla Arrow convertida a dict.
@@ -199,9 +201,12 @@ def _openalex_url(row: dict[str, Any]) -> str:
     Returns:
         URL de OpenAlex o cadena vacía.
     """
-    oa_id = row.get(Col.OPENALEX_ID)
-    if oa_id:
-        return f"https://openalex.org/{oa_id}"
+    src_id = row.get(Col.SOURCE_ID)
+    if src_id:
+        src_str = str(src_id)
+        # Solo construir URL para IDs de OpenAlex (W seguido de dígitos)
+        if src_str.startswith("W") and src_str[1:].isdigit():
+            return f"https://openalex.org/{src_str}"
     return ""
 
 
@@ -243,7 +248,7 @@ def _row_to_csv_dict(row: dict[str, Any]) -> dict[str, str]:
 
     Incluye las columnas readonly enriquecidas (venue, doi, keywords,
     cited_by_count, references_count, is_seed, openalex_url) además de
-    las columnas base (id, openalex_id, title, year, authors, scent_score,
+    las columnas base (id, source_id, title, year, authors, scent_score,
     cluster) y las columnas editables (decision, note).
 
     ``cited_by_count`` y ``references_count`` no están en el schema canónico;
@@ -262,7 +267,7 @@ def _row_to_csv_dict(row: dict[str, Any]) -> dict[str, str]:
 
     return {
         "id": str(row.get(Col.ID) or ""),
-        "openalex_id": str(row.get(Col.OPENALEX_ID) or ""),
+        "source_id": str(row.get(Col.SOURCE_ID) or ""),
         "title": str(row.get(Col.TITLE) or ""),
         "year": str(row.get(Col.YEAR) or ""),
         "authors": _authors_display(row),
@@ -341,7 +346,7 @@ def run_curate_dump(
     El parámetro ``include_all`` es un alias deprecado de ``scope='all'``:
     si es ``True``, equivale a forzar ``scope='all'``.
 
-    Columnas del CSV: id, openalex_id, title, year, authors, venue, doi,
+    Columnas del CSV: id, source_id, title, year, authors, venue, doi,
     keywords, cited_by_count, references_count, is_seed, openalex_url,
     scent_score, cluster, decision, note.
     Las columnas ``decision`` y ``note`` son las editables por el humano.

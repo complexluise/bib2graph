@@ -10,8 +10,8 @@ Para redes de autor/keyword/institución las comunidades agrupan entidades
 distintas a papers; en V1 no tiene sentido la misma tabla — la función devuelve
 ``[]`` con un aviso en el docstring (no crash).
 
-Lección B6 (Nota 09): cruzar por ``Col.ID`` (id canónico, ej. ``oa:abab…``),
-NUNCA por ``Col.OPENALEX_ID`` (``W…``). Un nodo del grafo ES un ``Col.ID``.
+Lección B6 (Nota 09): cruzar por ``Col.ID`` (id canónico, ej. ``doi:abab…``),
+NUNCA por ``Col.SOURCE_ID`` (``W…``). Un nodo del grafo ES un ``Col.ID``.
 """
 
 from __future__ import annotations
@@ -54,8 +54,8 @@ def cluster_table(
       - ``top_keywords``: lista con hasta 5 keywords más frecuentes (keywords_id).
 
     El cruce nodo→fila se hace por ``Col.ID`` (id canónico), NO por
-    ``Col.OPENALEX_ID``. Esta es la lección crítica de la Nota 09 B6:
-    el nodo del grafo ES un ``Col.ID``; usar ``openalex_id`` daría 0 cruces.
+    ``Col.SOURCE_ID``. Esta es la lección crítica de la Nota 09 B6:
+    el nodo del grafo ES un ``Col.ID``; usar ``source_id`` daría 0 cruces.
 
     Comportamiento en casos límite:
       - ``artifact.communities`` es ``None`` → devuelve ``[]``.
@@ -84,7 +84,7 @@ def cluster_table(
     communities: dict[Any, int] = artifact.communities
 
     # --- Construir índice Col.ID → metadatos ---
-    # Lección B6: index por Col.ID, no por Col.OPENALEX_ID
+    # Lección B6: index por Col.ID, no por Col.SOURCE_ID
     paper_index = _build_paper_index(table)
 
     # --- Agrupar nodos por comunidad ---

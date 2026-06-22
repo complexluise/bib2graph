@@ -41,14 +41,14 @@ pytestmark = pytest.mark.unit
 def _base_row(
     id: str,
     *,
-    openalex_id: str | None = None,
+    source_id: str | None = None,
     is_seed: bool = True,
     references_id: list[str] | None = None,
     curation_status: str = "candidate",
 ) -> dict[str, Any]:
     return {
         "id": id,
-        "openalex_id": openalex_id,
+        "source_id": source_id,
         "doi": None,
         "title": f"Paper {id}",
         "year": 2020,
@@ -551,7 +551,7 @@ class TestForwardNoRegression:
             ) -> dict[str, list[str]]:
                 return {"W1": ["W9999"]}
 
-        rows = [_base_row("P1", openalex_id="W1", curation_status="candidate")]
+        rows = [_base_row("P1", source_id="W1", curation_status="candidate")]
         corpus = _make_corpus(*rows)
         forager = Forager(TrackingSource(), depth=1)  # type: ignore[arg-type]
         ranked = forager.chain(corpus, direction="forward")
@@ -573,7 +573,7 @@ class TestForwardNoRegression:
             ) -> dict[str, list[str]]:
                 return {"W1": ["W9999"]}
 
-        rows = [_base_row("P1", openalex_id="W1")]
+        rows = [_base_row("P1", source_id="W1")]
         corpus = _make_corpus(*rows)
         hash_antes = corpus._backend.corpus_hash()
 

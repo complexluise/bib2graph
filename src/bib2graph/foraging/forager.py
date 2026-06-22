@@ -9,7 +9,7 @@ funciones puras de ``scent.py`` (R4, ADR 0020/0022):
   para que el comando CLI los persista en ``referenced_but_not_fetched`` (#54,
   opción B).  El ranking backward SIGUE en ``RankedCandidates.ranking``.
 - **Forward** (fix forward-scent, Wohlin): score = citación directa al corpus.
-    corpus_ids = {Pi.id | Pi.openalex_id : Pi ∈ corpus}
+    corpus_ids = {Pi.id | Pi.source_id : Pi ∈ corpus}
     forward_score(Y) = |{ref ∈ Y.references_id : ref ∈ corpus_ids}|
   Robusto ante corpus con ``references_id`` ralas (estado común tras un seed
   sin enriquecimiento); el acoplamiento bibliográfico puro degeneraba a 0.
@@ -68,7 +68,7 @@ def _make_empty_corpus() -> Corpus:
 
 
 def _extract_seed_ids(corpus_rows: list[dict[str, Any]]) -> list[str]:
-    """Extrae los openalex_id de todas las semillas del corpus.
+    """Extrae los source_id de todas las semillas del corpus.
 
     El forward chaining corre antes de la curación (ciclo: SEEDED → FORAGED
     → curación); las semillas nacen con ``curation_status="candidate"`` y el
@@ -83,13 +83,13 @@ def _extract_seed_ids(corpus_rows: list[dict[str, Any]]) -> list[str]:
         corpus_rows: Filas del corpus como dicts.
 
     Returns:
-        Lista de IDs cortos de OpenAlex de las semillas, en orden de aparición
-        (determinista).
+        Lista de source_ids (IDs del motor de extracción) de las semillas,
+        en orden de aparición (determinista).
     """
     result: list[str] = []
     for row in corpus_rows:
-        if row.get(Col.IS_SEED) and row.get(Col.OPENALEX_ID):
-            result.append(str(row[Col.OPENALEX_ID]))
+        if row.get(Col.IS_SEED) and row.get(Col.SOURCE_ID):
+            result.append(str(row[Col.SOURCE_ID]))
     return result
 
 
@@ -341,7 +341,7 @@ class Forager:
         devuelve ``fetch_citing_batch_with_works``: para cada citante, los
         seed IDs que cita ya están en el ``attribution`` dict.  El score es
         la intersección de esos seeds con ``corpus_ids`` (trivial: seed_ids ⊆
-        corpus_ids porque son los openalex_id de las semillas).
+        corpus_ids porque son los source_id de las semillas).
 
         Cada fila candidata se construye con ``_work_to_row`` (el mapeador
         canónico), con ``is_seed=False``, ``chaining_hop=1`` y
@@ -371,16 +371,18 @@ class Forager:
         if not seed_ids:
             return {}, {}
 
-        # corpus_ids: ids y openalex_ids de todos los papers del corpus
-        # (para excluir candidatos ya presentes y calcular el score)
+        # corpus_ids: ids y source_ids de todos los papers del corpus
+        # (para excluir candidatos ya presentes y calcular el score).
+        # Se incluye source_id porque los IDs de motor (W… de OpenAlex) aparecen
+        # en references_id y deben cruzar contra source_id W… del corpus.
         corpus_ids: set[str] = set()
         for row in corpus_rows:
             id_val = row.get(Col.ID)
-            oa_id_val = row.get(Col.OPENALEX_ID)
+            src_id_val = row.get(Col.SOURCE_ID)
             if id_val:
                 corpus_ids.add(str(id_val))
-            if oa_id_val:
-                corpus_ids.add(str(oa_id_val))
+            if src_id_val:
+                corpus_ids.add(str(src_id_val))
 
         # Batcheo: trae atribución Y works JSON en un solo ciclo de páginas.
         # tqdm es dependencia del núcleo; import perezoso para evitar efectos de módulo.
@@ -466,7 +468,7 @@ class Forager:
                     from bib2graph.constants import CurationStatus
 
                     row = {
-                        Col.OPENALEX_ID: citer_id,
+                        Col.SOURCE_ID: citer_id,
                         Col.DOI: None,
                         Col.TITLE: f"[candidate:{citer_id}]",
                         Col.YEAR: None,

@@ -164,8 +164,10 @@ class OpenAlexEnricher:
         """Puebla ``cited_by_id`` de las semillas aceptadas.
 
         Algoritmo:
-        1. Filtra las semillas con ``curation_status=accepted`` y ``openalex_id``
+        1. Filtra las semillas con ``curation_status=accepted`` y ``source_id``
            no nulo (solo esas tienen IDs válidos para consultar en OpenAlex).
+           Bug #111: normaliza URL→corto vía ``_oa_id_short`` para que el lookup
+           no falle en silencio si el id viene en forma URL.
         2. Si no hay ninguna, devuelve el corpus sin modificar y registra el
            ``EnricherRef`` con 0 citantes.
         3. Batchea los IDs objetivo en lotes ≤50 con
@@ -188,15 +190,22 @@ class OpenAlexEnricher:
         table = corpus.to_arrow()
         rows = table.to_pylist()
 
-        # 1. Identificar semillas aceptadas con openalex_id
+        # 1. Identificar semillas aceptadas con source_id (motor OpenAlex).
+        # Bug #111: normalizar URL→corto para que el lookup no falle en silencio
+        # si el id viene como URL completa (https://openalex.org/W...).
+        from bib2graph.sources.openalex import _oa_id_short
+
         target_ids: list[str] = []
         for row in rows:
             if (
                 row.get(Col.IS_SEED)
                 and row.get(Col.CURATION_STATUS) == CurationStatus.ACCEPTED
-                and row.get(Col.OPENALEX_ID)
+                and row.get(Col.SOURCE_ID)
             ):
-                target_ids.append(str(row[Col.OPENALEX_ID]))
+                raw_src = str(row[Col.SOURCE_ID])
+                # Normalizar: si viene como URL de OpenAlex, extraer el segmento final
+                normalized = _oa_id_short(raw_src) or raw_src
+                target_ids.append(normalized)
 
         if not target_ids:
             return self._with_cited_by_ref(corpus, resolved=0, total=0)
@@ -215,8 +224,9 @@ class OpenAlexEnricher:
         total_new = 0
         for row in rows:
             row_copy = dict(row)
-            oa_id = row_copy.get(Col.OPENALEX_ID)
-            if oa_id and str(oa_id) in target_set:
+            src_id_raw = row_copy.get(Col.SOURCE_ID)
+            oa_id = _oa_id_short(str(src_id_raw)) if src_id_raw else None
+            if oa_id and oa_id in target_set:
                 existing: list[str] = list(row_copy.get(Col.CITED_BY_ID) or [])
                 existing_set = set(existing)
                 # Citantes devueltos por el source (ya acotados por max_per_paper)

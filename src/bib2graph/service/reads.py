@@ -198,7 +198,7 @@ def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
 def get_paper(ws: Workspace, paper_id: str) -> dict[str, Any]:
     """Devuelve la fila completa del corpus para un paper.
 
-    Incluye todos los campos del ``CORPUS_SCHEMA``: id, openalex_id, doi,
+    Incluye todos los campos del ``CORPUS_SCHEMA``: id, source_id, doi,
     title, year, abstract, is_seed, curation_status, authors_raw,
     keywords_id, references_id, cited_by_id, provenance.
 
@@ -239,7 +239,7 @@ def get_paper(ws: Workspace, paper_id: str) -> dict[str, Any]:
 
     return {
         "id": row.get(Col.ID),
-        "openalex_id": row.get(Col.OPENALEX_ID),
+        "source_id": row.get(Col.SOURCE_ID),
         "doi": row.get(Col.DOI),
         "title": row.get(Col.TITLE),
         "year": row.get(Col.YEAR),

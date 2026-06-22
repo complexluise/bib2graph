@@ -139,7 +139,7 @@ CORPUS_SCHEMA: pa.Schema = pa.schema(
     [
         # Identificadores
         pa.field(Col.ID, pa.string(), nullable=False),
-        pa.field(Col.OPENALEX_ID, pa.string(), nullable=True),
+        pa.field(Col.SOURCE_ID, pa.string(), nullable=True),
         pa.field(Col.DOI, pa.string(), nullable=True),
         # Metadatos bibliográficos
         pa.field(Col.TITLE, pa.string(), nullable=False),
@@ -264,7 +264,7 @@ class PaperRow(BaseModel):
 
     # Obligatorios (no-nullable en Arrow) — mismo orden que CORPUS_SCHEMA
     id: str
-    openalex_id: str | None = None
+    source_id: str | None = None
     doi: str | None = None
     title: str
     year: int | None = None

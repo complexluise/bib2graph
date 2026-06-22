@@ -68,7 +68,7 @@ class StoreLockedError(OSError):
 _DDL_CORPUS = """
 CREATE TABLE IF NOT EXISTS corpus (
     id                   VARCHAR NOT NULL PRIMARY KEY,
-    openalex_id          VARCHAR,
+    source_id            VARCHAR,
     doi                  VARCHAR,
     title                VARCHAR NOT NULL,
     year                 INTEGER,
@@ -169,7 +169,7 @@ def _build_upsert_sql() -> str:
     de primera aparición de filas ya existentes.
     """
     scalar_cols = [
-        "openalex_id",
+        "source_id",
         "doi",
         "title",
         "year",
@@ -328,6 +328,12 @@ class DuckDBBackend:
         # Backfill: asigna _seq = rowid a filas legacy sin _seq asignado.
         # Es inocuo cuando no hay NULLs (WHERE _seq IS NULL no toca nada).
         self._con.execute(_DDL_CORPUS_BACKFILL_SEQ)
+        # ADR 0036: migración liviana — renombra openalex_id → source_id si falta.
+        # Bases pre-ADR 0036 tienen la columna como openalex_id; se renombra.
+        with contextlib.suppress(duckdb.CatalogException, duckdb.BinderException):
+            self._con.execute(
+                "ALTER TABLE corpus RENAME COLUMN openalex_id TO source_id"
+            )
         # #54: tabla auxiliar para IDs backward observados pero no materializados.
         self._con.execute(_DDL_REFERENCED_BUT_NOT_FETCHED)
         # ADR 0036 (opción C): tabla lateral de IDs externos por motor.
