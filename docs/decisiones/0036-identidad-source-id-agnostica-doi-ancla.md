@@ -18,6 +18,14 @@
   servicio; este ADR baja la **dependencia** de que esa resolución ocurra para que el corpus exista),
   [0034](0034-etiquetado-tabla-tags-lateral.md) (precedente de **tabla lateral 1↔N** para la opción C
   de schema), [0015](0015-corpus-tabular-backend.md) (D1/D2 son contrato del `TabularBackend`).
+- **AS-BUILT (0.8, 2026-06-22):** aterrizaron en `dev` el **rename `openalex_id`→`source_id`**, la
+  **inversión de `_compute_id`** (`doi > source_id > tt`), el **desacople del núcleo**, la **infra
+  `external_ids`** (tabla lateral) y la **migración de `examples/valoraciones`** (PRs #118, #119;
+  absorbe #111; rompe la GUI a propósito, #117). **Diferido al hito del 2º motor (Semantic Scholar),
+  follow-up [#120](https://github.com/complexluise/bib2graph/issues/120):** la **población** de
+  `external_ids` (sin consumidor con OpenAlex único; `source_id` ya guarda el id) y el **selector CLI
+  `--source`** (D-CLI; sin alternativa que seleccionar hasta que exista un 2º motor). La decisión de
+  fondo no cambia; solo se ejecuta por capas.
 
 ## Contexto
 

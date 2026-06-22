@@ -378,11 +378,12 @@ local + frontend, Hito G3 del MVP GUI, ADR
     donde el dump arrastraba seeds); `seeds` = semillas originales (`is_seed == True`); `all` = todo el
     corpus. **`--all`** queda como **alias deprecado de `--scope all`** (tiene precedencia si se pasan
     ambos). Sin candidatos (scope `candidates`/`seeds` vacío) → error accionable que sugiere `--scope all`
-    o `b2g chain`. Columnas (16, orden estable): `id, openalex_id, title, year, authors, venue, doi,
+    o `b2g chain`. Columnas (16, orden estable): `id, source_id, title, year, authors, venue, doi,
     keywords, cited_by_count, references_count, is_seed, openalex_url, scent_score, cluster, decision,
     note`. **Todas read-only salvo `decision` y `note`** (las editables por el humano). `venue` sale de
-    `source`; `keywords` se une con `" | "` (igual que `authors`); `openalex_url` se deriva del
-    `openalex_id` (`https://openalex.org/<id>`). **`cited_by_count`/`references_count` hoy salen vacías**:
+    `source`; `keywords` se une con `" | "` (igual que `authors`); `openalex_url` es una **columna
+    derivada OpenAlex-específica**: se construye `https://openalex.org/<source_id>` solo cuando el
+    `source_id` parece un ID de OpenAlex (`W…`), si no queda vacía. **`cited_by_count`/`references_count` hoy salen vacías**:
     no existen como escalares en el schema canónico de 23 columnas, así que la columna queda como
     placeholder para llenado manual (limitación conocida, no falla). `decision` refleja el
     `curation_status` actual (`candidate`→`undecided`, `accepted`→`accepted`, `rejected`→`rejected`).
@@ -626,7 +627,7 @@ def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
 
 def get_paper(ws: Workspace, paper_id: str) -> dict[str, Any]:
     """Fila del corpus (CORPUS_SCHEMA) por id. Devuelve:
-    {id, openalex_id, doi, title, year, abstract, is_seed, curation_status,
+    {id, source_id, doi, title, year, abstract, is_seed, curation_status,
      authors_raw, authors_id, keywords_id, references_id, cited_by_id,
      provenance (list, parseada del JSON)}.
     Raises DataError si el id no existe; StoreError si el store falla."""
@@ -801,8 +802,8 @@ cambia el contenedor, no el núcleo de análisis**.
 
 | Columna | Tipo Arrow | Nullable | Notas |
 |---|---|---|---|
-| `id` | `string` | no | id interno estable (hash de `openalex_id`/`doi`) |
-| `openalex_id` | `string` | sí | id de OpenAlex (`W...`); fuente primaria (ADR 0007) |
+| `id` | `string` | no | id interno estable (hash de `doi`/`source_id`; ver §1.1 *Identidad*, ADR [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)) |
+| `source_id` | `string` | sí | id del **motor de extracción** que entregó el paper (p. ej. `W...` para OpenAlex). Agnóstico al motor (ADR [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)): el nombre del motor vive en `provenance.source`, no en la columna |
 | `doi` | `string` | sí | DOI normalizado |
 | `title` | `string` | no | título completo |
 | `year` | `int32` | sí | año de publicación |
@@ -824,6 +825,15 @@ cambia el contenedor, no el núcleo de análisis**.
 
 El schema exacto vive en `bib2graph.schemas`. La validación se hace en `Corpus.from_arrow()` y en
 cada `Source.seed()/load()`.
+
+> **Tabla lateral `external_ids(paper_id, engine, id)` (ADR
+> [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md), opción C — INFRA PRESENTE, SIN
+> POBLAR):** el backend expone los métodos `external_ids_for(paper_id)` y `all_external_ids()`
+> (`src/bib2graph/backends/base.py`) para registrar, 1↔N, los IDs que cada motor (OpenAlex, Semantic
+> Scholar, …) asignó al mismo paper, unificados por el DOI como ancla. **Hoy esta tabla NO se puebla
+> todavía**: su consumo —el cruce/deduplicación **cross-motor**— está diferido a la llegada del 2º
+> motor (follow-up [#120](https://github.com/complexluise/bib2graph/issues/120)). La identidad y la
+> dedup actuales se resuelven solo por el `id` canónico (DOI primero; ver §1.1 *Identidad*).
 
 > **TARGET (capa base, ADR [0023](decisiones/0023-capa-constants-modelos-schema.md), Hito R1):** los
 > nombres de columna salen de `bib2graph.constants.Col(StrEnum)` y `curation_status` de
@@ -861,10 +871,13 @@ evento tiene la forma:
 `accept()`/`reject()` **agregan** un evento (`action='accepted'`/`'rejected'`, con `decided_by` y
 `decided_at`) sin borrar los previos. `None`/cadena vacía equivalen a "sin eventos".
 
-**`id` estable y determinista** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md), D1):
-`id = f"{prefix}:{sha256(valor)[:16]}"` con precedencia `openalex_id` (`oa:`) → `doi` normalizado
-(`doi:`) → `title+year` (`tt:`). El mismo paper produce el mismo `id` entre corridas; es la base
-de la dedup en `merge` y en la biblioteca viva.
+**`id` estable y determinista** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md), D1;
+precedencia invertida por ADR [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md), D1'):
+`id = f"{prefix}:{sha256(valor)[:16]}"` con precedencia `doi` normalizado (`doi:`) → `source_id`
+(`src:`) → `title+year` (`tt:`). El **DOI es el ancla universal e interoperable entre motores** (un
+paper con DOI tiene el mismo `id` venga de OpenAlex, de Semantic Scholar o de un `.bib`); `source_id`
+es el fallback para papers sin DOI, antes de caer a `title+year` (frágil). El mismo paper produce el
+mismo `id` entre corridas; es la base de la dedup en `merge` y en la biblioteca viva.
 
 ### 1.2 `Corpus` (wrapper)
 
@@ -1626,7 +1639,7 @@ completo** (crítica #2). La **co-citación** es la más cara (segundo nivel de 
   fetch del `OpenAlexEnricher` (ADR 0007/0025), y `Networks.quick` la incluye cuando esa columna
   está poblada (§10).
 - **Los proyectores siguen PUROS — NO setean atributos de nodo** (ADR 0014, AS-BUILT #25): producen
-  un `nx.Graph` con **ids crudos** como nodos (`oa:…`, `I185261750`, un ORCID), **sin** `label`. La
+  un `nx.Graph` con **ids crudos** como nodos (`doi:…`, `I185261750`, un ORCID), **sin** `label`. La
   legibilidad (label + atributos) la inyecta la **capa `decorate` (§7.1)**, que es la **frontera**
   entre la proyección pura y el export/GUI. Esta separación es deliberada (ADR 0014).
 
@@ -1699,7 +1712,7 @@ clusters (quién/qué/cuándo cae en cada comunidad), legible offline (Excel/Cal
 ```python
 def cluster_table(table: pa.Table, artifact: NetworkArtifact) -> list[dict[str, Any]]:
     """Una fila por comunidad de `artifact.communities`. Función pura (sin red, sin duckdb).
-    Cruza nodo→fila por Col.ID (id canónico), NUNCA por openalex_id. Devuelve [] si el kind
+    Cruza nodo→fila por Col.ID (id canónico), NUNCA por source_id. Devuelve [] si el kind
     no es de paper o si no hay comunidades. Orden determinista por `cluster` ascendente."""
 ```
 
@@ -1729,9 +1742,9 @@ y `cocitation`** (§convenciones CLI / §9); las otras tres redes escriben `netw
 
 **Notas de contrato** (#31, AS-BUILT 2026-06-17):
 
-- **Cruce por `Col.ID`, no `openalex_id`** (lección B6 de la
+- **Cruce por `Col.ID`, no `source_id`** (lección B6 de la
   [Nota 09](Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)): el nodo del grafo **es** un `Col.ID`
-  (`oa:…`); indexar por `openalex_id` (`W…`) daría 0 cruces. Un nodo sin match en el corpus **suma al
+  (`doi:…`/`src:…`); indexar por `source_id` (`W…`) daría 0 cruces. Un nodo sin match en el corpus **suma al
   `size`** pero no aporta año/autores/keywords.
 - **Determinista** (ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)): el top de
   autores/keywords se ordena por **`(-frecuencia, nombre alfabético ascendente)`** — desempate
@@ -2106,7 +2119,7 @@ b2g seed --equation '"unequal ecological exchange"' --max-results 50 \
          --email luis@sostaina.com --json   # --max-results: muestra chica · --exclude (repetible): negaciones, quedan en el translation_report
 b2g chain --direction both --max-candidates 300 --max-citing 50 --json
 b2g filter --year-gte 2010 --language en --language es --json
-b2g accept --ids oa:abc123 --ids oa:def456 --json
+b2g accept --ids doi:abc123 --ids doi:def456 --json
 b2g build --json                                 # escribe networks/ + sella networks/.corpus_hash
 b2g export --format graphml --out-dir redes/ --json
 b2g status --json     # CycleState + round + curation_available + workspace + conteos
