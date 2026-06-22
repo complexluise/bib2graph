@@ -20,13 +20,19 @@ mismas redes.
 
 ## Instalación
 
+Recomendamos [**uv**](https://docs.astral.sh/uv/) para gestionar el entorno:
+
 ```bash
-pip install bib2graph
-# o, con uv:
 uv add bib2graph
 ```
 
-Sembrar desde archivos BibTeX necesita un extra: `pip install "bib2graph[bibtex]"`.
+También funciona con pip:
+
+```bash
+pip install bib2graph
+```
+
+Sembrar desde archivos BibTeX necesita un extra: `bib2graph[bibtex]`.
 
 ## Quickstart
 
