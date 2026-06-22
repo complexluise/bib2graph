@@ -1,6 +1,6 @@
 # 0035 — Ingesta de doble puerta (online + archivo) y resolución DOI→OpenAlex ID como servicio
 
-- **Estado:** Propuesta
+- **Estado:** Aceptada
 - **Fecha:** 2026-06-18
 - **Relacionada con:** [0007](0007-openalex-backbone.md) (OpenAlex backbone; BibTeX secundaria —este
   ADR la **promueve a primera clase**), [0018](0018-source-agnostico-calidad.md) (contrato `Source`
@@ -12,6 +12,15 @@
   [Nota 18](../Notas/18-flujo-canonico-biblioteca.md). **Decidido por el PO (2026-06-18): el flujo
   BibTeX/archivo es de PRIMERA CLASE.**
 - **Epic:** GUI local [#34](https://github.com/complexluise/bib2graph/issues/34).
+- **AS-BUILT (0.8, 2026-06-22):** se grada a Aceptada y se implementa el **core de resolución**
+  (issues [#110](https://github.com/complexluise/bib2graph/issues/110) flujo BibTeX e2e +
+  [#112](https://github.com/complexluise/bib2graph/issues/112) `--email`): `OpenAlexSource.fetch_dois_to_openalex_ids`,
+  el servicio `resolve`, el subcomando `b2g resolve` y el flag `seed --from-bib --resolve`, con
+  `--email`. **Ajuste por ADR 0036:** la resolución puebla **`source_id`** (no `openalex_id`); como el
+  DOI ya es el ancla de identidad (0036), un paper de `.bib` con DOI tiene `id` estable sin resolver —
+  la resolución solo habilita `enrich`/`chain` (que necesitan el id de motor). **Diferido a issues
+  aparte:** el **import multi-formato** (`RisSource`/`CsvSource`, punto 4) — scope mayor, se prioriza
+  según demanda.
 
 ## Contexto
 
