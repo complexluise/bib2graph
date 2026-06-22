@@ -1843,6 +1843,11 @@ class NetworkSpec(BaseModel):
                              # siendo función pura del corpus_hash, R2).
     assortativity_attribute: str | None = None     # p. ej. "region"
     layout: Literal["spring", "kamada_kawai", "circular"] | None = None
+    keyword_filter: list[str] | None = None  # Issue #113: sub-red temática. Filtra el corpus ANTES
+                                             # de proyectar a los papers cuyo keywords_raw matchee
+                                             # (ANY, substring, case-insensitive) algún término.
+                                             # None/[] = sin filtro. Param de spec, FUERA del
+                                             # corpus_hash (como min_weight/scope).
 
 
 def load_specs(path: str | Path) -> list[NetworkSpec]:
@@ -1875,6 +1880,19 @@ class Networks:
 **Modo quick** (v1) cubre baja fricción; **modo spec** (Hito 9, YAML) cubre el pipeline declarativo
 versionable, vía `load_specs(redes.yaml)` + `Networks.build` por red (y el subcomando `b2g
 networks --spec`, §convenciones CLI).
+
+**Sub-redes temáticas (`keyword_filter`, issue #113):** cada red declarada puede acotar el corpus a
+un tema antes de proyectar — útil para comparar sub-redes (p. ej. T4 vs T7) sin pre-filtrar el corpus
+entero ni escribir scripts. El match es **ANY** (un paper entra si algún término matchea), por
+**substring case-insensitive** sobre `keywords_raw` (display names). `None`/`[]` = sin filtro.
+
+```yaml
+networks:
+  - kind: keyword_cooccurrence
+    keyword_filter: ["complex", "ecolog"]   # papers con keywords tipo "Complexity"/"Ecological..."
+  - kind: bibliographic_coupling
+    keyword_filter: ["assessment"]
+```
 
 **Notas de contrato** (Hito 2, ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md)):
 
