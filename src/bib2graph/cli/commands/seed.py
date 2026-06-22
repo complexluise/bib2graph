@@ -167,6 +167,10 @@ def run_seed(
 def run_seed_from_bib(
     store_path: str | Path,
     bib_path: str | Path,
+    *,
+    resolve: bool = False,
+    email: str | None = None,
+    transport: Any = None,
 ) -> dict[str, Any]:
     """Siembra el corpus desde un archivo BibTeX y persiste en el store.
 
@@ -178,6 +182,11 @@ def run_seed_from_bib(
     papers cargados quedan con ``is_seed=True`` y
     ``curation_status='candidate'``.
 
+    Si ``resolve=True``, encadena la resolución DOI→source_id después de
+    la siembra (llama a ``service.resolve.resolve_dois``).  El ``email``
+    se propaga al polite pool de OpenAlex en esa llamada (cierra GAP-2,
+    ADR 0035 / issue #112).
+
     Mapea ``ImportError`` de ``bibtexparser`` a ``DependencyError`` (exit 3),
     igual que el patrón de ``[dedup]``.  El ``ImportError`` de la ruta OpenAlex
     (httpx) NO aplica acá.
@@ -185,15 +194,23 @@ def run_seed_from_bib(
     Args:
         store_path: Ruta al archivo ``.duckdb``.
         bib_path: Ruta al archivo ``.bib``.
+        resolve: Si es ``True``, encadena la resolución DOI→source_id tras
+            la siembra.  Default ``False``.
+        email: Email para el polite pool de OpenAlex (solo relevante cuando
+            ``resolve=True``).
+        transport: Transport inyectable para tests (``httpx.MockTransport``);
+            solo relevante cuando ``resolve=True``.
 
     Returns:
         Dict con ``papers_added``, ``total_papers``, ``round``, ``reseeded``.
+        Si ``resolve=True``, suma ``resolve`` con las métricas de resolución.
         No incluye ``executed_query`` ni ``translation_report`` (no aplican
         a BibTeX).
 
     Raises:
         DependencyError: Si ``bibtexparser`` no está instalado (exit 3).
         DataError: Si el archivo ``.bib`` no existe o está mal formado.
+        NetworkError: Si ``resolve=True`` y falla la conexión a OpenAlex.
         StoreError: Si el store está bloqueado.
     """
     from bib2graph.cycle import apply_transition
@@ -208,6 +225,7 @@ def run_seed_from_bib(
 
     merged_backend_close = None
     store = open_store(store_path)
+    resolve_data: dict[str, Any] | None = None
     try:
         existing = store.load()
 
@@ -246,6 +264,18 @@ def run_seed_from_bib(
         merged_backend_close = getattr(merged_deduped._backend, "close", None)
         store.persist_replace(merged_deduped)
         store.backend.set_loop_state(new_state, cycle_round=new_round)
+
+        # Encadenar resolución DOI→source_id DENTRO del mismo try, con el store
+        # ya abierto.  Llamar a resolve_dois(store_path) tras store.close() reabre
+        # el mismo .duckdb en el mismo proceso y corrompe las UDFs de DuckDB →
+        # segfault (exit 139, #110, #93).  _resolve_dois_on_store opera sobre el
+        # store abierto sin ciclo de vida propio.
+        if resolve:
+            from bib2graph.service.resolve import _resolve_dois_on_store
+
+            resolve_data = _resolve_dois_on_store(
+                store, email=email, transport=transport
+            )
     finally:
         # Cierra explícitamente TODAS las conexiones DuckDB de esta
         # invocación.  En Linux DuckDB retiene el lock de archivo hasta
@@ -259,12 +289,17 @@ def run_seed_from_bib(
             merged_backend_close()
         store.close()
 
-    return {
+    seed_result: dict[str, Any] = {
         "papers_added": papers_added,
         "total_papers": total_papers,
         "round": new_round,
         "reseeded": current_state is not None,
     }
+
+    if resolve_data is not None:
+        seed_result["resolve"] = resolve_data
+
+    return seed_result
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +382,16 @@ def run_seed_from_bib(
     ),
 )
 @click.option(
+    "--resolve",
+    "do_resolve",
+    is_flag=True,
+    default=False,
+    help=(
+        "Tras cargar el .bib, resolver DOIs a source_id de OpenAlex "
+        "(solo con --from-bib; encadena b2g resolve automáticamente)."
+    ),
+)
+@click.option(
     "--json",
     "json_output",
     is_flag=True,
@@ -366,6 +411,7 @@ def seed_cmd(
     exclude: tuple[str, ...],
     min_year: int | None,
     max_year: int | None,
+    do_resolve: bool,
     json_output: bool,
 ) -> None:
     """Siembra el corpus. Exactamente uno de los tres modos es requerido.
@@ -410,13 +456,13 @@ def seed_cmd(
             "Usá exactamente uno por invocación."
         )
 
-    # --- Validar: --from-bib no acepta flags de OpenAlex ---
+    # --- Validar: --from-bib no acepta flags de OpenAlex (excepto --email y --resolve) ---
+    # --email se permite con --from-bib cuando se usa junto a --resolve (cierra GAP-2 / #112).
+    # --resolve solo aplica a --from-bib.
     if bib_path is not None:
         openalex_flags_usados: list[str] = []
         if native:
             openalex_flags_usados.append("--native")
-        if email is not None:
-            openalex_flags_usados.append("--email")
         if max_results is not None:
             openalex_flags_usados.append("--max-results")
         if exclude:
@@ -430,12 +476,25 @@ def seed_cmd(
                 f"Los flags {', '.join(openalex_flags_usados)} son exclusivos del modo "
                 "OpenAlex (--equation/--spec) y no pueden usarse con --from-bib."
             )
+        if email is not None and not do_resolve:
+            raise UsageError(
+                "--email con --from-bib requiere --resolve (el email se usa en la "
+                "resolución DOI→source_id). "
+                "Usá: b2g seed --from-bib <archivo> --resolve --email <tu@email.com>"
+            )
+    else:
+        # --resolve solo aplica al modo --from-bib
+        if do_resolve:
+            raise UsageError(
+                "--resolve solo es válido con --from-bib. "
+                "Para resolver DOIs de un corpus existente, usá b2g resolve."
+            )
 
     store_path = resolve_library_path(ctx.obj)
 
     # --- Modo --from-bib (BibTeX local, sin red) ---
     if bib_path is not None:
-        data = run_seed_from_bib(store_path, bib_path)
+        data = run_seed_from_bib(store_path, bib_path, resolve=do_resolve, email=email)
         if json_output:
             envelope = build_envelope(
                 command="seed",
@@ -447,6 +506,12 @@ def seed_cmd(
         else:
             emit_human(f"Sembrados {data['papers_added']} papers nuevos desde BibTeX.")
             emit_human(f"Total en corpus: {data['total_papers']}")
+            if do_resolve and "resolve" in data:
+                r = data["resolve"]
+                emit_human(
+                    f"Resolución DOI→source_id: "
+                    f"{r['resolved']} resueltos de {r['total_with_doi']} con DOI."
+                )
         return
 
     # --- Modo --spec (YAML declarativo) ---

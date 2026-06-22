@@ -743,6 +743,65 @@ class OpenAlexSource:
 
         return resultado
 
+    def fetch_dois_to_openalex_ids(self, dois: list[str]) -> dict[str, str]:
+        """Resuelve una lista de DOIs a sus IDs cortos de OpenAlex (``W…``).
+
+        Batchea la consulta en lotes de hasta 100 DOIs por request, usando el
+        filtro ``doi:d1|d2|...`` con ``select=id,doi``.  Reutiliza el
+        retry/backoff de ``_fetch_batch_select`` para resiliencia ante 429/5xx.
+
+        Diseñado para ``service.resolve`` (ADR 0035): espeja la dirección
+        INVERSA de ``fetch_dois_for`` (ids→dois) pero va en la dirección
+        dois→source_id.  Mismo patrón de batching/select/retry/polite-pool.
+
+        Normaliza los DOIs de entrada (minúsculas, sin prefijo URL) con
+        ``_normalize_doi`` antes de armar el filtro.  El dict resultado usa
+        también el DOI normalizado como clave.
+
+        DOIs no encontrados en OpenAlex simplemente no aparecen en el
+        resultado (no son error).
+
+        Args:
+            dois: Lista de DOIs (con o sin prefijo URL, mayúsculas/minúsculas).
+
+        Returns:
+            Dict ``{doi_normalizado: source_id_corto}`` con los IDs encontrados.
+            Los DOIs sin match en OpenAlex no aparecen en el resultado.
+        """
+        if not dois:
+            return {}
+
+        # Normalizar DOIs de entrada (minúsculas, sin prefijo URL)
+        normalized_dois = [_normalize_doi(d) for d in dois]
+        # Filtrar Nones de la normalización
+        valid_dois = [d for d in normalized_dois if d]
+
+        if not valid_dois:
+            return {}
+
+        resultado: dict[str, str] = {}
+        batch_size = 100
+
+        for start in range(0, len(valid_dois), batch_size):
+            lote = valid_dois[start : start + batch_size]
+            # Filtro OR de OpenAlex: doi:d1|d2|...
+            filter_str = "doi:" + "|".join(lote)
+
+            # Usamos el cliente directamente con select acotado (id + doi)
+            # en lugar de _fetch_all para no traer todos los campos.
+            works = self._fetch_batch_select(filter_str, select="id,doi")
+
+            for work in works:
+                raw_id = work.get("id")
+                raw_doi = work.get("doi")
+                if raw_id and raw_doi:
+                    short_id = _oa_id_short(raw_id)
+                    doi_norm = _normalize_doi(raw_doi)
+                    if short_id and doi_norm:
+                        resultado[doi_norm] = short_id
+
+        return resultado
+
     def fetch_works_by_ids(self, ids: list[str]) -> Corpus:
         """Trae works completos de OpenAlex a partir de una lista de IDs.
 

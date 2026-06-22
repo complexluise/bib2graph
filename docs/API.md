@@ -234,6 +234,21 @@
 > (`release-please.yml` no se tocó). **No cambia ningún contrato** (CLI ni HTTP) — no requiere ADR nuevo.
 > **Con G5, los 5 hitos G1–G5 del MVP GUI están AS-BUILT**; lo único pendiente es el **gate #34**
 > (validación con un tercero, criterio de aceptación de producto, **no** es construcción).
+>
+> **Sincronizado con la resolución DOI→`source_id` (flujo BibTeX e2e) — issues #110/#112 (AS-BUILT,
+> ADR [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)):** se cierra el **GAP-1** del flujo
+> BibTeX: los papers sembrados con `seed --from-bib` traen `doi` pero **no `source_id`**, y sin
+> `source_id` los comandos `enrich`/`chain` devuelven **0**. Suma el **20° subcomando `b2g resolve`**
+> (`cli/commands/resolve.py` → `service/resolve.py::resolve_dois`): filtra papers con `doi != NULL`
+> **AND** `source_id IS NULL`, consulta OpenAlex (batcheado, `fetch_dois_to_openalex_ids`) y puebla
+> `source_id`; **idempotente** (los que ya tienen `source_id` no se tocan) y **NO transiciona el
+> `CycleState`** (ortogonal al lazo, igual que `enrich`). Además, **`seed --from-bib` gana el flag
+> `--resolve`** que encadena la resolución en el mismo comando reusando el store ya abierto
+> (`service/resolve.py::_resolve_dois_on_store`, **sin reabrir el `.duckdb`** — el reopen en el mismo
+> proceso corrompía las UDFs de DuckDB → segfault exit 139, #110/#93). **GAP-2 / #112:** `--email`
+> pasa a estar **permitido con `--from-bib`** cuando se usa junto a `--resolve` (se propaga al polite
+> pool en la resolución). Solo `source_id` (no `external_ids`, diferido #120). Ver §2 + §convenciones
+> CLI.
 
 ## Convenciones
 
@@ -254,7 +269,7 @@ invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción
 `--workspace`; `--store` fue eliminada en [#75](https://github.com/complexluise/bib2graph/issues/75),
 ver abajo).
 
-**Set de 19 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
+**Set de 20 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
 y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
 pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
 [0025](decisiones/0025-enricher-cocitacion-openalex.md); el 14° `init` con el workspace, ADR
@@ -265,7 +280,9 @@ rehidratación de corpus curado sin red, Ciclo 9a, ADR
 preprocesamiento automático en la ingesta, #88, ADR
 [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md); el 19° **`gui`** con la API
 local + frontend, Hito G3 del MVP GUI, ADR
-[0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)):
+[0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md); el 20° **`resolve`** con la
+resolución DOI→`source_id` del flujo BibTeX e2e, issues #110/#112, ADR
+[0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)):
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -297,6 +314,19 @@ local + frontend, Hito G3 del MVP GUI, ADR
     **`DependencyError`, exit 3** (patrón `[dedup]`); archivo inexistente / `.bib` mal formado →
     `DataError`, exit 2.
 
+    **`--resolve` (solo con `--from-bib`; issues #110/#112, ADR
+    [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)):** tras cargar el `.bib`, **encadena la
+    resolución DOI→`source_id`** en el mismo comando (equivale a correr `b2g resolve` a continuación,
+    abajo). Cierra el **GAP-1** del flujo BibTeX e2e: sin `source_id`, `enrich`/`chain` darían 0.
+    Reusa el **store ya abierto** por seed (`service/resolve.py::_resolve_dois_on_store`) en vez de
+    reabrir el `.duckdb`: el reopen en el mismo proceso corrompía las UDFs de DuckDB → segfault
+    (exit 139, #110/#93). Cuando se pasa `--resolve`, el envelope `--json` **suma** `data["resolve"] =
+    {resolved, total_with_doi, already_resolved, total_papers}` a las métricas de seed. **`--email`
+    pasa a estar PERMITIDO con `--from-bib` cuando está `--resolve`** (se propaga al polite pool en la
+    resolución; cierra GAP-2 / #112). **Reglas de uso (exit 1):** `--email` + `--from-bib` **sin**
+    `--resolve` → error (`--email` solo sirve si hay resolución); `--resolve` **sin** `--from-bib` →
+    error (sugiere `b2g resolve` para un corpus existente).
+
   **No existe `seed --from-corpus`** (la rehidratación de un parquet curado es `restore`, abajo).
   Flags ergonómicos de OpenAlex (#14 + #30, **solo con `--equation`/`--spec`**): **`--max-results INT`**
   propaga a `OpenAlexSource(max_results=...)` —sin flag, el default del source = 200— para exploración
@@ -309,10 +339,12 @@ local + frontend, Hito G3 del MVP GUI, ADR
   agregando `from_publication_date:<min_year>-01-01` y/o `to_publication_date:<max_year>-12-31` como
   predicado de filtro **separado por coma, fuera** de la expresión `search` (sintaxis idiomática de
   rango; reportado en el `translation_report`).
-  Con `--spec`, todos estos parámetros vienen del YAML (paridad 1:1 flag ⇄ campo). **Combinar
-  cualquier flag de OpenAlex (`--exclude`/`--max-results`/`--native`/`--email`/`--min-year`/`--max-year`)
-  con `--from-bib` → error de uso, exit 1** (falla fuerte, no ignora en silencio). En modo `--native`,
-  `--min-year`/`--max-year` no se aplican (nativo = sin traducción).
+  Con `--spec`, todos estos parámetros vienen del YAML (paridad 1:1 flag ⇄ campo). **Combinar los flags
+  de OpenAlex `--exclude`/`--max-results`/`--native`/`--min-year`/`--max-year` con `--from-bib` → error
+  de uso, exit 1** (falla fuerte, no ignora en silencio). **`--email` es la excepción** (#112): se
+  permite con `--from-bib` cuando va junto a `--resolve` (ver `--resolve` arriba); `--email` +
+  `--from-bib` sin `--resolve` → error. En modo `--native`, `--min-year`/`--max-year` no se aplican
+  (nativo = sin traducción).
 - **`restore`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md), Ciclo 9a, 17°
   subcomando): **rehidrata un corpus ya curado desde un parquet, SIN red** — inverso de `snapshot`,
   como `load` es a `dump`. **`--from-corpus <parquet>`** (requerido) lee el parquet con el schema
@@ -424,6 +456,22 @@ local + frontend, Hito G3 del MVP GUI, ADR
   import perezoso): si falta → `DependencyError`, **exit 3** con sugerencia `uv sync --extra gui`. **NO
   transiciona** el `CycleState`. La API es un adaptador delgado sobre `service/` (reusa el envelope
   `schema="1"` + `code_for`, no reimplementa el contrato); el mapeo código→HTTP y la auth viven en §0.2.
+- **`resolve`** (issues #110/#112, AS-BUILT, ADR
+  [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md), 20° subcomando): **resuelve los DOIs del
+  corpus a IDs de OpenAlex (`source_id`)** — cierra el **GAP-1** del flujo BibTeX e2e. Los papers
+  sembrados con `seed --from-bib` traen `doi` pero **no `source_id`**; sin `source_id`,
+  `enrich`/`chain` devuelven **0**. `resolve` filtra los papers con `doi != NULL` **AND**
+  `source_id IS NULL`, consulta OpenAlex (batcheado, `OpenAlexSource.fetch_dois_to_openalex_ids` vía
+  `service/resolve.py::resolve_dois`) y **puebla `source_id`** en esas filas; persiste con
+  `persist_replace`. **Idempotente:** los papers que ya tienen `source_id` no se tocan (re-correr da
+  el mismo resultado). Solo `source_id` (no `external_ids`, diferido #120). Flags: **`--email`**
+  (polite pool de OpenAlex, recomendado), **`--json`** (envelope `schema="1"`) y la resolución de
+  workspace por ambiente (`--workspace` global, igual que los demás). `data` =
+  `{resolved, total_with_doi, already_resolved, total_papers}`. **NO transiciona el `CycleState`**
+  (ortogonal al lazo, igual que `enrich`). Errores accionables: falla de red contra OpenAlex →
+  `NetworkError` (exit 4); store bloqueado → `StoreError` (exit 5). La misma resolución se puede
+  encadenar en la siembra con `seed --from-bib --resolve` (§`seed` arriba), que reusa el store abierto
+  sin reabrir el `.duckdb` (`_resolve_dois_on_store`).
 
 **`--workspace` global (OPCIONAL).** Va en el grupo `b2g`, **antes** del subcomando. Una
 investigación = un **workspace** (carpeta marcada por `workspace.json`; ADR
