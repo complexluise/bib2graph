@@ -117,8 +117,10 @@ exclude = [
 # diferencia de un extra). `uv sync` las instala por defecto; `uv sync --no-dev`
 # instala solo el núcleo. Agregar deps con `uv add` / `uv add --dev`.
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+# PEP 735: reemplaza el deprecado [tool.uv] dev-dependencies (#125). uv instala
+# el grupo `dev` por defecto en `uv sync`. Agregar deps con `uv add --dev`.
+dev = [
     "pytest>=8",
     "pytest-cov>=4",
     "mypy>=1.8",
