@@ -45,3 +45,29 @@ jobs:
       contents: read
       id-token: write # OIDC del trusted publishing — lo debe otorgar el caller
     uses: ./.github/workflows/publish-pypi.yml
+
+  # Back-merge AUTOMÁTICO main → dev tras cada release: sincroniza el bump de versión
+  # + CHANGELOG a dev para que las ramas no diverjan. Merge+push DIRECTO, sin PR ni
+  # gate de CI (decisión del PO: que sea automático; si hay conflicto el job falla y
+  # se resuelve a mano). Requiere que el actor pueda pushear a `dev` protegido: o se
+  # permite a github-actions[bot] saltar la protección de dev, o se setea el secret
+  # RELEASE_PLEASE_TOKEN (un PAT).
+  back-merge:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Merge main → dev y push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge origin/main --no-edit
+          git push origin HEAD:dev
