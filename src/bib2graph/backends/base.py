@@ -93,11 +93,12 @@ class TabularBackend(Protocol):
         action: str,
         by: str,
         decided_at: str | None = None,
+        source: str | None = None,
     ) -> TabularBackend:
         """Aplica accept/reject a los papers indicados y devuelve backend nuevo.
 
-        Agrega un evento al log ``provenance`` con ``action``, ``decided_by``
-        y ``decided_at`` (ISO8601 UTC).  La instancia original no muta.
+        Agrega un evento al log ``provenance`` con ``action``, ``decided_by``,
+        ``source`` y ``decided_at`` (ISO8601 UTC).  La instancia original no muta.
 
         R2 (ADR 0017 enmendado): ``decided_at`` se inyecta desde la frontera
         (CLI) para que el núcleo no llame al reloj.  Si es ``None``, la
@@ -110,6 +111,8 @@ class TabularBackend(Protocol):
             by: Identificador de quien toma la decisión.
             decided_at: Timestamp ISO8601 UTC de la decisión.  Si es ``None``,
                 la implementación usa ``datetime.now(UTC)`` como fallback.
+            source: Origen del evento (p. ej. criterio de filtro PRISMA).
+                Si es ``None``, el campo ``source`` del evento queda vacío.
 
         Returns:
             Nueva instancia del backend con la curación aplicada.

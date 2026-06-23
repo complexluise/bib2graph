@@ -499,12 +499,13 @@ class Corpus:
         *,
         by: str = "human",
         decided_at: datetime | None = None,
+        source: str | None = None,
     ) -> Corpus:
         """Marca los papers con los ids dados como 'rejected'.
 
         Agrega un evento al log de provenance con ``action='rejected'``,
-        ``decided_by`` y ``decided_at`` (ISO8601 UTC). El Corpus original
-        no muta (semántica de valor).
+        ``decided_by``, ``source`` y ``decided_at`` (ISO8601 UTC). El Corpus
+        original no muta (semántica de valor).
 
         R2 (ADR 0017 enmendado): ``decided_at`` se inyecta desde la frontera
         (CLI) para que el núcleo no llame al reloj.  Si es ``None``, el
@@ -516,13 +517,20 @@ class Corpus:
             by: Identificador de quien toma la decisión (default ``'human'``).
             decided_at: Instante de la decisión.  Si es ``None``, el backend
                 usa ``datetime.now(UTC)`` como fallback (ergonomía de librería).
+            source: Origen del evento de rechazo (p. ej. criterio de filtro
+                PRISMA como ``'filter:language:in:["fr"]'``).  Si es ``None``,
+                el campo ``source`` del evento queda vacío.
 
         Returns:
             Nuevo ``Corpus`` con los papers rechazados.
         """
         decided_at_str = decided_at.isoformat() if decided_at is not None else None
         new_backend = self._backend.apply_curation(
-            ids, action=CurationStatus.REJECTED, by=by, decided_at=decided_at_str
+            ids,
+            action=CurationStatus.REJECTED,
+            by=by,
+            decided_at=decided_at_str,
+            source=source,
         )
         return Corpus(new_backend, self._manifest)
 
