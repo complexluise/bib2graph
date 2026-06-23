@@ -48,7 +48,11 @@ reproducible de la ciencia— en una **biblioteca viva y curada** de literatura,
 **redes bibliométricas** listas para analizar (co-citación, acoplamiento bibliográfico,
 co-autoría, co-ocurrencia de palabras clave, instituciones).
 
-El backbone de datos es **OpenAlex** ([ADR 0007](decisiones/0007-openalex-backbone.md)). El
+El **motor de extracción de referencia** es **OpenAlex** ([ADR 0007](decisiones/0007-openalex-backbone.md)),
+pero es **intercambiable**: la identidad **no** se ancla en OpenAlex sino en el **DOI** (la columna
+es **`source_id`** —id del motor, agnóstica— y el `id` interno se deriva del DOI; ADR
+[0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)), con apertura a **otros motores**
+(p. ej. Semantic Scholar). El
 camino **no es un pipeline lineal** sino un **ciclo iterativo** (Bates / Ellis / Kuhlthau, ver
 §2): se siembra desde la ecuación, se hace chaining rankeado por estructura, se diferencia y
 cura, y **la ecuación y la idea mutan** — se vuelve a sembrar con otra pregunta. Asumir un flujo
@@ -140,6 +144,10 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 > binario/Tauri diferido a v2. La GUI sigue **gateada por la epic [#34](https://github.com/complexluise/bib2graph/issues/34)**:
 > no se implementa hasta validar un **caso real reproducido por un tercero** (TARGET, no AS-BUILT). La
 > arquitectura está en ADR [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md) y `ARCHITECTURE.md`.
+>
+> **ESTADO 0.8 — GUI rota a propósito ([#117](https://github.com/complexluise/bib2graph/issues/117)).**
+> El rename de columna a **`source_id`** (ADR 0036) **rompió la GUI** de forma deliberada: **no está
+> disponible hoy** hasta que se actualice (#117). Ningún lector debe asumir que la GUI funciona en 0.8.
 
 ## 4. Propuesta de valor
 
@@ -165,15 +173,19 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   usada.
 - **Agente-native como columna** (no adorno): doble salida (`--json`), exit codes claros,
   errores accionables, sin estado entre invocaciones.
-- **Sin infraestructura pesada.** DuckDB embebido, sin servidores; OpenAlex sin clave
-  obligatoria (pool cortés con email en config).
+- **Sin infraestructura pesada.** DuckDB embebido, sin servidores; OpenAlex **funciona sin clave**
+  (pool cortés con email en config) **pero con límite** (tier gratis, ~100 créditos/día); una **API
+  key opcional sube el límite** para uso intensivo, como muchos servicios (#124).
 
 ## 5. Alcance
 
 ### 5.1 Dentro de alcance (V1)
 
-- **Sembrado** por **ecuación de búsqueda** (términos, campos, años, idioma, tipo) y/o por
-  **papers semilla** (DOIs / IDs / un export BibTeX).
+- **Sembrado de doble puerta** (ADR [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)):
+  por **ecuación de búsqueda** (términos, campos, años, idioma, tipo) **o** por **ingesta de archivo
+  `.bib`** (puerta primaria, no secundaria) y/o **papers semilla** (DOIs / IDs). La ingesta desde
+  `.bib` resuelve **DOI→`source_id`** contra el motor de extracción (`b2g resolve` /
+  `seed --from-bib --resolve`) para reconciliar las *pearls* con el corpus.
 - **Contrato `Source` agnóstico** (ADR [0018](decisiones/0018-source-agnostico-calidad.md)):
   separa el **mínimo universal** que todo corpus necesita para existir (`id`, título, año, autores,
   keywords — ya habilita co-autoría y co-ocurrencia de keywords) del **enriquecimiento opcional**
@@ -254,8 +266,13 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   > (TARGET; código tras el caso real validado por un tercero). Lo que **sigue fuera**: **web/hosting,
   > servicio gestionado, servidor MCP y Claude-Web** (descartados); binario/Tauri **diferido a v2**. El
   > CLI sigue siendo la columna (ADR 0010/0021). Arquitectura: ADR [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md).
-- **WoS / Scopus / RIS / CSV / BibTeX como backbone** → OpenAlex primero; el resto, `Source`
-  futura. BibTeX queda como `Source` **secundaria** para sembrar desde *pearls*.
+  > **En 0.8 la GUI quedó rota a propósito** por el rename a `source_id` (ADR 0036): **no funciona
+  > hoy** hasta que se actualice ([#117](https://github.com/complexluise/bib2graph/issues/117)).
+- **WoS / Scopus / RIS / CSV como backbone** → el resto, `Source` futura. **BibTeX NO es
+  secundaria:** la **ingesta desde archivo `.bib`** es una **puerta primaria** de sembrado (ingesta
+  de doble puerta: ecuación **o** archivo; ADR [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)),
+  con **resolución DOI→`source_id`** (`b2g resolve` / `seed --from-bib --resolve`) que reconcilia
+  las *pearls* contra el motor de extracción.
 - **Neo4j** → **DESCARTADO (decisión del PO, 2026-06-17): no se hace.** **Ya no es sustrato** y
   tampoco se planifica como adaptador `Store` post-V1. Reabrible solo si aparece demanda real, como
   hito nuevo.
@@ -400,8 +417,9 @@ remediación R1–R5 completa** (2026-06-16)— vive en el `ROADMAP.md`: el terr
 
 ## 10. Métricas de éxito
 
-- El **primer flujo de 10 minutos** (ecuación → redes → export) corre **sin claves obligatorias
-  ni infraestructura**.
+- El **primer flujo de 10 minutos** (ecuación → redes → export) corre **sin claves ni
+  infraestructura** —dentro del **tier gratis de OpenAlex** (~100 créditos/día, alcanza para una
+  prueba/uso liviano); para **corpus grandes** conviene una **API key opcional** que sube el límite (#124).
 - El núcleo tiene **cobertura de tests unitarios** real sobre proyección, métricas, comunidades y
   dedup (la testabilidad que v0 nunca tuvo).
 - Un caso real se **reproduce** desde la ecuación, cumpliendo criterios de calidad

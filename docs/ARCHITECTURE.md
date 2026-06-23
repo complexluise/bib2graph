@@ -54,7 +54,9 @@ columna, estados de curación, tipos de red y del evento de procedencia (`Proven
 hace red ni servidores: proyecta el corpus a redes, las analiza y las exporta, normaliza/cura la
 tabla, y **modela el ciclo** de investigación como una máquina de estados de dominio (`cycle.py`,
 ADR [0016](decisiones/0016-maquina-estados-lazo.md)). Alrededor hay costuras: **`Source`** (sembrar
-el corpus — *OpenAlex por defecto* desde una ecuación de búsqueda; BibTeX secundaria), el
+el corpus por **ingesta de doble puerta** —ecuación de búsqueda **o** archivo `.bib`, ambas
+**primarias**; ADR [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)— con *OpenAlex* como
+motor de extracción de referencia, intercambiable), el
 **forrajeo/chaining** (expandir el corpus rankeando candidatos por *information scent* — **estructura
 bibliométrica determinista, sin IA**), **`Store`** (persistir — *DuckDB stateful por defecto*: la
 **biblioteca viva**) y `Enricher` (señal extra, opt-in). El flujo **no es lineal**: es el **ciclo
@@ -73,7 +75,11 @@ biblioteca viva en DuckDB es el sustrato que lo sostiene entre corridas.
 > servido). El **empaquetado** (G5, AS-BUILT 2026-06-18: el wheel vendorea el build del frontend vía
 > `force-include` + job CI JS, §4.4/§7) **cierra el build del MVP** — **los 5 hitos G1–G5 están
 > AS-BUILT**. Lo único pendiente es el **gate #34** (un tercero usa la GUI sin ayuda), que **no es
-> construcción** sino el criterio de aceptación de producto de la epic. Sobre ese núcleo + costuras se
+> construcción** sino el criterio de aceptación de producto de la epic.
+> **ESTADO 0.8 — la GUI quedó ROTA A PROPÓSITO ([#117](https://github.com/complexluise/bib2graph/issues/117)):**
+> el rename de columna a **`source_id`** (ADR 0036) la rompió de forma deliberada; **no funciona hoy**
+> hasta que la API/SPA se actualicen al nuevo nombre. El "AS-BUILT G1–G5" describe lo que se construyó
+> en 0.6, no que la GUI corra en 0.8. Sobre ese núcleo + costuras se
 > montan **tres frontends de frontera** — **CLI**
 > (`b2g`, Click, la columna agente-native, ADR 0010/0021) · **API local** (FastAPI, opt-in `[gui]`) ·
 > **SPA** (frontend "tool for thought" en `frontend/`). Los tres **convergen en una capa de servicios
@@ -92,7 +98,7 @@ biblioteca viva en DuckDB es el sustrato que lo sostiene entre corridas.
    ┌──────────────┐      ┌─────────────┐      ┌────────────┐     ┌──────────┐
    │   Source     │ ───► │   CORPUS    │ ───► │ Projector  │ ──► │ Network  │ ──► Analyzer
    │  OpenAlex    │      │ tabla Arrow │      │ coupling   │     │ networkx │     (métricas,
-   │ (BibTeX 2ª)  │      │ (1 fila/    │      │ co-citación│     └──────────┘      centralidad,
+   │  + BibTeX    │      │ (1 fila/    │      │ co-citación│     └──────────┘      centralidad,
    └──────────────┘      │  paper)     │      │ co-autoría │          │           comunidades,
           ▲              │  is_seed,   │      │ keyword    │          ▼           asortatividad)
           │ chaining     │  status,    │      │ institución│     ┌──────────┐          │
@@ -120,8 +126,8 @@ El **`DuckDBBackend` es el backend por defecto del `Corpus`** (ADR
 `UPDATE`/`MERGE` por `id` y aloja el `LoopState` (ADR
 [0016](decisiones/0016-maquina-estados-lazo.md)). El **`DuckDBStore` es su fachada** de costura
 (`persist`/`load`); la costura `Store` sigue siendo el punto de extensión externo
-(`ZoteroStore`/`Neo4jStore`, opt-in). Lo marcado `(BibTeX 2ª)`, `Zotero(1.1)`, `Neo4j` son costuras
-secundarias/futuras. La **máquina de tensiones** (sensemaking asistido por IA) **se retiró del
+(`ZoteroStore`/`Neo4jStore`, opt-in). Lo marcado `Zotero(1.1)`, `Neo4j` son costuras
+secundarias/futuras (la **ingesta `.bib` SÍ es puerta primaria**, ADR 0035; no es costura secundaria). La **máquina de tensiones** (sensemaking asistido por IA) **se retiró del
 producto** (ADR [0008](decisiones/0008-wedge-forrajeo.md) / [0022](decisiones/0022-producto-sin-ia-generativa.md)):
 el sensemaking lo hace el **humano**, leyendo las redes — no hay IA generativa en el producto. Solo
 se publica lo que existe.
@@ -305,9 +311,13 @@ query OpenAlex, muestra la **query ejecutada + reporte de traducción** (qué ma
 aproximó, qué se descartó), y trae mínimo + enriquecimiento completo (`references_id`,
 `cited_by_id`, afiliaciones per-autor) y ancla `Manifest.openalex_version` (ADR
 [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)). Power-users pueden pasar query
-OpenAlex nativa (escape hatch). **`BibtexSource` es `Source` secundaria** para sembrar desde
-*pearls* conocidos (acceso defensivo a campos; el sandbox documenta un bug de `bibtexparser` que
-exige un pre-procesador). SciELO/Redalyc/La Referencia, RIS/CSV: futuras, no publicadas. Un
+OpenAlex nativa (escape hatch). **La ingesta desde archivo `.bib` es una puerta primaria** (ingesta
+de **doble puerta**: ecuación **o** `.bib`; ADR
+[0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)) para sembrar desde *pearls* conocidos
+(`BibtexSource`, acceso defensivo a campos; el sandbox documenta un bug de `bibtexparser` que exige un
+pre-procesador). La ingesta `.bib` **resuelve DOI→`source_id`** contra el motor de extracción
+(`b2g resolve` / `seed --from-bib --resolve`) para reconciliar las *pearls* con el corpus.
+SciELO/Redalyc/La Referencia, RIS/CSV: futuras, no publicadas. Un
 **reporte de cobertura/calidad** por seed/source (concreto v0.2+, ADR 0018) mide qué tan completa
 es la fuente y alimenta el juicio de cuándo cambiar de `Source`.
 
@@ -320,7 +330,7 @@ está completo** (Ciclos 8a + 8b): `OpenAlexEnricher.enrich` hace **2 pasadas**.
 OR, idempotente vía `EnricherRef` en el `Manifest`). **8b** — el **segundo nivel de fetch** habilita
 la **co-citación end-to-end**: trae los citantes de las **semillas aceptadas** (vía
 `OpenAlexSource.fetch_citing_batch`: batcheo OR ≤50 con presupuesto por semilla) y **mergea sus
-`openalex_id` en `cited_by_id`** (unión idempotente); **solo puebla `cited_by_id`**, no crece el
+`source_id` en `cited_by_id`** (unión idempotente); **solo puebla `cited_by_id`**, no crece el
 corpus (decisión A). El tope `max_citing_per_paper` **acota el fetch por semilla**. El subcomando
 `b2g enrich` (flag `--max-citing`) es propio y **no transiciona el `CycleState`**. S2/CrossRef/Scopus:
 futuras (`[s2]` reservado para señal adicional). Reglas: config inyectada (nunca embebida), sin ramas
@@ -366,6 +376,10 @@ post-V1 (`[neo4j]`): un destino más, **ya no el sustrato** (ADR 0002).
 
 ### 4.4 `LocalApiServer` / API local (costura opt-in, `[gui]`) — `AS-BUILT (G3)` · SPA `frontend/` `AS-BUILT (G4)` · empaquetado `AS-BUILT (G5)`
 
+> **ROTA EN 0.8 A PROPÓSITO ([#117](https://github.com/complexluise/bib2graph/issues/117)):** el rename
+> de columna a **`source_id`** (ADR 0036) rompió la API/SPA; **la GUI NO funciona hoy** hasta que se
+> actualicen al nuevo nombre. Lo que sigue describe el AS-BUILT de 0.6 (lo construido), no que corra en 0.8.
+>
 > **AS-BUILT (2026-06-18) — Hitos G3 + G4 + G5 del MVP GUI, ADR
 > [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md) (Aceptado; GUI gateada por
 > [#34](https://github.com/complexluise/bib2graph/issues/34)).** La **capa de servicios neutral
@@ -491,9 +505,10 @@ frontera** (CLI), no en el núcleo (§6.2).
 - **Una sola fuente de configuración**, construida explícitamente y pasada a quien la necesita.
   **Sin efectos de import** (en v0, importar seteaba `config.DATABASE_URL`).
 - **Sin secretos embebidos** (en v0 había triple `DATABASE_URL` y clave S2 hardcodeada).
-- Credenciales y el **email del pool cortés de OpenAlex** (y la **API key opcional** desde
-  feb-2026) se inyectan por config/CLI o entorno, nunca embebidos (ADR
-  [0012](decisiones/0012-openalex-credenciales.md)). Sin key, el `Source` corre en polite pool.
+- Credenciales y el **email del pool cortés de OpenAlex** (y la **API key opcional**) se inyectan por
+  config/CLI o entorno, nunca embebidos (ADR [0012](decisiones/0012-openalex-credenciales.md)). **Sin
+  key, el `Source` funciona** (polite pool) **pero con límite** (tier gratis, ~100 créditos/día); la
+  **API key opcional sube el límite** para uso intensivo (#124) — como muchos servicios.
 
 ### 6.2 Persistencia por defecto: biblioteca viva en DuckDB + snapshot exportable
 
@@ -701,8 +716,9 @@ dependencias va **de abajo hacia arriba**: `constants/schemas` → núcleo puro 
 ## 9. Tensiones resueltas
 
 1. **Representación interna del corpus:** ✅ tabla Arrow única + wrapper Pydantic (ADR 0006).
-2. **Fuente de referencia:** ✅ **OpenAlex** (ADR 0007); BibTeX secundaria. El Enricher deja de
-   ser estructural.
+2. **Fuente de referencia:** ✅ **OpenAlex** como **motor de extracción de referencia**
+   (intercambiable; ADR 0007/0036); la **ingesta `.bib` es puerta primaria** (doble puerta, ADR
+   0035), no secundaria. El Enricher deja de ser estructural.
 3. **Biblioteca viva vs. snapshot inmutable** (abierta en Nota 04 §6.2): ✅ **biblioteca viva
    stateful en DuckDB**; el snapshot pasa a **export** (ADR 0009). Tras el 2º giro, ese sustrato es
    el **`DuckDBBackend` del `Corpus`** (backend por defecto, no un `Store` aparte; ADR 0015) y
