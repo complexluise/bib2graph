@@ -20,7 +20,12 @@ import networkx as nx
 import pyarrow as pa
 
 from bib2graph.constants import NetworkKind
-from bib2graph.networks.analyzer import detect_communities, network_metrics
+from bib2graph.networks.analyzer import (
+    assortativity,
+    community_composition,
+    detect_communities,
+    network_metrics,
+)
 from bib2graph.networks.decorate import decorate
 from bib2graph.networks.projectors import (
     AuthorCollaborationProjector,
@@ -155,6 +160,57 @@ def _apply_keyword_filter(table: pa.Table, terms: list[str]) -> pa.Table:
     return table.filter(bool_array)
 
 
+def _inject_scalar_attribute(
+    g: _Graph,
+    table: pa.Table,
+    attribute: str,
+) -> bool:
+    """Inyecta un atributo escalar del corpus como atributo de nodo en el grafo.
+
+    Útil para atributos como ``language`` o ``research_areas`` que no son
+    inyectados por ``decorate`` pero sí existen en la tabla Arrow.
+
+    Solo actúa en grafos cuyo nodo es un paper id (``Col.ID``): busca cada nodo
+    del grafo en la columna ``id`` de la tabla y extrae el valor escalar.
+    Para atributos de lista (p.ej. ``research_areas``), extrae el primer elemento.
+
+    Args:
+        g: Grafo NetworkX (modificado in-place).
+        table: Tabla Arrow canónica del Corpus.
+        attribute: Nombre del atributo/columna a inyectar.
+
+    Returns:
+        ``True`` si el atributo existía en la tabla y se inyectó en al menos
+        un nodo; ``False`` si la columna no existe en la tabla.
+    """
+    from bib2graph.constants import Col
+
+    if attribute not in table.schema.names:
+        return False
+
+    # Construir índice rápido: paper_id → valor del atributo
+    ids = table.column(Col.ID).to_pylist()
+    values = table.column(attribute).to_pylist()
+
+    attr_index: dict[str, object] = {}
+    for pid, val in zip(ids, values, strict=False):
+        if pid is None:
+            continue
+        # Para atributos de lista, extraer el primero (p.ej. research_areas)
+        if isinstance(val, list):
+            val = val[0] if val else None
+        attr_index[str(pid)] = val
+
+    injected = False
+    for node in g.nodes():
+        key = str(node)
+        if key in attr_index and attr_index[key] is not None:
+            g.nodes[node][attribute] = attr_index[key]
+            injected = True
+
+    return injected
+
+
 def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
     """Construye un ``NetworkArtifact`` a partir de un corpus y una spec.
 
@@ -226,6 +282,41 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
     # exportadores (GraphML, CSV) y el CLI reciban artefactos ya decorados
     # sin necesitar conocer el corpus.
     decorate(artifact, table)
+
+    # D3 — asortatividad/composición: solo cuando spec.assortativity_attribute
+    # está configurado y el grafo tiene nodos.
+    if spec.assortativity_attribute is not None and g.number_of_nodes() > 0:
+        attr = spec.assortativity_attribute
+
+        # Verificar si el atributo ya está en los nodos (p.ej. inyectado por
+        # decorate para 'curation_status', 'is_seed', etc.). Si no, intentar
+        # inyectarlo desde la tabla Arrow (p.ej. 'language', 'research_areas').
+        attr_in_nodes = any(
+            attr in g.nodes[n] for n in g.nodes() if g.nodes[n].get(attr) is not None
+        )
+        if not attr_in_nodes:
+            attr_in_nodes = _inject_scalar_attribute(g, table, attr)
+
+        if not attr_in_nodes:
+            # El atributo no existe en el grafo ni en la tabla del corpus.
+            # Warning accionable: no crashear (D3 — manejo de atributo inexistente).
+            logger.warning(
+                "assortativity_attribute='%s' no existe en los nodos del grafo "
+                "ni como columna en el corpus. Verificá el nombre del atributo. "
+                "Asortatividad no calculada para la red '%s'.",
+                attr,
+                spec.kind,
+            )
+        else:
+            assort_result = assortativity(g, attribute=attr, by_degree=True)
+
+            # Si hay comunidades, agregar composición por comunidad.
+            if communities is not None:
+                assort_result["community_composition"] = community_composition(
+                    g, communities, attr
+                )
+
+            artifact.assortativity = assort_result
 
     return artifact
 
