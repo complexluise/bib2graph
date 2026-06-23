@@ -11,6 +11,30 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.8.0](https://github.com/complexluise/bib2graph/compare/v0.7.0...v0.8.0) (2026-06-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** la columna openalex_id del corpus se renombra a source_id y el id canónico cambia de prefijo oa: a doi:/src:. service/reads.get_paper devuelve source_id (rompe la GUI a propósito, #117). Workspaces legacy necesitan re-key.
+
+### Features
+
+* **backends:** tabla lateral external_ids (ADR 0036, infra opción C) ([#118](https://github.com/complexluise/bib2graph/issues/118)) ([ec55c77](https://github.com/complexluise/bib2graph/commit/ec55c77920a505d1aed5a4df1e712655956e1c88))
+* **cli:** b2g resolve + seed --from-bib --resolve — flujo BibTeX e2e ([#110](https://github.com/complexluise/bib2graph/issues/110), [#112](https://github.com/complexluise/bib2graph/issues/112)) ([#123](https://github.com/complexluise/bib2graph/issues/123)) ([aeda285](https://github.com/complexluise/bib2graph/commit/aeda285d844165c862912ed91daff645b59293ba))
+* **core:** identidad source-agnóstica — source_id + DOI ancla (ADR 0036) ([#119](https://github.com/complexluise/bib2graph/issues/119)) ([4a5d982](https://github.com/complexluise/bib2graph/commit/4a5d982871518f16e5ae18c6430859d5c4136cee))
+* **networks:** keyword_filter en NetworkSpec para sub-redes temáticas ([#116](https://github.com/complexluise/bib2graph/issues/116)) ([b58d200](https://github.com/complexluise/bib2graph/commit/b58d2004771e232713b2bc22e48b0a9d847d347f)), closes [#113](https://github.com/complexluise/bib2graph/issues/113)
+
+
+### Documentation
+
+* **adr:** 0036 identidad source-agnóstica (DOI ancla, source_id genérico) ([#114](https://github.com/complexluise/bib2graph/issues/114)) ([3777e33](https://github.com/complexluise/bib2graph/commit/3777e33051e1a96a1575ec43d27cb0e863ecabbe))
+* **adr:** graduar 0035 a Aceptada (ingesta doble puerta + resolución DOI) ([#122](https://github.com/complexluise/bib2graph/issues/122)) ([8bd5257](https://github.com/complexluise/bib2graph/commit/8bd5257b0aa480bd182f674e2a94e5608eedf431))
+* **api:** sincronizar API.md/ARCHITECTURE con source_id (ADR 0036) ([#121](https://github.com/complexluise/bib2graph/issues/121)) ([9d35628](https://github.com/complexluise/bib2graph/commit/9d35628b38aff81f80416d13e3326ac017942004))
+* encuadre flujo biblioteca + ADRs 0032-0035 (Propuesta) ([#106](https://github.com/complexluise/bib2graph/issues/106)) ([814bd45](https://github.com/complexluise/bib2graph/commit/814bd45f87ea6b3a922e8b3b62db65e57f97b91f))
+* **notas:** 19 — QA del CLI, límites y análisis de superficie (sesión 0.8) ([#128](https://github.com/complexluise/bib2graph/issues/128)) ([1fc6d91](https://github.com/complexluise/bib2graph/commit/1fc6d9190140726c2c5c90a7a622762c3c4f404d))
+* **notas:** sesiones e2e — anomalías ML (14) + hueco capa lectura/análisis (15) ([#107](https://github.com/complexluise/bib2graph/issues/107)) ([39dd14d](https://github.com/complexluise/bib2graph/commit/39dd14d10c5d9f3a4489ac45656b60c2c09a3b61))
+
 ## [0.7.0](https://github.com/complexluise/bib2graph/compare/v0.6.0...v0.7.0) (2026-06-18)
 
 
