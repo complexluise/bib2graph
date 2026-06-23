@@ -2,9 +2,8 @@ name: release-please
 
 # Automatiza el versionado/release a partir de Conventional Commits (VERSIONING.md):
 # abre/actualiza un PR de release con el bump de versión en pyproject.toml y la
-# sección nueva del CHANGELOG; al mergearlo, crea el tag vX.Y.Z y el GitHub Release.
-# NO publica a PyPI (decisión del PO: solo GitHub Releases por ahora; el paso de
-# publicación se agrega cuando se conecte trusted publishing).
+# sección nueva del CHANGELOG; al mergearlo, crea el tag vX.Y.Z y el GitHub Release,
+# y dispara la publicación a PyPI (job `publish`, gateado por el output release_created).
 
 on:
   push:
@@ -17,8 +16,11 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           # target-branch FIJO a main: release-please gestiona SIEMPRE main aunque
           # la rama por defecto del repo sea `dev`. Sin esto, su default es la rama
@@ -31,3 +33,41 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # Publica a PyPI SOLO cuando release-please efectivamente cortó un Release.
+  # Corre en el MISMO workflow run (el push a main al mergear el release PR), así que
+  # NO depende del evento `on: release` (que el GITHUB_TOKEN no dispararía). Reusa
+  # publish-pypi.yml (workflow_call). El fallback manual sigue en ese workflow.
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    permissions:
+      contents: read
+      id-token: write # OIDC del trusted publishing — lo debe otorgar el caller
+    uses: ./.github/workflows/publish-pypi.yml
+
+  # Back-merge AUTOMÁTICO main → dev tras cada release: sincroniza el bump de versión
+  # + CHANGELOG a dev para que las ramas no diverjan. Merge+push DIRECTO, sin PR ni
+  # gate de CI (decisión del PO: que sea automático; si hay conflicto el job falla y
+  # se resuelve a mano). Requiere que el actor pueda pushear a `dev` protegido: o se
+  # permite a github-actions[bot] saltar la protección de dev, o se setea el secret
+  # RELEASE_PLEASE_TOKEN (un PAT).
+  back-merge:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Merge main → dev y push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge origin/main --no-edit
+          git push origin HEAD:dev
