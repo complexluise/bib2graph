@@ -93,6 +93,48 @@ def _extract_seed_ids(corpus_rows: list[dict[str, Any]]) -> list[str]:
     return result
 
 
+def _estimate_forward_from_cited_by_detail(
+    corpus_rows: list[dict[str, Any]],
+) -> tuple[int, bool, int]:
+    """Versión de diagnóstico que devuelve también el total sin cap.
+
+    Args:
+        corpus_rows: Filas del corpus como dicts (``to_pylist()``).
+
+    Returns:
+        Tupla ``(count_capped_placeholder, available, total_uncapped)``
+        donde ``total_uncapped`` es el conteo antes de aplicar cualquier cap.
+        (El cap lo aplica el llamador; aquí siempre devuelve el total completo.)
+    """
+    # ids ya presentes en el corpus
+    corpus_ids: set[str] = set()
+    for row in corpus_rows:
+        id_val = row.get(Col.ID)
+        source_id_val = row.get(Col.SOURCE_ID)
+        if id_val:
+            corpus_ids.add(str(id_val))
+        if source_id_val:
+            corpus_ids.add(str(source_id_val))
+
+    # Recolectar IDs únicos de cited_by_id que no estén ya en el corpus
+    candidate_ids: set[str] = set()
+    has_cited_by_data = False
+    for row in corpus_rows:
+        cited_by = row.get(Col.CITED_BY_ID)
+        if not cited_by or not isinstance(cited_by, list):
+            continue
+        has_cited_by_data = True
+        for cid in cited_by:
+            if cid and isinstance(cid, str) and cid not in corpus_ids:
+                candidate_ids.add(cid)
+
+    if not has_cited_by_data:
+        return 0, False, 0
+
+    total = len(candidate_ids)
+    return total, True, total
+
+
 class Forager:
     """Orquesta el chaining sobre un Source, rankeando candidatos por scent.
 
@@ -165,15 +207,13 @@ class Forager:
         API en ninguna dirección.
 
         - **Backward**: estimación exacta desde ``references_id`` local.
-        - **Forward**: el conteo de citantes no es estimable sin red
-          (``cited_by_id`` está vacío tras el seed inicial).  Sin embargo,
-          se reporta el número de semillas (``is_seed=True``) que se forejarían
-          como estimación del costo de red (~1 request por lote de 50 semillas).
-          Cuando se pide forward o
-          both, ``by_direction["forward"]`` vale ``0`` y
-          ``GrowthPreview.forward_requires_fetch`` es ``True``.  El conteo
-          real de candidatos forward solo se conoce al llamar
-          ``chain(direction="forward"/"both")``, que sí fetchea.
+        - **Forward** (dos casos):
+          - Si el corpus tiene ``cited_by_id`` poblado (pasó por ``b2g enrich``),
+            se cuentan los IDs únicos en ``cited_by_id`` que aún no están en el
+            corpus — estimación local exacta sin red.
+          - Si ``cited_by_id`` está vacío (corpus recién sembrado), el conteo
+            forward no es estimable sin red; ``forward_requires_fetch=True``
+            y ``by_direction["forward"]`` vale ``0``.
 
         NO muta el corpus de entrada.
 
@@ -189,23 +229,35 @@ class Forager:
         rows = corpus.to_arrow().to_pylist()
         by_direction: dict[str, int] = {}
         forward_requires_fetch = False
+        forward_from_cited_by = False
+        capped_by_max = False
 
         if direction in ("backward", "both"):
-            bwd = compute_backward_scent(rows)
-            if self._max_candidates is not None:
-                bwd_ranked = rank_candidates(bwd, max_candidates=self._max_candidates)
-                by_direction["backward"] = len(bwd_ranked)
+            bwd_uncapped = compute_backward_scent(rows)
+            bwd_total = len(bwd_uncapped)
+            if self._max_candidates is not None and bwd_total > self._max_candidates:
+                by_direction["backward"] = self._max_candidates
+                capped_by_max = True
             else:
-                by_direction["backward"] = len(bwd)
+                by_direction["backward"] = bwd_total
 
         if direction in ("forward", "both"):
-            # El crecimiento forward no puede estimarse localmente: cited_by_id
-            # está vacío tras el seed y traerlo requeriría fetch a la red.
-            # Marcamos el campo para que el llamador sepa que debe chain() para
-            # obtener el conteo real.  El número de semillas (is_seed=True)
-            # es la única estimación disponible sin red.
-            by_direction["forward"] = 0
-            forward_requires_fetch = True
+            fwd_total, fwd_local, _ = _estimate_forward_from_cited_by_detail(rows)
+            if fwd_local:
+                # cited_by_id disponible localmente: estimación sin red.
+                if (
+                    self._max_candidates is not None
+                    and fwd_total > self._max_candidates
+                ):
+                    by_direction["forward"] = self._max_candidates
+                    capped_by_max = True
+                else:
+                    by_direction["forward"] = fwd_total
+                forward_from_cited_by = True
+            else:
+                # cited_by_id vacío: el forward requiere fetch.
+                by_direction["forward"] = 0
+                forward_requires_fetch = True
 
         estimated_new = sum(by_direction.values())
         return GrowthPreview(
@@ -213,6 +265,8 @@ class Forager:
             by_direction=by_direction,
             direction=direction,
             forward_requires_fetch=forward_requires_fetch,
+            forward_from_cited_by=forward_from_cited_by,
+            capped_by_max=capped_by_max,
         )
 
     def chain(

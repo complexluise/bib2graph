@@ -31,8 +31,15 @@ def run_chain(
     max_citing_per_paper: int | None = 50,
     email: str | None = None,
     transport: Any = None,
+    preview: bool = False,
 ) -> dict[str, Any]:
     """Expande el corpus con candidatos rankeados por information scent.
+
+    Cuando ``preview=True``, estima el crecimiento potencial **sin fetchear**
+    ni transicionar el estado del corpus.  La estimación backward es exacta
+    (desde ``references_id``); la forward es exacta si el corpus tiene
+    ``cited_by_id`` poblado (pasó por ``b2g enrich``), o indica que se
+    requiere fetch si ``cited_by_id`` está vacío.
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
@@ -43,15 +50,28 @@ def run_chain(
             chaining (default 50; None = sin tope).
         email: Email para el polite pool de OpenAlex.
         transport: Transport inyectable para tests.
+        preview: Si ``True``, solo estima el crecimiento sin fetchear ni
+            transicionar estado (dry-run).
 
     Returns:
-        Dict con ``candidates_found``, ``total_papers``, ``ranking_preview``.
+        Dict con ``candidates_found``, ``total_papers``, ``ranking_preview``
+        (modo normal); o con ``preview``, ``estimated_candidates``,
+        ``by_direction``, ``capped_by_max``, ``forward_requires_fetch``,
+        ``forward_from_cited_by`` (modo preview).
 
     Raises:
         DependencyError: Si el source no soporta forward chaining.
         NetworkError: Si falla la conexión a OpenAlex.
         StoreError: Si el store está bloqueado.
     """
+    if preview:
+        return _run_chain_preview(
+            store_path,
+            direction=direction,
+            depth=depth,
+            max_candidates=max_candidates,
+        )
+
     from bib2graph.cycle import apply_transition
     from bib2graph.foraging import Forager
     from bib2graph.sources.openalex import OpenAlexSource
@@ -142,6 +162,76 @@ def run_chain(
     }
 
 
+def _run_chain_preview(
+    store_path: str | Path,
+    *,
+    direction: Literal["backward", "forward", "both"],
+    depth: int,
+    max_candidates: int | None,
+) -> dict[str, Any]:
+    """Implementación del modo preview (dry-run) de ``run_chain``.
+
+    Estima el crecimiento potencial del corpus **sin hacer fetch ni transicionar
+    estado**.  Abre el store, lee el corpus y llama a ``Forager.preview()``.
+
+    Args:
+        store_path: Ruta al archivo ``.duckdb``.
+        direction: Dirección pedida.
+        depth: Profundidad (solo 1 implementado; >1 → DependencyError).
+        max_candidates: Tope de candidatos.
+
+    Returns:
+        Dict con las claves del envelope de preview (``preview=True``,
+        ``estimated_candidates``, ``by_direction``, ``direction``,
+        ``capped_by_max``, ``forward_requires_fetch``, ``forward_from_cited_by``).
+    """
+    from bib2graph.foraging import Forager
+
+    # Para preview backward/both, el source nunca se usa (cero red).
+    # Para preview forward con cited_by_id, tampoco.
+    # Usamos None como source (el Forager solo llama al source en chain(), no en preview()).
+    store = open_store(store_path)
+    try:
+        corpus = store.load()
+
+        try:
+            forager = Forager(
+                None,  # source no se usa en preview()
+                depth=depth,
+                max_candidates=max_candidates,
+            )
+        except NotImplementedError as exc:
+            raise DependencyError(
+                f"Profundidad {depth} no soportada aún: {exc}. "
+                "Usá depth=1 (por defecto)."
+            ) from exc
+
+        growth = forager.preview(corpus, direction=direction)
+    finally:
+        store.close()
+
+    # Mensaje accionable cuando el forward no es estimable localmente.
+    warnings: list[str] = []
+    if growth.forward_requires_fetch:
+        warnings.append(
+            "El crecimiento forward no puede estimarse sin red: el corpus no tiene "
+            "``cited_by_id`` poblado.  Ejecutá ``b2g enrich`` primero para obtener "
+            "una estimación local, o ejecutá ``b2g chain`` sin ``--preview`` para "
+            "traer los citantes directamente."
+        )
+
+    return {
+        "preview": True,
+        "direction": direction,
+        "estimated_candidates": growth.estimated_new,
+        "by_direction": growth.by_direction,
+        "capped_by_max": growth.capped_by_max,
+        "forward_requires_fetch": growth.forward_requires_fetch,
+        "forward_from_cited_by": growth.forward_from_cited_by,
+        "warnings": warnings,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Comando Click
 # ---------------------------------------------------------------------------
@@ -182,6 +272,18 @@ def run_chain(
     help="Email para el polite pool de OpenAlex.",
 )
 @click.option(
+    "--preview",
+    "preview",
+    is_flag=True,
+    default=False,
+    help=(
+        "Estima el crecimiento potencial SIN fetchear ni modificar el corpus "
+        "(dry-run).  Backward: exacto desde references_id.  Forward: exacto "
+        "si el corpus tiene cited_by_id (requiere enrich previo), si no, "
+        "indica que se necesita fetch."
+    ),
+)
+@click.option(
     "--json",
     "json_output",
     is_flag=True,
@@ -197,11 +299,13 @@ def chain_cmd(
     max_candidates: int | None,
     max_citing_per_paper: int,
     email: str | None,
+    preview: bool,
     json_output: bool,
 ) -> None:
     """Expande el corpus con candidatos rankeados por information scent.
 
-    Tras el chain, el estado del lazo transiciona a FORAGED.
+    Con --preview (dry-run), solo muestra la estimación de crecimiento sin
+    tocar la red ni el corpus.  Sin --preview, transiciona el estado a FORAGED.
     """
     store_path = resolve_library_path(ctx.obj)
     data = run_chain(
@@ -211,6 +315,7 @@ def chain_cmd(
         max_candidates=max_candidates,
         max_citing_per_paper=max_citing_per_paper,
         email=email,
+        preview=preview,
     )
 
     if json_output:
@@ -219,8 +324,18 @@ def chain_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=data.get("warnings", []),
         )
         emit(envelope)
+    elif preview:
+        emit_human(f"[preview] Dirección: {data['direction']}")
+        emit_human(f"[preview] Candidatos potenciales: {data['estimated_candidates']}")
+        for dir_name, count in data["by_direction"].items():
+            emit_human(f"  {dir_name}: {count}")
+        if data["capped_by_max"]:
+            emit_human(f"  (acotado por --max-candidates={max_candidates})")
+        for warning in data.get("warnings", []):
+            emit_human(f"Aviso: {warning}")
     else:
         emit_human(f"Candidatos encontrados: {data['candidates_found']}")
         emit_human(f"Total en corpus: {data['total_papers']}")
