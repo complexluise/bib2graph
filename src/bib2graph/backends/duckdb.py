@@ -138,6 +138,22 @@ CREATE TABLE IF NOT EXISTS external_ids (
 )
 """
 
+# #126 — tabla de pasos de filtro PRISMA para trazabilidad del manifest.
+# Cada ejecución de ``b2g filter`` appendea una fila por criterio aplicado.
+# ``name``/``criteria``/``count_before``/``count_after`` replican ``FilterStep``.
+# ``recorded_at`` usa ``now()`` de DuckDB (patrón loop_state_log).
+# No tiene PK UNIQUE: la idempotencia la maneja la capa de servicio que
+# decide si re-registrar o actualizar (ver ``persist_filter_steps``).
+_DDL_FILTER_LOG = """
+CREATE TABLE IF NOT EXISTS filter_log (
+    name         VARCHAR NOT NULL,
+    criteria     VARCHAR NOT NULL,
+    count_before INTEGER NOT NULL,
+    count_after  INTEGER NOT NULL,
+    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+"""
+
 # ADR 0024: migración liviana para bases pre-existentes sin columna ``_seq``.
 # Se suprime el error si la columna ya existe (CatalogException o BinderException).
 # El backfill usa ``rowid`` como proxy de orden de inserción original; es inocuo
@@ -338,6 +354,8 @@ class DuckDBBackend:
         self._con.execute(_DDL_REFERENCED_BUT_NOT_FETCHED)
         # ADR 0036 (opción C): tabla lateral de IDs externos por motor.
         self._con.execute(_DDL_EXTERNAL_IDS)
+        # #126: tabla de pasos de filtro PRISMA para trazabilidad del manifest.
+        self._con.execute(_DDL_FILTER_LOG)
         self._register_udfs()
 
     def _register_udfs(self) -> None:
@@ -455,6 +473,18 @@ class DuckDBBackend:
                     "VALUES (?, ?, ?)",
                     [paper_id_val, engine_val, id_val],
                 )
+            # #126: copiar la tabla de pasos de filtro PRISMA
+            filter_rows = self._con.execute(
+                "SELECT name, criteria, count_before, count_after, recorded_at "
+                "FROM filter_log ORDER BY recorded_at"
+            ).fetchall()
+            for name_val, criteria_val, cb_val, ca_val, at_val in filter_rows:
+                new_backend._con.execute(
+                    "INSERT INTO filter_log "
+                    "(name, criteria, count_before, count_after, recorded_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    [name_val, criteria_val, cb_val, ca_val, at_val],
+                )
             return new_backend
         else:
             # Para archivo en disco: compartimos la ruta; nueva instancia abre nueva conexión
@@ -533,6 +563,7 @@ class DuckDBBackend:
         action: str,
         by: str,
         decided_at: str | None = None,
+        source: str | None = None,
     ) -> DuckDBBackend:
         """Aplica accept/reject a los papers indicados y devuelve backend nuevo.
 
@@ -548,6 +579,8 @@ class DuckDBBackend:
             by: Identificador de quien decide.
             decided_at: Timestamp ISO8601 UTC de la decisión (inyectado desde
                 la frontera CLI; ``None`` = fallback a ``datetime.now(UTC)``).
+            source: Origen del evento (p. ej. criterio de filtro PRISMA).
+                Si es ``None``, el campo ``source`` del evento queda vacío.
 
         Returns:
             Nueva instancia con la curación aplicada.
@@ -557,7 +590,7 @@ class DuckDBBackend:
         current_table = _arrow_table_from_con(self._con)
         current_rows = current_table.to_pylist()
         updated_rows = _apply_curation_to_rows(
-            current_rows, ids, action, by, decided_at
+            current_rows, ids, action, by, decided_at, source
         )
 
         new_backend = self._clone()
@@ -802,6 +835,71 @@ class DuckDBBackend:
             "SELECT paper_id, engine, id FROM external_ids"
         ).fetchall()
         return [(r[0], r[1], r[2]) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Extensiones propias: filter_log (#126)
+    # ------------------------------------------------------------------
+
+    def persist_filter_steps(
+        self,
+        steps: list[object],
+        *,
+        replace: bool = True,
+    ) -> None:
+        """Persiste los pasos de filtro PRISMA en ``filter_log``.
+
+        #126 — trazabilidad PRISMA: los pasos aplicados en ``b2g filter``
+        se guardan para que ``manifest.filters`` sobreviva entre cargas del
+        store.
+
+        Por defecto (``replace=True``) limpia los pasos anteriores antes de
+        insertar los nuevos: cada invocación de ``b2g filter`` reemplaza el
+        registro previo completo (idempotencia de ``run_filter``).
+
+        Args:
+            steps: Lista de ``FilterStep`` (se accede a sus atributos
+                ``name``, ``criteria``, ``count_before``, ``count_after``).
+            replace: Si es ``True`` (default), trunca ``filter_log`` antes
+                de insertar.  Si es ``False``, appendea (útil para tests
+                que verifican acumulación).
+        """
+        if replace:
+            self._con.execute("DELETE FROM filter_log")
+        for step in steps:
+            self._con.execute(
+                "INSERT INTO filter_log (name, criteria, count_before, count_after) "
+                "VALUES (?, ?, ?, ?)",
+                [
+                    getattr(step, "name", None),
+                    getattr(step, "criteria", None),
+                    getattr(step, "count_before", None),
+                    getattr(step, "count_after", None),
+                ],
+            )
+
+    def load_filter_steps(self) -> list[dict[str, object]]:
+        """Carga los pasos de filtro PRISMA desde ``filter_log``.
+
+        #126 — trazabilidad PRISMA: permite que ``DuckDBStore.load()``
+        reconstruya ``manifest.filters`` con los pasos persistidos.
+
+        Returns:
+            Lista de dicts con las claves ``name``, ``criteria``,
+            ``count_before`` y ``count_after`` en el orden de inserción.
+        """
+        rows = self._con.execute(
+            "SELECT name, criteria, count_before, count_after "
+            "FROM filter_log ORDER BY recorded_at"
+        ).fetchall()
+        return [
+            {
+                "name": r[0],
+                "criteria": r[1],
+                "count_before": r[2],
+                "count_after": r[3],
+            }
+            for r in rows
+        ]
 
     # ------------------------------------------------------------------
     # Extensión: query SQL libre

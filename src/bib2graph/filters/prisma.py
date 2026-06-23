@@ -189,9 +189,14 @@ def apply_filter(
         and not _passes(row, criterion)
     ]
 
-    label = f"filter:{criterion.field}{criterion.op}{criterion.value}"
+    label = f"filter:{criterion.field}:{criterion.op}:{criterion.value}"
     new_corpus = (
-        corpus.reject(ids_to_reject, by=label, decided_at=decided_at)
+        corpus.reject(
+            ids_to_reject,
+            by="prisma_filter",
+            source=label,
+            decided_at=decided_at,
+        )
         if ids_to_reject
         else corpus
     )
