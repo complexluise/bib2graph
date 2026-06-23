@@ -27,10 +27,19 @@ class GrowthPreview(BaseModel):
     fetch (ADR 0008: control de crecimiento).
 
     ``preview()`` opera **solo localmente**, sin red.  El crecimiento
-    backward se estima exactamente desde ``references_id``.  El crecimiento
-    forward no puede estimarse sin fetch, por lo que ``by_direction["forward"]``
-    vale ``0`` cuando ``forward_requires_fetch`` es ``True``; el conteo real
-    solo se conoce al llamar ``chain(direction="forward"/"both")``.
+    backward se estima exactamente desde ``references_id``.
+
+    Para el crecimiento forward hay dos casos:
+
+    - Si el corpus fue enriquecido (``b2g enrich``), los papers tienen
+      ``cited_by_id`` poblado: se calcula el número de IDs únicos aún no
+      presentes en el corpus — estimación local exacta.  En este caso
+      ``forward_requires_fetch`` es ``False`` y ``forward_from_cited_by``
+      es ``True``.
+    - Si ``cited_by_id`` está vacío (corpus recién sembrado, sin enrich),
+      el crecimiento forward no es estimable sin red.  En este caso
+      ``forward_requires_fetch`` es ``True``, ``forward_from_cited_by``
+      es ``False`` y ``by_direction["forward"]`` vale ``0``.
 
     Attributes:
         estimated_new: Estimación total de candidatos nuevos (solo lo que
@@ -40,16 +49,25 @@ class GrowthPreview(BaseModel):
             La entrada ``"forward"`` vale ``0`` cuando el crecimiento forward
             no es estimable sin red.
         direction: Dirección pedida (``backward``/``forward``/``both``).
-        forward_requires_fetch: ``True`` cuando se pidió forward o both —
-            indica que el crecimiento forward es desconocido hasta llamar a
-            ``chain()``.  ``False`` cuando la dirección es solo backward
-            (estimación exacta local).
+        forward_requires_fetch: ``True`` cuando el crecimiento forward no puede
+            estimarse localmente (corpus sin ``cited_by_id`` poblado) y es
+            necesario llamar a ``chain()`` para obtener el conteo real.
+            ``False`` cuando la dirección es solo backward, o cuando
+            ``cited_by_id`` está disponible (estimación local exacta).
+        forward_from_cited_by: ``True`` cuando el crecimiento forward se estimó
+            localmente desde ``cited_by_id`` (corpus enriquecido con
+            ``b2g enrich``).  ``False`` en los demás casos.
+        capped_by_max: ``True`` cuando el resultado está acotado por
+            ``max_candidates``; ``False`` si no se aplicó límite o si el
+            número de candidatos es menor al límite.
     """
 
     estimated_new: int
     by_direction: dict[str, int]
     direction: Direction
     forward_requires_fetch: bool = False
+    forward_from_cited_by: bool = False
+    capped_by_max: bool = False
 
 
 class RankedCandidates(BaseModel):
