@@ -80,10 +80,15 @@ class DuckDBStore:
         archivo; las operaciones subsecuentes (``accept``, ``reject``,
         ``merge``) mutarán el archivo en disco.
 
+        #126: reconstruye ``manifest.filters`` desde ``filter_log`` para que
+        los pasos PRISMA persistan entre sesiones.
+
         Returns:
             El ``Corpus`` acumulado en el store.
         """
         import pyarrow as pa
+
+        from bib2graph.corpus import FilterStep
 
         table = self._backend.to_arrow()
         if len(table) == 0:
@@ -92,7 +97,24 @@ class DuckDBStore:
                 schema=CORPUS_SCHEMA,
             )
         # Devolver un Corpus respaldado por el DuckDBBackend
-        return Corpus.from_arrow(table, backend=self._backend)
+        corpus = Corpus.from_arrow(table, backend=self._backend)
+
+        # #126: reconstruir manifest.filters desde filter_log
+        raw_steps = self._backend.load_filter_steps()
+        if raw_steps:
+            filter_steps = [
+                FilterStep(
+                    name=str(s["name"]),
+                    criteria=str(s["criteria"]),
+                    count_before=int(str(s["count_before"])),
+                    count_after=int(str(s["count_after"])),
+                )
+                for s in raw_steps
+            ]
+            new_manifest = corpus.manifest.model_copy(update={"filters": filter_steps})
+            corpus = corpus.with_manifest(new_manifest)
+
+        return corpus
 
     # ------------------------------------------------------------------
     # Acceso al backend subyacente (CycleState, query SQL)

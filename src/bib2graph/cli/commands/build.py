@@ -87,16 +87,21 @@ def _write_artifacts(
             for k, v in art.metrics.items()
             if isinstance(v, (int, float, str, bool, type(None)))
         }
+
+        # D3 — incluir asortatividad en metrics.json cuando está disponible.
+        # community_composition es un dict anidado; se incluye dentro de
+        # assortativity para no alterar el schema de primer nivel.
+        metrics_payload: dict[str, object] = {
+            "kind": kind,
+            "nodes": art.graph.number_of_nodes(),
+            "edges": art.graph.number_of_edges(),
+            **safe_metrics,
+        }
+        if art.assortativity is not None:
+            metrics_payload["assortativity"] = art.assortativity
+
         metrics_path.write_text(
-            json.dumps(
-                {
-                    "kind": kind,
-                    "nodes": art.graph.number_of_nodes(),
-                    "edges": art.graph.number_of_edges(),
-                    **safe_metrics,
-                },
-                ensure_ascii=False,
-            ),
+            json.dumps(metrics_payload, ensure_ascii=False),
             encoding="utf-8",
         )
 
@@ -140,6 +145,8 @@ def _write_artifacts(
             "graphml": str(kind_dir / "network.graphml"),
             "metrics_json": str(metrics_path),
         }
+        if art.assortativity is not None:
+            net_entry["assortativity"] = art.assortativity
         if clusters_path is not None:
             net_entry["clusters_csv"] = clusters_path
         networks_info.append(net_entry)

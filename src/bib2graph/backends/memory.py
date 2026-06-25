@@ -290,6 +290,7 @@ def _apply_curation_to_rows(
     action: str,
     by: str,
     decided_at: str | None = None,
+    source: str | None = None,
 ) -> list[dict[str, object]]:
     """Aplica la acción de curación en la lista de filas y devuelve la nueva lista.
 
@@ -306,6 +307,8 @@ def _apply_curation_to_rows(
         decided_at: Timestamp ISO8601 UTC de la decisión.  Si es ``None``,
             se usa ``datetime.now(UTC).isoformat()`` como conveniencia
             (uso como librería sin frontera CLI).
+        source: Origen del evento (p. ej. criterio de filtro PRISMA).
+            Si es ``None``, el campo ``source`` del evento queda vacío.
 
     Returns:
         Nueva lista de filas con la curación aplicada.
@@ -318,7 +321,7 @@ def _apply_curation_to_rows(
         action=action,
         equation_id=None,
         chaining_hop=None,
-        source=None,
+        source=source,
         fetched_at=None,
         decided_by=by,
         decided_at=resolved_at,
@@ -459,6 +462,7 @@ class InMemoryBackend:
         action: str,
         by: str,
         decided_at: str | None = None,
+        source: str | None = None,
     ) -> InMemoryBackend:
         """Aplica accept/reject a los ids indicados y devuelve una nueva instancia.
 
@@ -471,12 +475,14 @@ class InMemoryBackend:
             by: Identificador de quien decide.
             decided_at: Timestamp ISO8601 UTC de la decisión (inyectado desde
                 la frontera CLI; ``None`` = fallback a ``datetime.now(UTC)``).
+            source: Origen del evento (p. ej. criterio de filtro PRISMA).
+                Si es ``None``, el campo ``source`` del evento queda vacío.
 
         Returns:
             Nueva instancia con la curación aplicada.
         """
         updated = _apply_curation_to_rows(
-            self._table.to_pylist(), ids, action, by, decided_at
+            self._table.to_pylist(), ids, action, by, decided_at, source
         )
         return InMemoryBackend(
             _rows_to_table(updated),

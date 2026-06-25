@@ -93,6 +93,9 @@ def run_filter(
         total_papers = len(filtered_corpus)
         filtered_backend_close = getattr(filtered_corpus._backend, "close", None)
         store.persist(filtered_corpus)
+        # #126 — trazabilidad PRISMA: persistir los pasos de filtro en filter_log
+        # para que manifest.filters sobreviva entre cargas del store.
+        store.backend.persist_filter_steps(steps)
         store.backend.set_loop_state(new_state, cycle_round=new_round)
     finally:
         if filtered_backend_close is not None:

@@ -1,8 +1,9 @@
 name: publish-pypi
 
 # Publica el paquete a PyPI productivo vía Trusted Publishing (OIDC) — SIN tokens ni secrets.
-# Se dispara al PUBLICARSE un GitHub Release (lo crea release-please al mergear su PR de release),
-# y también MANUAL (Actions → "publish-pypi" → "Run workflow") como fallback / primera publicación.
+# Workflow REUSABLE: lo invoca release-please.yml (job `publish`) cuando corta un Release
+# (gateado por su output `release_created`). También MANUAL (Actions → "publish-pypi" →
+# "Run workflow") como fallback / primera publicación.
 #
 # Requiere (una sola vez) un "pending publisher" en https://pypi.org:
 #   Your account → Publishing → Add a pending publisher:
@@ -18,8 +19,11 @@ name: publish-pypi
 # default de la action) y el environment (`pypi`).
 
 on:
-  release:
-    types: [published]
+  # Reusable: lo invoca release-please.yml (job `publish`) cuando corta un Release.
+  # workflow_call en vez de `on: release` porque el Release que crea release-please
+  # con el GITHUB_TOKEN NO dispara workflows (regla anti-recursión).
+  workflow_call:
+  # Fallback manual: Actions → publish-pypi → Run workflow (elegir rama, p. ej. main).
   workflow_dispatch:
 
 permissions:

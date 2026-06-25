@@ -139,7 +139,10 @@ def run_seed(
         merged_deduped = normalize_and_dedup(merged, applied_at=ingest_at)
         papers_added = len(result.corpus)
         total_papers = len(merged_deduped)
-        merged_backend_close = getattr(merged_deduped._backend, "close", None)
+        # Capturá close() del backend CLONADO (merged._backend, no merged_deduped)
+        # normalize_and_dedup devuelve un corpus con InMemoryBackend;
+        # el clone DuckDB está en merged._backend (fix #93).
+        merged_backend_close = getattr(merged._backend, "close", None)
         store.persist_replace(merged_deduped)
         store.backend.set_loop_state(new_state, cycle_round=new_round)
     finally:
@@ -259,9 +262,10 @@ def run_seed_from_bib(
         merged_deduped = normalize_and_dedup(merged, applied_at=ingest_at)
         papers_added = len(corpus)
         total_papers = len(merged_deduped)
-        # Capturá close() del backend clonado antes de persistir (puede no
-        # existir si el backend es InMemoryBackend).
-        merged_backend_close = getattr(merged_deduped._backend, "close", None)
+        # Capturá close() del backend CLONADO (merged._backend, no merged_deduped)
+        # antes de persistir.  normalize_and_dedup devuelve un corpus con
+        # InMemoryBackend; el clone DuckDB está en merged._backend (fix #93).
+        merged_backend_close = getattr(merged._backend, "close", None)
         store.persist_replace(merged_deduped)
         store.backend.set_loop_state(new_state, cycle_round=new_round)
 
