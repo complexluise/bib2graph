@@ -11,6 +11,26 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.9.0](https://github.com/complexluise/bib2graph/compare/v0.8.0...v0.9.0) (2026-06-25)
+
+
+### Features
+
+* **cli:** preview del crecimiento del chaining antes del fetch ([#89](https://github.com/complexluise/bib2graph/issues/89)) ([#144](https://github.com/complexluise/bib2graph/issues/144)) ([e89e1ec](https://github.com/complexluise/bib2graph/commit/e89e1ec42157417093c265f6574b71daac09adaf))
+* **networks:** cablear assortativity_attribute + composición ([#90](https://github.com/complexluise/bib2graph/issues/90)) ([#143](https://github.com/complexluise/bib2graph/issues/143)) ([27fce62](https://github.com/complexluise/bib2graph/commit/27fce6235caf49348c3737c7f359dd3db02ed9d9))
+
+
+### Bug Fixes
+
+* **provenance:** b2g filter registra el filtro (manifest + procedencia) ([#126](https://github.com/complexluise/bib2graph/issues/126)) ([#140](https://github.com/complexluise/bib2graph/issues/140)) ([3eb20da](https://github.com/complexluise/bib2graph/commit/3eb20dae27b6976709cc93587821cc1571bcfbea))
+* **seed:** cerrar el backend clonado correcto en reseed ([#93](https://github.com/complexluise/bib2graph/issues/93)) ([#142](https://github.com/complexluise/bib2graph/issues/142)) ([d0a3239](https://github.com/complexluise/bib2graph/commit/d0a32393035084ab0d699d4418fb83825f5d7576))
+
+
+### Documentation
+
+* README install (uv recomendado) + limpieza de AI_DISCLOSURE ([#133](https://github.com/complexluise/bib2graph/issues/133)) ([5bb99f9](https://github.com/complexluise/bib2graph/commit/5bb99f97b93507ff83030fca2cf5ee1f8c8ae8fa))
+* sincronizar PRD/ARCHITECTURE con el 0.8 (Tier 1 — hechos) ([#135](https://github.com/complexluise/bib2graph/issues/135)) ([49ecdbe](https://github.com/complexluise/bib2graph/commit/49ecdbe25afdf485c46d1298f160d2e73ee217df))
+
 ## [0.8.0](https://github.com/complexluise/bib2graph/compare/v0.7.0...v0.8.0) (2026-06-22)
 
 
