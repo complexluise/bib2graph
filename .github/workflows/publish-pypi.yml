@@ -59,3 +59,14 @@ jobs:
       - name: Publish to PyPI (trusted publishing)
         # Sin repository-url → la action publica a PyPI productivo (https://upload.pypi.org/legacy/).
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # attestations OFF: cuando este workflow se invoca como REUSABLE desde
+          # release-please.yml, el certificado de la attestation (PEP 740) registra el
+          # workflow top-level (release-please.yml), no este archivo. El Trusted Publisher
+          # de PyPI espera publish-pypi.yml → PyPI rechaza el upload con 400 ("Build Config
+          # URI does not match expected Trusted Publisher"). PyPA no soporta reusable
+          # workflows con Trusted Publishing. El OIDC del token sí matchea (job_workflow_ref
+          # = publish-pypi.yml), así que deshabilitar la attestation desbloquea el publish
+          # sin perder el trusted publishing. El disparo MANUAL (workflow_dispatch) no sufre
+          # esto (corre directo, no reusable), pero mantenemos el flag por consistencia.
+          attestations: false
