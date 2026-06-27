@@ -25,6 +25,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import UsageError, handle_errors
+from bib2graph.cli._options import json_mode, json_option
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -75,13 +76,7 @@ def run_init(path: Path, name: str) -> dict[str, Any]:
         "Nombre legible de la investigación (default: nombre del directorio destino)."
     ),
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @handle_errors("init")
 def init_cmd(
     target: str,
@@ -113,7 +108,7 @@ def init_cmd(
 
     data = run_init(target_path, resolved_name)
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="init",
             ok=True,

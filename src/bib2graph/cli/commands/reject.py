@@ -22,6 +22,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import resolve_library_path
 
 # ---------------------------------------------------------------------------
@@ -76,13 +77,7 @@ def run_reject(
     show_default=True,
     help="Identificador de quien decide.",
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("reject")
 def reject_cmd(
@@ -99,7 +94,7 @@ def reject_cmd(
     store_path = resolve_library_path(ctx.obj)
     data = run_reject(store_path, list(ids), by=by)
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="reject",
             ok=True,

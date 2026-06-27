@@ -17,6 +17,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_workspace
 
 # ---------------------------------------------------------------------------
@@ -71,13 +72,7 @@ def run_snapshot(
         "(default: <workspace>/snapshots/ o <store_dir>/snapshots/)."
     ),
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("snapshot")
 def snapshot_cmd(
@@ -98,7 +93,7 @@ def snapshot_cmd(
 
     data = run_snapshot(ws.library_path, out_dir=effective_out_dir)
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="snapshot",
             ok=True,

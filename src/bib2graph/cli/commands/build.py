@@ -29,6 +29,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DependencyError, handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_workspace
 
 if TYPE_CHECKING:
@@ -298,13 +299,7 @@ def run_build(
         "Si el scope deja 0 papers, termina con exit 0 y un warning accionable."
     ),
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("build")
 def build_cmd(
@@ -328,7 +323,7 @@ def build_cmd(
         ws.library_path, out_dir=effective_out_dir, corpus_scope=corpus_scope
     )
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="build",
             ok=True,

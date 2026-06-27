@@ -15,6 +15,7 @@ import click
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DependencyError, handle_errors
 from bib2graph.cli._ingest import normalize_and_dedup
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
@@ -283,13 +284,7 @@ def _run_chain_preview(
         "indica que se necesita fetch."
     ),
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("chain")
 def chain_cmd(
@@ -318,7 +313,7 @@ def chain_cmd(
         preview=preview,
     )
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="chain",
             ok=True,

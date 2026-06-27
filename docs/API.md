@@ -263,7 +263,8 @@
 
 El CLI `b2g` (paquete `bib2graph.cli`, entry point `b2g = "bib2graph.cli:main"`) está
 **construido** con el contrato del ADR [0021](decisiones/0021-cli-agente-native-contrato.md). Cada
-subcomando lleva `--json` (envelope estable/versionado) y exit codes (`0` éxito · `1` uso · `2`
+subcomando lleva `--json` (envelope estable/versionado; también activable por entorno con
+**`B2G_JSON=1`**, ver §Envelope JSON) y exit codes (`0` éxito · `1` uso · `2`
 datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado). **Sin estado entre
 invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción global **opcional**
 `--workspace`; `--store` fue eliminada en [#75](https://github.com/complexluise/bib2graph/issues/75),
@@ -568,6 +569,28 @@ faltante, una opción desconocida como `--store` —eliminada en #75—, o ning�
 Click aborta el parseo **antes** de entrar al comando: se emite el mensaje de uso de Click en **stderr** y
 exit code `1`, **sin** envelope JSON. El envelope versionado solo cubre errores que ocurren
 **dentro** de la ejecución del comando.
+
+**stdout puro en modo JSON (ENFORCED, ADR 0021 §C; verificado #151).** En modo JSON (por `--json`
+o por `B2G_JSON`, abajo) stdout emite **exactamente una línea**: el envelope `schema="1"` — y nada
+más. Esto vale **también en el camino de error** (`ok=false` → envelope en stdout, no en stderr). El
+texto de modo humano (progreso, avisos legibles) va a **stderr**, nunca a stdout. Un agente parsea
+una línea JSON por invocación con la garantía de que stdout no trae ruido.
+
+**`B2G_JSON` — modo JSON por entorno (env var; #151, enmienda ADR 0021 §C).** Además del flag
+`--json` (por-comando, **post-verbo**: `b2g <cmd> --json` — la posición **no cambió**), el modo JSON
+se activa con la variable de entorno **`B2G_JSON`**:
+
+- **Valores truthy** (case-insensitive): `1`, `true`, `yes`. Cualquier otra cosa (ausente, `0`,
+  `false`, `no`, vacío) = modo humano.
+- **Alcance:** **todos** los comandos, incluido `init`. No hay que pasar `--json` en cada llamada.
+- **Precedencia:** `--json` explícito **gana**; si no está, `B2G_JSON` truthy activa el modo JSON.
+  **No existe `--no-json`** (no se puede forzar modo humano teniendo `B2G_JSON` truthy salvo
+  desetear/cambiar la env var).
+- **Recomendación agents-first:** un agente hace **`export B2G_JSON=1` una vez** al inicio de la
+  sesión y corre todo el ciclo (`init → seed → chain → … → export`) sin repetir `--json`.
+
+Aditivo y retrocompatible: el envelope `schema="1"`, los exit codes y la FSM **no cambian** (ver
+ADR [0021](decisiones/0021-cli-agente-native-contrato.md) §C, enmienda 2026-06-27).
 
 ---
 

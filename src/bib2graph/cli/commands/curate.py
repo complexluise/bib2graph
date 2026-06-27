@@ -89,6 +89,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, UsageError, handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_workspace
 from bib2graph.constants import Col, CurationStatus
 
@@ -607,13 +608,7 @@ def run_curate_from_csv(
     show_default=True,
     help="Identificador de quien decide (solo con --from-csv).",
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("curate")
 def curate_cmd(
@@ -672,7 +667,7 @@ def curate_cmd(
             include_all=include_all,
         )
 
-        if json_output:
+        if json_mode(json_output):
             envelope = build_envelope(
                 command="curate",
                 ok=True,
@@ -696,7 +691,7 @@ def curate_cmd(
         decided_at=now,
     )
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="curate",
             ok=True,
