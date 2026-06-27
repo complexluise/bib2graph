@@ -54,6 +54,10 @@
   `_write_artifacts` (mismos GraphML + metrics.json + clusters.csv que `build`); **NO** transiciona el
   `CycleState` ni sella `.corpus_hash` (transversal al lazo, como `enrich`/`curate`). `pyyaml` pasó a
   dependencia del núcleo (import perezoso). **516 tests verdes**. Ver `docs/API.md` §10.
+  **Absorbido por `b2g build --spec` (#159, ADR 0037 (a) / 0038):** `build` ahora carga el mismo YAML
+  (helper compartido `_build_from_spec_file`) y **sí** transiciona a `BUILT` + sella `.corpus_hash`
+  (decisión D1); `build` suma `--scope all|accepted|seeds` (default `all`) y `--min-weight` (solo modo
+  quick). `networks` y `--corpus-scope` quedan como **alias en deprecación** (cierran 0.11.0).
 - **MVP GUI — Hitos G1–G5 COMPLETOS · build entero del MVP (AS-BUILT 2026-06-18, ADR
   [0028](docs/decisiones/0028-arquitectura-gui-api-capa-servicios.md)):** los 5 hitos de construcción
   están **AS-BUILT** en `feat/gui-g1-capa-servicios` — G1 (capa de servicios neutral + contrato subido),
