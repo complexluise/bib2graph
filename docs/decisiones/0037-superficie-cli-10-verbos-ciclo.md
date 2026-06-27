@@ -2,14 +2,17 @@
 
 - **Estado:** Aceptada
 - **Fecha:** 2026-06-26
-- **Decidido por:** mixto. Las **cuatro decisiones (a)–(d)** —adoptar el set consolidado de **10
+- **Decidido por:** mixto. Las decisiones **(a)–(d)** —adoptar el set consolidado de **10
   verbos** como contrato de superficie 0.10.0, `curate`/`read` como **grupos noun-verb**, absorber
   `monitor` en `chain --since`, y dar **aliases de retrocompat** durante una ventana de deprecación—
-  son **decisiones del Product Owner humano** (confirmadas (a)–(e) sobre la propuesta de convergencia
-  de la Discussion [#127](https://github.com/complexluise/bib2graph/discussions/127)). El **encuadre**
-  que las ordena —*"la superficie ES el ciclo de investigación"* y *`status` es el mapa que el agente
-  lee para saber el próximo comando* (modelo mental tipo `git status`)— es **síntesis de la IA
-  (Claude) validada por el PO**.
+  son **decisiones del Product Owner humano** (confirmadas sobre la propuesta de convergencia de la
+  Discussion [#127](https://github.com/complexluise/bib2graph/discussions/127)). Las decisiones
+  **(e) preview por-red en `status`** y **(f) maturity-stamp del one-shot** surgieron como síntesis de
+  la IA y se habían anotado como *diferidas*; el **PO decidió incorporarlas a este ADR** (2026-06-26,
+  no posponerlas) por cerrar la trampa de red-vacía y la honestidad del one-shot. El **encuadre** que
+  ordena todo —*"la superficie ES el ciclo de investigación"* y *`status` es el mapa que el agente lee
+  para saber el próximo comando* (modelo mental tipo `git status`)— es **síntesis de la IA (Claude)
+  validada por el PO**.
 - **Enmienda a:** [0021](0021-cli-agente-native-contrato.md) (Contrato del CLI agente-native).
   Este ADR **consolida los 12 subcomandos del 0021 (y los que crecieron después) a 10 verbos**,
   absorbiendo `monitor`, `inspect` y `networks` en verbos existentes y agrupando la curación y la
@@ -87,7 +90,7 @@ superficie del 0021; el contrato de salida (envelope/exit/FSM) **no cambia**.
 | `b2g build [--scope all\|accepted\|seeds] [--spec YAML] [--min-weight N]` | BUILD | Construye redes; **default corre SIN curar (one-shot)**; **warning + diagnóstico si una red sale vacía**; absorbe `networks` vía `--spec`. |
 | `b2g read {list,stats,top,show}` | READ | **Grupo noun-verb** (decisión (b)); `list`/grep corpus, `stats --group-by`, **`top` = centrales + co-citación con título (salida de investigación, NUEVO)**, `show --id`; absorbe `inspect --id`. |
 | `b2g export` / `b2g snapshot` | EXPORT/SNAPSHOT | Formatos extra / snapshot reproducible; **clarifica `export` vs la salida de `build`**. |
-| `b2g status` | STATUS (transversal) | FSM + **readiness** + **`next_best_action`** + dependencies + **diagnóstico red-vacía**; **absorbe `inspect` sin args y el "doctor" SIN comando nuevo**, como **campos ADITIVOS** que preservan `schema="1"`. |
+| `b2g status` | STATUS (transversal) | FSM + **readiness** + **`next_best_action`** + dependencies + **preview por-red "qué se materializa si actúo ahora"** (diagnóstico red-vacía en *status-time*, decisión (e)); **absorbe `inspect` sin args y el "doctor" SIN comando nuevo**, como **campos ADITIVOS** que preservan `schema="1"`. |
 | `b2g validate` | — | Se mantiene sin cambios. |
 
 **Total: `init`, `seed`, `chain`, `curate`, `build`, `read`, `export`, `snapshot`, `status`,
@@ -107,6 +110,27 @@ superficie del 0021; el contrato de salida (envelope/exit/FSM) **no cambia**.
 - **(d) Aliases de retrocompat** para los comandos consolidados (`build`/`networks`,
   `accept`/`reject`, `inspect`, `monitor`) durante una **ventana de deprecación**. No se rompe de una;
   los nombres viejos siguen funcionando (con aviso) hasta cerrar la ventana.
+- **(e) `status` da el preview por-red "qué se materializa si actúo ahora"** (modelo mental
+  `git status` *staged vs unstaged*). Para **cada red proyectable**, `status` reporta —**antes** de
+  correr `build`— si la construcción daría un grafo **no-vacío** y, si saldría vacía, la **causa
+  determinista** (p. ej. *"0/15 papers con `keywords_id`"*) y el **comando exacto** que lo arregla.
+  El diagnóstico de red-vacía deja de vivir **solo** en *build-time* (warning post-hoc) y pasa a estar
+  disponible en *status-time*: el agente/humano ve el resultado vacío **antes** de gastar el `build`.
+  Es la cura plena de la trampa de la Nota 20, no su mitigación. (Campo aditivo de `status`,
+  `schema="1"` intacto.)
+- **(f) Maturity-stamp del one-shot.** Los artefactos del camino one-shot (`build`/`snapshot`/`read`)
+  llevan un bloque **`maturity`** aditivo en el `--json` que declara que el resultado es un **borrador
+  sin pulir**: si corrió sin curar (`curated:false`), el `scope`, si el corpus **no está saturado**
+  (forrajeo sin agotar), y las **redes vacías**. Así ni un agente que optimiza por `exit 0` ni un
+  humano apurado confunden un one-shot con un resultado terminado. Es honestidad **por construcción**
+  —vom Brocke/PRISMA hecho self-description del artefacto— y `status` aplicado a la salida. (Campo
+  aditivo, `schema="1"` intacto.)
+
+> **Nota de proceso (2026-06-26):** (e) y (f) surgieron como síntesis de la IA y se habían anotado
+> como *diferidas* en la Discussion [#127](https://github.com/complexluise/bib2graph/discussions/127#discussioncomment-17450871);
+> el **PO decidió incorporarlas a 0037** (no posponerlas), porque cierran la trampa de red-vacía
+> (e) y la condición de honestidad del one-shot (f) que motivan el ADR. Son del mismo género aditivo
+> que el resto: no agregan superficie ni rompen el envelope.
 
 ### Invariantes preservados (por qué esto NO rompe el contrato)
 
@@ -134,12 +158,13 @@ $ b2g seed --from-bib refs.bib --resolve --email yo@ej.org
                                     # SEED  → ingesta + DOIs→OpenAlex (0035)
 $ b2g status --json                #        data.next_best_action = "chain"
 $ b2g chain --back --forward       # CHAIN → forrajeo con caps + filtros por defecto
-$ b2g status --json                #        data.next_best_action = "build"
-$ b2g build                        # BUILD → one-shot, SIN curar; si una red sale vacía:
-                                    #        warning + diagnóstico (no "exito vacío", Nota 20)
+$ b2g status --json                #        next_best_action="build"; PREVIEW (e): red citación
+                                    #        saldría VACÍA (0/15 resueltos) → corré seed --resolve
+$ b2g build                        # BUILD → one-shot, SIN curar; el artefacto lleva maturity (f):
+                                    #        {curated:false, scope:"all", empty_networks:[...]}
 $ b2g status --json                #        data.next_best_action = "read"
 $ b2g read top                     # READ  → centrales + co-citación con título (salida de invest.)
-$ b2g snapshot                     # SNAPSHOT → reproducible
+$ b2g snapshot                     # SNAPSHOT → reproducible (maturity (f) viaja en el artefacto)
 ```
 
 `status` es el **mapa**: en cada punto dice dónde está el lazo (FSM), qué está listo (`readiness`),
@@ -173,16 +198,22 @@ diagnostica antes** —el agente no se queda con una "cara de éxito" vacía.
   de comando y suman los campos aditivos de `status`; hay que reapuntarlos sin que el `schema` driftee
   (sigue `"1"`).
 
-**Diferido a seguimiento (NO bloquea 0037)** — dos afinadas que el PO **difirió conscientemente**,
-registradas en la Discussion [#127](https://github.com/complexluise/bib2graph/discussions/127#discussioncomment-17450871):
+- **El preview por-red (e) cierra la trampa de red-vacía de raíz.** El agente/humano ve que `build`
+  daría una red vacía —y por qué, y cómo arreglarlo— **leyendo solo `status`, antes de actuar**. Lo
+  que la Nota 20 detectó como "éxito vacío" deja de ser posible: el diagnóstico está disponible en el
+  punto de decisión, no como warning post-hoc.
+- **El maturity-stamp (f) hace el one-shot honesto por construcción.** El artefacto se autodeclara
+  borrador sin pulir; el one-shot es valioso como primera iteración **y** queda etiquetado como tal,
+  sin que un consumidor lo confunda con un resultado curado.
 
-- **(e.5) `status` con preview por-red "qué se materializa si actúo ahora"** (modelo `git status`
-  staged/unstaged): mover el diagnóstico de red-vacía de *build-time* a *status-time*. **No** es parte
-  de 0037.
-- **(e.6) Maturity-stamp del one-shot:** el artefacto del one-shot lleva un bloque `maturity`/
-  `caveats` declarándose **borrador sin pulir** (corrió sin curar). **No** es parte de 0037.
+**Lo que cuestan (e) y (f)**
 
-Ambas quedan como follow-up consciente; entran (o no) por su propio ADR/issue.
+- **`status` debe computar el preview por-red sin correr `build`.** Necesita un estimador
+  **determinista y barato** (conteos de columnas `_id` pobladas por tipo de red) que prediga
+  vacío/no-vacío sin proyectar el grafo completo. Es conteo, no cómputo de red — pero es lógica nueva
+  a testear contra el `build` real (que no diverjan).
+- **El `maturity` engorda el `data` de los artefactos one-shot.** Campo aditivo (no rompe
+  `schema="1"`), pero hay que definir su forma estable y sumarlo a los tests de contrato `--json`.
 
 ## Alternativas
 
