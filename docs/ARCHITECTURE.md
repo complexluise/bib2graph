@@ -571,6 +571,17 @@ trabajo posterior, pero la API se **diseña con estos principios desde el hito 1
    faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` mediante un
    **pre-check `hasattr` en el borde** (p. ej. `chain.py` antes del `Forager`). Ver ADR 0021 §D.
 
+**Patrón noun-verb group (AS-BUILT #156, ADR
+[0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md) §b).** `read {list,stats,show}` es el
+**primer grupo noun-verb** del CLI (en la capa Click): un `click.Group` (el sustantivo) con un
+subcomando por verbo, cada uno delegando en su `run_<verbo>`/función de `service/` (capas 2–3 sin
+cambios). Dos convenciones del grupo: (1) el `command` del envelope usa la **ruta completa**
+(`"read list"`, no `"read"`); (2) el grupo **sin subcomando** imprime ayuda y sale **exit 0** —no es
+error de uso— vía `invoke_without_command=True` + `ctx.get_help()` en el callback del grupo
+(**workaround a la regresión de Click 8.4** donde un grupo sin subcomando devolvía exit 2). Un valor
+de flag `Choice` inválido sigue siendo error de uso de Click → **exit 1** (no exit 2). Es el molde
+para los próximos grupos previstos por el ADR 0037 (`curate {…}`).
+
 Son **19 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
 `inspect`, `validate`, `accept`, `reject`, **`monitor`**, **`enrich`**, **`init`**, **`curate`**,
 **`networks`**, **`restore`**, **`thesaurus`**, **`gui`**); el 18° **`thesaurus`** —único paso de

@@ -300,7 +300,9 @@ resolución DOI→`source_id` del flujo BibTeX e2e, issues #110/#112, ADR
   avisa, NO regenera — ver §`build`/`export`/`snapshot` abajo). **AS-BUILT #54 (2026-06-17):** `status`
   suma el campo aditivo `referenced_not_fetched` (nº de IDs que el backward chaining observó sin
   materializar — tabla `referenced_but_not_fetched`, §4/§5; `schema="1"` intacto), y `b2g chain` suma
-  `observed_refs_count` a su envelope JSON. `inspect`, `validate`.
+  `observed_refs_count` a su envelope JSON. **`read {list,stats,show}`** (grupo noun-verb, #156 /
+  ADR 0037 §b — ver §Grupo `read` abajo), `inspect` (**en deprecación**, #165: lo absorben `read show`
+  para papers y `status` para manifest/FSM; **sigue vivo** hasta cerrarse #165), `validate`.
 - **`seed`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md), Ciclo 9a + Ciclo
   10 AS-BUILT 2026-06-17): tiene **exactamente TRES modos mutuamente excluyentes** (exactamente uno
   requerido; pasar más de uno o ninguno → error de uso, exit 1):
@@ -581,12 +583,38 @@ invalidación por hash, **no** un build-system (ADR [0029](decisiones/0029-works
 `filter`→`FILTERED`, `build`→`BUILT`, **`monitor`→`MONITORED`** (cleanup pre-v0.3),
 **`restore`→`FILTERED`** (Ciclo 9a, ADR 0030: el corpus restaurado ya pasó curación; reusa la
 transición permisiva `filter`);
-`accept`/`reject`/**`curate`**/`export`/`snapshot`/`status`/`inspect`/`validate`/**`enrich`**/**`networks`**
-**no transicionan** (`curate` es curación transversal; `enrich` y `networks` son ortogonales al lazo,
-ADR 0025 / Hito 9). El estado
+`accept`/`reject`/**`curate`**/**`read`**/`export`/`snapshot`/`status`/`inspect`/`validate`/**`enrich`**/**`networks`**
+**no transicionan** (`curate` y **`read`** son transversales/lectura pura; `enrich` y `networks` son
+ortogonales al lazo, ADR 0025 / Hito 9). El estado
 destino lo dicta `bib2graph.cycle.apply_transition`
 (fuente única de verdad; los comandos no hardcodean el destino). `seed` con **estado previo** se trata
 como **`reseed`** (loop-back a `SEEDED`, ronda++, acumula sobre lo curado).
+
+**Grupo `read {list,stats,show}` — primer grupo noun-verb del CLI (#156, ADR
+[0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md) §b).** Es lectura pura del corpus (no
+transiciona el ciclo, §arriba). `read` **sin subcomando** imprime la ayuda y sale con **exit 0**
+(no es error de uso). El campo `command` del envelope usa la **ruta completa** del grupo noun-verb:
+`"read list"` / `"read stats"` / `"read show"` (convención para grupos: comando = `<grupo> <verbo>`,
+no solo el grupo). El `top` del ADR 0037 §b queda **diferido** (este hito materializa
+`list`/`stats`/`show`). La lógica vive en `service/reads.py` (`list_papers`, `corpus_stats`,
+`get_paper` extendido — §0.1), exportada en `service/__init__.py`.
+
+- **`read list`** — lista papers del corpus. Filtros (combinables, AND): `--query TEXT` (substring
+  **case-insensitive sobre el título únicamente**), `--status {candidate,accepted,rejected}`,
+  `--seeds` / `--candidates` (por `is_seed`), `--year INT`. Envelope:
+  `data = {papers: [{id, title, year, curation_status, is_seed}], count: int}`.
+- **`read stats --group-by {status,year,is_seed}`** (default `status`) — conteos agrupados. Envelope:
+  `data = {group_by: str, total: int, groups: [{key, count}]}`. Un valor de `--group-by` fuera del
+  `Choice` es **error de uso de Click → exit 1** (coherente con ADR 0010 uso=1/datos=2 y con todos
+  los `Choice` del repo; **no** es exit 2).
+- **`read show --id <ID>`** — delega en `service.get_paper(ws, ident)` (§0.1; resuelve **id | doi |
+  source_id**, prioridad id>doi>source_id, ADR 0036). Envelope: `data =` la **fila completa** del
+  corpus (~14 campos: `id, source_id, doi, title, year, abstract, is_seed, curation_status,
+  authors_raw, authors_id, keywords_id, references_id, cited_by_id, provenance`). `--id` que no
+  matchea ningún id/doi/source_id → `DataError`, **exit 2**.
+
+`inspect` (verbo plano) **sigue vivo pero en deprecación** (#165): `read show` lo absorbe para
+papers y `status` para manifest/FSM. **No** está removido en este hito.
 
 **Envelope JSON común y versionado** (ADR 0021 §C): en modo `--json`, cada subcomando emite **un
 objeto JSON** con `schema="1"`:
@@ -743,12 +771,18 @@ def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
     Entrada viva: {id="live", round, loop_state, total_papers}. Raises StoreError.
     Ronda = snapshot (B-G2-1 Opción A); el contador loop_round se ve en la entrada "live"."""
 
-def get_paper(ws: Workspace, paper_id: str) -> dict[str, Any]:
-    """Fila del corpus (CORPUS_SCHEMA) por id. Devuelve:
+def get_paper(ws: Workspace, ident: str) -> dict[str, Any]:
+    """Fila del corpus (CORPUS_SCHEMA) resuelta por identidad source-agnóstica
+    (ADR 0036): `ident` matchea contra **id | doi | source_id**, con prioridad
+    `id` > `doi` > `source_id` (devuelve el primer match). Devuelve:
     {id, source_id, doi, title, year, abstract, is_seed, curation_status,
      authors_raw, authors_id, keywords_id, references_id, cited_by_id,
      provenance (list, parseada del JSON)}.
-    Raises DataError si el id no existe; StoreError si el store falla."""
+    Raises DataError si `ident` no matchea ningún id/doi/source_id;
+    StoreError si el store falla.
+    NOTA: el parámetro se renombró `paper_id`→`ident` (#156); el caller
+    `api/routers/reads.py` lo pasa posicional (sin ruptura). `read show --id`
+    delega en esta lectura (§Convenciones CLI · grupo `read`)."""
 
 def get_scent(ws: Workspace, paper_id: str) -> dict[str, Any]:
     """Score de acoplamiento bibliográfico real + vecinos compartidos (B-G2-2). Devuelve:
@@ -815,7 +849,7 @@ firma `build_envelope(data: dict)`.
 |---|---|---|---|
 | GET | `/api/workspace` | `reads.get_workspace(ws)` | dict de estado del workspace (§0.1) |
 | GET | `/api/rounds` | `reads.list_rounds(ws)` | `{"rounds": [...]}` (snapshots + entrada `live`) |
-| GET | `/api/paper/{id}` | `reads.get_paper(ws, id)` | fila del corpus (§0.1) |
+| GET | `/api/paper/{id}` | `reads.get_paper(ws, id)` | fila del corpus (§0.1; `id` resuelve id\|doi\|source_id, ADR 0036) |
 | GET | `/api/paper/{id}/scent` | `reads.get_scent(ws, id)` | score de acoplamiento + vecinos (§0.1) |
 | GET | `/api/network/{kind}` | `reads.get_network(ws, kind)` | `{nodes, edges, metrics}` (§0.1) |
 | GET | `/api/compare?a=&b=` | `reads.compare_rounds(ws, a, b)` | diff de rondas (§0.1) |
