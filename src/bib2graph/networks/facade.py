@@ -620,7 +620,7 @@ class Networks:
         return _build_artifact(corpus, spec)
 
     @staticmethod
-    def quick(corpus: Corpus) -> list[NetworkArtifact]:
+    def quick(corpus: Corpus, *, min_weight: int = 1) -> list[NetworkArtifact]:
         """Construye las redes principales con configuración razonable.
 
         Arma specs para: acoplamiento bibliográfico (full), co-autoría,
@@ -633,6 +633,9 @@ class Networks:
 
         Args:
             corpus: Corpus de origen.
+            min_weight: Peso mínimo de arista (#159 — ``build --min-weight``).
+                Default 1 = sin filtro (comportamiento anterior intacto).
+                Si es > 1, las aristas con peso < N se filtran en todas las redes.
 
         Returns:
             Lista de 4 o 5 ``NetworkArtifact`` (coupling, co-autoría,
@@ -651,5 +654,5 @@ class Networks:
                 "para proyectar con los citantes disponibles."
             )
 
-        specs = [NetworkSpec(kind=k) for k in kinds]
+        specs = [NetworkSpec(kind=k, min_weight=min_weight) for k in kinds]
         return [_build_artifact(corpus, spec) for spec in specs]

@@ -93,7 +93,9 @@
 > **16° subcomando `b2g networks --spec`** (construye cada red con `Networks.build` y el helper
 > compartido `_write_artifacts`; mismo envelope que `build`; **NO** transiciona el `CycleState` ni
 > sella `.corpus_hash`). `pyyaml` pasó a dependencia del núcleo (import perezoso). Ver §10 +
-> §convenciones CLI.
+> §convenciones CLI. **(Actualización #159, ADR 0038):** esta capa declarativa fue **absorbida por
+> `b2g build --spec`** —que **sí** transiciona y sella (decisión D1)—; `networks` queda como alias en
+> **deprecación** (cierra 0.11.0). Ver §`build`.
 >
 > **Sincronizado con la capa declarativa de ecuación + `restore` — #33 / Ciclo 9a (AS-BUILT, 2026-06-17):**
 > dos cambios de la capa declarativa (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)).
@@ -435,17 +437,21 @@ resolución DOI→`source_id` del flujo BibTeX e2e, issues #110/#112, ADR
     que el Forager guarde `scent` en provenance) y **`cluster` siempre vacío** (integración con redes
     diferida). **Curación TRANSVERSAL: `curate` NO transiciona el `CycleState`** (disponible en cualquier
     estado del lazo, igual que `accept`/`reject`; ADR 0016 enmendado R3). `--json` con `schema="1"`.
-- **`networks`** (Hito 9, AS-BUILT 2026-06-17): **capa declarativa** — construye redes desde un YAML
-  versionable. **`b2g networks --spec <redes.yaml>`** carga la lista de specs con `load_specs` (§10;
+- **`networks`** (Hito 9, **EN DEPRECACIÓN — absorbido por `build --spec`**, ADR 0037 (a) / 0038,
+  ventana cierra 0.11.0): **capa declarativa** — construye redes desde un YAML versionable.
+  **`b2g networks --spec <redes.yaml>`** carga la lista de specs con `load_specs` (§10;
   clave raíz `networks:`), construye cada red con `Networks.build` y escribe artefactos con el helper
   compartido **`_write_artifacts`** (extraído de `build.py`): mismos GraphML + `metrics.json` +
-  `clusters.csv` que `build`, en `<out-dir>/<kind>/`. **`--out-dir`** override (default
-  `<workspace>/networks/`); resolución de store/workspace idéntica a `build` (`resolve_workspace`).
-  `--json` con `schema="1"`, mismo formato que `build` (lista de redes en `data["networks"]`, con
-  `clusters_csv` condicional). **Ejecución ad-hoc transversal al lazo: NO transiciona el `CycleState`
-  ni sella `networks/.corpus_hash`** (mismo criterio que `enrich`/`curate`). Errores accionables:
-  YAML malformado / spec inválida → `DataError` (exit 2); falta `python-louvain` → `DependencyError`
-  (exit 3).
+  `clusters.csv` que `build`, en `<out-dir>/<kind>/`. La carga YAML + proyección la comparte con
+  `build --spec` vía **`_build_from_spec_file`** (fuente única; frontera con #165). **`--out-dir`**
+  override (default `<workspace>/networks/`); resolución de store/workspace idéntica a `build`
+  (`resolve_workspace`). `--json` con `schema="1"`, mismo formato que `build` (lista de redes en
+  `data["networks"]`, con `clusters_csv` condicional). **Diferencia clave con `build --spec`:**
+  `networks` es **ad-hoc transversal al lazo** y **NO** transiciona el `CycleState` ni sella
+  `networks/.corpus_hash` (mismo criterio que `curate`); `build --spec` **sí** lo hace (decisión D1,
+  ADR 0038 — ver §`build`). **Recomendado:** usá `build --spec` (paso BUILD pleno). Errores
+  accionables: YAML malformado / spec inválida → `DataError` (exit 2); falta `python-louvain` →
+  `DependencyError` (exit 3).
 - **`gui`** (Hito G3 del MVP GUI, AS-BUILT 2026-06-18, ADR
   [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md), 19° subcomando): **levanta la API
   local FastAPI** (§0.2) con `uvicorn` y sirve la SPA buildeada de `gui/static/` si existe (AS-BUILT G4;
@@ -506,16 +512,57 @@ nodo→corpus por `Col.ID` — ese mapeo no existe para nodos que no son papers,
 (no crash) y el comando omite el archivo. Lo mismo aplica a `b2g networks --spec` (comparten
 `_write_artifacts`).
 
-**`build --corpus-scope [all|accepted|seeds_only]` (AS-BUILT #56):** filtra el corpus por estado de
-curación **antes** de proyectar (vía `Corpus.scoped`, §1.2). **Default `all`** = corpus completo
-(opt-in, sin cambio de comportamiento). `accepted` = semillas (`is_seed=True`) + papers aceptados;
-`seeds_only` = solo semillas. El `networks/.corpus_hash` se sella con el hash del corpus **FILTRADO**
-(no del vivo completo), y `clusters.csv`/`decorate` reflejan exactamente ese subset (sin drift). Si el
-scope deja **0 papers**: **exit 0** + `warning` accionable ("corré `b2g curate`… o usá
-`--corpus-scope=all`") — **no** es error; escribe `networks/` vacío con `.corpus_hash` vacío. El
-envelope `--json` suma `data["corpus_scope"]` (y `warnings`). **NO confundir con `NetworkSpec.scope`
-(§10):** ejes distintos. `--corpus-scope` filtra el **corpus entero** por curación (un input al
-`build`); `NetworkSpec.scope` (`full`/`seeds_only`) es **por-red declarativa** sobre `is_seed`.
+**`build` — dos modos, una superficie (AS-BUILT #159, ADR 0037 (a)(e) + 0038):** `build` absorbe la
+capacidad de `networks` vía `--spec`, sin perder el one-shot.
+
+- **`build` (sin `--spec`) = modo quick:** computa `Networks.quick` (4-5 redes principales).
+- **`build --spec <redes.yaml>` = modo declarativo:** carga la lista de specs con `load_specs`
+  (§10, clave raíz `networks:`) y construye cada red con `Networks.build`. El helper compartido
+  `_build_from_spec_file` (en `build.py`) es la **fuente única** para `build --spec` y para el alias
+  `networks` (frontera con #165). **A diferencia de `networks`** (alias en deprecación, ortogonal al
+  lazo, NO transiciona), **`build --spec` SÍ transiciona el FSM a `BUILT` y sella `.corpus_hash`** —es
+  un paso BUILD pleno (decisión PO **D1**, ADR 0038).
+
+**`--scope [all|accepted|seeds]` (default `all`, ADR 0038 P2):** filtra el corpus por estado de
+curación **antes** de proyectar (vía `Corpus.scoped`, §1.2). **Default `all`** = corpus completo (el
+one-shot corre sin curar). `accepted` = semillas (`is_seed=True`) + papers aceptados; `seeds` = solo
+semillas. Aplica en **ambos** modos (quick y spec). El `networks/.corpus_hash` se sella con el hash
+del corpus **FILTRADO** (no del vivo completo), y `clusters.csv`/`decorate` reflejan exactamente ese
+subset (sin drift). Si el scope deja **0 papers**: **exit 0** + `warning` accionable ("corré
+`b2g curate`… o usá `--scope=all`") — **no** es error; escribe `networks/` vacío con `.corpus_hash`
+vacío. **NO confundir con `NetworkSpec.scope` (§10):** ejes distintos. `--scope` filtra el **corpus
+entero** por curación (un input al `build`); `NetworkSpec.scope` (`full`/`seeds_only`) es **por-red
+declarativa** sobre `is_seed`.
+
+- **`--corpus-scope [all|accepted|seeds_only]` = alias DEPRECADO (oculto en `--help`):** vocab
+  antiguo previo a #159. Sigue funcionando con **aviso a stderr** y tiene precedencia si se pasa junto
+  a `--scope`; **la ventana cierra en 0.11.0** (ADR 0038 P1). Su vocab (`seeds_only`) es el vocab
+  interno de `Corpus.scoped`; `--scope seeds` mapea a él.
+
+**`--min-weight N` (solo modo quick):** descarta aristas con peso < N (default 1 = sin filtro). **Solo
+aplica sin `--spec`.** Con `--spec`, cada red usa el `min_weight` declarado en su YAML por-red, y
+pasar **`--min-weight` junto a `--spec` emite un warning a stderr** ("se ignora con `--spec`") — no
+falla, pero el valor del CLI se descarta.
+
+**Diagnóstico de red-vacía en build-time (ADR 0037 §(e), no-divergencia con status-time):** `build`
+reusa `predict_build_preview` (la **misma** fuente que usa `status`) para diagnosticar redes que salen
+vacías. En modo humano va como `warning` a stderr; en `--json` va en el envelope como
+**`data["empty_networks"]`** — una lista de `{kind, reason, fix_command}`, **separada** de
+`data["warnings"]` (que queda reservado para avisos **corpus-level**, p. ej. el scope con 0 papers).
+Si una red sale vacía por el `min_weight` del YAML (modo spec), el `reason` **culpa al spec**
+(no al `--min-weight` del CLI) y `fix_command=None`.
+
+**Esquema de respuesta `--json` (`data`):** `networks_built`, `artifacts_dir`, `corpus_hash`,
+**`scope`** = **token CLI** (`seeds`/`accepted`/`all`, gancho estable para #160 maturity),
+**`corpus_scope`** = vocab interno (`seeds_only`/…, backward-compat), `networks` (lista, con
+`clusters_csv` condicional), `warnings` (corpus-level) y `empty_networks` (diagnóstico por-red).
+Invariante: envelope `schema="1"`, exit codes y FSM intactos; todo lo de #159 es **aditivo**.
+
+> **No-divergencia es por-corpus.** La garantía de no-divergencia entre el diagnóstico de red-vacía de
+> `build` y el de `status` (ADR 0037 §(e)) es **sobre el mismo corpus de entrada**. Con `--scope != all`,
+> `predict_build_preview` corre sobre el **corpus filtrado**, así que los conteos del `reason` pueden
+> diferir legítimamente de los de `status` sobre el corpus completo. La **lógica es fuente única**; lo
+> que varía es el corpus que se le pasa.
 
 **`snapshot` (AS-BUILT #32, 2026-06-17):** `b2g snapshot` sella una foto reproducible del estado vivo
 (parquet + `manifest.json`, ADR 0017). **`--out-dir` pasó a override OPCIONAL** — sin él, escribe en
@@ -981,8 +1028,9 @@ class Corpus:
         OR `curation_status == 'accepted'`; `'seeds_only'` = `is_seed == True`. Scope inválido →
         `ValueError` accionable. Determinista: dos llamadas con el mismo scope dan corpora con el
         mismo `corpus_hash` (subset estable). `'all'` reusa el backend; los otros materializan el
-        filtro en un `InMemoryBackend`. Lo usa `b2g build --corpus-scope` para sellar el hash del
-        corpus FILTRADO. Issue #56. **NO confundir con `NetworkSpec.scope`** (§10): aquel es un
+        filtro en un `InMemoryBackend`. Lo usa `b2g build --scope` (vocab CLI `seeds`→`seeds_only`;
+        alias deprecado `--corpus-scope` usa este vocab interno) para sellar el hash del
+        corpus FILTRADO. Issue #56 / #159. **NO confundir con `NetworkSpec.scope`** (§10): aquel es un
         eje por-red (`full`/`seeds_only`) sobre `is_seed`; `scoped()` filtra el corpus entero por
         curación antes de proyectar."""
 
@@ -2200,14 +2248,16 @@ Migración de un `.duckdb` legacy: corré **`b2g init .`** en su carpeta para ad
 workspace (`--store` y el modo degenerado fueron eliminados en
 [#75](https://github.com/complexluise/bib2graph/issues/75)).
 
-El **modo declarativo** (`b2g networks --spec redes.yaml`, `NetworkSpec` desde YAML) está
-**construido** (Hito 9, AS-BUILT 2026-06-17): un YAML versionable describe qué redes calcular.
+El **modo declarativo** (`NetworkSpec` desde un YAML versionable) está **construido** y se invoca con
+**`b2g build --spec redes.yaml`** (AS-BUILT #159): un YAML versionable describe qué redes calcular.
 
 ```bash
-# Hito 9: pipeline declarativo desde un YAML versionable (dentro del workspace)
-b2g networks --spec redes.yaml --json   # carga load_specs(redes.yaml) → Networks.build por red →
+# Pipeline declarativo desde un YAML versionable (dentro del workspace)
+b2g build --spec redes.yaml --json      # carga load_specs(redes.yaml) → Networks.build por red →
                                         # escribe networks/<kind>/ (GraphML + metrics.json + clusters.csv)
+                                        # transiciona a BUILT y sella .corpus_hash (D1, ADR 0038)
 ```
 
-`b2g networks` es **ad-hoc / transversal al lazo**: **NO** transiciona el `CycleState` ni sella
-`networks/.corpus_hash` (igual criterio que `enrich`/`curate`). Ver §convenciones CLI.
+`b2g build --spec` es un **paso BUILD pleno**: transiciona el `CycleState` a `BUILT` y sella
+`networks/.corpus_hash`. El alias `b2g networks --spec` (**en deprecación**, cierra 0.11.0) hace lo
+mismo pero **NO** transiciona ni sella (ad-hoc transversal al lazo). Ver §convenciones CLI.
