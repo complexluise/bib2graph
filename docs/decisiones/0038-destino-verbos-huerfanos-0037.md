@@ -1,0 +1,175 @@
+# 0038 — Destino de los 5 verbos huérfanos del 0037 y parámetros de implementación: el conteo "10 verbos" se vuelve real
+
+- **Estado:** Aceptada
+- **Fecha:** 2026-06-27
+- **Decidido por:** **Product Owner humano** (decisión tomada 2026-06-27). El destino de cada verbo
+  huérfano (`gui`/`enrich`/`restore`/`thesaurus`/`resolve`) y los tres parámetros de implementación
+  (versión de cierre de la ventana de deprecación, default de `build --scope`, dónde se fija la forma
+  del bloque `maturity`) son **decisiones del PO**. El **encuadre** —*"el conteo de 10 verbos del 0037
+  era contable hasta despachar los huérfanos; este ADR lo vuelve real"*— es **síntesis de la IA
+  (architect) validada por el PO**.
+- **Enmienda a:** [0037](0037-superficie-cli-10-verbos-ciclo.md) (Superficie CLI 0.10.0: 10 verbos
+  agents-first). Este ADR **completa** el 0037: el 0037 consolidó a 10 verbos los solapamientos que
+  catalogó la Discussion [#127](https://github.com/complexluise/bib2graph/discussions/127), pero
+  **no nombró** cinco subcomandos que la superficie real tenía por acreción (`gui`, `enrich`,
+  `restore`, `thesaurus`, `resolve`). Sin despacharlos, el "10" del 0037 era **ficción contable**: el
+  CLI exponía más verbos de los que el ADR declaraba. Este ADR fija el destino de cada uno y **cierra
+  los parámetros que el 0037 dejó abiertos** (criterio de cierre de la ventana de deprecación (d),
+  default de `build --scope`, y dónde vive la forma estable del `maturity` (f)). **No revierte** el
+  0037 ni el contrato: el **envelope `schema="1"`, los exit codes y el FSM del lazo se preservan**
+  (ADR [0021](0021-cli-agente-native-contrato.md) §C/§D/§F).
+- **Relacionada con:** [0021](0021-cli-agente-native-contrato.md) (contrato del CLI: este ADR sigue
+  consolidando su superficie sin tocar el envelope), [0027](0027-pivote-posicionamiento-gui-local.md)
+  /[0028](0028-arquitectura-gui-api-capa-servicios.md) (`gui` se rige por estos ADR y queda **fuera**
+  del set de 10, como excepción explícita), [0035](0035-ingesta-multipuerta-resolucion-doi.md)
+  (`seed --resolve` como ruta única de resolución DOI→OpenAlex; retira `resolve` suelto),
+  [0030](0030-ecuacion-declarativa-corpus-ejemplo.md) (donde `restore` nació como verbo plano; pasa a
+  `snapshot restore`), [0031](0031-preprocesamiento-automatico-en-ingesta.md) (donde `thesaurus`
+  quedó como "único paso explícito"; este ADR **revisa esa parte** — ver Consecuencias),
+  [0011](0011-thesaurus-multilingue.md) (thesaurus de keywords),
+  [0025](0025-enricher-cocitacion-openalex.md) (Enricher opt-in: `enrich` se absorbe en
+  `chain`/`build`), [0029](0029-workspace-por-investigacion.md) (resolución por ambiente; el alias de
+  entry-point `bib2graph`→`b2g` entra a la ventana de deprecación).
+- **No introduce IA** (coherente con [0022](0022-producto-sin-ia-generativa.md)): es reorganización
+  de superficie y fijación de parámetros; sin modelo generativo.
+- **Origen:** revisión post-merge del [0037](0037-superficie-cli-10-verbos-ciclo.md) (PR
+  [#150](https://github.com/complexluise/bib2graph/pull/150)/[#153](https://github.com/complexluise/bib2graph/pull/153)):
+  al inventariar la superficie real contra los 10 verbos declarados, quedaron **5 subcomandos sin
+  asignar**. Decisión del PO 2026-06-27.
+- **Issues:** [#149](https://github.com/complexluise/bib2graph/issues/149) (*"thesaurus.py no
+  implementa un tesauro"*, cerrada como **invalid**) — contexto del retiro de `thesaurus`.
+
+## Contexto
+
+El [0037](0037-superficie-cli-10-verbos-ciclo.md) declaró una superficie 0.10.0 de **10 verbos** que
+mapean el ciclo de investigación, absorbiendo los seis solapamientos del
+[#127](https://github.com/complexluise/bib2graph/discussions/127) (`networks`→`build --spec`,
+`inspect`→`status`/`read`, `accept`/`reject`/`filter`→`curate …`, `monitor`→`chain --since`,
+"doctor"→campos de `status`). Pero el 0037 razonó sobre los **solapamientos catalogados**, no sobre
+el **inventario completo** del CLI. La superficie real —que el propio 0037 describe como "~20
+subcomandos por acreción"— incluía **cinco verbos que el ADR no nombró**:
+
+1. **`gui`** — lanza la GUI local (ADR [0027](0027-pivote-posicionamiento-gui-local.md)
+   /[0028](0028-arquitectura-gui-api-capa-servicios.md)), gateada por
+   [#34](https://github.com/complexluise/bib2graph/issues/34).
+2. **`enrich`** — enriquecimiento opt-in (refs→DOI + co-citación) del Enricher,
+   ADR [0025](0025-enricher-cocitacion-openalex.md).
+3. **`restore`** — restaura un corpus curado (sin red) desde snapshot, ADR
+   [0030](0030-ecuacion-declarativa-corpus-ejemplo.md).
+4. **`thesaurus`** — paso de normalización de keywords, marcado en
+   [0031](0031-preprocesamiento-automatico-en-ingesta.md) como "único paso explícito (18° subcomando,
+   transversal)".
+5. **`resolve`** — resolución DOI→OpenAlex como verbo suelto (la otra ruta, `seed --resolve`, ya
+   existe por ADR [0035](0035-ingesta-multipuerta-resolucion-doi.md)).
+
+Mientras estos cinco sigan vivos como verbos planos, **"10 verbos" es un número que el código
+desmiente**: un agente que lista `--help` ve más superficie de la que el contrato declara, y vuelve
+el mismo problema que el 0037 quería cerrar (superficie ilegible, puertas paralelas). La pregunta de
+este ADR no es de diseño nuevo, sino de **higiene del contrato**: *¿dónde va cada huérfano para que
+el conteo del 0037 sea verdad?* — y, de paso, **cerrar los tres parámetros que el 0037 dejó
+abiertos**.
+
+## Decisión
+
+**Cada uno de los 5 verbos huérfanos se reabsorbe, se reparenta o se retira, de modo que la
+superficie del ciclo quede en los 10 verbos del 0037 más `gui` como excepción explícita y
+gobernada por su propio ADR.** Es reorganización **semántica**; el contrato de salida
+(envelope/exit/FSM) **no cambia**.
+
+### Destino de los 5 huérfanos
+
+| Verbo | Destino | Por qué |
+|-------|---------|---------|
+| `gui` | **SE MANTIENE, fuera del set de 10.** No entra al ciclo CLI agents-first; no se retira. | Tiene su propio gobierno: ADR [0027](0027-pivote-posicionamiento-gui-local.md) (pivote GUI) y [0028](0028-arquitectura-gui-api-capa-servicios.md) (arquitectura GUI/API), gateado por [#34](https://github.com/complexluise/bib2graph/issues/34). Es una **superficie distinta** (lanzador de la GUI local), no un paso del ciclo agents-first; excluirla del conteo es honesto, no omitirla. |
+| `enrich` | **Se absorbe en `build`/`chain`** (deja de ser verbo suelto). | El enriquecimiento (refs→DOI + co-citación, ADR [0025](0025-enricher-cocitacion-openalex.md)) es parte del forrajeo (`chain`) y de la materialización de redes (`build`), no un paso aparte del ciclo. Un verbo independiente duplica superficie para lo que el paso correspondiente ya hace. |
+| `restore` | **Pasa a `snapshot restore`** (noun-verb del grupo `snapshot`). | `restore` es la operación inversa de `snapshot`: ambos son reproducibilidad de corpus. Agruparlos bajo el sustantivo `snapshot` (mismo patrón noun-verb que `curate …`/`read …` del 0037) hace legible que pertenecen al mismo paso EXPORT/SNAPSHOT. **Conserva la capacidad** que fijó el ADR [0030](0030-ecuacion-declarativa-corpus-ejemplo.md); solo cambia el nombre. |
+| `thesaurus` | **Se retira (verbo eliminado).** | La issue [#149](https://github.com/complexluise/bib2graph/issues/149) (cerrada **invalid**) constató que `thesaurus.py` *"no implementa un tesauro"*. Como verbo explícito carga una promesa que el código no cumple. **Revisa la parte del [0031](0031-preprocesamiento-automatico-en-ingesta.md) que lo nombró "único paso explícito"** (ver Consecuencias). |
+| `resolve` | **Se retira como verbo suelto.** Su ruta única es `seed --resolve`. | El ADR [0035](0035-ingesta-multipuerta-resolucion-doi.md) ya definió la resolución DOI→OpenAlex como **servicio compartido** expuesto vía `seed --resolve` (ya implementado). Un `resolve` plano es una segunda puerta para lo mismo: exactamente el tipo de solapamiento que el 0037 retira. |
+
+**Resultado:** la superficie del ciclo queda en los **10 verbos del 0037**
+(`init`, `seed`, `chain`, `curate`, `build`, `read`, `export`/`snapshot`, `status`, `validate`), con
+`snapshot restore` como noun-verb dentro de `snapshot`, **más `gui`** como excepción explícita
+gobernada por 0027/0028. El número "10" del 0037 deja de ser contable y pasa a ser **verificable
+contra `--help`**.
+
+### Parámetros de implementación fijados por el PO
+
+- **(P1) La ventana de deprecación cierra en la versión `0.11.0` (criterio por versión).** Los
+  aliases de retrocompat introducidos por el 0037 (d) —`networks`, `accept`, `reject`, `inspect`,
+  `monitor`— **más** `resolve` (retirado aquí) **y el alias de entry-point `bib2graph`→`b2g`— siguen
+  funcionando con aviso de deprecación durante 0.10.x y **se eliminan en 0.11.0**. Esto **cierra el
+  cabo suelto del 0037 (d)**, que dejó "fecha/criterio de cierre a fijar". Criterio = **versión**, no
+  fecha calendario.
+- **(P2) El default de `build --scope` es `all`.** Coherente con la historia one-shot del 0037 (el
+  default corre **sin curar**) y con el ejemplo de `maturity` del propio 0037 (`scope:"all"`).
+- **(P3) La forma estable del bloque `maturity` (0037 (f)) la fija el architect como apéndice en
+  [`docs/API.md`](../API.md) durante la implementación** —no en este ADR—. Aquí solo se registra
+  **dónde** vive esa especificación; su schema concreto (campos, tipos) es trabajo del hito de
+  implementación, como campo **aditivo** que preserva `schema="1"`.
+
+### Invariantes preservados
+
+- **Envelope `schema="1"`, exit codes y FSM del lazo intactos** (ADR 0021, 0016, 0010). Mover/retirar
+  verbos no cambia la forma de la salida ni el mapeo de errores.
+- **Ninguna capacidad de dominio se pierde:** el enriquecimiento sigue (dentro de `chain`/`build`,
+  0025), el restore sigue (`snapshot restore`, 0030), la resolución DOI sigue (`seed --resolve`,
+  0035). Solo `thesaurus` se retira como **verbo** (su lugar como paso de normalización se resuelve en
+  la implementación — ver Consecuencias).
+
+## Consecuencias
+
+**Lo que se gana**
+
+- **El conteo del 0037 se vuelve verdad.** Lo que `--help` lista coincide con lo que el contrato
+  declara: 10 verbos del ciclo + `gui` (excepción documentada). Desaparece la brecha entre el ADR y la
+  superficie real que motivó este ADR.
+- **Menos puertas paralelas.** `enrich`/`resolve` dejan de duplicar lo que `chain`/`build` y
+  `seed --resolve` ya hacen; `restore` se vuelve legible como parte de `snapshot`.
+- **La ventana de deprecación tiene fin cierto** (P1): los aliases no quedan vivos
+  indefinidamente; 0.11.0 es el corte.
+
+**Lo que cuesta**
+
+- **`docs/API.md` a actualizar en la implementación** (trabajo del `coder`, no de este ADR): retirar
+  `enrich`/`thesaurus`/`resolve` del contrato, mover `restore`→`snapshot restore`, documentar `gui`
+  como excepción al set de 10, fijar el default `build --scope=all` (P2) y sumar el apéndice
+  `maturity` (P3). Recomendación: revisar las menciones a estos verbos en el contrato actual y en los
+  golden tests `--json`.
+- **Tests de contrato y aliases a ajustar:** sumar el aviso de deprecación de `resolve` y del
+  entry-point `bib2graph`, y el corte programado para 0.11.0.
+
+**Tensiones que hay que mirar (drift honesto)**
+
+- **`thesaurus` vs ADR [0031](0031-preprocesamiento-automatico-en-ingesta.md).** El 0031 declaró
+  `thesaurus` como **"único paso explícito (18° subcomando, transversal)"** del preprocesamiento.
+  Retirarlo como verbo **revisa esa parte del 0031** (no la revierte entera: el 0031 ya volvió
+  *normalize + dedup* **automáticos en la ingesta**; lo que cae es el único paso que había quedado
+  explícito). **Pregunta abierta para el `coder`/PO:** ¿la normalización de keywords se **pliega a la
+  ingesta automática** (coherente con el espíritu del 0031) o **se elimina** junto con el verbo? La
+  issue [#149](https://github.com/complexluise/bib2graph/issues/149) (invalid) sugiere que la
+  implementación actual no era un tesauro real; conviene **confirmar el destino de la funcionalidad**,
+  no solo del verbo, en el hito de implementación. *Este ADR retira el verbo; el destino del paso de
+  normalización debe quedar explícito en `docs/API.md`.* Relacionada: ADR
+  [0011](0011-thesaurus-multilingue.md).
+- **`restore` vs ADR [0030](0030-ecuacion-declarativa-corpus-ejemplo.md).** El 0030 (AS-BUILT)
+  nombró `restore` como verbo plano. `snapshot restore` es **renombre semántico**, no pérdida de
+  capacidad; aun así, es un cambio de superficie pública que `docs/API.md` y la guía de usuario deben
+  reflejar.
+
+## Alternativas
+
+- **Dejar los 5 huérfanos como verbos sueltos.** Rechazada: vuelve el "10" del 0037 una **ficción
+  contable** —el problema exacto que el 0037 quería cerrar (superficie ilegible, puertas paralelas)
+  reaparece por la puerta de atrás—. La higiene del contrato exige despacharlos.
+- **Meter `gui` dentro del set de 10.** Rechazada: `gui` no es un paso del ciclo agents-first; es una
+  superficie distinta con su propio gobierno (0027/0028) y gate (#34). Forzarla al set mezcla dos
+  contratos. Excluirla **explícitamente** es más honesto que disimularla en el conteo.
+- **Retirar `enrich` por completo (no absorberlo).** Rechazada: el enriquecimiento es capacidad de
+  dominio viva (ADR 0025); lo que sobra es el **verbo**, no la función. Se absorbe en `chain`/`build`.
+- **Mantener `resolve` como verbo y deprecar `seed --resolve`.** Rechazada: contradice el ADR
+  [0035](0035-ingesta-multipuerta-resolucion-doi.md), que fijó la resolución como **servicio
+  compartido** con `seed --resolve` como ruta de ingesta. Se conserva la ruta del 0035; se retira el
+  verbo suelto.
+- **Cerrar la ventana de deprecación por fecha calendario en vez de por versión.** Rechazada (P1):
+  el criterio por **versión (0.11.0)** es verificable, reproducible y no depende del calendario de
+  release; es coherente con cómo el proyecto versiona (release-please).
