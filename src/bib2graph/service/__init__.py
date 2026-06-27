@@ -10,6 +10,8 @@ Contrato público re-exportado:
   - ``code_for`` — helper de mapeo error→exit code (sin I/O).
   - ``get_workspace``, ``list_rounds``, ``get_paper``, ``get_scent``,
     ``get_network``, ``compare_rounds`` — lecturas del Hito G2 (ADR 0028).
+  - ``list_papers``, ``corpus_stats`` — lecturas del grupo ``read``
+    (#156, sub-issue de la superficie CLI 0.10.0).
   - ``accept_papers``, ``reject_papers``, ``curate_paper`` — escrituras del
     Hito G3 (ADR 0028).
   - ``resolve_dois`` — resolución DOI→source_id (ADR 0035).
@@ -30,10 +32,12 @@ from bib2graph.service.errors import (
 )
 from bib2graph.service.reads import (
     compare_rounds,
+    corpus_stats,
     get_network,
     get_paper,
     get_scent,
     get_workspace,
+    list_papers,
     list_rounds,
 )
 from bib2graph.service.resolve import resolve_dois
@@ -50,11 +54,13 @@ __all__ = [
     "build_envelope",
     "code_for",
     "compare_rounds",
+    "corpus_stats",
     "curate_paper",
     "get_network",
     "get_paper",
     "get_scent",
     "get_workspace",
+    "list_papers",
     "list_rounds",
     "reject_papers",
     "resolve_dois",

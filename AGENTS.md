@@ -38,6 +38,12 @@
   rehidrata un corpus curado sin red, Ciclo 9a; el 18° `b2g thesaurus` aplica el thesaurus curado,
   único paso explícito del preproc, #88, abajo; el 19° `b2g gui` levanta la API local FastAPI, Hito G3
   del MVP GUI, ADR 0028)—.
+  **Grupo noun-verb `read {list,stats,show}` (#156, ADR 0037 §b):** primer grupo del CLI (lectura pura
+  del corpus, no transiciona); `read list` filtra por `--query`/`--status`/`--seeds|--candidates`/`--year`,
+  `read stats --group-by {status,year,is_seed}`, `read show --id` (resuelve id/doi/source_id, ADR 0036).
+  `read` sin subcomando → ayuda + exit 0 (`invoke_without_command=True`, workaround Click 8.4); el
+  `command` del envelope usa la ruta completa (`"read list"`). `inspect` queda **en deprecación** (#165,
+  lo absorben `read show` + `status`) pero **sigue vivo**. Ver `docs/API.md` §Convenciones CLI.
   **645 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
