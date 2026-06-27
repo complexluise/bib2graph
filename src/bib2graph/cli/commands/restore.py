@@ -32,6 +32,7 @@ import click
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
 from bib2graph.cli._ingest import normalize_and_dedup
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
@@ -161,13 +162,7 @@ def run_restore(
         "(producido por b2g snapshot)."
     ),
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("restore")
 def restore_cmd(
@@ -193,7 +188,7 @@ def restore_cmd(
     store_path = resolve_library_path(ctx.obj)
     data = run_restore(store_path, corpus_path)
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="restore",
             ok=True,

@@ -33,6 +33,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
@@ -143,13 +144,7 @@ def run_thesaurus(
         "Sobrescribe keywords_id con los conceptos canónicos del mapa."
     ),
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("thesaurus")
 def thesaurus_cmd(
@@ -175,7 +170,7 @@ def thesaurus_cmd(
     store_path = resolve_library_path(ctx.obj)
     data = run_thesaurus(store_path, thesaurus_path)
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="thesaurus",
             ok=True,

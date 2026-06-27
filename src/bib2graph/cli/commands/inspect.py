@@ -14,6 +14,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 from bib2graph.constants import Col
 
@@ -119,13 +120,7 @@ def run_inspect(
     default=None,
     help="ID del paper a inspeccionar.",
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("inspect")
 def inspect_cmd(
@@ -141,7 +136,7 @@ def inspect_cmd(
     store_path = resolve_library_path(ctx.obj)
     data = run_inspect(store_path, paper_id=paper_id)
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="inspect",
             ok=True,

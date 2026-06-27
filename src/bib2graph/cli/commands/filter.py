@@ -14,6 +14,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
@@ -145,13 +146,7 @@ def run_filter(
     default=None,
     help="Mínimo de citantes en cited_by_id.",
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("filter")
 def filter_cmd(
@@ -177,7 +172,7 @@ def filter_cmd(
         min_citations=min_citations,
     )
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="filter",
             ok=True,

@@ -26,6 +26,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store_readonly, resolve_workspace
 from bib2graph.cycle import CURATION_ACTIONS, available_transitions, next_best_action
 from bib2graph.networks.facade import predict_build_preview
@@ -173,13 +174,7 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
 
 
 @click.command("status")
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("status")
 def status_cmd(
@@ -229,7 +224,7 @@ def status_cmd(
 
     data["networks_cache_stale"] = stale
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="status",
             ok=True,

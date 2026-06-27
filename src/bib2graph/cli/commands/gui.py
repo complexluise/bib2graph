@@ -163,7 +163,7 @@ def run_gui(
     app = build_gui_app(ws, token, static_dir)
 
     if static_dir is not None:
-        click.echo(f"Frontend servido desde: {static_dir}")
+        click.echo(f"Frontend servido desde: {static_dir}", err=True)
     else:
         click.echo(
             "Advertencia: frontend no construido aún (G4). "
@@ -172,9 +172,9 @@ def run_gui(
         )
 
     url = f"http://{host}:{port}"
-    click.echo(f"b2g GUI — API en {url}")
-    click.echo(f"Token: {token}")
-    click.echo("Usá este token como Bearer en el header Authorization.")
+    click.echo(f"b2g GUI — API en {url}", err=True)
+    click.echo(f"Token: {token}", err=True)
+    click.echo("Usá este token como Bearer en el header Authorization.", err=True)
 
     if not no_browser:
         import webbrowser

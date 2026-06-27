@@ -41,6 +41,7 @@ import httpx
 
 # Re-exportar la jerarquía desde la capa de servicios neutral (ADR 0028).
 # Los imports existentes de cli/ y tests resuelven a los mismos objetos.
+from bib2graph.cli._options import json_mode as _resolve_json_mode
 from bib2graph.service.errors import (
     B2GError,
     DataError,
@@ -121,10 +122,9 @@ def handle_errors(command: str) -> Callable[[F], F]:
     def decorator(func: F) -> F:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            # Determinar modo JSON desde kwargs o ctx
-            json_mode: bool = kwargs.get("json_output", False) or kwargs.get(
-                "json", False
-            )
+            # Determinar modo JSON desde el flag local (json_output) o env var B2G_JSON.
+            _local_flag = bool(kwargs.get("json_output", False))
+            json_mode: bool = _resolve_json_mode(_local_flag)
 
             try:
                 return func(*args, **kwargs)

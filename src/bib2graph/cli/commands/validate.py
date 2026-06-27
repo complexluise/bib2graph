@@ -14,6 +14,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, StoreError, handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store_readonly, resolve_library_path
 from bib2graph.constants import Col, CurationStatus
 
@@ -111,13 +112,7 @@ def run_validate(store_path: str | Path) -> dict[str, Any]:
 
 
 @click.command("validate")
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("validate")
 def validate_cmd(
@@ -131,7 +126,7 @@ def validate_cmd(
     store_path = resolve_library_path(ctx.obj)
     data = run_validate(store_path)
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="validate",
             ok=True,

@@ -29,6 +29,7 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_workspace
 from bib2graph.cli.commands.build import _write_artifacts
 
@@ -122,13 +123,7 @@ def run_networks(
         "(default: <workspace>/networks/ o <store_dir>/networks/)."
     ),
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("networks")
 def networks_cmd(
@@ -151,7 +146,7 @@ def networks_cmd(
 
     data = run_networks(ws.library_path, spec_path, out_dir=effective_out_dir)
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="networks",
             ok=True,

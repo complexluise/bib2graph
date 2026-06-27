@@ -581,8 +581,12 @@ en el `index.html` servido).
 
 ### CLI como API para LLM y agentes
 
-- Cada subcomando expone `--json` con salida estructurada (un objeto por corrida,
-  estable y versionado).
+- Cada subcomando expone `--json` (por-comando, post-verbo) con salida estructurada
+  (un objeto por corrida, estable y versionado). **Alternativa por entorno:** `export
+  B2G_JSON=1` (truthy: `1`/`true`/`yes`) activa el modo JSON en **todos** los comandos
+  sin repetir el flag; precedencia `--json` > `B2G_JSON`, sin `--no-json` (#151).
+- **stdout puro** en modo JSON: stdout = una línea-envelope `schema="1"` (incl. el
+  camino de error); el texto humano va a stderr.
 - Exit codes claros (ver §Manejo de errores).
 - Sin estado entre invocaciones: cada llamada es independiente. El agente orquesta
   orquestando subprocess.
