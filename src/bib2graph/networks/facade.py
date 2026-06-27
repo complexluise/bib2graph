@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 import pyarrow as pa
 
-from bib2graph.constants import NetworkKind
+from bib2graph.constants import Col, NetworkKind
 from bib2graph.networks.analyzer import (
     assortativity,
     community_composition,
@@ -319,6 +319,285 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
             artifact.assortativity = assort_result
 
     return artifact
+
+
+# ---------------------------------------------------------------------------
+# Helpers de predicados para predict_build_preview (misma lógica que los
+# proyectores — fuente única preview ↔ build, ADR 0037 §(e))
+# ---------------------------------------------------------------------------
+
+
+def _count_rows_with_col(
+    rows: list[dict[str, object]],
+    col: str,
+    *,
+    seeds_only: bool = False,
+) -> int:
+    """Cuenta filas donde la columna lista tiene al menos 1 elemento no-None.
+
+    Usado SOLO para texto de reason ("N/M papers con col"), no para el
+    predicado de vaciedad.  Ver ``_has_shared_item`` y
+    ``_has_paper_with_multi_distinct`` para los predicados correctos.
+
+    Args:
+        rows: Filas del corpus como dicts (salida de ``table.to_pylist()``).
+        col: Nombre de la columna de tipo lista.
+        seeds_only: Si ``True``, solo cuenta filas donde ``is_seed == True``.
+
+    Returns:
+        Número de filas con al menos 1 elemento no-None en la columna dada.
+    """
+    count = 0
+    for row in rows:
+        if seeds_only and not row.get(Col.IS_SEED):
+            continue
+        val = row.get(col)
+        if isinstance(val, list) and any(e is not None for e in val):
+            count += 1
+    return count
+
+
+def _has_shared_item(
+    rows: list[dict[str, object]],
+    col: str,
+    *,
+    seeds_only: bool = False,
+) -> bool:
+    """True sii algún item en ``col`` aparece en ≥2 papers distintos.
+
+    Espeja ``collect_item_to_papers`` + ``_build_shared_refs_graph``
+    (projectors.py): una arista entre P1 y P2 existe sii comparten algún
+    ítem.  El mínimo para ≥1 arista es que algún ítem sea compartido por ≥2
+    papers distintos.
+
+    Necesario y suficiente para grafos de tipo shared-refs: dos papers con
+    referencias disjuntas producen 0 aristas, aunque cada uno tenga muchas
+    referencias (caso trampa de la Nota 20).
+
+    Args:
+        rows: Filas del corpus como dicts (salida de ``table.to_pylist()``).
+        col: Columna de tipo lista (``references_id``, ``cited_by_id``).
+        seeds_only: Si ``True``, solo considera filas ``is_seed == True``
+            (para co-citación con scope ``seeds_only``).
+
+    Returns:
+        ``True`` si algún ítem aparece en ≥2 papers distintos.
+    """
+    # item → conjunto de paper_ids que lo contienen (dedup por paper)
+    item_papers: dict[str, set[str]] = {}
+    for row in rows:
+        if seeds_only and not row.get(Col.IS_SEED):
+            continue
+        val = row.get(col)
+        if not isinstance(val, list):
+            continue
+        paper_id = str(row.get(Col.ID) or "")
+        for item in val:
+            if item is not None:
+                key = str(item)
+                if key not in item_papers:
+                    item_papers[key] = set()
+                item_papers[key].add(paper_id)
+    return any(len(papers) >= 2 for papers in item_papers.values())
+
+
+def _has_paper_with_multi_distinct(
+    rows: list[dict[str, object]],
+    col: str,
+) -> bool:
+    """True sii algún paper tiene ≥2 entidades DISTINTAS no-None en ``col``.
+
+    Espeja exactamente ``_build_cooccurrence_graph`` (projectors.py): el
+    criterio es ``sorted(set(str(e) for e in entities if e is not None))``,
+    luego ``combinations(unique_entities, 2)`` → ≥1 par sii ≥2 distintas.
+
+    Corrige el bug de la Nota 20 P1: ``[A1, A1]`` (autor duplicado) tiene
+    2 elementos pero tras dedup solo 1 distinto → la red sale vacía aunque
+    ``len(val) >= 2``.  Esta función usa ``set`` para el dedup, igual que el
+    proyector.
+
+    Args:
+        rows: Filas del corpus como dicts (salida de ``table.to_pylist()``).
+        col: Columna de tipo lista (``authors_id``, ``institutions_id``,
+            ``keywords_id``).
+
+    Returns:
+        ``True`` si algún paper tiene ≥2 entidades distintas no-None.
+    """
+    for row in rows:
+        val = row.get(col)
+        if not isinstance(val, list):
+            continue
+        distinct = {str(e) for e in val if e is not None}
+        if len(distinct) >= 2:
+            return True
+    return False
+
+
+def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
+    """Predice vacío/no-vacío para cada red posible sin proyectarlas.
+
+    Fuente única con ``Networks.quick``: reusa los mismos predicados de columna
+    que los proyectores para decidir la inclusión de papers.  El conteo es
+    barato (no proyecta ningún grafo).
+
+    Incluye siempre las 5 redes posibles (incluida co-citación incluso si
+    ``cited_by_id`` está vacío), para que el diagnóstico sea completo:
+    el agente/humano ve qué falta para activar cada tipo de red ANTES del
+    ``build`` (ADR 0037 §(e), cura de la trampa de la Nota 20).
+
+    Args:
+        corpus: Corpus a inspeccionar.
+
+    Returns:
+        Lista de dicts, uno por tipo de red, con:
+
+        - ``kind``: tipo de red (string de ``NetworkKind``).
+        - ``would_be_empty``: ``True`` si la red saldría vacía.
+        - ``reason``: causa determinista si saldría vacía, ``None`` si no.
+        - ``fix_command``: comando exacto para arreglarlo, ``None`` si no vacía.
+    """
+    table = corpus.to_arrow()
+    rows: list[dict[str, object]] = table.to_pylist()
+    total = len(rows)
+    total_seeds = sum(1 for r in rows if r.get(Col.IS_SEED))
+
+    preview: list[dict[str, object]] = []
+
+    # --- bibliographic_coupling: references_id, scope=full ---
+    # No-vacía sii algún references_id aparece en ≥2 papers distintos.
+    # (dos papers con refs disjuntas producen 0 aristas → caso trampa Nota 20)
+    n_refs_any = _count_rows_with_col(rows, Col.REFERENCES_ID)
+    bc_empty = not _has_shared_item(rows, Col.REFERENCES_ID)
+    if bc_empty:
+        if n_refs_any == 0:
+            bc_reason: str | None = f"0/{total} papers con {Col.REFERENCES_ID}"
+        else:
+            bc_reason = (
+                f"{n_refs_any}/{total} papers con {Col.REFERENCES_ID} "
+                f"pero ninguna referencia aparece en ≥2 papers"
+            )
+    else:
+        bc_reason = None
+    preview.append(
+        {
+            "kind": str(NetworkKind.BIBLIOGRAPHIC_COUPLING),
+            "would_be_empty": bc_empty,
+            "reason": bc_reason,
+            # TODO(0037 1B): reapuntar fix_command al consolidar verbos
+            "fix_command": "b2g seed --resolve" if bc_empty else None,
+        }
+    )
+
+    # --- author_collab: authors_id, scope=full ---
+    # No-vacía sii algún paper tiene ≥2 autores DISTINTOS no-None.
+    # ([A1, A1] → tras dedup 1 único → 0 aristas, aunque len=2)
+    n_authors_any = _count_rows_with_col(rows, Col.AUTHORS_ID)
+    ac_empty = not _has_paper_with_multi_distinct(rows, Col.AUTHORS_ID)
+    if ac_empty:
+        if n_authors_any == 0:
+            ac_reason: str | None = f"0/{total} papers con {Col.AUTHORS_ID}"
+        else:
+            ac_reason = (
+                f"{n_authors_any}/{total} papers con {Col.AUTHORS_ID} "
+                f"pero ninguno con ≥2 autores distintos"
+            )
+    else:
+        ac_reason = None
+    preview.append(
+        {
+            "kind": str(NetworkKind.AUTHOR_COLLAB),
+            "would_be_empty": ac_empty,
+            "reason": ac_reason,
+            # TODO(0037 1B): reapuntar fix_command al consolidar verbos
+            "fix_command": "b2g seed --resolve" if ac_empty else None,
+        }
+    )
+
+    # --- institution_collab: institutions_id, scope=full ---
+    # No-vacía sii algún paper tiene ≥2 instituciones DISTINTAS no-None.
+    n_inst_any = _count_rows_with_col(rows, Col.INSTITUTIONS_ID)
+    ic_empty = not _has_paper_with_multi_distinct(rows, Col.INSTITUTIONS_ID)
+    if ic_empty:
+        if n_inst_any == 0:
+            ic_reason: str | None = f"0/{total} papers con {Col.INSTITUTIONS_ID}"
+        else:
+            ic_reason = (
+                f"{n_inst_any}/{total} papers con {Col.INSTITUTIONS_ID} "
+                f"pero ninguno con ≥2 instituciones distintas"
+            )
+    else:
+        ic_reason = None
+    preview.append(
+        {
+            "kind": str(NetworkKind.INSTITUTION_COLLAB),
+            "would_be_empty": ic_empty,
+            "reason": ic_reason,
+            # TODO(0037 1B): reapuntar fix_command al consolidar verbos
+            "fix_command": "b2g seed --resolve" if ic_empty else None,
+        }
+    )
+
+    # --- keyword_cooccurrence: keywords_id, scope=full ---
+    # No-vacía sii algún paper tiene ≥2 keywords DISTINTAS no-None.
+    # Fix preferencial: si hay keywords_raw pero no keywords_id, thesaurus puede
+    # generar keywords_id sin red; si no hay keywords_raw, se necesita seed --resolve.
+    n_kw_any = _count_rows_with_col(rows, Col.KEYWORDS_ID)
+    n_kw_raw = _count_rows_with_col(rows, Col.KEYWORDS_RAW)
+    kw_empty = not _has_paper_with_multi_distinct(rows, Col.KEYWORDS_ID)
+    if kw_empty:
+        if n_kw_any == 0:
+            kw_reason: str | None = f"0/{total} papers con {Col.KEYWORDS_ID}"
+        else:
+            kw_reason = (
+                f"{n_kw_any}/{total} papers con {Col.KEYWORDS_ID} "
+                f"pero ninguno con ≥2 keywords distintas"
+            )
+        # Si hay keywords_raw pero no keywords_id, el thesaurus puede generarlos
+        # TODO(0037 1B): reapuntar fix_command al consolidar verbos
+        kw_fix: str | None = (
+            "b2g thesaurus" if n_kw_raw > 0 and n_kw_any == 0 else "b2g seed --resolve"
+        )
+    else:
+        kw_reason = None
+        kw_fix = None
+    preview.append(
+        {
+            "kind": str(NetworkKind.KEYWORD_COOCCURRENCE),
+            "would_be_empty": kw_empty,
+            "reason": kw_reason,
+            "fix_command": kw_fix,
+        }
+    )
+
+    # --- cocitation: cited_by_id, scope=seeds_only ---
+    # No-vacía sii algún cited_by_id aparece en ≥2 seeds distintas.
+    # (dos seeds con citantes disjuntos producen 0 aristas)
+    n_cited_any = _count_rows_with_col(rows, Col.CITED_BY_ID, seeds_only=True)
+    coc_empty = not _has_shared_item(rows, Col.CITED_BY_ID, seeds_only=True)
+    if coc_empty:
+        if n_cited_any == 0:
+            coc_reason: str | None = (
+                f"{n_cited_any}/{total_seeds} seeds con {Col.CITED_BY_ID}"
+            )
+        else:
+            coc_reason = (
+                f"{n_cited_any}/{total_seeds} seeds con {Col.CITED_BY_ID} "
+                f"pero ningún citante aparece en ≥2 seeds"
+            )
+    else:
+        coc_reason = None
+    preview.append(
+        {
+            "kind": str(NetworkKind.COCITATION),
+            "would_be_empty": coc_empty,
+            "reason": coc_reason,
+            # TODO(0037 1B): reapuntar fix_command al consolidar verbos
+            "fix_command": "b2g enrich" if coc_empty else None,
+        }
+    )
+
+    return preview
 
 
 class Networks:

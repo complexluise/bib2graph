@@ -221,3 +221,43 @@ def available_transitions(state: CycleState | None) -> list[str]:
         Lista de nombres de acciones disponibles desde el estado dado.
     """
     return list(_AVAILABLE_TRANSITIONS.get(state, ["seed"]))
+
+
+# ---------------------------------------------------------------------------
+# next_best_action — ADR 0037 §(e)
+# ---------------------------------------------------------------------------
+
+# Mapa determinista estado → único próximo comando recomendado.
+# Refleja el camino canónico del ciclo de investigación (Nota 05 §3):
+# init → seed → chain → build → read → (monitorear → chain).
+_NEXT_BEST_ACTION: dict[CycleState | None, str] = {
+    None: "seed",
+    CycleState.SEEDED: "chain",
+    CycleState.FORAGED: "build",
+    CycleState.FILTERED: "build",
+    CycleState.BUILT: "read",
+    CycleState.MONITORED: "chain",
+}
+
+
+def next_best_action(state: CycleState | None) -> str:
+    """Devuelve el único próximo comando recomendado desde el estado del FSM.
+
+    Derivado de forma determinista del FSM (ADR 0037 §(e)).  El agente lee
+    este campo para saber qué hacer sin adivinar ni recorrer
+    ``transitions_available``.
+
+    Mapeo canónico:
+    - ``None`` (sin estado) → ``"seed"``
+    - ``SEEDED`` → ``"chain"``
+    - ``FORAGED`` / ``FILTERED`` → ``"build"``
+    - ``BUILT`` → ``"read"``
+    - ``MONITORED`` → ``"chain"`` (ciclo de monitoreo)
+
+    Args:
+        state: Estado actual del lazo (``None`` = sin estado previo).
+
+    Returns:
+        Nombre del próximo comando recomendado (string simple, sin ``b2g``).
+    """
+    return _NEXT_BEST_ACTION.get(state, "seed")
