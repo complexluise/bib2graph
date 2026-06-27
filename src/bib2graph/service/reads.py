@@ -19,11 +19,13 @@ Lecturas del Hito G2 (6 originales):
   - ``compare_rounds`` — diff entre dos snapshots (added/removed paper_ids +
     métricas básicas).
 
-Lecturas del grupo ``read`` (sub-issue #156):
+Lecturas del grupo ``read`` (sub-issues #156, #157):
   - ``list_papers`` — lista papers con filtros opcionales: query (título
     substring CI), status, is_seed, year. Payload mínimo para listados.
   - ``corpus_stats`` — estadísticas agregadas del corpus, agrupadas por
     ``status``, ``year`` o ``is_seed``.
+  - ``get_top`` — nodos más centrales de la red ``kind`` + pares de co-citación
+    con título resuelto (#157).
 
 Decisiones de producto (Bifurcaciones B-G2-1/B-G2-2/B-G2-3):
   - Ronda = snapshot sellado (Opción A). ``list_rounds``/``compare_rounds``
@@ -31,6 +33,8 @@ Decisiones de producto (Bifurcaciones B-G2-1/B-G2-2/B-G2-3):
   - ``get_scent`` expone el score de acoplamiento real (referencias compartidas
     + resoluciones de referencias e citantes en el corpus), NO 4 paneles cosméticos.
   - ``get_network`` sirve la red viva. ``kind`` inválido o sin red → ``DataError``.
+  - ``get_top``: red vacía → honest-empty (exit 0 + bloques vacíos + reason/fix_command);
+    NO ``DataError``.  ``n <= 0`` o ``kind`` inválido → ``DataError``.
 """
 
 from __future__ import annotations
@@ -785,3 +789,154 @@ def corpus_stats(
         "total": total,
         "groups": groups,
     }
+
+
+# ---------------------------------------------------------------------------
+# 9. get_top  (sub-issue #157 — read top)
+# ---------------------------------------------------------------------------
+
+
+def get_top(
+    ws: Workspace,
+    *,
+    n: int = 10,
+    kind: str = "bibliographic_coupling",
+) -> dict[str, Any]:
+    """Devuelve los nodos más centrales de la red ``kind`` y los pares de co-citación.
+
+    El bloque "central" se extrae de la red del ``kind`` solicitado, ordenando
+    los nodos por ``degree_centrality`` descendente y tomando los primeros ``n``.
+    El bloque "cocitation" es **siempre** la red ``cocitation`` (top N pares
+    por peso descendente), independientemente del ``kind`` elegido.
+
+    La función es idempotente y no requiere ``build`` previo: recomputa las
+    redes en tiempo de lectura (mismo camino que ``get_network``).
+
+    Para redes de paper (``bibliographic_coupling``, ``cocitation``), los ids
+    de nodo son ids del corpus y se resuelven al título completo.  Para otras
+    redes (``author_collab``, ``institution_collab``, ``keyword_cooccurrence``),
+    los ids son ids de entidad y se usa el ``label`` decorado como título.
+
+    Red vacía → honest-empty (exit 0 + bloque vacío + ``reason``/``fix_command``),
+    NO ``DataError``.
+
+    Args:
+        ws: Workspace resuelto.
+        n: Número de nodos/pares a devolver (default 10). Debe ser > 0.
+        kind: Tipo de red para el bloque central. Uno de los 5 ``NetworkKind``
+            (default ``bibliographic_coupling``).
+
+    Returns:
+        Dict con:
+
+        - ``kind``: tipo de red usado para el bloque central.
+        - ``top``: ``n`` pedido.
+        - ``central``: lista de hasta ``n`` nodos ``{id, title,
+          degree_centrality, ?community}`` ordenados por
+          ``degree_centrality`` descendente.
+        - ``cocitation``: lista de hasta ``n`` pares ``{source,
+          source_title, target, target_title, weight}`` ordenados
+          por ``weight`` descendente.
+        - ``reason`` / ``fix_command``: presentes solo cuando
+          ``cocitation`` está vacío (honest-empty; NOT un error).
+
+    Raises:
+        DataError: Si ``kind`` no es un ``NetworkKind`` válido, si
+            ``n <= 0``, o si la construcción de alguna red falla
+            (error genuino, no vaciedad).
+        StoreError: Si el store no existe o está bloqueado.
+    """
+    if kind not in _VALID_KINDS:
+        valid = ", ".join(sorted(_VALID_KINDS))
+        raise DataError(
+            f"NetworkKind '{kind}' no reconocido. Valores válidos: {valid}."
+        )
+    if n <= 0:
+        raise DataError(f"top N debe ser un entero positivo; se recibió {n}.")
+
+    # Cargar corpus una vez para el índice id→título y para predict_build_preview
+    store = _open_readonly(ws.library_path)
+    corpus = store.load()
+    table = corpus.to_arrow()
+    id_to_title: dict[str, str | None] = {
+        str(r.get(Col.ID)): (str(r.get(Col.TITLE)) if r.get(Col.TITLE) else None)
+        for r in table.to_pylist()
+        if r.get(Col.ID)
+    }
+
+    # -------------------------------------------------------------------
+    # Bloque "central": top N nodos por degree_centrality en --kind
+    # -------------------------------------------------------------------
+    central_net = get_network(ws, kind)
+    sorted_nodes = sorted(
+        central_net["nodes"],
+        key=lambda node: node["degree_centrality"],
+        reverse=True,
+    )[:n]
+
+    central: list[dict[str, Any]] = []
+    for node in sorted_nodes:
+        node_id = node["id"]
+        # Redes de paper → id es un Col.ID → resolvible al título del corpus.
+        # Otras redes → id es un id de entidad → usar label decorado.
+        title = id_to_title.get(node_id) or node.get("label")
+        entry: dict[str, Any] = {
+            "id": node_id,
+            "title": title,
+            "degree_centrality": node["degree_centrality"],
+        }
+        if "community" in node:
+            entry["community"] = node["community"]
+        central.append(entry)
+
+    # -------------------------------------------------------------------
+    # Bloque "cocitation": top N pares por peso (SIEMPRE red cocitation)
+    # -------------------------------------------------------------------
+    coc_net = (
+        central_net
+        if kind == NetworkKind.COCITATION
+        else get_network(ws, NetworkKind.COCITATION)
+    )
+
+    sorted_edges = sorted(
+        coc_net["edges"],
+        key=lambda e: e["weight"],
+        reverse=True,
+    )[:n]
+
+    cocitation: list[dict[str, Any]] = []
+    for edge in sorted_edges:
+        src_id = str(edge["source"])
+        tgt_id = str(edge["target"])
+        cocitation.append(
+            {
+                "source": src_id,
+                "source_title": id_to_title.get(src_id),
+                "target": tgt_id,
+                "target_title": id_to_title.get(tgt_id),
+                "weight": edge["weight"],
+            }
+        )
+
+    result: dict[str, Any] = {
+        "kind": kind,
+        "top": n,
+        "central": central,
+        "cocitation": cocitation,
+    }
+
+    # Honest-empty: si co-citación vacía, agregar reason/fix_command.
+    # Igual que "build" con red vacía → exit 0, NO DataError.
+    if not coc_net["edges"]:
+        from bib2graph.networks.facade import predict_build_preview
+
+        preview = predict_build_preview(corpus)
+        coc_entry = next(
+            (p for p in preview if p["kind"] == str(NetworkKind.COCITATION)),
+            None,
+        )
+        if coc_entry is not None:
+            result["reason"] = coc_entry["reason"]
+            result["fix_command"] = coc_entry["fix_command"]
+
+    return result

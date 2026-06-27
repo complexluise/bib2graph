@@ -12,6 +12,8 @@ Contrato público re-exportado:
     ``get_network``, ``compare_rounds`` — lecturas del Hito G2 (ADR 0028).
   - ``list_papers``, ``corpus_stats`` — lecturas del grupo ``read``
     (#156, sub-issue de la superficie CLI 0.10.0).
+  - ``get_top`` — nodos centrales + pares de co-citación con título resuelto
+    (#157, sub-issue de la superficie CLI 0.10.0).
   - ``accept_papers``, ``reject_papers``, ``curate_paper`` — escrituras del
     Hito G3 (ADR 0028).
   - ``resolve_dois`` — resolución DOI→source_id (ADR 0035).
@@ -36,6 +38,7 @@ from bib2graph.service.reads import (
     get_network,
     get_paper,
     get_scent,
+    get_top,
     get_workspace,
     list_papers,
     list_rounds,
@@ -59,6 +62,7 @@ __all__ = [
     "get_network",
     "get_paper",
     "get_scent",
+    "get_top",
     "get_workspace",
     "list_papers",
     "list_rounds",

@@ -571,8 +571,8 @@ trabajo posterior, pero la API se **diseña con estos principios desde el hito 1
    faltante"); la capacidad-de-source-faltante se convierte en `DependencyError` mediante un
    **pre-check `hasattr` en el borde** (p. ej. `chain.py` antes del `Forager`). Ver ADR 0021 §D.
 
-**Patrón noun-verb group (AS-BUILT #156, ADR
-[0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md) §b).** `read {list,stats,show}` es el
+**Patrón noun-verb group (AS-BUILT #156/#157, ADR
+[0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md) §b).** `read {list,stats,show,top}` es el
 **primer grupo noun-verb** del CLI (en la capa Click): un `click.Group` (el sustantivo) con un
 subcomando por verbo, cada uno delegando en su `run_<verbo>`/función de `service/` (capas 2–3 sin
 cambios). Dos convenciones del grupo: (1) el `command` del envelope usa la **ruta completa**
