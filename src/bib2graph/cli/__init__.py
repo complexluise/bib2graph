@@ -9,7 +9,7 @@ Entry point en ``pyproject.toml``:
 Subcomandos planos (18):
     init, seed, chain, filter, build, enrich, monitor, export,
     status, validate, accept, reject, networks, restore (shim #163),
-    thesaurus, gui, resolve.
+    gui, resolve.
 
     inspect: absorbido por ``read show`` (#156); permanece como alias.
 
@@ -67,7 +67,6 @@ from bib2graph.cli.commands.restore import restore_cmd
 from bib2graph.cli.commands.seed import seed_cmd
 from bib2graph.cli.commands.snapshot import snapshot_grp
 from bib2graph.cli.commands.status import status_cmd
-from bib2graph.cli.commands.thesaurus import thesaurus_cmd
 from bib2graph.cli.commands.validate import validate_cmd
 
 
@@ -114,7 +113,7 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
 
     Subcomandos: init, seed, chain, filter, build, enrich, monitor, export,
     status, validate, accept, reject, networks, restore (shim),
-    thesaurus, gui, resolve,
+    gui, resolve,
     read [list|stats|show|top], curate [dump|apply|accept|reject|filter],
     snapshot [create|restore] (ADR 0038).
 
@@ -147,7 +146,6 @@ b2g.add_command(reject_cmd)
 b2g.add_command(curate_grp)
 b2g.add_command(networks_cmd)
 b2g.add_command(restore_cmd)
-b2g.add_command(thesaurus_cmd)
 b2g.add_command(gui_cmd)
 b2g.add_command(resolve_cmd)
 b2g.add_command(read_grp)

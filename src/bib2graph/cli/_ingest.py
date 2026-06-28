@@ -3,7 +3,7 @@
 Aplica la pipeline de preprocesamiento automático al corpus completo en el
 momento de la ingesta (seed / seed_from_bib / restore / chain), sobre el
 corpus YA MERGEADO con el existente.  El thesaurus queda como paso explícito
-(``b2g thesaurus``).
+(``b2g build --thesaurus``).
 
 Orden determinista:
   1. ``Preprocessor().normalize``  — canonicaliza ``authors_id`` y ``language``.
@@ -48,7 +48,7 @@ def normalize_and_dedup(
     mismo resultado (las tres operaciones son idempotentes).
 
     El thesaurus NO se aplica aquí; es un paso explícito del usuario
-    (``b2g thesaurus``).
+    (``b2g build --thesaurus``).
 
     Args:
         corpus: Corpus de entrada (no muta; semántica de valor).

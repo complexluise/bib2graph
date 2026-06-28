@@ -37,6 +37,7 @@ from __future__ import annotations
 import csv as _csv
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -237,6 +238,73 @@ def _write_artifacts(
 
 
 # ---------------------------------------------------------------------------
+# Helper: aplicar thesaurus al corpus y persistir (ADR 0011, #164)
+# ---------------------------------------------------------------------------
+
+
+def _apply_thesaurus_and_persist(
+    corpus: Corpus,
+    thesaurus_path: str | Path,
+    store: Any,
+) -> tuple[Corpus, dict[str, Any]]:
+    """Aplica el thesaurus al corpus completo y persiste (ADR 0011, #164).
+
+    Sobrescribe keywords_id con los conceptos canonicos del mapa curado
+    y persiste el resultado. El CycleState NO se modifica aqui.
+    Se aplica al corpus COMPLETO (pre-scoping) para que la consolidacion
+    impacte la co-ocurrencia de keywords sea cual sea el scope de la red.
+
+    Args:
+        corpus: Corpus a procesar (no muta; semantica de valor).
+        thesaurus_path: Ruta al JSON del thesaurus (formato ADR 0011).
+        store: Store abierto (para persist_replace).
+
+    Returns:
+        Tupla (corpus_actualizado, stats) con keywords_mapped,
+        keywords_total, aliases_loaded y applied_at.
+
+    Raises:
+        DataError: Si el archivo no existe o tiene formato invalido.
+    """
+    from bib2graph.preprocessors.preprocessor import Preprocessor
+    from bib2graph.preprocessors.thesaurus import load_thesaurus
+
+    resolved = Path(thesaurus_path)
+    try:
+        lookup = load_thesaurus(resolved)
+    except (FileNotFoundError, KeyError, ValueError, TypeError) as exc:
+        raise DataError(
+            f"No se pudo cargar el thesaurus '{resolved}': {exc}. "
+            "Verificá el formato JSON ADR 0011."
+        ) from exc
+
+    applied_at = datetime.now(UTC)
+    preprocessor = Preprocessor()
+    updated = preprocessor.apply_thesaurus(corpus, resolved, applied_at=applied_at)
+
+    # persist_replace: evita acumulacion de canonicos viejos (ADR 0011).
+    store.persist_replace(updated)
+
+    rows = updated.to_arrow().to_pylist()
+    total_kw = sum(len(r["keywords_id"]) for r in rows if r.get("keywords_id"))
+    canonical_set = set(lookup.values())
+    mapped_kw = sum(
+        1
+        for r in rows
+        if r.get("keywords_id")
+        for kw in r["keywords_id"]
+        if kw in canonical_set
+    )
+    stats: dict[str, Any] = {
+        "keywords_mapped": mapped_kw,
+        "keywords_total": total_kw,
+        "aliases_loaded": len(lookup),
+        "applied_at": applied_at.isoformat(),
+    }
+    return updated, stats
+
+
+# ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
 # ---------------------------------------------------------------------------
 
@@ -252,6 +320,7 @@ def run_build(
     email: str | None = None,
     transport: Any = None,
     max_citing: int | None = None,
+    thesaurus_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Computa redes bibliométricas y escribe artefactos a disco.
 
@@ -311,8 +380,16 @@ def run_build(
     from bib2graph.networks.facade import Networks, predict_build_preview
 
     store = open_store(store_path)
+    thesaurus_stats: dict[str, Any] | None = None
     try:
         corpus_full = store.load()
+
+        # Aplicar thesaurus ANTES del scoping y ANTES de proyectar redes (#164).
+        # Persiste el corpus con keywords_id canonicos para builds posteriores.
+        if thesaurus_path is not None:
+            corpus_full, thesaurus_stats = _apply_thesaurus_and_persist(
+                corpus_full, thesaurus_path, store
+            )
 
         # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
         # no un literal en el comando (ADR 0016 enmendado §1).
@@ -387,6 +464,7 @@ def run_build(
                 "empty_networks": [],
                 "maturity": _maturity_empty,
                 "enrichment": enrich_metrics,
+                "thesaurus": thesaurus_stats,
             }
 
         # Diagnóstico pre-build (ADR 0037 §(e), fuente única con status-time).
@@ -503,6 +581,7 @@ def run_build(
         "empty_networks": empty_networks,
         "maturity": maturity,
         "enrichment": enrich_metrics,
+        "thesaurus": thesaurus_stats,
     }
 
 
@@ -583,6 +662,18 @@ def run_build(
     default=None,
     help="Email para el polite pool de OpenAlex (pasada cited_by).",
 )
+@click.option(
+    "--thesaurus",
+    "thesaurus_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help=(
+        "Ruta al JSON del thesaurus multilingüe (formato ADR 0011). "
+        "Aplica consolidacion conceptual cross-lingue sobre keywords_id "
+        "ANTES de proyectar redes, y persiste el corpus actualizado. "
+        "Absorbe la capacidad del verbo retirado b2g thesaurus (#164)."
+    ),
+)
 @json_option
 @click.pass_context
 @handle_errors("build")
@@ -595,6 +686,7 @@ def build_cmd(
     min_weight: int,
     max_citing: int | None,
     email: str | None,
+    thesaurus_path: str | None,
     json_output: bool,
 ) -> None:
     """Computa redes bibliométricas y escribe artefactos.
@@ -644,6 +736,7 @@ def build_cmd(
         scope_cli_token=cli_token,
         email=email,
         max_citing=max_citing,
+        thesaurus_path=thesaurus_path,
     )
 
     if json_mode(json_output):
@@ -665,6 +758,12 @@ def build_cmd(
             print(
                 f"ADVERTENCIA: Red '{en['kind']}' vacía — {en['reason']}.{fix}",
                 file=sys.stderr,
+            )
+        if data.get("thesaurus"):
+            th = data["thesaurus"]
+            emit_human(
+                f"Thesaurus aplicado: {th['keywords_mapped']} keywords mapeadas "
+                f"(de {th['keywords_total']} totales, {th['aliases_loaded']} aliases cargados)."
             )
         emit_human(f"Redes construidas: {data['networks_built']}")
         emit_human(f"Artefactos en: {data['artifacts_dir']}")
