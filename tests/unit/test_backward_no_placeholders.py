@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pyarrow as pa
 import pytest
 
@@ -30,6 +31,17 @@ from bib2graph.backends.memory import InMemoryBackend
 from bib2graph.corpus import Corpus
 from bib2graph.foraging.forager import Forager
 from bib2graph.schemas import CORPUS_SCHEMA
+
+# Transport nulo para tests de backward chain: chain.py ejecuta la pasada
+# refs→DOI automáticamente (ADR 0038); los tests que sólo verifican la lógica
+# backward necesitan un transport que devuelva resultados vacíos sin red real.
+_NOOP_TRANSPORT = httpx.MockTransport(
+    lambda _req: httpx.Response(
+        200,
+        json={"results": [], "meta": {"count": 0, "next_cursor": None}},
+        headers={"x-openalex-api-version": "2026-05-01"},
+    )
+)
 
 pytestmark = pytest.mark.unit
 
@@ -401,7 +413,7 @@ class TestRunChainBackwardNoPersistePlaceholders:
         n_before = len(store_before.load())
         store_before.close()
 
-        run_chain(store_path, direction="backward")
+        run_chain(store_path, direction="backward", transport=_NOOP_TRANSPORT)
 
         store_after = DuckDBStore(store_path)
         corpus_after = store_after.load()
@@ -422,7 +434,7 @@ class TestRunChainBackwardNoPersistePlaceholders:
         store_path = tmp_path / "lib.duckdb"
         self._seed_store(store_path, ["REF_A"])
 
-        run_chain(store_path, direction="backward")
+        run_chain(store_path, direction="backward", transport=_NOOP_TRANSPORT)
 
         store = DuckDBStore(store_path)
         rows = store.load().to_arrow().to_pylist()
@@ -442,7 +454,7 @@ class TestRunChainBackwardNoPersistePlaceholders:
         store_path = tmp_path / "lib.duckdb"
         self._seed_store(store_path, ["REF_A", "REF_B"])
 
-        run_chain(store_path, direction="backward")
+        run_chain(store_path, direction="backward", transport=_NOOP_TRANSPORT)
 
         backend = DuckDBBackend(path=store_path)
         refs = set(backend.referenced_refs())
@@ -457,7 +469,7 @@ class TestRunChainBackwardNoPersistePlaceholders:
         store_path = tmp_path / "lib.duckdb"
         self._seed_store(store_path, ["REF_A", "REF_B"])
 
-        result = run_chain(store_path, direction="backward")
+        result = run_chain(store_path, direction="backward", transport=_NOOP_TRANSPORT)
 
         assert "observed_refs_count" in result
         assert result["observed_refs_count"] == 2
@@ -470,8 +482,8 @@ class TestRunChainBackwardNoPersistePlaceholders:
         store_path = tmp_path / "lib.duckdb"
         self._seed_store(store_path, ["REF_A", "REF_B"])
 
-        run_chain(store_path, direction="backward")
-        run_chain(store_path, direction="backward")
+        run_chain(store_path, direction="backward", transport=_NOOP_TRANSPORT)
+        run_chain(store_path, direction="backward", transport=_NOOP_TRANSPORT)
 
         backend = DuckDBBackend(path=store_path)
         count = backend.referenced_refs_count()
@@ -507,7 +519,7 @@ class TestStatusReferencedNotFetched:
         store.backend.set_loop_state(CycleState.SEEDED, cycle_round=1)
         store.close()
 
-        run_chain(store_path, direction="backward")
+        run_chain(store_path, direction="backward", transport=_NOOP_TRANSPORT)
 
         data = run_status(store_path)
 

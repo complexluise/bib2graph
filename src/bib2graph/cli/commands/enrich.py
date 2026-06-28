@@ -18,6 +18,7 @@ from typing import Any
 
 import click
 
+from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
@@ -66,45 +67,25 @@ def run_enrich(
             ``@handle_errors`` como exit 4).
         StoreError: Si el store está bloqueado (exit 5).
     """
-    from bib2graph.enrichers.openalex import OpenAlexEnricher
     from bib2graph.sources.openalex import OpenAlexSource
 
     store = open_store(store_path)
     try:
         corpus = store.load()
-
         source = OpenAlexSource(email=email, api_key=api_key, transport=transport)
-        enricher = OpenAlexEnricher(source, max_citing_per_paper=max_citing)
-        enriched = enricher.enrich(corpus)
-
+        enriched, metrics = enrich_corpus(
+            corpus, source, max_citing=max_citing, pass_name="both"
+        )
         store.persist(enriched)
-
-        # Extraer métricas de los EnricherRef registrados
-        enricher_refs = enriched.manifest.enrichers
-
-        doi_entry = next(
-            (e for e in enricher_refs if e.name == "openalex_references_doi"), None
-        )
-        refs_resolved = int(doi_entry.params.get("resolved", 0)) if doi_entry else 0
-        refs_total = (
-            int(doi_entry.params.get("total_unique_refs", 0)) if doi_entry else 0
-        )
-
-        cb_entry = next(
-            (e for e in enricher_refs if e.name == "openalex_cited_by"), None
-        )
-        citing_new = int(cb_entry.params.get("resolved", 0)) if cb_entry else 0
-        citing_targets = int(cb_entry.params.get("total", 0)) if cb_entry else 0
-
         total_papers = len(enriched)
     finally:
         store.close()
 
     return {
-        "refs_resolved": refs_resolved,
-        "refs_total_unique": refs_total,
-        "citing_new": citing_new,
-        "citing_targets": citing_targets,
+        "refs_resolved": metrics.get("refs_resolved", 0),
+        "refs_total_unique": metrics.get("refs_total_unique", 0),
+        "citing_new": metrics.get("citing_new", 0),
+        "citing_targets": metrics.get("citing_targets", 0),
         "total_papers": total_papers,
     }
 
