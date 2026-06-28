@@ -424,6 +424,8 @@ def run_build(
                 corpus_full, _source, max_citing=max_citing, pass_name="cited_by"
             )
             store.persist_replace(corpus_full)
+            # #141: persistir EnricherRef (cited_by) para que manifest.enrichers sobreviva.
+            store.backend.persist_enricher_refs(corpus_full.manifest.enrichers)
 
         # Filtrar el corpus según el scope ANTES de construir redes (#56).
         # El corpus filtrado también es el que se pasa a _write_artifacts para que

@@ -28,8 +28,9 @@ núcleo nunca importa este módulo directamente).
 from __future__ import annotations
 
 import contextlib
+import json
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import duckdb
 import pyarrow as pa
@@ -151,6 +152,18 @@ CREATE TABLE IF NOT EXISTS filter_log (
     count_before INTEGER NOT NULL,
     count_after  INTEGER NOT NULL,
     recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+"""
+
+# #141 — tabla de EnricherRef para trazabilidad del manifest.
+# Cada ejecución de enriquecimiento appendea/reemplaza sus refs de enriquecedor.
+# ``params_json`` almacena el dict ``params`` de ``EnricherRef`` serializado como JSON.
+# ``recorded_at`` usa ``now()`` de DuckDB (mismo patrón que ``filter_log``).
+_DDL_ENRICHER_LOG = """
+CREATE TABLE IF NOT EXISTS enricher_log (
+    name        VARCHAR NOT NULL,
+    params_json VARCHAR NOT NULL DEFAULT '{}',
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 )
 """
 
@@ -356,6 +369,8 @@ class DuckDBBackend:
         self._con.execute(_DDL_EXTERNAL_IDS)
         # #126: tabla de pasos de filtro PRISMA para trazabilidad del manifest.
         self._con.execute(_DDL_FILTER_LOG)
+        # #141: tabla de EnricherRef para trazabilidad del manifest.
+        self._con.execute(_DDL_ENRICHER_LOG)
         self._register_udfs()
 
     def _register_udfs(self) -> None:
@@ -484,6 +499,17 @@ class DuckDBBackend:
                     "(name, criteria, count_before, count_after, recorded_at) "
                     "VALUES (?, ?, ?, ?, ?)",
                     [name_val, criteria_val, cb_val, ca_val, at_val],
+                )
+            # #141: copiar la tabla de EnricherRef
+            enricher_rows = self._con.execute(
+                "SELECT name, params_json, recorded_at "
+                "FROM enricher_log ORDER BY recorded_at"
+            ).fetchall()
+            for er_name, er_params, er_at in enricher_rows:
+                new_backend._con.execute(
+                    "INSERT INTO enricher_log (name, params_json, recorded_at) "
+                    "VALUES (?, ?, ?)",
+                    [er_name, er_params, er_at],
                 )
             return new_backend
         else:
@@ -897,6 +923,64 @@ class DuckDBBackend:
                 "criteria": r[1],
                 "count_before": r[2],
                 "count_after": r[3],
+            }
+            for r in rows
+        ]
+
+    # ------------------------------------------------------------------
+    # Extensiones propias: enricher_log (#141)
+    # ------------------------------------------------------------------
+
+    def persist_enricher_refs(
+        self,
+        refs: list[object],
+        *,
+        replace: bool = True,
+    ) -> None:
+        """Persiste las referencias de enriquecedor en ``enricher_log``.
+
+        #141 — trazabilidad de enriquecimiento: los ``EnricherRef`` aplicados
+        en ``b2g enrich`` / ``b2g chain`` / ``b2g build`` se guardan para que
+        ``manifest.enrichers`` sobreviva entre cargas del store.
+
+        Por defecto (``replace=True``) limpia las entradas anteriores antes de
+        insertar las nuevas: cada invocación reemplaza el registro completo
+        (idempotencia; el ``EnricherRef`` se identifica por nombre, ADR 0025).
+
+        Args:
+            refs: Lista de ``EnricherRef`` (se accede a sus atributos
+                ``name`` y ``params``).
+            replace: Si es ``True`` (default), trunca ``enricher_log`` antes
+                de insertar.  Si es ``False``, appendea.
+        """
+        if replace:
+            self._con.execute("DELETE FROM enricher_log")
+        for ref in refs:
+            name = getattr(ref, "name", None)
+            params = getattr(ref, "params", {})
+            self._con.execute(
+                "INSERT INTO enricher_log (name, params_json) VALUES (?, ?)",
+                [name, json.dumps(params)],
+            )
+
+    def load_enricher_refs(self) -> list[dict[str, Any]]:
+        """Carga las referencias de enriquecedor desde ``enricher_log``.
+
+        #141 — trazabilidad de enriquecimiento: permite que
+        ``DuckDBStore.load()`` reconstruya ``manifest.enrichers`` con los
+        EnricherRef persistidos.
+
+        Returns:
+            Lista de dicts con las claves ``name`` y ``params`` (dict
+            ``str→str``) en el orden de inserción.
+        """
+        rows = self._con.execute(
+            "SELECT name, params_json FROM enricher_log ORDER BY recorded_at"
+        ).fetchall()
+        return [
+            {
+                "name": r[0],
+                "params": json.loads(r[1]),
             }
             for r in rows
         ]
