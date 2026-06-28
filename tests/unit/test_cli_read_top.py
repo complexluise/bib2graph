@@ -634,41 +634,5 @@ def test_cli_read_top_stdout_una_linea_json_cocitacion_vacia(
     assert len(lineas) == 1
 
 
-# ---------------------------------------------------------------------------
-# 11. Neutralidad de transporte — get_top no viola service.reads
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_service_reads_sigue_siendo_neutral_con_get_top() -> None:
-    """service.reads con get_top no importa click, fastapi, print ni sys.exit."""
-    import ast
-    import importlib
-    import pathlib
-
-    mod = importlib.import_module("bib2graph.service.reads")
-    source_file = mod.__file__
-    assert source_file is not None
-    tree = ast.parse(pathlib.Path(source_file).read_text(encoding="utf-8"))
-
-    forbidden = {"click", "fastapi"}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                assert alias.name.split(".")[0] not in forbidden, (
-                    f"service.reads importa '{alias.name}' — viola neutralidad"
-                )
-        elif isinstance(node, ast.ImportFrom):
-            assert (node.module or "").split(".")[0] not in forbidden, (
-                f"service.reads importa de '{node.module}' — viola neutralidad"
-            )
-        elif isinstance(node, ast.Call):
-            if (
-                isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "sys"
-                and node.func.attr == "exit"
-            ):
-                raise AssertionError("service.reads llama a sys.exit")
-            if isinstance(node.func, ast.Name) and node.func.id == "print":
-                raise AssertionError("service.reads llama a print()")
+# Neutralidad de transporte de service.reads (incl. get_top): consolidada en
+# test_service.py::test_service_modulo_neutral_de_transporte (epic #184).

@@ -440,35 +440,8 @@ def test_post_curate_decision_invalida_422(tmp_path: Path) -> None:
     assert body["exit_code"] == 2
 
 
-# ---------------------------------------------------------------------------
-# 6. Neutralidad — el núcleo no importa fastapi
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_nucleo_no_importa_fastapi() -> None:
-    """Importar bib2graph.service no requiere fastapi instalado."""
-    import ast
-    import importlib
-    import pathlib
-
-    # Verificar que service/__init__.py no importa fastapi en top-level
-    mod = importlib.import_module("bib2graph.service")
-    source_file = mod.__file__
-    assert source_file is not None
-    tree = ast.parse(pathlib.Path(source_file).read_text(encoding="utf-8"))
-
-    forbidden = {"fastapi"}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                assert alias.name.split(".")[0] not in forbidden, (
-                    f"service importa '{alias.name}' — viola neutralidad"
-                )
-        elif isinstance(node, ast.ImportFrom):
-            assert (node.module or "").split(".")[0] not in forbidden, (
-                f"service importa de '{node.module}' — viola neutralidad"
-            )
+# Neutralidad del núcleo (service no importa fastapi): consolidada en
+# test_service.py::test_service_modulo_neutral_de_transporte (epic #184).
 
 
 # ---------------------------------------------------------------------------

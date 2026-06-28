@@ -509,40 +509,8 @@ def test_get_paper_devuelve_catorce_campos(tmp_path: Path) -> None:
         assert key in result, f"Falta clave: {key}"
 
 
-# ---------------------------------------------------------------------------
-# 4. Neutralidad de transporte — service/reads.py sigue siendo neutral
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_service_reads_sigue_siendo_neutral_despues_de_nuevas_funciones() -> None:
-    """list_papers y corpus_stats no rompen la neutralidad de service.reads."""
-    import ast
-    import importlib
-    import pathlib
-
-    mod = importlib.import_module("bib2graph.service.reads")
-    source_file = mod.__file__
-    assert source_file is not None
-    tree = ast.parse(pathlib.Path(source_file).read_text(encoding="utf-8"))
-
-    forbidden = {"click", "fastapi"}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                assert alias.name.split(".")[0] not in forbidden
-        elif isinstance(node, ast.ImportFrom):
-            assert (node.module or "").split(".")[0] not in forbidden
-        elif isinstance(node, ast.Call):
-            if (
-                isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "sys"
-                and node.func.attr == "exit"
-            ):
-                raise AssertionError("service.reads llama a sys.exit")
-            if isinstance(node.func, ast.Name) and node.func.id == "print":
-                raise AssertionError("service.reads llama a print()")
+# Neutralidad de transporte de service.reads: consolidada en
+# test_service.py::test_service_modulo_neutral_de_transporte (epic #184).
 
 
 # ---------------------------------------------------------------------------
