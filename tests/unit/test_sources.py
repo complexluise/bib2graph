@@ -334,58 +334,10 @@ def test_seed_executed_query_wrapping() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
-def test_bibtex_load_sin_keyerror() -> None:
-    """``BibtexSource.load`` sobre .bib con campos faltantes → sin KeyError."""
-    from bib2graph.sources.bibtex import BibtexSource
-
-    source = BibtexSource()
-    # No debe lanzar KeyError ni ninguna excepción
-    corpus = source.load(str(MINIMAL_BIB_PATH))
-    assert len(corpus) > 0
-
-
-@pytest.mark.unit
-def test_bibtex_load_is_seed_true() -> None:
-    """Todos los papers cargados desde .bib tienen ``is_seed=True``."""
-    from bib2graph.sources.bibtex import BibtexSource
-
-    source = BibtexSource()
-    corpus = source.load(str(MINIMAL_BIB_PATH))
-
-    table = corpus.to_arrow()
-    is_seed_col = table.column("is_seed").to_pylist()
-    assert all(v is True for v in is_seed_col)
-
-
-@pytest.mark.unit
-def test_bibtex_load_curation_status_candidate() -> None:
-    """Todos los papers BibTeX tienen ``curation_status='candidate'``."""
-    from bib2graph.sources.bibtex import BibtexSource
-
-    source = BibtexSource()
-    corpus = source.load(str(MINIMAL_BIB_PATH))
-
-    table = corpus.to_arrow()
-    status_col = table.column("curation_status").to_pylist()
-    assert all(s == "candidate" for s in status_col)
-
-
-@pytest.mark.unit
-def test_bibtex_load_campos_faltantes_none() -> None:
-    """Entradas sin doi/abstract/journal → None (sin error)."""
-    from bib2graph.sources.bibtex import BibtexSource
-
-    source = BibtexSource()
-    corpus = source.load(str(MINIMAL_BIB_PATH))
-
-    table = corpus.to_arrow()
-    titles = table.column("title").to_pylist()
-    dois = table.column("doi").to_pylist()
-
-    # "Deuda ecológica del Perú" no tiene doi
-    idx = next(i for i, t in enumerate(titles) if "Per" in (t or ""))
-    assert dois[idx] is None
+# El contrato de campos de BibtexSource.load (is_seed=True, curation_status="candidate",
+# campos faltantes → None, sin KeyError) vive en test_bibtex_source_contrato.py
+# (test_campos_title_autores_anio_keywords_persisten) y se ejercita end-to-end en
+# test_seed_from_bib.py (run_seed_from_bib usa BibtexSource.load). Epic #184, sub-tarea 7.
 
 
 @pytest.mark.unit
@@ -764,49 +716,13 @@ def test_translate_exclusion_none_sin_efecto() -> None:
     assert executed_sin == executed_con
 
 
-@pytest.mark.unit
-def test_seed_exclude_en_query_ejecutada() -> None:
-    """``seed(..., exclude=[...])`` refleja cláusulas NOT dentro del paréntesis de búsqueda."""
-    works = _load_fixture_works()
-    transport = _make_handler(works)
-    source = OpenAlexSource(transport=transport)
-
-    result = source.seed("sistémico", exclude=["machine learning"])
-
-    # El campo NO se repite: exactamente un "title_and_abstract.search:" en la query
-    assert result.executed_query.count("title_and_abstract.search:") == 1
-    assert 'AND NOT "machine learning"' in result.executed_query
-    assert "AND NOT title_and_abstract.search:" not in result.executed_query
-
-
-@pytest.mark.unit
-def test_seed_exclude_multiples_en_query_ejecutada() -> None:
-    """Múltiples términos excluidos aparecen todos dentro del paréntesis en la query ejecutada."""
-    works = _load_fixture_works()
-    transport = _make_handler(works)
-    source = OpenAlexSource(transport=transport)
-
-    terms = ["machine learning", "algorithm"]
-    result = source.seed("sujeto", exclude=terms)
-
-    # El campo NO se repite: exactamente un "title_and_abstract.search:"
-    assert result.executed_query.count("title_and_abstract.search:") == 1
-    assert "AND NOT title_and_abstract.search:" not in result.executed_query
-    for term in terms:
-        assert f'AND NOT "{term}"' in result.executed_query
-
-
-@pytest.mark.unit
-def test_seed_exclude_en_translation_report() -> None:
-    """Los términos excluidos se mencionan en el ``translation_report``."""
-    works = _load_fixture_works()
-    transport = _make_handler(works)
-    source = OpenAlexSource(transport=transport)
-
-    result = source.seed("complejidad", exclude=["machine learning"])
-
-    combined = " ".join(result.translation_report)
-    assert "machine learning" in combined
+# La forma de la query con exclusiones (campo no repetido, AND NOT dentro del
+# paréntesis, exclusiones en el report) está cubierta por los tests PUROS de
+# _translate (test_translate_con_una_exclusion / _con_multiples_exclusiones /
+# _exclusiones_en_translation_report), que corren en el gate; el comportamiento
+# REAL contra la API (count>0) lo cubre el test @network
+# tests/integration/test_openalex_exclude_integration.py. Estos tests seed+mock
+# solo re-verificaban que seed() expone la salida de _translate. Epic #184, sub-tarea 6.
 
 
 @pytest.mark.unit
