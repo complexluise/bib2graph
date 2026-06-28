@@ -172,12 +172,17 @@ def test_run_restore_corpus_hash_identico_entre_dos_runs(tmp_path: Path) -> None
 def test_comunidades_identicas_entre_dos_runs_pipeline(tmp_path: Path) -> None:
     """La composición nodo→comunidad es bit-a-bit idéntica entre dos runs del pipeline.
 
-    Ejecuta el pipeline completo ``run_restore → run_build`` dos veces sobre
-    el mismo parquet de entrada, con stores y directorios de output distintos,
-    y compara el mapeo nodo→comunidad de cada red.
+    Ejecuta el pipeline ``run_restore → run_build`` dos veces sobre el mismo
+    parquet, con stores distintos, y compara el mapeo nodo→comunidad que produce
+    ``Networks.quick`` sobre cada corpus restaurado.
 
     Este es el test solicitado en #61: verificar que dos runs independientes
-    producen el mismo output (idempotencia del pipeline end-to-end).
+    producen el mismo output (idempotencia del pipeline end-to-end). La aserción
+    es sobre las comunidades de ``Networks.quick`` (la fuente de no-determinismo
+    a vigilar: orden de dicts / Louvain). El camino de escritura de artefactos
+    (``run_build``) se ejercita UNA vez (run A) para mantener su cobertura sin
+    reconstruir las redes por duplicado (#184): la idempotencia ya la garantiza la
+    comparación de comunidades, no una segunda escritura a disco.
 
     Garantía de Louvain: ``random_state`` se deriva del ``corpus_hash`` de
     contenido (``_louvain_seed_from_hash``), que es idéntico si el corpus
@@ -196,28 +201,22 @@ def test_comunidades_identicas_entre_dos_runs_pipeline(tmp_path: Path) -> None:
 
     from bib2graph.cli.commands.build import run_build
     from bib2graph.cli.commands.restore import run_restore
-
-    # Run A
-    store_a = tmp_path / "runA.duckdb"
-    out_a = tmp_path / "networks_a"
-    run_restore(store_a, slice_parquet)
-
     from bib2graph.stores.duckdb import DuckDBStore
 
+    # Run A: pipeline completo (incluye run_build para ejercer el camino de escritura)
+    store_a = tmp_path / "runA.duckdb"
+    run_restore(store_a, slice_parquet)
     corpus_a = DuckDBStore(store_a).load()
     communities_a = _communities_of_run(corpus_a)
+    run_build(store_a, out_dir=tmp_path / "networks_a")
 
-    run_build(store_a, out_dir=out_a)
-
-    # Run B (store distinto, mismo parquet)
+    # Run B (store distinto, mismo parquet): solo restore + comunidades.
+    # No se reconstruye run_build: su determinismo de output no se asevera acá
+    # (la aserción es sobre las comunidades de Networks.quick).
     store_b = tmp_path / "runB.duckdb"
-    out_b = tmp_path / "networks_b"
     run_restore(store_b, slice_parquet)
-
     corpus_b = DuckDBStore(store_b).load()
     communities_b = _communities_of_run(corpus_b)
-
-    run_build(store_b, out_dir=out_b)
 
     # Las redes producidas deben ser las mismas kinds
     assert set(communities_a.keys()) == set(communities_b.keys()), (
