@@ -159,7 +159,6 @@ _CMDS_NO_WORKSPACE: list[list[str]] = [
     ["curate", "dump", "--json"],
     ["restore", "--from-corpus", "nonexistent.parquet", "--json"],
     ["seed", "--equation", "test query", "--json"],
-    ["thesaurus", "--from", "nonexistent.json", "--json"],
 ]
 
 

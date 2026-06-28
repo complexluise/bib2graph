@@ -484,7 +484,6 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
             "kind": str(NetworkKind.BIBLIOGRAPHIC_COUPLING),
             "would_be_empty": bc_empty,
             "reason": bc_reason,
-            # TODO(0037 1B): reapuntar fix_command al consolidar verbos
             "fix_command": "b2g seed --resolve" if bc_empty else None,
         }
     )
@@ -509,7 +508,6 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
             "kind": str(NetworkKind.AUTHOR_COLLAB),
             "would_be_empty": ac_empty,
             "reason": ac_reason,
-            # TODO(0037 1B): reapuntar fix_command al consolidar verbos
             "fix_command": "b2g seed --resolve" if ac_empty else None,
         }
     )
@@ -533,7 +531,6 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
             "kind": str(NetworkKind.INSTITUTION_COLLAB),
             "would_be_empty": ic_empty,
             "reason": ic_reason,
-            # TODO(0037 1B): reapuntar fix_command al consolidar verbos
             "fix_command": "b2g seed --resolve" if ic_empty else None,
         }
     )
@@ -553,10 +550,11 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
                 f"{n_kw_any}/{total} papers con {Col.KEYWORDS_ID} "
                 f"pero ninguno con ≥2 keywords distintas"
             )
-        # Si hay keywords_raw pero no keywords_id, el thesaurus puede generarlos
-        # TODO(0037 1B): reapuntar fix_command al consolidar verbos
+        # Si hay keywords_raw pero no keywords_id, build --thesaurus puede generarlos
         kw_fix: str | None = (
-            "b2g thesaurus" if n_kw_raw > 0 and n_kw_any == 0 else "b2g seed --resolve"
+            "b2g build --thesaurus <archivo>"
+            if n_kw_raw > 0 and n_kw_any == 0
+            else "b2g seed --resolve"
         )
     else:
         kw_reason = None
@@ -592,7 +590,6 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
             "kind": str(NetworkKind.COCITATION),
             "would_be_empty": coc_empty,
             "reason": coc_reason,
-            # TODO(0037 1B): reapuntar fix_command al consolidar verbos
             "fix_command": "b2g enrich" if coc_empty else None,
         }
     )

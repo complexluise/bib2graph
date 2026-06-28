@@ -243,10 +243,10 @@ class TestPredictBuildPreview:
         assert ic["fix_command"] == "b2g seed --resolve"
 
         # keyword_cooccurrence vacía: keywords_raw tiene datos pero keywords_id no
-        # Fix debe ser thesaurus (puede generarlos sin red)
+        # Fix debe ser build --thesaurus (puede generarlos sin red)
         kw = by_kind[NetworkKind.KEYWORD_COOCCURRENCE]
         assert kw["would_be_empty"] is True
-        assert kw["fix_command"] == "b2g thesaurus"
+        assert kw["fix_command"] == "b2g build --thesaurus <archivo>"
 
     def test_keywords_id_poblado_produce_red_no_vacia(self) -> None:
         """Con keywords_id >= 2 por paper, keyword_cooccurrence sale no-vacía.
@@ -335,7 +335,7 @@ class TestPredictBuildPreview:
         by_kind = {str(e["kind"]): e for e in preview}
         kw = by_kind[NetworkKind.KEYWORD_COOCCURRENCE]
         assert kw["would_be_empty"] is True
-        assert kw["fix_command"] == "b2g thesaurus"
+        assert kw["fix_command"] == "b2g build --thesaurus <archivo>"
 
     def test_fix_seed_resolve_cuando_no_hay_keywords_raw(self) -> None:
         """Sin keywords_raw, fix_command para keyword_cooccurrence='b2g seed --resolve'."""
@@ -584,10 +584,10 @@ class TestCasoCanonicoNota20:
         )
         assert by_kind[NetworkKind.COCITATION]["fix_command"] == "b2g enrich"
 
-        # Keyword fix = thesaurus (hay keywords_raw pero no keywords_id)
+        # Keyword fix = build --thesaurus (hay keywords_raw pero no keywords_id)
         kw = by_kind[NetworkKind.KEYWORD_COOCCURRENCE]
         assert kw["would_be_empty"] is True
-        assert kw["fix_command"] == "b2g thesaurus"
+        assert kw["fix_command"] == "b2g build --thesaurus <archivo>"
 
     def test_bibtex_con_thesaurus_keyword_no_vacia(self, tmp_path: Path) -> None:
         """Tras thesaurus, keywords_id se puebla → keyword_cooccurrence no-vacía.
