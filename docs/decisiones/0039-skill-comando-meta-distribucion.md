@@ -103,8 +103,13 @@ un comando **meta/distribución**, NO un paso del ciclo de investigación. El co
   - **Funciona sin workspace:** es un comando **meta global**, no requiere `workspace.json` ni
     resolución de ambiente (como `init` al crear, o como `gui`/`resolve` que no transicionan).
   - **Emite el envelope `--json` `schema="1"` SIN transición de FSM** (igual que `gui`/`resolve`):
-    es ortogonal al lazo. *(El `data` emitido es `{install_path, scope, installed, already_present}`,
-    `schema="1"` intacto; documentado en `docs/API.md`.)*
+    es ortogonal al lazo. *(El `data` emitido es `{install_path, scope, installed, already_present,
+    skill_md, reference_dir, how_to}`, `schema="1"` intacto; documentado en `docs/API.md`.)*
+  - **Salida agéntica (AgenticExperience):** la salida —humana y `--json`— es **explícita sobre dónde
+    quedó el `SKILL.md` y pide leerlo**, con un resumen `how_to` de cómo opera bib2graph a grandes
+    rasgos. Esto vuelve la skill **auto-descubrible por un agente de cualquier proveedor** (no solo
+    Claude Code) sin depender del mecanismo de descubrimiento del cliente — el primer puente hacia la
+    distribución agnóstica del 0.11.0 ([#193](https://github.com/complexluise/bib2graph/issues/193)).
 
 ### La historia de uso (cómo llega la skill al investigador)
 
@@ -139,7 +144,7 @@ legible para un agente.
 - **`docs/API.md` documenta una 2.ª excepción meta**: `skill` con `skill add` y sus flags, la
   reconciliación del conteo ("10 + gui + skill") y la nota de empaquetado (la skill entra por
   `packages`, **no** por `force-include`). El `data` del envelope es `{install_path, scope, installed,
-  already_present}` (`schema="1"` intacto).
+  already_present, skill_md, reference_dir, how_to}` (`schema="1"` intacto).
 - **El wheel engorda con la skill** (markdown, peso menor); al ser fuente del paquete entra por
   `packages` sin config extra. *(`pyproject.toml`/CI son del `coder`.)*
 - **Mantener la skill al día con el ciclo.** Si el ciclo del 0037 cambia (futuro ADR), la skill

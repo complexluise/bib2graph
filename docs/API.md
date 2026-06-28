@@ -560,8 +560,12 @@ llegó a ~20 subcomandos) se **consolidó** en una superficie que mapea 1:1 el c
   (comando meta global, no requiere `workspace.json` ni resolución de ambiente) y **emite el envelope
   `--json` `schema="1"` SIN transición de FSM** (ortogonal al lazo, igual que `gui`/`resolve`). La
   skill es **markdown sin dependencias Python** (no usa IA en el producto, ADR 0022: la IA está en el
-  Claude Code del usuario). *(El `data` emitido es `{install_path, scope, installed,
-  already_present}`, `schema="1"` intacto.)*
+  Claude Code del usuario). **Salida agéntica (AgenticExperience):** tanto la salida humana como el
+  envelope son **explícitos sobre dónde está el artículo y piden leerlo**, para que un agente de
+  **cualquier** proveedor pueda auto-onboardearse aunque no use el descubrimiento de Claude Code. *(El
+  `data` emitido es `{install_path, scope, installed, already_present, skill_md, reference_dir,
+  how_to}`, `schema="1"` intacto: `skill_md` es la ruta al `SKILL.md` y `how_to` el resumen a grandes
+  rasgos.)*
 - **`resolve`** (issues #110/#112, AS-BUILT, ADR
   [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md), 20° subcomando): **resuelve los DOIs del
   corpus a IDs de OpenAlex (`source_id`)** — cierra el **GAP-1** del flujo BibTeX e2e. Los papers

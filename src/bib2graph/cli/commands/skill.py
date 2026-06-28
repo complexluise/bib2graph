@@ -105,6 +105,40 @@ def _trees_identical(a: Path, b: Path) -> bool:
     return all(_trees_identical(a / sub, b / sub) for sub in cmp.common_dirs)
 
 
+# Resumen "a grandes rasgos" de cómo opera bib2graph, para que un agente de
+# CUALQUIER proveedor (no solo Claude Code) sepa qué es esto y vaya al SKILL.md.
+# (La integración real depende del cliente; esto la hace auto-descubrible: la
+# salida del CLI dice dónde está el artículo y pide leerlo. Ver #193 para la
+# distribución agnóstica al proveedor de 0.11.0.)
+_HOW_IT_WORKS = (
+    "bib2graph entrevista al investigador y corre el ciclo de forrajeo "
+    "seed→chain→build→read (one-shot o profundizando), priorizando candidatos "
+    "por estructura de citación (determinista, sin IA). El SKILL.md trae la "
+    "entrevista y cómo operar cada paso."
+)
+
+
+def _build_result(
+    dest: Path, scope: str, *, installed: bool, already_present: bool
+) -> dict[str, Any]:
+    """Arma el dict de resultado de ``skill add``.
+
+    Incluye las rutas que un agente necesita para **leer** la skill —``skill_md``
+    y ``reference_dir``— y el resumen ``how_to``, de modo que un agente agnóstico
+    al proveedor pueda auto-onboardearse desde la salida ``--json`` sin depender
+    del mecanismo de descubrimiento de Claude Code.
+    """
+    return {
+        "install_path": str(dest),
+        "scope": scope,
+        "installed": installed,
+        "already_present": already_present,
+        "skill_md": str(dest / "SKILL.md"),
+        "reference_dir": str(dest / "reference"),
+        "how_to": _HOW_IT_WORKS,
+    }
+
+
 def run_skill_add(
     *,
     scope: str,
@@ -124,9 +158,10 @@ def run_skill_add(
               default: ``Path.home()``).
 
     Returns:
-        Dict con ``"install_path"`` (ruta absoluta), ``"scope"``, ``"installed"``
-        (``True`` si copió/pisó, ``False`` si fue no-op) y ``"already_present"``
-        (``True`` si la versión vendida ya estaba instalada).
+        Dict con ``install_path``, ``scope``, ``installed`` (``True`` si
+        copió/pisó, ``False`` si fue no-op), ``already_present`` (``True`` si la
+        versión vendida ya estaba), y —para que un agente sepa dónde leerla—
+        ``skill_md`` (ruta al SKILL.md), ``reference_dir`` y ``how_to`` (resumen).
 
     Raises:
         UsageError: Si el destino existe, **difiere** de la versión vendida y
@@ -145,12 +180,7 @@ def run_skill_add(
 
     # Idempotencia: si ya está exactamente la versión vendida → no-op.
     if dest.exists() and _trees_identical(source, dest):
-        return {
-            "install_path": str(dest),
-            "scope": scope,
-            "installed": False,
-            "already_present": True,
-        }
+        return _build_result(dest, scope, installed=False, already_present=True)
 
     # Existe pero difiere (edición del usuario u otra versión): exige --force.
     if dest.exists() and not force:
@@ -164,12 +194,7 @@ def run_skill_add(
 
     shutil.copytree(source, dest)
 
-    return {
-        "install_path": str(dest),
-        "scope": scope,
-        "installed": True,
-        "already_present": False,
-    }
+    return _build_result(dest, scope, installed=True, already_present=False)
 
 
 # ---------------------------------------------------------------------------
@@ -248,10 +273,22 @@ def add_cmd(
             exit_code=0,
         )
         emit(envelope)
-    elif data["already_present"]:
-        emit_human(
-            f"Skill ya instalada (versión vendida) en: {data['install_path']} "
-            "— nada que hacer."
-        )
     else:
-        emit_human(f"Skill instalada en: {data['install_path']}")
+        estado = (
+            "Skill ya instalada (versión vendida)"
+            if data["already_present"]
+            else "Skill instalada"
+        )
+        # Salida explícita y agnóstica al proveedor: dónde quedó el artículo,
+        # cómo opera bib2graph a grandes rasgos, y la instrucción de leerlo
+        # (cualquier agente, no solo Claude Code, puede auto-onboardearse así).
+        emit_human(
+            f"{estado} en: {data['install_path']}\n"
+            "\n"
+            "Cómo opera bib2graph (a grandes rasgos):\n"
+            f"  {data['how_to']}\n"
+            "\n"
+            "Agente (cualquier proveedor): leé este archivo para operar bib2graph →\n"
+            f"  {data['skill_md']}\n"
+            f"  (marco teórico en {data['reference_dir']}/ciclo.md)"
+        )
