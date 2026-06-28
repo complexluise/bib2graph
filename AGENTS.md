@@ -33,13 +33,17 @@
   explícito), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `sources/equation.py` (capa declarativa de la
   ecuación, 9a), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/`, no un placeholder—. **Superficie 0.10.0 (ADR 0037/0038,
+  El **CLI `b2g` es real** —paquete `cli/`, no un placeholder—. **Superficie 0.10.0 (ADR 0037/0038/0039,
   AS-BUILT):** **10 verbos del ciclo** (`init`, `seed`, `chain`, `curate`, `build`, `read`, `export`,
   `snapshot`, `status`, `validate`) **+ 3 grupos noun-verb** (`read {list,stats,show,top}`,
-  `curate {dump,apply,accept,reject,filter}`, `snapshot {create,restore}`) **+ `gui`** (excepción, ADR
-  0027/0028) **+ 9 aliases deprecados** (`accept`/`reject`/`filter`/`inspect`/`monitor`/`networks`/
-  `enrich`/`restore`/`resolve`, retiro 0.11.0). **`thesaurus` se retiró como verbo** (#164): su
-  capacidad es **`b2g build --thesaurus`**. Conteo verificable contra `b2g --help`; detalle en
+  `curate {dump,apply,accept,reject,filter}`, `snapshot {create,restore}`) **+ 2 comandos meta**
+  fuera de los 10 (`gui`, ADR 0027/0028; **`skill add`**, ADR 0039 — instala la skill de Claude Code
+  end-user que materializa el mensaje *"la mejor forma de usar bib2graph es pedirle a Claude que lo
+  use"* [`pip install bib2graph` → `b2g skill add`]; vendoreada en el wheel con version-lock
+  skill==cli) **+ 9 aliases deprecados**
+  (`accept`/`reject`/`filter`/`inspect`/`monitor`/`networks`/`enrich`/`restore`/`resolve`, retiro
+  0.11.0). **`thesaurus` se retiró como verbo** (#164): su capacidad es **`b2g build --thesaurus`**.
+  Conteo verificable contra `b2g --help` (10 del ciclo + `gui` + `skill`); detalle en
   `docs/API.md` §Convenciones CLI.
   **Grupo noun-verb `read {list,stats,show,top}` (#156/#157, ADR 0037 §b):** primer grupo del CLI (lectura pura
   del corpus, no transiciona); `read list` filtra por `--query`/`--status`/`--seeds|--candidates`/`--year`,
@@ -536,8 +540,8 @@ src/bib2graph/
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
                        # _ingest.py = helper normalize_and_dedup (auto-preproc en la ingesta, ADR 0031);
-                       # cli/commands/ = superficie 0.10.0 (ADR 0037/0038): 10 verbos del ciclo + 3 grupos
-                       # noun-verb (read/curate/snapshot) + gui (excepción) + 9 aliases deprecados
+                       # cli/commands/ = superficie 0.10.0 (ADR 0037/0038/0039): 10 verbos del ciclo + 3 grupos
+                       # noun-verb (read/curate/snapshot) + 2 comandos meta (gui; skill add —ADR 0039) + 9 aliases deprecados
                        # (accept/reject/filter/inspect/monitor/networks/enrich/restore/resolve, retiro 0.11.0).
                        # chain --since absorbe monitor →MONITORED (#158); enrich absorbido en chain (refs→DOI)
                        # + build (co-citación) (#162); thesaurus retirado → build --thesaurus (#164);

@@ -14,10 +14,11 @@ Subcomandos planos (18):
 
     inspect: absorbido por ``read show`` (#156); permanece como alias.
 
-Grupos noun-verb (3):
+Grupos noun-verb (4):
     read     [list|stats|show|top] — lecturas read-only del corpus (#156/#157).
     curate   [dump|apply|accept|reject|filter] — curación en lote (#155).
     snapshot [create|restore] — fotos selladas y rehidratación (#163, ADR 0038).
+    skill    [add] — instala la skill de bib2graph para Claude (Epic #188).
 
 Cada subcomando lleva:
   - ``--json``: salida JSON estructurada (envelope versionado, §API.md).
@@ -67,6 +68,7 @@ from bib2graph.cli.commands.reject import reject_cmd
 from bib2graph.cli.commands.resolve import resolve_cmd
 from bib2graph.cli.commands.restore import restore_cmd
 from bib2graph.cli.commands.seed import seed_cmd
+from bib2graph.cli.commands.skill import skill_grp
 from bib2graph.cli.commands.snapshot import snapshot_grp
 from bib2graph.cli.commands.status import status_cmd
 from bib2graph.cli.commands.validate import validate_cmd
@@ -89,6 +91,7 @@ def _force_utf8() -> None:
 
 
 @click.group()
+@click.version_option(package_name="bib2graph")
 @click.option(
     "--workspace",
     default=None,
@@ -117,7 +120,8 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
     status, validate, accept, reject, networks, restore (shim),
     gui, resolve,
     read [list|stats|show|top], curate [dump|apply|accept|reject|filter],
-    snapshot [create|restore] (ADR 0038).
+    snapshot [create|restore] (ADR 0038),
+    skill [add] (Epic #188).
 
     Ejemplo:
         b2g init mi-investigacion
@@ -130,7 +134,7 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
 
 
 # Registrar subcomandos planos + grupos noun-verb read (#156), curate (#155),
-# snapshot (#163, ADR 0038)
+# snapshot (#163, ADR 0038), skill (Epic #188)
 b2g.add_command(init_cmd)
 b2g.add_command(seed_cmd)
 b2g.add_command(chain_cmd)
@@ -151,6 +155,7 @@ b2g.add_command(restore_cmd)
 b2g.add_command(gui_cmd)
 b2g.add_command(resolve_cmd)
 b2g.add_command(read_grp)
+b2g.add_command(skill_grp)
 
 
 def main() -> int:
