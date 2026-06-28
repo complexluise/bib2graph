@@ -592,46 +592,8 @@ def test_cli_read_top_kind_invalido_exit_nonzero(tmp_path: Path) -> None:
     assert result.exit_code != 0
 
 
-# ---------------------------------------------------------------------------
-# 10. stdout puro — exactamente una línea JSON (#151)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_cli_read_top_stdout_una_linea_json(tmp_path: Path) -> None:
-    """read top --json: stdout es exactamente una línea no-vacía."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, _bib_coupling_rows())
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "read", "top", "--json"],
-        catch_exceptions=False,
-    )
-    lineas = [ln for ln in result.stdout.splitlines() if ln.strip()]
-    assert len(lineas) == 1, (
-        f"Se esperaba exactamente 1 línea en stdout, se obtuvieron {len(lineas)}:\n"
-        f"{result.stdout!r}"
-    )
-
-
-@pytest.mark.unit
-def test_cli_read_top_stdout_una_linea_json_cocitacion_vacia(
-    tmp_path: Path,
-) -> None:
-    """read top --json con co-citación vacía: sigue siendo 1 línea JSON."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, _bib_coupling_rows())
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "read", "top", "--json"],
-        catch_exceptions=False,
-    )
-    lineas = [ln for ln in result.stdout.splitlines() if ln.strip()]
-    assert len(lineas) == 1
+# stdout de 1 línea JSON (#151) para read top: ya garantizado por
+# _assert_one_json_line en test_cli_read_top_json_envelope_forma (epic #184, sub-tarea 2).
 
 
 # Neutralidad de transporte de service.reads (incl. get_top): consolidada en

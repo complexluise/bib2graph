@@ -947,57 +947,8 @@ def test_cli_read_sin_subcomando_imprime_ayuda() -> None:
     assert "show" in result.output
 
 
-# ---------------------------------------------------------------------------
-# 9. stdout puro — una sola línea JSON
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_cli_read_list_stdout_una_linea_json(tmp_path: Path) -> None:
-    """read list --json: stdout es exactamente una línea no-vacía."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, [_row(id="P1")])
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "read", "list", "--json"],
-        catch_exceptions=False,
-    )
-    lineas = [ln for ln in result.stdout.splitlines() if ln.strip()]
-    assert len(lineas) == 1
-
-
-@pytest.mark.unit
-def test_cli_read_show_stdout_una_linea_json(tmp_path: Path) -> None:
-    """read show --json (error o éxito): stdout es exactamente una línea."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, [_row(id="P1")])
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "read", "show", "--id", "P1", "--json"],
-        catch_exceptions=False,
-    )
-    lineas = [ln for ln in result.stdout.splitlines() if ln.strip()]
-    assert len(lineas) == 1
-
-
-@pytest.mark.unit
-def test_cli_read_stats_stdout_una_linea_json(tmp_path: Path) -> None:
-    """read stats --json: stdout es exactamente una línea."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, [_row(id="P1", curation_status="candidate")])
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "read", "stats", "--json"],
-        catch_exceptions=False,
-    )
-    lineas = [ln for ln in result.stdout.splitlines() if ln.strip()]
-    assert len(lineas) == 1
+# stdout de 1 línea JSON (list/show/stats): ya garantizado por _assert_one_json_line
+# en los tests *_envelope_forma de cada comando (epic #184, sub-tarea 2).
 
 
 # ---------------------------------------------------------------------------
