@@ -1,15 +1,24 @@
-"""cli — CLI agente-native ``b2g`` (Hito 6 + ADR 0029 workspace).
+"""cli — CLI agente-native ``b2g`` (Hito 6 + ADR 0029 workspace + #155 + ADR 0038).
 
-Arma el grupo Click principal, registra los 20 subcomandos y expone
-``main()`` como entry point del paquete.
+Arma el grupo Click principal, registra los subcomandos planos y los grupos
+noun-verb, y expone ``main()`` como entry point del paquete.
 
-Entry point en ``pyproject.toml``:
-    b2g = "bib2graph.cli:main"
+Entry points en ``pyproject.toml``:
+    b2g      = "bib2graph.cli:main"
+    bib2graph = "bib2graph.cli:main_bib2graph_alias"  # deprecado, #165
 
-Subcomandos:
-    init, seed, chain, filter, build, enrich, monitor, export, snapshot,
-    status, inspect, validate, accept, reject, curate, networks, restore,
-    thesaurus, gui, resolve.
+Subcomandos planos (17):
+    init, seed, chain, filter, build, enrich, monitor, export,
+    status, validate, accept, reject, networks, restore (shim #163),
+    resolve.
+
+    inspect: absorbido por ``read show`` (#156); permanece como alias.
+
+Grupos noun-verb (4):
+    read     [list|stats|show|top] — lecturas read-only del corpus (#156/#157).
+    curate   [dump|apply|accept|reject|filter] — curación en lote (#155).
+    snapshot [create|restore] — fotos selladas y rehidratación (#163, ADR 0038).
+    skill    [add] — instala la skill de bib2graph para Claude (Epic #188).
 
 Cada subcomando lleva:
   - ``--json``: salida JSON estructurada (envelope versionado, §API.md).
@@ -22,6 +31,10 @@ ADR 0029 — resolución ambiente:
   ``Workspace.resolve(...)`` (B2G_WORKSPACE env o cwd walk).
   La opción ``--store`` fue eliminada (#75): pasarla produce el error estándar
   de Click ("No such option"). El modo degenerado (.duckdb suelto) ya no existe.
+
+ADR 0038 — snapshot como grupo noun-verb:
+  ``snapshot`` es ahora un grupo ``{create, restore}`` (BREAKING).
+  ``b2g restore`` se mantiene como shim intacto (#165 retirará el alias).
 
 R5 — UTF-8 en la frontera:
   ``main()`` fuerza ``sys.stdout``/``sys.stderr`` a UTF-8 antes de que Click
@@ -37,25 +50,26 @@ import sys
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli.commands.accept import accept_cmd
 from bib2graph.cli.commands.build import build_cmd
 from bib2graph.cli.commands.chain import chain_cmd
-from bib2graph.cli.commands.curate import curate_cmd
+from bib2graph.cli.commands.curate import curate_grp
 from bib2graph.cli.commands.enrich import enrich_cmd
 from bib2graph.cli.commands.export import export_cmd
 from bib2graph.cli.commands.filter import filter_cmd
-from bib2graph.cli.commands.gui import gui_cmd
 from bib2graph.cli.commands.init import init_cmd
 from bib2graph.cli.commands.inspect import inspect_cmd
 from bib2graph.cli.commands.monitor import monitor_cmd
 from bib2graph.cli.commands.networks import networks_cmd
+from bib2graph.cli.commands.read import read_grp
 from bib2graph.cli.commands.reject import reject_cmd
 from bib2graph.cli.commands.resolve import resolve_cmd
 from bib2graph.cli.commands.restore import restore_cmd
 from bib2graph.cli.commands.seed import seed_cmd
-from bib2graph.cli.commands.snapshot import snapshot_cmd
+from bib2graph.cli.commands.skill import skill_grp
+from bib2graph.cli.commands.snapshot import snapshot_grp
 from bib2graph.cli.commands.status import status_cmd
-from bib2graph.cli.commands.thesaurus import thesaurus_cmd
 from bib2graph.cli.commands.validate import validate_cmd
 
 
@@ -76,6 +90,7 @@ def _force_utf8() -> None:
 
 
 @click.group()
+@click.version_option(package_name="bib2graph")
 @click.option(
     "--workspace",
     default=None,
@@ -101,8 +116,11 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
     error accionable (exit 1) que sugiere 'b2g init' o '--workspace'.
 
     Subcomandos: init, seed, chain, filter, build, enrich, monitor, export,
-    snapshot, status, inspect, validate, accept, reject, curate, networks,
-    restore, thesaurus, gui, resolve.
+    status, validate, accept, reject, networks, restore (shim),
+    resolve,
+    read [list|stats|show|top], curate [dump|apply|accept|reject|filter],
+    snapshot [create|restore] (ADR 0038),
+    skill [add] (Epic #188).
 
     Ejemplo:
         b2g init mi-investigacion
@@ -114,7 +132,8 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
     ctx.obj["workspace"] = workspace
 
 
-# Registrar los 20 subcomandos
+# Registrar subcomandos planos + grupos noun-verb read (#156), curate (#155),
+# snapshot (#163, ADR 0038), skill (Epic #188)
 b2g.add_command(init_cmd)
 b2g.add_command(seed_cmd)
 b2g.add_command(chain_cmd)
@@ -123,18 +142,18 @@ b2g.add_command(build_cmd)
 b2g.add_command(enrich_cmd)
 b2g.add_command(monitor_cmd)
 b2g.add_command(export_cmd)
-b2g.add_command(snapshot_cmd)
+b2g.add_command(snapshot_grp)
 b2g.add_command(status_cmd)
 b2g.add_command(inspect_cmd)
 b2g.add_command(validate_cmd)
 b2g.add_command(accept_cmd)
 b2g.add_command(reject_cmd)
-b2g.add_command(curate_cmd)
+b2g.add_command(curate_grp)
 b2g.add_command(networks_cmd)
 b2g.add_command(restore_cmd)
-b2g.add_command(thesaurus_cmd)
-b2g.add_command(gui_cmd)
 b2g.add_command(resolve_cmd)
+b2g.add_command(read_grp)
+b2g.add_command(skill_grp)
 
 
 def main() -> int:
@@ -164,3 +183,23 @@ def main() -> int:
         return 1
     except SystemExit as exc:
         return int(exc.code) if exc.code is not None else 0
+
+
+def main_bib2graph_alias() -> int:
+    """Entry point del ejecutable legado ``bib2graph`` (alias deprecado, #165).
+
+    Emite el aviso de deprecación a stderr y delega en ``main()``.
+
+    DEPRECADO: el ejecutable canónico es ``b2g``.  Este alias se retira en 0.11.0
+    (ADR 0038, #165).
+
+    Returns:
+        Exit code del proceso (0 éxito, 1-5 error según ADR 0010).
+    """
+    _force_utf8()
+    emit_deprecation(
+        "bib2graph",
+        "b2g",
+        removed_in="0.11.0",
+    )
+    return main()

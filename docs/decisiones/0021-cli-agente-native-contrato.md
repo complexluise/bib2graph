@@ -271,3 +271,27 @@ mensaje custom de migración. La **única forma canónica** de apuntar a la pers
 `--workspace <carpeta>` o la resolución ambiente (`B2G_WORKSPACE` > walk-up del cwd buscando
 `workspace.json`). El modo degenerado (`.duckdb` suelto) **deja de existir**: un `.duckdb` legacy se
 adopta como workspace con `b2g init .` en su carpeta. Es un **BREAKING change** del contrato CLI.
+
+## Enmienda — `B2G_JSON` activa el modo JSON por entorno (2026-06-27, [#151](https://github.com/complexluise/bib2graph/issues/151))
+
+> Enmienda **aditiva** al §C (envelope). El flag `--json` y su forma **no cambian**; el envelope
+> `schema="1"`, los exit codes (§D) y la FSM (§F) quedan **intactos**. Complementa la enmienda al §C
+> que reclamó el ADR [0037](0037-superficie-cli-10-verbos-ciclo.md) (stdout puro). Implementado +
+> verificado (gate verde).
+
+El §C declaraba que `--json` es **lo único** que el comando imprime en stdout. Esta enmienda fija dos
+cosas que el AS-BUILT explicita:
+
+1. **stdout puro ENFORCED.** En modo JSON, stdout emite **exactamente la línea-envelope**, incluido
+   el **camino de error** (`ok=false` → envelope en stdout, no en stderr). El texto de modo humano va
+   a **stderr**. Antes era contrato declarado; ahora está enforced y testeado.
+2. **Activación por entorno con `B2G_JSON`.** El modo JSON se activa también con la variable de
+   entorno **`B2G_JSON`** (truthy: `1`/`true`/`yes`, case-insensitive), con alcance a **todos** los
+   comandos (incl. `init`). **Precedencia:** `--json` explícito > `B2G_JSON`. **No hay `--no-json`.**
+   La **superficie de invocación del flag no cambia**: `--json` sigue siendo por-comando y
+   **post-verbo** (`b2g <cmd> --json`), no se vuelve global. Caso de uso agents-first: `export
+   B2G_JSON=1` una vez por sesión y no repetir el flag.
+
+En código se unificó el flag vía un decorador compartido `@json_option` (`cli/_options.py`, con
+`json_mode(local_flag)` que resuelve flag-o-entorno); es refactor interno, **no** cambia el contrato
+externo. Documentado en `docs/API.md` §convenciones CLI (Envelope JSON / `B2G_JSON`).

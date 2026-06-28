@@ -10,9 +10,15 @@ Contrato público re-exportado:
   - ``code_for`` — helper de mapeo error→exit code (sin I/O).
   - ``get_workspace``, ``list_rounds``, ``get_paper``, ``get_scent``,
     ``get_network``, ``compare_rounds`` — lecturas del Hito G2 (ADR 0028).
+  - ``list_papers``, ``corpus_stats`` — lecturas del grupo ``read``
+    (#156, sub-issue de la superficie CLI 0.10.0).
+  - ``get_top`` — nodos centrales + pares de co-citación con título resuelto
+    (#157, sub-issue de la superficie CLI 0.10.0).
   - ``accept_papers``, ``reject_papers``, ``curate_paper`` — escrituras del
     Hito G3 (ADR 0028).
   - ``resolve_dois`` — resolución DOI→source_id (ADR 0035).
+  - ``compute_maturity`` — bloque ``maturity`` para build/snapshot/read top
+    (#160, sub-issue de la superficie CLI 0.10.0, ADR 0037 §f).
 """
 
 from __future__ import annotations
@@ -28,12 +34,16 @@ from bib2graph.service.errors import (
     UsageError,
     code_for,
 )
+from bib2graph.service.maturity import compute_maturity
 from bib2graph.service.reads import (
     compare_rounds,
+    corpus_stats,
     get_network,
     get_paper,
     get_scent,
+    get_top,
     get_workspace,
+    list_papers,
     list_rounds,
 )
 from bib2graph.service.resolve import resolve_dois
@@ -50,11 +60,15 @@ __all__ = [
     "build_envelope",
     "code_for",
     "compare_rounds",
+    "compute_maturity",
+    "corpus_stats",
     "curate_paper",
     "get_network",
     "get_paper",
     "get_scent",
+    "get_top",
     "get_workspace",
+    "list_papers",
     "list_rounds",
     "reject_papers",
     "resolve_dois",

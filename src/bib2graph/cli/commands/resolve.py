@@ -1,4 +1,4 @@
-"""cli.commands.resolve — Subcomando ``b2g resolve``.
+"""cli.commands.resolve — Subcomando ``b2g resolve`` (alias deprecado, #165).
 
 Resuelve los DOIs del workspace actual a IDs de OpenAlex (``source_id``),
 habilitando el enriquecimiento posterior con ``b2g enrich`` y el forrajeo
@@ -13,6 +13,8 @@ Flags:
   --json        Salida JSON estructurada (envelope versionado, ADR 0021).
 
 NO transiciona el CycleState (operación ortogonal al lazo, igual que enrich).
+
+DEPRECADO (ADR 0038, #165): usar ``b2g seed --resolve``.  Se retira en 0.11.0.
 """
 
 from __future__ import annotations
@@ -22,8 +24,10 @@ from typing import Any
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import resolve_library_path
 
 # ---------------------------------------------------------------------------
@@ -72,13 +76,7 @@ def run_resolve(
     default=None,
     help="Email para el polite pool de OpenAlex (recomendado).",
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("resolve")
 def resolve_cmd(
@@ -103,15 +101,17 @@ def resolve_cmd(
       b2g resolve --email mi@email.com
       b2g enrich --email mi@email.com
     """
+    dep_msg = emit_deprecation("b2g resolve", "b2g seed --resolve")
     store_path = resolve_library_path(ctx.obj)
     data = run_resolve(store_path, email=email)
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="resolve",
             ok=True,
             data=data,
             exit_code=0,
+            warnings=[dep_msg],
         )
         emit(envelope)
     else:

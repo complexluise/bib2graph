@@ -1,15 +1,29 @@
 """cli.commands.build — Subcomando ``b2g build``.
 
-Computa las redes bibliométricas con Networks.quick y escribe artefactos
-a disco. Transiciona el CycleState a BUILT tras persistir con éxito.
+Computa las redes bibliométricas y escribe artefactos a disco.
+Transiciona el CycleState a BUILT tras persistir con éxito.
+
+Modos de operación (ADR 0038, #159):
+  - **Sin ``--spec``** (one-shot): usa ``Networks.quick``.  Construye las 4-5
+    redes principales.
+  - **Con ``--spec``** (declarativo): carga un YAML con ``load_specs`` y
+    construye cada red con ``Networks.build``.  Absorbe la capacidad de
+    ``b2g networks``, pero con transición de FSM y sellado de hash (D1).
+
+En AMBOS modos:
+  - ``--scope`` pre-filtra el corpus (``all`` / ``accepted`` / ``seeds``).
+  - ``--min-weight`` filtra aristas con peso < N (default 1 = sin filtro).
+  - Se transiciona a BUILT y se sella ``networks/.corpus_hash``.
+  - Se diagnostican redes vacías en build-time, reusando ``predict_build_preview``
+    (fuente única con ``status``, ADR 0037 §(e)).
 
 ADR 0029 — workspace:
   El directorio de artefactos es ``<workspace>/networks/`` por defecto.
   Si se pasa ``--out-dir`` explícito, se usa ese.
 
 ADR 0029 — sellado por corpus_hash:
-  Escribe ``networks/.corpus_hash`` con el hash del corpus que produjo
-  las redes. Permite detectar staleness sin un build system completo.
+  Escribe ``networks/.corpus_hash`` con el hash del corpus **filtrado** que
+  produjo las redes. Permite detectar staleness sin un build system completo.
 
 Los artefactos se escriben en ``<networks_dir>/<kind>/``:
   - ``network.graphml``: el grafo en formato GraphML.
@@ -22,18 +36,88 @@ from __future__ import annotations
 
 import csv as _csv
 import json
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
+from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
-from bib2graph.cli._errors import DependencyError, handle_errors
+from bib2graph.cli._errors import DataError, DependencyError, handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_workspace
 
 if TYPE_CHECKING:
     from bib2graph.corpus import Corpus
     from bib2graph.networks.spec import NetworkArtifact
+
+
+# ---------------------------------------------------------------------------
+# Helper: mapeo del vocabulario CLI de --scope al vocabulario interno de corpus.scoped()
+# ---------------------------------------------------------------------------
+
+
+def _map_scope(scope: str) -> str:
+    """Mapea el vocab de ``--scope`` (CLI) al vocab interno de ``corpus.scoped()``.
+
+    ``--scope`` usa ``seeds`` (forma corta), mientras que ``corpus.scoped()``
+    espera ``seeds_only``.  Los demás valores son idénticos en ambos vocabs.
+
+    Args:
+        scope: Valor del flag ``--scope`` (``all`` | ``accepted`` | ``seeds``).
+
+    Returns:
+        Vocabulario interno: ``all`` | ``accepted`` | ``seeds_only``.
+    """
+    if scope == "seeds":
+        return "seeds_only"
+    return scope
+
+
+# ---------------------------------------------------------------------------
+# Helper compartido: carga de specs YAML + construcción de artefactos
+# ---------------------------------------------------------------------------
+
+
+def _build_from_spec_file(
+    corpus: Corpus,
+    spec_path: str | Path,
+) -> list[NetworkArtifact]:
+    """Carga specs YAML y construye artefactos con ``Networks.build``.
+
+    Helper compartido entre ``run_build --spec`` y ``run_networks``.
+    Centraliza la carga YAML + proyección para que ambos comandos no diverjan
+    (frontera con #165: cuando ``networks`` se retire, no habrá reconciliación).
+
+    Args:
+        corpus: Corpus ya filtrado (scope aplicado por quien llama).
+        spec_path: Ruta al archivo YAML con la definición de redes.
+
+    Returns:
+        Lista de ``NetworkArtifact`` en el orden del YAML.
+
+    Raises:
+        DataError: Si el YAML está malformado o alguna spec es inválida.
+        DependencyError: Si falta ``python-louvain`` al detectar comunidades.
+    """
+    from bib2graph.networks.facade import Networks
+    from bib2graph.networks.spec import load_specs
+
+    try:
+        specs = load_specs(spec_path)
+    except (ValueError, FileNotFoundError) as exc:
+        raise DataError(str(exc)) from exc
+
+    try:
+        return [Networks.build(corpus, spec) for spec in specs]
+    except ImportError as exc:
+        raise DependencyError(
+            f"Dependencia faltante para detectar comunidades: {exc}. "
+            "Instalá python-louvain: uv add python-louvain."
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +239,73 @@ def _write_artifacts(
 
 
 # ---------------------------------------------------------------------------
+# Helper: aplicar thesaurus al corpus y persistir (ADR 0011, #164)
+# ---------------------------------------------------------------------------
+
+
+def _apply_thesaurus_and_persist(
+    corpus: Corpus,
+    thesaurus_path: str | Path,
+    store: Any,
+) -> tuple[Corpus, dict[str, Any]]:
+    """Aplica el thesaurus al corpus completo y persiste (ADR 0011, #164).
+
+    Sobrescribe keywords_id con los conceptos canonicos del mapa curado
+    y persiste el resultado. El CycleState NO se modifica aqui.
+    Se aplica al corpus COMPLETO (pre-scoping) para que la consolidacion
+    impacte la co-ocurrencia de keywords sea cual sea el scope de la red.
+
+    Args:
+        corpus: Corpus a procesar (no muta; semantica de valor).
+        thesaurus_path: Ruta al JSON del thesaurus (formato ADR 0011).
+        store: Store abierto (para persist_replace).
+
+    Returns:
+        Tupla (corpus_actualizado, stats) con keywords_mapped,
+        keywords_total, aliases_loaded y applied_at.
+
+    Raises:
+        DataError: Si el archivo no existe o tiene formato invalido.
+    """
+    from bib2graph.preprocessors.preprocessor import Preprocessor
+    from bib2graph.preprocessors.thesaurus import load_thesaurus
+
+    resolved = Path(thesaurus_path)
+    try:
+        lookup = load_thesaurus(resolved)
+    except (FileNotFoundError, KeyError, ValueError, TypeError) as exc:
+        raise DataError(
+            f"No se pudo cargar el thesaurus '{resolved}': {exc}. "
+            "Verificá el formato JSON ADR 0011."
+        ) from exc
+
+    applied_at = datetime.now(UTC)
+    preprocessor = Preprocessor()
+    updated = preprocessor.apply_thesaurus(corpus, resolved, applied_at=applied_at)
+
+    # persist_replace: evita acumulacion de canonicos viejos (ADR 0011).
+    store.persist_replace(updated)
+
+    rows = updated.to_arrow().to_pylist()
+    total_kw = sum(len(r["keywords_id"]) for r in rows if r.get("keywords_id"))
+    canonical_set = set(lookup.values())
+    mapped_kw = sum(
+        1
+        for r in rows
+        if r.get("keywords_id")
+        for kw in r["keywords_id"]
+        if kw in canonical_set
+    )
+    stats: dict[str, Any] = {
+        "keywords_mapped": mapped_kw,
+        "keywords_total": total_kw,
+        "aliases_loaded": len(lookup),
+        "applied_at": applied_at.isoformat(),
+    }
+    return updated, stats
+
+
+# ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
 # ---------------------------------------------------------------------------
 
@@ -164,16 +315,34 @@ def run_build(
     *,
     out_dir: str | Path | None = None,
     corpus_scope: str = "all",
+    spec_path: str | Path | None = None,
+    min_weight: int = 1,
+    scope_cli_token: str | None = None,
+    email: str | None = None,
+    transport: Any = None,
+    max_citing: int | None = None,
+    thesaurus_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Computa redes bibliométricas y escribe artefactos a disco.
 
-    Usa ``Networks.quick`` para las 4 redes principales (coupling, co-autoría,
-    institución, co-word). Escribe GraphML + metrics.json por red.
+    Modos de operación (#159 — absorción de ``networks``):
+    - **Sin ``spec_path``**: usa ``Networks.quick(corpus, min_weight=min_weight)``
+      para las 4-5 redes principales.
+    - **Con ``spec_path``**: carga YAML con ``load_specs`` y construye cada red
+      con ``Networks.build``.
+
+    En AMBOS modos:
+    - ``corpus_scope`` pre-filtra el corpus antes de construir redes.
+    - Se transiciona a BUILT y se sella ``networks/.corpus_hash`` con el hash
+      del corpus **filtrado** (D1 — ADR 0038).
+    - Se diagnostican redes vacías usando ``predict_build_preview`` como fuente
+      única (ADR 0037 §(e) — no-divergencia con ``status``).
+    - Si hay seeds aceptadas, corre la pasada cited_by ANTES de proyectar las
+      redes (ADR 0038 §enrich), de modo que la co-citación salga poblada.
+      Si no hay seeds aceptadas, la pasada es no-op graceful (→ 4 redes).
+
     Para redes de paper con comunidades detectadas escribe también clusters.csv
     (tabla de resumen de comunidades, issue #31).
-    Sella ``networks/.corpus_hash`` con el hash del corpus **filtrado** que las
-    produjo (no del corpus vivo completo).
-    Transiciona a BUILT tras escribir con éxito.
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
@@ -181,23 +350,47 @@ def run_build(
         corpus_scope: Filtro de curación aplicado antes de construir las redes.
             ``'all'`` (default) = corpus completo; ``'accepted'`` = semillas +
             aceptados; ``'seeds_only'`` = solo semillas.
+        spec_path: Ruta al YAML de specs (opcional). Si se omite, usa quick.
+        min_weight: Peso mínimo de arista. Default 1 = sin filtro.
+            Solo aplica al modo quick (sin spec); en modo spec, ``NetworkSpec``
+            del YAML lleva su propio ``min_weight``.
+        scope_cli_token: Token CLI tal como lo tipió el usuario
+            (``'seeds'``/``'accepted'``/``'all'``). Si se pasa, ``data["scope"]``
+            expone este token en lugar del vocab interno. Permite que #160
+            (maturity) y la CLI sean consistentes. Si se omite (llamadas directas
+            sin CLI), ``data["scope"]`` queda igual a ``corpus_scope``.
+        email: Email para el polite pool de OpenAlex (pasada cited_by).
+        transport: Transport inyectable para tests (``httpx.MockTransport``).
+        max_citing: Tope de citantes por seed en la pasada cited_by.
+            ``None`` = sin tope.
 
     Returns:
         Dict con ``networks_built``, ``artifacts_dir``, ``corpus_hash``,
-        ``corpus_scope`` y lista de redes.
+        ``corpus_scope`` (vocab interno), ``scope`` (token CLI o vocab interno),
+        lista de redes, ``warnings``, ``empty_networks``, ``maturity``
+        y ``enrichment`` (bloque aditivo con métricas de la pasada cited_by).
 
     Raises:
+        DataError: Si ``spec_path`` está malformado (modo spec).
         DependencyError: Si falta ``python-louvain``.
         StoreError: Si el store está bloqueado.
     """
     import warnings as _warnings
 
     from bib2graph.cycle import apply_transition
-    from bib2graph.networks.facade import Networks
+    from bib2graph.networks.facade import Networks, predict_build_preview
 
     store = open_store(store_path)
+    thesaurus_stats: dict[str, Any] | None = None
     try:
         corpus_full = store.load()
+
+        # Aplicar thesaurus ANTES del scoping y ANTES de proyectar redes (#164).
+        # Persiste el corpus con keywords_id canonicos para builds posteriores.
+        if thesaurus_path is not None:
+            corpus_full, thesaurus_stats = _apply_thesaurus_and_persist(
+                corpus_full, thesaurus_path, store
+            )
 
         # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
         # no un literal en el comando (ADR 0016 enmendado §1).
@@ -211,6 +404,29 @@ def run_build(
         else:
             artifacts_dir = Path(out_dir)
 
+        # Pasada cited_by: enriquecer con citantes ANTES de proyectar redes
+        # (ADR 0038 §enrich).  Solo si hay seeds aceptadas; si no, no-op graceful
+        # (→ 4 redes en vez de 5, sin error).  Persiste el corpus enriquecido para
+        # que la co-citación quede disponible en runs posteriores (idempotente).
+        from bib2graph.constants import Col, CurationStatus
+        from bib2graph.sources.openalex import OpenAlexSource
+
+        _rows = corpus_full.to_arrow().to_pylist()
+        _has_accepted_seeds = any(
+            row.get(Col.IS_SEED)
+            and row.get(Col.CURATION_STATUS) == CurationStatus.ACCEPTED
+            for row in _rows
+        )
+        enrich_metrics: dict[str, Any] = {}
+        if _has_accepted_seeds:
+            _source = OpenAlexSource(email=email, transport=transport)
+            corpus_full, enrich_metrics = enrich_corpus(
+                corpus_full, _source, max_citing=max_citing, pass_name="cited_by"
+            )
+            store.persist_replace(corpus_full)
+            # #141: persistir EnricherRef (cited_by) para que manifest.enrichers sobreviva.
+            store.backend.persist_enricher_refs(corpus_full.manifest.enrichers)
+
         # Filtrar el corpus según el scope ANTES de construir redes (#56).
         # El corpus filtrado también es el que se pasa a _write_artifacts para que
         # clusters.csv cuadre con los nodos del grafo (sin drift).
@@ -221,34 +437,112 @@ def run_build(
         if len(corpus) == 0:
             msg = (
                 f"scope='{corpus_scope}' dejó 0 papers; "
-                "corré `b2g curate` para aceptar papers o usá `--corpus-scope=all`."
+                "corré `b2g curate` para aceptar papers o usá `--scope=all`."
             )
             _warnings.warn(msg, stacklevel=2)
             build_warnings.append(msg)
             artifacts_dir.mkdir(parents=True, exist_ok=True)
             (artifacts_dir / ".corpus_hash").write_text("", encoding="utf-8")
             store.backend.set_loop_state(new_state, cycle_round=new_round)
+            # scope_display para early-return (corpus vacío): mismo cálculo que el path normal.
+            _scope_display_empty = (
+                scope_cli_token if scope_cli_token is not None else corpus_scope
+            )
+            # Maturity en early-return: curated desde corpus_full (el filtrado está vacío).
+            from bib2graph.service.maturity import compute_maturity as _compute_maturity
+
+            _maturity_empty = _compute_maturity(
+                corpus_full,
+                scope=_scope_display_empty,
+                empty_network_kinds=[],
+            )
             return {
                 "networks_built": 0,
                 "artifacts_dir": str(artifacts_dir),
                 "corpus_hash": "",
                 "corpus_scope": corpus_scope,
+                "scope": _scope_display_empty,
                 "networks": [],
                 "warnings": build_warnings,
+                "empty_networks": [],
+                "maturity": _maturity_empty,
+                "enrichment": enrich_metrics,
+                "thesaurus": thesaurus_stats,
             }
 
-        try:
-            artifacts = Networks.quick(corpus)
-        except ImportError as exc:
-            raise DependencyError(
-                f"Dependencia faltante para detectar comunidades: {exc}. "
-                "Instalá python-louvain: uv add python-louvain."
-            ) from exc
+        # Diagnóstico pre-build (ADR 0037 §(e), fuente única con status-time).
+        # Indexado por kind para lookup O(1) en el loop post-build.
+        preview_by_kind = {str(e["kind"]): e for e in predict_build_preview(corpus)}
+
+        # Construir artefactos según el modo.
+        if spec_path is not None:
+            # Modo declarativo: YAML → specs → Networks.build por red.
+            # _build_from_spec_file levanta DataError / DependencyError.
+            artifacts = _build_from_spec_file(corpus, spec_path)
+        else:
+            # Modo quick: Networks.quick con min_weight propagado a cada spec.
+            try:
+                artifacts = Networks.quick(corpus, min_weight=min_weight)
+            except ImportError as exc:
+                raise DependencyError(
+                    f"Dependencia faltante para detectar comunidades: {exc}. "
+                    "Instalá python-louvain: uv add python-louvain."
+                ) from exc
 
         networks_info = _write_artifacts(artifacts, corpus, artifacts_dir)
 
+        # Diagnóstico de redes vacías en build-time.
+        # Reusa los reason/fix_command del preview (fuente única — ADR 0037 §(e)).
+        # Si el preview predijo no-vacía pero salió vacía, sospechamos min_weight.
+        empty_networks: list[dict[str, object]] = []
+        for art in artifacts:
+            kind_str = str(art.spec.kind)
+            is_empty = (
+                art.graph.number_of_nodes() == 0 or art.graph.number_of_edges() == 0
+            )
+            if not is_empty:
+                continue
+
+            preview_entry = preview_by_kind.get(kind_str)
+            if preview_entry and preview_entry["would_be_empty"]:
+                # Preview ya predijo vacía — usar su reason/fix_command (no-divergencia).
+                reason: str = (
+                    str(preview_entry["reason"])
+                    if preview_entry["reason"]
+                    else "Red vacía"
+                )
+                fix_cmd: str | None = (
+                    str(preview_entry["fix_command"])
+                    if preview_entry["fix_command"]
+                    else None
+                )
+            elif spec_path is None and min_weight > 1:
+                # Modo quick: el --min-weight del CLI filtró todas las aristas.
+                reason = f"0 aristas con peso ≥ {min_weight}; bajá --min-weight"
+                fix_cmd = f"b2g build --min-weight {min_weight - 1}"
+            elif spec_path is not None and art.spec.min_weight > 1:
+                # Modo spec: el min_weight del propio YAML filtró todas las aristas.
+                # El --min-weight de la CLI NO se usa en modo spec → no sugerir bajarlo.
+                reason = (
+                    f"0 aristas con peso ≥ {art.spec.min_weight} "
+                    f"(min_weight del spec '{kind_str}'); ajustá el spec"
+                )
+                fix_cmd = None
+            else:
+                # Caso inesperado: red vacía sin causa clara identificable.
+                reason = "Red vacía (sin datos suficientes)"
+                fix_cmd = None
+
+            empty_networks.append(
+                {"kind": kind_str, "reason": reason, "fix_command": fix_cmd}
+            )
+            # Los diagnósticos de red vacía van solo en data["empty_networks"].
+            # data["warnings"] queda reservado para avisos de corpus-scope
+            # (p. ej. "0 papers"); esto mantiene la compat con tests pre-0.10.0
+            # que verifican data["warnings"] == [] cuando el corpus no está vacío.
+
         # ADR 0029 — sellar con corpus_hash del corpus FILTRADO (no del vivo completo).
-        # Esto garantiza que el hash refleja exactamente lo que produjo las redes.
+        # D1: en AMBOS modos (quick y spec) transicionar + sellar (ADR 0038).
         from bib2graph.backends.memory import compute_corpus_hash
 
         corpus_hash = compute_corpus_hash(corpus.to_arrow())
@@ -257,6 +551,25 @@ def run_build(
         hash_file.write_text(corpus_hash, encoding="utf-8")
 
         store.backend.set_loop_state(new_state, cycle_round=new_round)
+
+        # FIX 2 — gancho para #160 (maturity): "scope" expone el token CLI tal como
+        # lo tipió el usuario ("seeds"/"accepted"/"all"), NO el vocab interno
+        # ("seeds_only"). Esto hace que la superficie de agents-first sea consistente.
+        # Cuando se llama sin CLI (tests unitarios directos), scope_cli_token=None
+        # y se usa corpus_scope como fallback (preserva compat pre-0.10.0).
+        scope_display = scope_cli_token if scope_cli_token is not None else corpus_scope
+
+        # Maturity (#160): computar DENTRO del try para acceder a corpus_full
+        # antes del store.close() en finally.  Extrae los kinds de empty_networks
+        # (lista de dicts {kind, reason, fix_command}) sin duplicar reason/fix_command.
+        from bib2graph.service.maturity import compute_maturity as _compute_maturity
+
+        empty_network_kinds = [str(en["kind"]) for en in empty_networks]
+        maturity = _compute_maturity(
+            corpus_full,
+            scope=scope_display,
+            empty_network_kinds=empty_network_kinds,
+        )
     finally:
         store.close()
 
@@ -265,8 +578,13 @@ def run_build(
         "artifacts_dir": str(artifacts_dir),
         "corpus_hash": corpus_hash,
         "corpus_scope": corpus_scope,
+        "scope": scope_display,
         "networks": networks_info,
         "warnings": build_warnings,
+        "empty_networks": empty_networks,
+        "maturity": maturity,
+        "enrichment": enrich_metrics,
+        "thesaurus": thesaurus_stats,
     }
 
 
@@ -285,38 +603,101 @@ def run_build(
     ),
 )
 @click.option(
-    "--corpus-scope",
-    "corpus_scope",
-    type=click.Choice(["all", "accepted", "seeds_only"]),
+    "--scope",
+    "scope",
+    type=click.Choice(["all", "accepted", "seeds"]),
     default="all",
     show_default=True,
     help=(
         "Filtra el corpus antes de construir las redes. "
-        "'all' = corpus completo (default, sin cambio de comportamiento); "
-        "'accepted' = semillas (is_seed=True) + papers aceptados por curación; "
-        "'seeds_only' = solo semillas (is_seed=True). "
+        "'all' = corpus completo (default); "
+        "'accepted' = semillas (is_seed=True) + papers aceptados; "
+        "'seeds' = solo semillas (is_seed=True). "
         "Si el scope deja 0 papers, termina con exit 0 y un warning accionable."
     ),
 )
 @click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
+    "--corpus-scope",
+    "corpus_scope_deprecated",
+    type=click.Choice(["all", "accepted", "seeds_only"]),
+    default=None,
+    hidden=True,
+    help=(
+        "DEPRECATED (cierra en 0.11.0): usar --scope. "
+        "Acepta los valores antiguos all|accepted|seeds_only."
+    ),
 )
+@click.option(
+    "--spec",
+    "spec_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help=(
+        "Ruta al YAML con la especificación de redes. "
+        "Si se pasa, usa Networks.build por spec en lugar de Networks.quick. "
+        "Sigue transicionando a BUILT y sellando corpus_hash (D1)."
+    ),
+)
+@click.option(
+    "--min-weight",
+    "min_weight",
+    type=int,
+    default=1,
+    show_default=True,
+    help=(
+        "Peso mínimo de arista (default 1 = sin filtro). "
+        "Aristas con peso < N se descartan. "
+        "Solo aplica al modo quick (sin --spec); en modo spec el YAML lleva su propio min_weight."
+    ),
+)
+@click.option(
+    "--max-citing",
+    "max_citing",
+    default=None,
+    type=int,
+    help=(
+        "Tope de citantes por seed en la pasada cited_by automática. "
+        "Default: sin tope. Solo aplica cuando hay seeds aceptadas."
+    ),
+)
+@click.option(
+    "--email",
+    default=None,
+    help="Email para el polite pool de OpenAlex (pasada cited_by).",
+)
+@click.option(
+    "--thesaurus",
+    "thesaurus_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help=(
+        "Ruta al JSON del thesaurus multilingüe (formato ADR 0011). "
+        "Aplica consolidacion conceptual cross-lingue sobre keywords_id "
+        "ANTES de proyectar redes, y persiste el corpus actualizado. "
+        "Absorbe la capacidad del verbo retirado b2g thesaurus (#164)."
+    ),
+)
+@json_option
 @click.pass_context
 @handle_errors("build")
 def build_cmd(
     ctx: click.Context,
     out_dir: str | None,
-    corpus_scope: str,
+    scope: str,
+    corpus_scope_deprecated: str | None,
+    spec_path: str | None,
+    min_weight: int,
+    max_citing: int | None,
+    email: str | None,
+    thesaurus_path: str | None,
     json_output: bool,
 ) -> None:
-    """Computa las 4 redes con Networks.quick y escribe artefactos.
+    """Computa redes bibliométricas y escribe artefactos.
 
-    Tras el build, el estado del lazo transiciona a BUILT.
-    El directorio networks/ queda sellado con .corpus_hash del corpus filtrado.
+    Sin ``--spec``: usa Networks.quick (4-5 redes principales).
+    Con ``--spec``: carga el YAML y construye cada red con Networks.build.
+
+    En ambos modos transiciona a BUILT y sella networks/.corpus_hash.
     """
     # ADR 0029: usar networks_dir del workspace si no se especifica --out-dir
     ws = resolve_workspace(ctx.obj)
@@ -324,22 +705,72 @@ def build_cmd(
     if effective_out_dir is None:
         effective_out_dir = ws.networks_dir
 
+    # Resolver scope: --corpus-scope deprecado tiene prioridad con aviso.
+    corpus_scope_dep_msg: str | None = None
+    if corpus_scope_deprecated is not None:
+        corpus_scope_dep_msg = emit_deprecation(
+            "b2g build --corpus-scope", "b2g build --scope"
+        )
+        # El vocab deprecado (all|accepted|seeds_only) ya es el vocab interno.
+        # Preservamos el mismo token para scope_cli_token (compat pre-0.10.0).
+        internal_scope = corpus_scope_deprecated
+        cli_token: str = corpus_scope_deprecated
+    else:
+        # El vocab nuevo (all|accepted|seeds) necesita mapeo para seeds→seeds_only.
+        internal_scope = _map_scope(scope)
+        # scope es el token tal como lo tipió el usuario ("seeds"/"accepted"/"all").
+        cli_token = scope
+
+    # FIX 1a — footgun: --min-weight se ignora en modo spec.
+    # Avisar explícitamente para no perder la intención del usuario en silencio.
+    if spec_path is not None and min_weight > 1:
+        print(
+            "--min-weight se ignora con --spec; cada red usa el min_weight de su YAML.",
+            file=sys.stderr,
+        )
+
     data = run_build(
-        ws.library_path, out_dir=effective_out_dir, corpus_scope=corpus_scope
+        ws.library_path,
+        out_dir=effective_out_dir,
+        corpus_scope=internal_scope,
+        spec_path=spec_path,
+        min_weight=min_weight,
+        scope_cli_token=cli_token,
+        email=email,
+        max_citing=max_citing,
+        thesaurus_path=thesaurus_path,
     )
 
-    if json_output:
+    if json_mode(json_output):
+        # Fusionar warnings de corpus con el aviso de deprecación de --corpus-scope.
+        all_warnings: list[str] = list(data.get("warnings") or [])
+        if corpus_scope_dep_msg is not None:
+            all_warnings.append(corpus_scope_dep_msg)
         envelope = build_envelope(
             command="build",
             ok=True,
             data=data,
             exit_code=0,
-            warnings=data.get("warnings"),
+            warnings=all_warnings or None,
         )
         emit(envelope)
     else:
+        # Warnings van a stderr en modo humano (ADR 0021 §C; patrón de status.py).
         for w in data.get("warnings", []):
-            emit_human(f"ADVERTENCIA: {w}")
+            print(f"ADVERTENCIA: {w}", file=sys.stderr)
+        # Diagnósticos de redes vacías también a stderr (no son warnings de corpus).
+        for en in data.get("empty_networks", []):
+            fix = f" Sugerencia: {en['fix_command']}" if en.get("fix_command") else ""
+            print(
+                f"ADVERTENCIA: Red '{en['kind']}' vacía — {en['reason']}.{fix}",
+                file=sys.stderr,
+            )
+        if data.get("thesaurus"):
+            th = data["thesaurus"]
+            emit_human(
+                f"Thesaurus aplicado: {th['keywords_mapped']} keywords mapeadas "
+                f"(de {th['keywords_total']} totales, {th['aliases_loaded']} aliases cargados)."
+            )
         emit_human(f"Redes construidas: {data['networks_built']}")
         emit_human(f"Artefactos en: {data['artifacts_dir']}")
         emit_human(f"corpus_hash: {data['corpus_hash']}")

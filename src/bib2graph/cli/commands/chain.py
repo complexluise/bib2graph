@@ -6,15 +6,17 @@ Transiciona el CycleState a FORAGED tras persistir con éxito.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal
 
 import click
 
+from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
-from bib2graph.cli._errors import DependencyError, handle_errors
+from bib2graph.cli._errors import DataError, DependencyError, UsageError, handle_errors
 from bib2graph.cli._ingest import normalize_and_dedup
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
@@ -32,6 +34,8 @@ def run_chain(
     email: str | None = None,
     transport: Any = None,
     preview: bool = False,
+    since: date | None = None,
+    _fsm_action: str | None = None,
 ) -> dict[str, Any]:
     """Expande el corpus con candidatos rankeados por information scent.
 
@@ -72,9 +76,30 @@ def run_chain(
             max_candidates=max_candidates,
         )
 
+    # Validación de --since: backward + since no tiene sentido.
+    if since is not None and direction == "backward":
+        raise UsageError(
+            "--since no es compatible con --direction backward.  "
+            "Usá --direction forward (o 'both', donde la ventana aplica solo al tramo forward)."
+        )
+
+    # Cuando since está activo con direction='both', la ventana aplica solo
+    # al tramo forward — opción más simple y clara (ADR 0037 §c).
+    effective_direction = direction
+    if since is not None and direction == "both":
+        effective_direction = "forward"
+
     from bib2graph.cycle import apply_transition
     from bib2graph.foraging import Forager
     from bib2graph.sources.openalex import OpenAlexSource
+
+    # Selección de acción FSM: "monitor" si --since activo O si se fuerza
+    # desde run_monitor (_fsm_action="monitor"); sino "chain" → FORAGED.
+    fsm_action = (
+        _fsm_action
+        if _fsm_action is not None
+        else ("monitor" if since is not None else "chain")
+    )
 
     merged_backend_close = None
     store = open_store(store_path)
@@ -85,7 +110,23 @@ def run_chain(
         # no un literal en el comando (ADR 0016 enmendado §1).
         current_state = store.backend.loop_state()
         current_round = store.backend.loop_round()
-        new_state, new_round = apply_transition(current_state, "chain", current_round)
+
+        # Guarda corpus vacío (portada de monitor, ADR 0037 §c).
+        if fsm_action == "monitor":
+            if current_state is None:
+                raise DataError(
+                    "No hay corpus ni estado previo en el store.  "
+                    "Iniciá la investigación con 'b2g seed' antes de monitorear."
+                )
+            if len(corpus) == 0:
+                raise DataError(
+                    "El corpus está vacío.  "
+                    "Usá 'b2g seed' para sembrar papers antes de monitorear."
+                )
+
+        new_state, new_round = apply_transition(
+            current_state, fsm_action, current_round
+        )
 
         source = OpenAlexSource(email=email, transport=transport)
 
@@ -94,7 +135,7 @@ def run_chain(
         # antes de entrar al Forager — así un ``AttributeError`` genuino que surja
         # dentro de chain/merge/_fetch_forward no queda disfrazado de "source no
         # soporta forward" (exit 3).
-        if direction in ("forward", "both") and not (
+        if effective_direction in ("forward", "both") and not (
             hasattr(source, "fetch_citing_batch") or hasattr(source, "fetch_citing")
         ):
             raise DependencyError(
@@ -111,7 +152,7 @@ def run_chain(
                 max_candidates=max_candidates,
                 max_citing_per_paper=max_citing_per_paper,
             )
-            ranked = forager.chain(corpus, direction=direction)
+            ranked = forager.chain(corpus, direction=effective_direction, since=since)
         except NotImplementedError as exc:
             raise DependencyError(
                 f"Profundidad {depth} no soportada aún: {exc}. Usá depth=1 (por defecto)."
@@ -125,6 +166,13 @@ def run_chain(
         ranking_preview = [
             {"id": id_, "scent": scent} for id_, scent in ranked.ranking[:10]
         ]
+        # Calcular genuinamente nuevos vs corpus (reusado de monitor, ADR 0037 §c).
+        existing_ids = set(corpus.to_arrow().column("id").to_pylist())
+        new_candidates_count = sum(
+            1
+            for id_ in ranked.corpus.to_arrow().column("id").to_pylist()
+            if id_ not in existing_ids
+        )
         # Merge primero, dedup después sobre el corpus COMPLETO (fix cross-biblioteca, #88).
         # Los IDs backward (ranked.observed_refs) NO van al corpus — se persisten en la
         # tabla auxiliar ``referenced_but_not_fetched`` (#54, opción B).
@@ -132,9 +180,19 @@ def run_chain(
         ingest_at = datetime.now(UTC)
         merged = corpus.merge(ranked.corpus)
         merged_deduped = normalize_and_dedup(merged, applied_at=ingest_at)
+
+        # Pasada refs→DOI: enriquecer el corpus mergeado+dedup con el mismo source
+        # ya instanciado (forrajeo puro, ADR 0038 §enrich). Automático, sin flag.
+        # El source reutiliza la misma conexión HTTP → sin overhead extra.
+        merged_deduped, enrich_metrics = enrich_corpus(
+            merged_deduped, source, pass_name="refs_doi"
+        )
+
         total_papers = len(merged_deduped)
         merged_backend_close = getattr(merged_deduped._backend, "close", None)
         store.persist_replace(merged_deduped)
+        # #141: persistir EnricherRef (refs_doi) para que manifest.enrichers sobreviva.
+        store.backend.persist_enricher_refs(merged_deduped.manifest.enrichers)
 
         # #54: persistir IDs backward observados en la tabla auxiliar.
         # El backend del store (DuckDBBackend) ya tiene add_referenced_refs;
@@ -154,11 +212,15 @@ def run_chain(
 
     return {
         "candidates_found": candidates_found,
+        "new_candidates": new_candidates_count,
         "total_papers": total_papers,
-        "direction": direction,
+        "direction": effective_direction,
         "depth": depth,
         "ranking_preview": ranking_preview,
         "observed_refs_count": len(ranked.observed_refs),
+        "loop_state": new_state.value,
+        "round": new_round,
+        "enrichment": enrich_metrics,
     }
 
 
@@ -284,12 +346,17 @@ def _run_chain_preview(
     ),
 )
 @click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
+    "--since",
+    "since_str",
+    default=None,
+    help=(
+        "Forrajeo incremental: solo trae citantes publicados desde esta fecha.  "
+        "Acepta fecha ISO (YYYY-MM-DD) o atajo relativo (90d, 6m, 1y).  "
+        "Fuerza direction=forward y transiciona a MONITORED (no a FORAGED).  "
+        "Incompatible con --direction backward."
+    ),
 )
+@json_option
 @click.pass_context
 @handle_errors("chain")
 def chain_cmd(
@@ -300,6 +367,7 @@ def chain_cmd(
     max_citing_per_paper: int,
     email: str | None,
     preview: bool,
+    since_str: str | None,
     json_output: bool,
 ) -> None:
     """Expande el corpus con candidatos rankeados por information scent.
@@ -307,7 +375,15 @@ def chain_cmd(
     Con --preview (dry-run), solo muestra la estimación de crecimiento sin
     tocar la red ni el corpus.  Sin --preview, transiciona el estado a FORAGED.
     """
+    from bib2graph.cli._options import parse_since
+
     store_path = resolve_library_path(ctx.obj)
+
+    # Parsear --since en la frontera (R2/ADR 0017): el reloj se fija aquí.
+    since: date | None = None
+    if since_str is not None:
+        since = parse_since(since_str, now=datetime.now(UTC).date())
+
     data = run_chain(
         store_path,
         direction=direction,  # type: ignore[arg-type]
@@ -316,9 +392,10 @@ def chain_cmd(
         max_citing_per_paper=max_citing_per_paper,
         email=email,
         preview=preview,
+        since=since,
     )
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="chain",
             ok=True,

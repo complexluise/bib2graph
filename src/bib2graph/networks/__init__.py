@@ -23,7 +23,7 @@ from bib2graph.networks.analyzer import (
 )
 from bib2graph.networks.clusters import cluster_table
 from bib2graph.networks.decorate import decorate, decorate_graph
-from bib2graph.networks.facade import Networks
+from bib2graph.networks.facade import Networks, predict_build_preview
 from bib2graph.networks.projectors import (
     MIN_WEIGHT_DEFAULT,
     AuthorCollaborationProjector,
@@ -57,4 +57,5 @@ __all__ = [
     "detect_communities",
     "load_specs",
     "network_metrics",
+    "predict_build_preview",
 ]

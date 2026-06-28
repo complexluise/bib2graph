@@ -33,15 +33,48 @@
   explícito), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `sources/equation.py` (capa declarativa de la
   ecuación, 9a), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/` con 19 subcomandos en `cli/commands/`, no un
-  placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9; el 17° `b2g restore`
-  rehidrata un corpus curado sin red, Ciclo 9a; el 18° `b2g thesaurus` aplica el thesaurus curado,
-  único paso explícito del preproc, #88, abajo; el 19° `b2g gui` levanta la API local FastAPI, Hito G3
-  del MVP GUI, ADR 0028)—.
+  El **CLI `b2g` es real** —paquete `cli/`, no un placeholder—. **Superficie 0.10.0 (ADR 0037/0038/0039/0040,
+  AS-BUILT):** **10 verbos del ciclo** (`init`, `seed`, `chain`, `curate`, `build`, `read`, `export`,
+  `snapshot`, `status`, `validate`) **+ 3 grupos noun-verb** (`read {list,stats,show,top}`,
+  `curate {dump,apply,accept,reject,filter}`, `snapshot {create,restore}`) **+ 1 comando meta**
+  fuera de los 10 (**`skill add`**, ADR 0039 — instala la skill de Claude Code
+  end-user que materializa el mensaje *"la mejor forma de usar bib2graph es pedirle a Claude que lo
+  use"* [`pip install bib2graph` → `b2g skill add`]; vendoreada en el wheel con version-lock
+  skill==cli) **+ 9 aliases deprecados**
+  (`accept`/`reject`/`filter`/`inspect`/`monitor`/`networks`/`enrich`/`restore`/`resolve`, retiro
+  0.11.0). **`thesaurus` se retiró como verbo** (#164): su capacidad es **`b2g build --thesaurus`**.
+  **El verbo `gui` se retiró con la GUI local** (ADR 0040, #190 — ver abajo).
+  Conteo verificable contra `b2g --help` (10 del ciclo + `skill`); detalle en
+  `docs/API.md` §Convenciones CLI.
+  **Grupo noun-verb `read {list,stats,show,top}` (#156/#157, ADR 0037 §b):** primer grupo del CLI (lectura pura
+  del corpus, no transiciona); `read list` filtra por `--query`/`--status`/`--seeds|--candidates`/`--year`,
+  `read stats --group-by {status,year,is_seed}`, `read show --id` (resuelve id/doi/source_id, ADR 0036),
+  `read top --top N --kind {…}` (la salida de investigación: nodos centrales + co-citación con título;
+  default `bibliographic_coupling`, robusto en one-shot; co-citación vacía → honest-empty exit 0 +
+  reason/fix_command). **Artefactos one-shot honestos (#160, ADR 0037 §f):** el `--json` de `build`,
+  `snapshot create` y `read top` suma un bloque aditivo **`maturity`** (`{curated, scope, saturated,
+  empty_networks}`, `schema="1"` intacto) que autodeclara que el resultado es un borrador sin pulir;
+  forma estable en `docs/API.md` §Apéndice `maturity`. `read` sin subcomando → ayuda + exit 0 (`invoke_without_command=True`, workaround Click 8.4); el
+  `command` del envelope usa la ruta completa (`"read list"`). `inspect` queda **en deprecación** (#165,
+  lo absorben `read show` + `status`) pero **sigue vivo**. Ver `docs/API.md` §Convenciones CLI.
+  **Grupo noun-verb `curate {dump,apply,accept,reject,filter}` (#155, ADR 0037 §b):** SEGUNDO grupo del
+  CLI. **BREAKING:** la forma-flag `curate --dump`/`--from-csv` y `--all` fueron **eliminadas sin alias**
+  (`dump --scope all` reemplaza a `--all`; `apply <csv>` reemplaza a `--from-csv`). A diferencia de `read`
+  (transversal entero), **la transición la define el VERBO** (precedente D1 de #159): solo
+  **`curate filter`→`FILTERED`**; `dump`/`apply`/`accept`/`reject` son transversales. Lógica fuente única
+  en `service/curate.py` (`run_curate_dump`/`run_curate_from_csv`/`filter_corpus` con `decided_at`
+  inyectado). Los verbos sueltos `accept`/`reject`/`filter` siguen vivos como **alias deprecados**
+  (retiro 0.11.0, ADR 0038 P1 + enmienda #155). Ver `docs/API.md` §`curate`.
+  **Grupo noun-verb `snapshot {create, restore}` (#163, ADR 0038):** TERCER grupo del CLI. **BREAKING:**
+  el `snapshot` plano → **`snapshot create`** (sin alias); `snapshot restore` = ex verbo plano `restore`
+  (el suelto `restore` sigue vivo como **alias deprecado**, `command="restore"`, retiro #165). La
+  transición la define el VERBO: `snapshot create` **NO** transiciona y lleva el bloque `maturity`;
+  `snapshot restore`→`FILTERED`. Lógica fuente única en `service/snapshot.py`
+  (`run_snapshot`/`run_restore`, `decided_at` inyectado). Ver `docs/API.md` §`snapshot`.
   **645 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
-  (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2). **`b2g snapshot`/`b2g export` resuelven por
+  (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2). **`b2g snapshot create`/`b2g export` resuelven por
   workspace** (`--out-dir` override opcional → `<workspace>/snapshots|exports/`) y **`b2g status` avisa
   de staleness** de la cache de redes (`networks_cache_stale`; avisa, no regenera) — remanentes del
   modelo workspace cerrados (#32, AS-BUILT 2026-06-17; ver el bullet de workspace abajo).
@@ -54,46 +87,30 @@
   `_write_artifacts` (mismos GraphML + metrics.json + clusters.csv que `build`); **NO** transiciona el
   `CycleState` ni sella `.corpus_hash` (transversal al lazo, como `enrich`/`curate`). `pyyaml` pasó a
   dependencia del núcleo (import perezoso). **516 tests verdes**. Ver `docs/API.md` §10.
-- **MVP GUI — Hitos G1–G5 COMPLETOS · build entero del MVP (AS-BUILT 2026-06-18, ADR
-  [0028](docs/decisiones/0028-arquitectura-gui-api-capa-servicios.md)):** los 5 hitos de construcción
-  están **AS-BUILT** en `feat/gui-g1-capa-servicios` — G1 (capa de servicios neutral + contrato subido),
-  G2 (6 lecturas read-only en `service/reads.py`), G3 (API local FastAPI + extra `[gui]` + 19º
-  subcomando `b2g gui`), G4 (SPA `frontend/`), G5 (empaquetado). Lo único pendiente es el **gate #34**
-  (un tercero usa la GUI sin ayuda para reproducir/curar `examples/valoraciones/`), que **NO es
-  construcción**: es el criterio de aceptación/descarte de producto de la epic, al final (ADR 0027
-  §Gate). Detalle por hito en `docs/ROADMAP/05-gui.md`.
-  - **G4 — SPA `frontend/`** (paquete JS del monorepo, **`pnpm` —nunca npm**): React 18 + Vite + TS
-    estricto + Cytoscape/fcose + Zustand + Tailwind + TanStack Query, dirección visual **D-2
-    "Observatorio"** (oscuro, grafo-céntrico, design tokens propios en `tailwind.config.js`). Consume los
-    **7 endpoints reales** de la API G3 (`src/{client,types,store,components,lib,styles}`): 3 columnas
-    (rondas/grafo/candidato) + curar (refetch, sin Louvain client-side) + diff de rondas; cliente tipado
-    que des-envuelve `schema="1"` (`error.code` **string**, header `Bearer`) y tipos que espejan los DTO
-    reales. **Wiring del token (B-G4-3):** `b2g gui` **inyecta el token en el `index.html` servido**
-    (`cli/commands/gui.py::_make_index_response` reemplaza el placeholder `__B2G_TOKEN__`; ruta `GET /`
-    sirve el HTML con token sin exigir Bearer, `StaticFiles` —`html=False`— sirve los assets); el frontend
-    lo lee de `window.__B2G_TOKEN__`. El **build** sale a `src/bib2graph/gui/static/` (`outDir`,
-    `base: "./"`) y **NO se commitea** (gitignoreado). **Tests vitest (14).**
-  - **G5 — empaquetado:** el wheel **vendorea el build del frontend** vía
-    `[tool.hatch.build.targets.wheel.force-include]` de hatchling (`src/bib2graph/gui/static` →
-    `bib2graph/gui/static`) → `b2g gui` funciona **sin Node** desde el wheel; clone fresco sin `pnpm
-    build` previo → `uv build` **falla ruidosamente** (no wheel mudo). `ci.yml` suma el job **`frontend`**
-    (setup-node 20 + pnpm `install`/`lint`/`test:run`/`build`, corre siempre); `publish-testpypi.yml`
-    hace `pnpm build` **antes** del `uv build` (Trusted Publishing intacto, `release-please.yml` no se
-    tocó). `tests/unit/test_packaging_config.py` (**2 tests**) guarda la config `force-include`. Ver
-    §`frontend/` abajo, `docs/API.md` §0.2 y `docs/ROADMAP/05-gui.md` §G5.
+  **Absorbido por `b2g build --spec` (#159, ADR 0037 (a) / 0038):** `build` ahora carga el mismo YAML
+  (helper compartido `_build_from_spec_file`) y **sí** transiciona a `BUILT` + sella `.corpus_hash`
+  (decisión D1); `build` suma `--scope all|accepted|seeds` (default `all`) y `--min-weight` (solo modo
+  quick). `networks` y `--corpus-scope` quedan como **alias en deprecación** (cierran 0.11.0).
+- **GUI local — ⛔ FUERA de la librería** (ADR [0040](docs/decisiones/0040-retiro-gui-local.md),
+  [#190](https://github.com/complexluise/bib2graph/issues/190)): el core es **CLI/agente-native**. No
+  existen `b2g gui`, la API local FastAPI (`api/`), la SPA `frontend/`, el extra `[gui]` ni el vendoreo
+  del frontend en el wheel; el repo es 100% Python con uv. **La capa de servicios neutral `service/`
+  (incl. `reads.py`) se conserva** (la usa el CLI: `read`/`curate`/`snapshot`/…). La experiencia visual
+  library-centric vive en un **producto separado**. El historial de la SPA vive en `git log`.
 - **#88 — preprocesamiento automático en la ingesta (AS-BUILT 2026-06-18, ADR
   [0031](docs/decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** `normalize` + dedup
   fuzzy corren **automáticamente** en `seed`/`seed_from_bib`/`chain`/`restore` (helper
   `cli/_ingest.py::normalize_and_dedup` sobre el corpus **completo mergeado** ⇒ dedup
   **cross-biblioteca**); el corpus queda siempre normalizado y deduplicado. **`rapidfuzz` pasa al
   núcleo** (`[project.dependencies]`; **el extra `[dedup]` se elimina**, import ya no perezoso).
-  Nuevo **18° subcomando `b2g thesaurus --from <archivo>`** (único paso explícito del preproc,
-  transversal al FSM). La ingesta y `thesaurus` persisten con **`persist_replace`** /
+  El thesaurus era entonces el 18° subcomando `b2g thesaurus --from <archivo>` —**RETIRADO como verbo
+  en 0.10.0 (#164, ADR 0038)**: su capacidad vive como flag **`b2g build --thesaurus`**—. La ingesta y
+  la pasada `build --thesaurus` persisten con **`persist_replace`** /
   `overwrite_corpus` (DELETE+INSERT, preservan tablas hermanas; evita que el upsert-concat D3
   reintroduzca variantes). `build`/`networks` siguen puros. Deuda conocida: dedup O(n²) por ingesta
   (optimización futura) y skip #93 (`test_run_seed_from_bib_reseed_incrementa_ronda`, crash
   `BibDataString`/`pyparsing` en reseed mismo-proceso; no afecta el CLI real). La **revisión asistida
-  de clusters ambiguos** se difiere a la epic GUI #34. Ver `docs/API.md` §6/§11/§4.1.
+  de clusters ambiguos** queda diferida (requiere superficie interactiva). Ver `docs/API.md` §6/§11/§4.1.
 - **Ciclo B — `examples/valoraciones/` rehecho 100% por CLI (AS-BUILT 2026-06-17, ADR
   [0030](docs/decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md) §Ciclo B):** materializa el
   principio **CLI-puro** del PO. `build_corpus.py` **eliminado**; el ejemplo se arma y reproduce
@@ -133,8 +150,7 @@
   7 tests) corre `restore --from-corpus` → `build` → `networks` **sin red** sobre el corpus real y
   asserta `corpus_hash` estable + composición de comunidades Louvain estable entre corridas (cierra el
   agujero R2 de la [Nota 09](docs/Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). Con esto **#33
-  queda cerrado** (caso real reproducible = gate de la epic GUI #34); `seed --from-bib` y
-  `examples/bibtex/` siguen diferidos (issue #50). Ver `docs/API.md` §2.1.
+  queda cerrado** (caso real reproducible sin red). Ver `docs/API.md` §2.1.
 - **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
   [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
   núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
@@ -164,7 +180,7 @@
   `docs/API.md` §5/§4 y ADR [0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)
   §AS-BUILT #54.
 - **Forward chaining del `Forager` batcheado** (#21, 2026-06-16): el forward del `Forager`
-  (`b2g chain`/`b2g monitor`) **ya no es N+1** — reusa `OpenAlexSource.fetch_citing_batch` (batcheo OR
+  (`b2g chain`, incl. `chain --since` —ex `monitor`, #158) **ya no es N+1** — reusa `OpenAlexSource.fetch_citing_batch` (batcheo OR
   + cap por semilla `max_citing_per_paper`/`--max-citing`, default 50) con preview sin red. **Opera
   sobre `is_seed=True`** (todas las semillas, **sin** filtrar `curation_status`): el chaining precede a
   la curación; la restricción a `accepted` es del **Enricher** (Hito 8b), no del Forager. Ver
@@ -191,9 +207,8 @@
   [0026](docs/decisiones/0026-dedup-fuzzy-determinista.md) — **automático en la ingesta y `rapidfuzz`
   al núcleo desde #88, ADR [0031](docs/decisiones/0031-preprocesamiento-automatico-en-ingesta.md)**),
   el **Hito 9 ✅** (`NetworkSpec`
-  YAML) y el **Ciclo #33 ✅** (ecuación declarativa + `restore` + corpus de ejemplo, 9a+9b). Con #33
-  cerrado, **todo el terreno pre-GUI está completo**; lo que sigue es la epic GUI #34. El entorno se
-  levanta con `uv sync`.
+  YAML) y el **Ciclo #33 ✅** (ecuación declarativa + `restore` + corpus de ejemplo, 9a+9b). El entorno
+  se levanta con `uv sync`.
 - **Fundación workspace COMPLETA** (ADR
   [0029](docs/decisiones/0029-workspace-por-investigacion.md), AS-BUILT 2026-06-16; issues
   [#32](https://github.com/complexluise/bib2graph/issues/32)/
@@ -253,6 +268,22 @@
 - **El CLI es la API para LLM/agentes** (Hito 6). Subprocess + JSON stdout, exit codes
   claros, sin estado entre invocaciones (el estado vive en DuckDB).
 
+## Documentación viva (docs vivos)
+
+- **Los docs vivos describen el PRESENTE, no el camino.** `docs/ARCHITECTURE.md`, `docs/API.md` y
+  `docs/PRD.md` describen lo que el sistema **ES**. Cuando una decisión cuaja, el doc vivo se
+  **reescribe** para reflejar el presente; **el debate y el "porqué" viven en el ADR**
+  (`docs/decisiones/`, historia inmutable), no en el doc vivo. **El changelog lo gestiona
+  release-please** — no se narra la evolución en los docs vivos. Sacá la dualidad
+  descripción/realidad: nada de marcadores `AS-BUILT`/`TARGET`/`SUPERADO`/`HISTÓRICO` ni banners de
+  "antes era X, ahora Y" en el cuerpo.
+- **Regla de prosa.** Preferí **la idea en una línea y al punto**. Sin banners redundantes, sin
+  repetir lo que ya dice el código o un ADR (linkealo). Gastá palabras en el drift real, no en
+  re-narrar lo construido. Si está bien, decilo corto.
+- **Sincronía tras un cambio de código:** actualizá `docs/API.md`/`ARCHITECTURE.md`/`PRD.md` al nuevo
+  presente y, si se tomó una decisión, redactá el ADR. El índice (README/AGENTS) tiene que seguir
+  siendo verdad.
+
 ## Flujo de trabajo (ramas dev/main) — LEER ANTES DE TOCAR GIT
 
 Modelo **GitFlow-lite** con dos ramas protegidas (PR + CI verde obligatorios; nunca
@@ -288,12 +319,23 @@ abre su PR de release → mergearlo crea el tag + GitHub Release.
 una idea; el commit/PR sigue Conventional Commits (abajo); no bumpear versión ni editar
 `CHANGELOG.md` a mano (lo hace release-please).
 
+**Milestones de GitHub = la versión que un issue va a liberar.** Un milestone de GitHub representa
+**la versión que un issue va a cortar** (p. ej. `0.10.0`, `0.11.0`). Al **encuadrar** un issue se lo
+**asigna a su milestone destino** (la versión donde debe entrar). Un **release = cerrar su milestone**:
+el milestone es el **espejo de lo que falta** para liberar esa versión. Si un issue no tiene milestone,
+todavía no está encuadrado; si un milestone tiene issues abiertos, esa versión no está lista para
+cortarse.
+
 ## Tooling de agentes Claude Code (`.claude/`)
 
 El repo versiona su propia config de Claude Code para que **el equipo herede los roles y los
 guardarraíles** al clonar (project-level **gana** sobre la config de usuario). Se versiona
-`.claude/settings.json` + `.claude/agents/` + `.claude/hooks/`; queda ignorado el estado local
-(`settings.local.json`, `worktrees/`, `System_prompt.md`).
+`.claude/settings.json` + `.claude/agents/` + `.claude/hooks/` + `.claude/commands/`; queda ignorado
+el estado local (`settings.local.json`, `worktrees/`, `System_prompt.md`).
+
+**Comandos de proyecto** (`.claude/commands/*.md`, slash commands del equipo): `/retro-ciclo` —
+retrospectiva metacognitiva de fin de ciclo que mide dónde se fue el tiempo y **baka las lecciones**
+en el proceso (ver §"Ejecución concurrente y testing").
 
 **Subagentes** (`.claude/agents/*.md`), afinados a bib2graph y con **una frontera dura por rol**
 ("cada uno es responsable de sus artefactos"):
@@ -321,6 +363,28 @@ su frontmatter no toma efecto hasta reiniciar). Los **hooks de `settings.json` s
 caliente**. Si un guardarraíl bloquea algo legítimo, se afloja editando el script en
 `.claude/hooks/`.
 
+### Ejecución concurrente y testing — lecciones del epic 0.10.0 (#167)
+
+Destiladas del giro de superficie 0.10.0 (medición forense: **~50% del tiempo de cada `coder` se
+fue esperando el suite completo de tests**). Las captura y actualiza el comando **`/retro-ciclo`**
+(`.claude/commands/`) al cerrar cada ciclo.
+
+- **Testing por capas.** El `coder` itera con **tests pertinentes** (`pytest test_X.py::test_Y`,
+  7-60 s) y auto-formatea (`ruff format` + `ruff check --fix`) antes de gatear; el **gate completo
+  (`pytest` entero, ~6 min) lo corren el `verifier` y el CI**, no el coder en loop. Elimina una de
+  las 3 corridas redundantes del suite por sub-issue.
+- **Paralelizar con prudencia (archivos disjuntos).** Fan-out de varios sub-issues a la vez **solo
+  si tocan archivos disjuntos**. Ramas que comparten un archivo caliente (`build.py`,
+  `cli/__init__.py`) → **serializar** (mergear una, rebasar la siguiente) para no pagar el baile de
+  conflictos. Batchear los encuadres y resolver las decisiones del PO en **una sola ronda** es
+  ganancia neta sin riesgo.
+- **Confiabilidad de worktrees.** Los `Edit`/`Write` de un subagente se aíslan al worktree de la
+  **sesión**, no a la ruta que se le pase en el prompt. Para trabajo sobre una rama: tenerla
+  **checked out en el worktree de la sesión** (o recuperar el trabajo vía `git diff`/patch). No
+  asumir que el agente escribe en la ruta del prompt.
+- **Windows:** evitar rutas con acentos en Git Bash (rompe el quoting); preferir PowerShell para
+  operaciones de filesystem. Reservar Bash para comandos POSIX simples.
+
 ## Comandos de build / lint / test
 
 El proyecto se gestiona con **uv** (entorno + lockfile + versión de Python). **No** uses
@@ -329,11 +393,11 @@ El proyecto se gestiona con **uv** (entorno + lockfile + versión de Python). **
 
 - **Setup dev completo:** `uv sync` (crea `.venv`, instala núcleo + dev-deps desde `uv.lock`)
   y `uv run pre-commit install`.
-- **Con una capacidad opcional:** `uv sync --extra bibtex` (siembra BibTeX) o `uv sync --extra gui`
-  (`fastapi` + `uvicorn` para `b2g gui` / la API local, AS-BUILT G3, ADR 0028) — los dos extras poblados
-  hoy. Sin dev-deps: `uv sync --no-dev`. *(No hay extra `[llm]`: **se eliminó** en la remediación
-  R4 — el producto no usa IA generativa, ADR 0022. Tampoco hay extra `[dedup]`: `rapidfuzz` pasó al
-  núcleo en #88 porque el dedup es automático en la ingesta, ADR 0031.)*
+- **Con una capacidad opcional:** `uv sync --extra bibtex` (siembra BibTeX) — el **único extra poblado
+  hoy**. Sin dev-deps: `uv sync --no-dev`. *(No hay extra `[gui]`: **se eliminó** al retirar la GUI
+  local —`fastapi`/`uvicorn`/`b2g gui`/API— ADR 0040, #190. Tampoco hay extra `[llm]`: **se eliminó** en
+  la remediación R4 — el producto no usa IA generativa, ADR 0022. Tampoco hay extra `[dedup]`:
+  `rapidfuzz` pasó al núcleo en #88 porque el dedup es automático en la ingesta, ADR 0031.)*
 - **Agregar dependencias:** `uv add <pkg>` (núcleo) · `uv add --dev <pkg>` (desarrollo) ·
   `uv add --optional <extra> <pkg>` (capacidad opcional).
 - **Tests (toda la suite):** `uv run pytest`
@@ -456,33 +520,28 @@ src/bib2graph/
                        # compartido por CLI/API, agnóstico de transporte (sin print/sys.exit/Click/
                        # FastAPI). envelope.py = build_envelope + ENVELOPE_SCHEMA_VERSION; errors.py =
                        # jerarquía B2GError (+ Usage/Data/Dependency/Network/StoreError) + code_for
-                       # (mapeo puro error→exit code 0–5). reads.py (G2 ✅) = 6 lecturas read-only de la SPA
-                       # sobre un Workspace resuelto: get_workspace/list_rounds/get_paper/get_scent/
-                       # get_network/compare_rounds (ronda=snapshot; sin red/mutación/transición; API.md §0.1).
-                       # curate.py (G3 ✅) = orquestación de curación SUBIDA desde cli/: accept_papers/
-                       # reject_papers/curate_paper (toma store_path; decided_at inyectado en la frontera);
-                       # run_accept/run_reject del CLI son shims que delegan (firma intacta). API.md §0.2.
-                       # cli/ re-exporta el contrato (subido desde cli/_envelope.py·_errors.py) y conserva
-                       # solo el I/O del adaptador. La migración del resto de la orquestación run_<cmd> sigue TARGET.
-  api/                 # API LOCAL FastAPI (ADR 0028, AS-BUILT G3 del MVP GUI): adaptador DELGADO sobre
-                       # service/ (NO importa de cli/; el núcleo NO importa fastapi —import perezoso, extra
-                       # [gui]). app.py = create_app(ws, *, token, cors_origins); routers/reads.py (6 GET)
-                       # + routers/curate.py (POST); security.py = token Bearer efímero; deps.py = workspace
-                       # singleton + require_token (401) + WriteLock global; envelopes.py = mapeo código→HTTP
-                       # (0→200,1→400,2→422,3→501,4→502,5→409; inesperado→500 INTERNAL_ERROR), reusa
-                       # service.build_envelope/code_for. La SPA (frontend/, G4) y el empaquetado del wheel
-                       # (G5: force-include) están AS-BUILT; solo queda el gate #34 (validación, no build). API.md §0.2.
+                       # (mapeo puro error→exit code 0–5). reads.py (G2 ✅) = lecturas read-only del corpus. SE CONSERVA tras
+                       # retirar la GUI (ADR 0040): el grupo CLI read la usa (list_papers/corpus_stats/get_paper/
+                       # get_top). Las ex-API-only (get_workspace/list_rounds/get_scent/get_network/compare_rounds)
+                       # quedan inertes, poda opcional → #191. Sin red/mutación/transición; API.md §0.1.
+                       # curate.py = orquestación de curación (fuente única CLI): accept_papers/
+                       # reject_papers/curate_paper/filter_corpus (toma store_path; decided_at inyectado en la
+                       # frontera); los verbos del CLI delegan. cli/ re-exporta el contrato (envelope·errores).
+  # api/  ⛔ RETIRADO (ADR 0040, #190): la API local FastAPI, la SPA frontend/ y el extra [gui] se
+  #       eliminaron de la librería (GUI fuera del foco; el core es CLI/agente-native). La capa
+  #       service/ que la alimentaba se conserva (la usa el CLI). Limpieza profunda: #191.
   stores/              # DuckDBStore (núcleo, por defecto: biblioteca viva);
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
                        # _ingest.py = helper normalize_and_dedup (auto-preproc en la ingesta, ADR 0031);
-                       # cli/commands/ = 19 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
-                       # init scaffold de workspace —ADR 0029, curate dump/import CSV —#22+#26,
-                       # networks capa declarativa YAML —Hito 9, restore rehidrata corpus curado sin
-                       # red →FILTERED —ADR 0030/9a, thesaurus aplica thesaurus curado transversal —#88/ADR 0031,
-                       # gui levanta la API local FastAPI —Hito G3 del MVP GUI/ADR 0028, extra [gui];
-                       # G4: _make_index_response inyecta el token en el index.html servido vía ruta GET /).
+                       # cli/commands/ = superficie 0.10.0 (ADR 0037/0038/0039/0040): 10 verbos del ciclo + 3 grupos
+                       # noun-verb (read/curate/snapshot) + 1 comando meta (skill add —ADR 0039) + 9 aliases deprecados
+                       # (accept/reject/filter/inspect/monitor/networks/enrich/restore/resolve, retiro 0.11.0).
+                       # chain --since absorbe monitor →MONITORED (#158); enrich absorbido en chain (refs→DOI)
+                       # + build (co-citación) (#162); thesaurus retirado → build --thesaurus (#164);
+                       # _deprecation.py emite avisos a stderr + warnings[] (#165). init scaffold —ADR 0029;
+                       # build --spec absorbe networks —#159. El verbo gui SE RETIRÓ con la GUI local (ADR 0040, #190).
                        # CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
   workspace.py         # Workspace (init/open/resolve; snapshots_dir/exports_dir/networks_dir;
@@ -498,31 +557,14 @@ La estructura es orientativa (ADR 0006): un módulo plano (`corpus.py`) o un paq
 (`sources/`) es decisión del implementador según crezca. Lo fijo son los **nombres del
 dominio** y los **contratos de `docs/API.md`**.
 
-### `frontend/` — la SPA (paquete JS, NO Python; AS-BUILT G4, ADR 0028)
+### `frontend/` — ⛔ RETIRADO (la SPA se eliminó con la GUI local, ADR 0040, #190)
 
-El **único subárbol JS** del repo. El resto del monorepo es Python con **uv**; `frontend/` es
-JavaScript con **`pnpm` (SIEMPRE pnpm, nunca npm** — preferencia firme del PO). Es la SPA "tool for
-thought" del MVP GUI (React 18 + Vite + TS estricto + Cytoscape/fcose + Zustand + Tailwind + TanStack
-Query), dirección visual **D-2 "Observatorio"** (oscuro, grafo-céntrico; design tokens propios en
-`tailwind.config.js`).
-
-```
-frontend/                       # NO va al wheel; su build (gui/static/) sí (vendoreado vía force-include, G5)
-  package.json                  # packageManager: pnpm@…; scripts dev/build/test:run/lint
-  pnpm-lock.yaml                # lockfile reproducible
-  vite.config.ts                # outDir → ../src/bib2graph/gui/static ; base "./" ; alias @ → frontend/src
-  index.html                    # placeholder del token (<meta b2g-token> + window.__B2G_TOKEN__)
-  src/{client,types,store,components,lib,styles}/   # cliente tipado, DTO espejo, estado, UI
-  src/__tests__/                # vitest (14)
-```
-
-Comandos (desde `frontend/`): **`pnpm lint`** (`tsc --noEmit`) · **`pnpm test:run`** (vitest, 14) ·
-**`pnpm build`** (`tsc --noEmit && vite build` → escribe `src/bib2graph/gui/static/`). El **alias `@`**
-resuelve a `frontend/src/`. El **build output** (`src/bib2graph/gui/static/`) está **gitignoreado**
-(no se commitea; lo vendorea el wheel vía `force-include`, G5 AS-BUILT). El cliente consume los 7 endpoints reales de la API G3
-(`docs/API.md` §0.2): des-envuelve el envelope `schema="1"`, ramea por `error.code` (**string**) y
-manda `Authorization: Bearer <token>` (token leído de `window.__B2G_TOKEN__`, inyectado por `b2g gui`
-en el `index.html` servido).
+El subárbol JS `frontend/` (SPA "Observatorio") y el prototipo `app/` **se retiraron de la librería**
+junto con la GUI local (ADR [0040](docs/decisiones/0040-retiro-gui-local.md),
+[#190](https://github.com/complexluise/bib2graph/issues/190); supersede 0027/0028). El repo vuelve a
+ser **100% Python con uv**, sin Node/`pnpm`. El wheel es **Python puro** (sin `force-include` del
+frontend, sin job `frontend` en CI ni build de Node en los workflows de publish). El historial de la
+SPA vive en `git log` y en `docs/ROADMAP/05-gui.md` (deprecado).
 
 ### Manejo de errores
 
@@ -581,8 +623,12 @@ en el `index.html` servido).
 
 ### CLI como API para LLM y agentes
 
-- Cada subcomando expone `--json` con salida estructurada (un objeto por corrida,
-  estable y versionado).
+- Cada subcomando expone `--json` (por-comando, post-verbo) con salida estructurada
+  (un objeto por corrida, estable y versionado). **Alternativa por entorno:** `export
+  B2G_JSON=1` (truthy: `1`/`true`/`yes`) activa el modo JSON en **todos** los comandos
+  sin repetir el flag; precedencia `--json` > `B2G_JSON`, sin `--no-json` (#151).
+- **stdout puro** en modo JSON: stdout = una línea-envelope `schema="1"` (incl. el
+  camino de error); el texto humano va a stderr.
 - Exit codes claros (ver §Manejo de errores).
 - Sin estado entre invocaciones: cada llamada es independiente. El agente orquesta
   orquestando subprocess.

@@ -1,4 +1,4 @@
-"""cli.commands.enrich — Subcomando ``b2g enrich``.
+"""cli.commands.enrich — Subcomando ``b2g enrich`` (alias deprecado, #165).
 
 Enriquece el corpus en dos pasadas usando OpenAlex:
 - **Pasada 1 (Hito 8a):** resuelve ``references_id`` → ``references_doi``.
@@ -9,6 +9,9 @@ Nota: ``enrich`` NO transiciona el ``CycleState`` del store —el enriquecimient
 es una operación ortogonal al FSM del lazo bibliométrico.  Si en el futuro
 se decide transicionar (p. ej. a un estado ENRICHED), se agrega la llamada
 a ``apply_transition`` aquí, sin tocar el FSM en el núcleo.
+
+DEPRECADO (ADR 0038, #165): absorbido en ``b2g chain`` / ``b2g build``.
+Se retira en 0.11.0.
 """
 
 from __future__ import annotations
@@ -18,8 +21,11 @@ from typing import Any
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
+from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
@@ -65,45 +71,27 @@ def run_enrich(
             ``@handle_errors`` como exit 4).
         StoreError: Si el store está bloqueado (exit 5).
     """
-    from bib2graph.enrichers.openalex import OpenAlexEnricher
     from bib2graph.sources.openalex import OpenAlexSource
 
     store = open_store(store_path)
     try:
         corpus = store.load()
-
         source = OpenAlexSource(email=email, api_key=api_key, transport=transport)
-        enricher = OpenAlexEnricher(source, max_citing_per_paper=max_citing)
-        enriched = enricher.enrich(corpus)
-
+        enriched, metrics = enrich_corpus(
+            corpus, source, max_citing=max_citing, pass_name="both"
+        )
         store.persist(enriched)
-
-        # Extraer métricas de los EnricherRef registrados
-        enricher_refs = enriched.manifest.enrichers
-
-        doi_entry = next(
-            (e for e in enricher_refs if e.name == "openalex_references_doi"), None
-        )
-        refs_resolved = int(doi_entry.params.get("resolved", 0)) if doi_entry else 0
-        refs_total = (
-            int(doi_entry.params.get("total_unique_refs", 0)) if doi_entry else 0
-        )
-
-        cb_entry = next(
-            (e for e in enricher_refs if e.name == "openalex_cited_by"), None
-        )
-        citing_new = int(cb_entry.params.get("resolved", 0)) if cb_entry else 0
-        citing_targets = int(cb_entry.params.get("total", 0)) if cb_entry else 0
-
+        # #141: persistir EnricherRef para que manifest.enrichers sobreviva al reload.
+        store.backend.persist_enricher_refs(enriched.manifest.enrichers)
         total_papers = len(enriched)
     finally:
         store.close()
 
     return {
-        "refs_resolved": refs_resolved,
-        "refs_total_unique": refs_total,
-        "citing_new": citing_new,
-        "citing_targets": citing_targets,
+        "refs_resolved": metrics.get("refs_resolved", 0),
+        "refs_total_unique": metrics.get("refs_total_unique", 0),
+        "citing_new": metrics.get("citing_new", 0),
+        "citing_targets": metrics.get("citing_targets", 0),
         "total_papers": total_papers,
     }
 
@@ -134,13 +122,7 @@ def run_enrich(
         "Default: sin tope (todos los citantes encontrados)."
     ),
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("enrich")
 def enrich_cmd(
@@ -158,6 +140,7 @@ def enrich_cmd(
 
     Si no hay referencias ni semillas aceptadas, termina sin error.
     """
+    dep_msg = emit_deprecation("b2g enrich", "b2g chain")
     store_path = resolve_library_path(ctx.obj)
     data = run_enrich(
         store_path,
@@ -166,12 +149,13 @@ def enrich_cmd(
         max_citing=max_citing,
     )
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="enrich",
             ok=True,
             data=data,
             exit_code=0,
+            warnings=[dep_msg],
         )
         emit(envelope)
     else:

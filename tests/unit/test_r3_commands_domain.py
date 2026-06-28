@@ -20,6 +20,13 @@ import pytest
 from bib2graph.cycle import CycleState, apply_transition
 from bib2graph.schemas import CORPUS_SCHEMA
 
+# Targets de patch: el método en su CLASE DE DEFINICIÓN (robusto al import-path del
+# SUT — se parchea el objeto-clase compartido, no un alias). Centralizados acá para
+# que un eventual movimiento de módulo de Forager/Networks se actualice en un solo
+# lugar (epic #184, sub-tarea 8).
+_PATCH_FORAGER_CHAIN = "bib2graph.foraging.forager.Forager.chain"
+_PATCH_NETWORKS_QUICK = "bib2graph.networks.facade.Networks.quick"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -168,7 +175,7 @@ def test_estado_persistido_es_dictado_por_cycle(
         from bib2graph.cli.commands.chain import run_chain
 
         with patch(
-            "bib2graph.foraging.forager.Forager.chain",
+            _PATCH_FORAGER_CHAIN,
             return_value=_make_empty_forage_result(),
         ):
             run_chain(store_path, transport=_make_noop_transport())
@@ -180,7 +187,7 @@ def test_estado_persistido_es_dictado_por_cycle(
         from bib2graph.cli.commands.build import run_build
 
         with patch(
-            "bib2graph.networks.facade.Networks.quick",
+            _PATCH_NETWORKS_QUICK,
             return_value=[],
         ):
             run_build(store_path)

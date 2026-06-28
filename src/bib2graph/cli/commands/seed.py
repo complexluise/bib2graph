@@ -37,6 +37,7 @@ from bib2graph.cli._errors import (
     handle_errors,
 )
 from bib2graph.cli._ingest import normalize_and_dedup
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 
 # ---------------------------------------------------------------------------
@@ -395,13 +396,7 @@ def run_seed_from_bib(
         "(solo con --from-bib; encadena b2g resolve automáticamente)."
     ),
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("seed")
 def seed_cmd(
@@ -499,7 +494,7 @@ def seed_cmd(
     # --- Modo --from-bib (BibTeX local, sin red) ---
     if bib_path is not None:
         data = run_seed_from_bib(store_path, bib_path, resolve=do_resolve, email=email)
-        if json_output:
+        if json_mode(json_output):
             envelope = build_envelope(
                 command="seed",
                 ok=True,
@@ -537,7 +532,7 @@ def seed_cmd(
             min_year=spec.min_year,
             max_year=spec.max_year,
         )
-        if json_output:
+        if json_mode(json_output):
             envelope = build_envelope(
                 command="seed",
                 ok=True,
@@ -568,7 +563,7 @@ def seed_cmd(
         max_year=max_year,
     )
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="seed",
             ok=True,

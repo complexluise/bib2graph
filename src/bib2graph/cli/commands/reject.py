@@ -1,4 +1,4 @@
-"""cli.commands.reject — Subcomando ``b2g reject``.
+"""cli.commands.reject — Subcomando ``b2g reject`` (alias deprecado, #165).
 
 Marca papers como rejected en el corpus.
 
@@ -10,6 +10,8 @@ de ``transitions_available``.
 
 Shim delgado (ADR 0028 G3): la orquestación vive en ``service.curate``; este
 módulo inyecta el reloj (frontera CLI, R2/ADR 0017) y delega.
+
+DEPRECADO (ADR 0038, #165): usar ``b2g curate reject``.  Se retira en 0.11.0.
 """
 
 from __future__ import annotations
@@ -20,8 +22,10 @@ from typing import Any
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import resolve_library_path
 
 # ---------------------------------------------------------------------------
@@ -76,13 +80,7 @@ def run_reject(
     show_default=True,
     help="Identificador de quien decide.",
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("reject")
 def reject_cmd(
@@ -96,15 +94,17 @@ def reject_cmd(
     Curación TRANSVERSAL: no transiciona el CycleState.  Disponible en
     cualquier estado del lazo (Nota 05 §4, ADR 0016 enmendado R3).
     """
+    dep_msg = emit_deprecation("b2g reject", "b2g curate reject")
     store_path = resolve_library_path(ctx.obj)
     data = run_reject(store_path, list(ids), by=by)
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="reject",
             ok=True,
             data=data,
             exit_code=0,
+            warnings=[dep_msg],
         )
         emit(envelope)
     else:

@@ -6,7 +6,8 @@
 # LOCAL estándar (ruff, mypy, pytest, pre-commit, commitizen) configurado desde
 # el día uno (ADR 0006/0010). CI (.github/workflows/ci.yml) y release-please
 # (.github/workflows/release-please.yml) YA están conectados; la publicación a
-# PyPI queda fuera por ahora (solo GitHub Releases). Ver VERSIONING.md.
+# PyPI está conectada desde 0.10.0 vía Trusted Publishing/OIDC
+# (.github/workflows/publish-pypi.yml, invocado por release-please). Ver VERSIONING.md.
 #
 # Ver:
 #   - docs/ARCHITECTURE.md
@@ -74,10 +75,6 @@ viz = []
 bibtex = [
     "bibtexparser>=1.4.4",
 ]
-gui = [
-    "fastapi>=0.110",
-    "uvicorn>=0.29",
-]
 
 [project.urls]
 Homepage = "https://github.com/complexluise/bib2graph"
@@ -90,17 +87,15 @@ Issues = "https://github.com/complexluise/bib2graph/issues"
 # CLI entry point. Hito 6: implementación real del CLI agente-native.
 # El paquete bib2graph.cli (antes cli.py) expone main() en __init__.py.
 b2g = "bib2graph.cli:main"
+# Alias deprecado del ejecutable legado 'bib2graph' (ADR 0038, #165).
+# Emite aviso a stderr y delega en main(). Se retira en 0.11.0.
+bib2graph = "bib2graph.cli:main_bib2graph_alias"
 
 # ----- Build (hatchling, src layout) --------------------------------------
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bib2graph"]
 
-# Build output del frontend (gitignored → hatchling lo omite por defecto).
-# force-include vende el artefacto al wheel sin commitearlo al VCS (ADR 0028 §B.1, G5).
-# Requiere que `pnpm build` haya corrido ANTES de `uv build`.
-[tool.hatch.build.targets.wheel.force-include]
-"src/bib2graph/gui/static" = "bib2graph/gui/static"
 
 # El sdist incluye fuente, tests y docs para reproducibilidad, pero NO el sandbox
 # de exploración (datos de investigación IED: CSV/parquet/graphml) ni los binarios
@@ -161,8 +156,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]  # asserts en tests están bien
-"src/bib2graph/api/routers/*" = ["B008"]  # Depends() en defaults es el patrón canónico de FastAPI
-"src/bib2graph/api/deps.py" = ["B008"]    # idem
 
 [tool.ruff.format]
 quote-style = "double"
@@ -186,10 +179,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "rapidfuzz.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "uvicorn.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

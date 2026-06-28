@@ -84,7 +84,7 @@ Característica: Curar el corpus con filtros PRISMA y biblioteca viva
 
   # --- C4 (escala) · Curación en lote vía CSV ---
   Escenario: C4 — Volcar candidatos a CSV para revisión offline
-    Cuando ejecuto "b2g curate --dump --json"
+    Cuando ejecuto "b2g curate dump --json"
     Entonces el exit code es 0
     Y se escribe "exports/curacion.csv" con las 16 columnas estables
     Y "data.papers_exported" es un entero >= 0
@@ -92,13 +92,13 @@ Característica: Curar el corpus con filtros PRISMA y biblioteca viva
     # Solo "decision" y "note" son editables por el humano.
 
   Escenario: C4 — Volcar semillas o todo el corpus con --scope
-    Cuando ejecuto "b2g curate --dump --scope all --json"
+    Cuando ejecuto "b2g curate dump --scope all --json"
     Entonces el exit code es 0
     Y "data.papers_exported" cubre todo el corpus (candidates + seeds + accepted + rejected)
 
   Escenario: C4 — Reimportar las decisiones del CSV en lote (idempotente)
     Dado un "exports/curacion.csv" con la columna "decision" editada
-    Cuando ejecuto "b2g curate --from-csv exports/curacion.csv --json"
+    Cuando ejecuto "b2g curate apply exports/curacion.csv --json"
     Entonces el exit code es 0
     Y "data.accepted_count" cuenta papers efectivamente marcados como accepted
     Y "data.rejected_count" cuenta papers efectivamente marcados como rejected
@@ -106,9 +106,9 @@ Característica: Curar el corpus con filtros PRISMA y biblioteca viva
     Y "data.not_found_count" cuenta IDs del CSV ausentes del corpus (huérfanos, sin abortar)
     # Idempotente: reimportar el mismo CSV deja el mismo corpus_hash (note se ignora al importar).
 
-  Escenario: C4 — from-csv con una decision inválida falla accionable
+  Escenario: C4 — apply con una decision inválida falla accionable
     Dado un CSV con un valor de "decision" fuera de {accepted, rejected, undecided}
-    Cuando ejecuto "b2g curate --from-csv exports/curacion.csv --json"
+    Cuando ejecuto "b2g curate apply exports/curacion.csv --json"
     Entonces el exit code es 2
     Y "error.code" indica un error de datos (DataError)
 

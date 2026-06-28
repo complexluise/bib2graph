@@ -26,7 +26,7 @@ import json
 import os
 import re
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -921,6 +921,7 @@ class OpenAlexSource:
         ids: list[str],
         *,
         max_per_paper: int | None = None,
+        since: date | None = None,
     ) -> tuple[dict[str, list[str]], dict[str, dict[str, Any]]]:
         """Núcleo compartido de paginación y atribución para los citantes en lote.
 
@@ -934,6 +935,9 @@ class OpenAlexSource:
             ids: IDs cortos de OpenAlex ya normalizados (p. ej. ``["W111"]``).
             max_per_paper: Presupuesto máximo de citantes por semilla.
                 ``None`` = sin tope.
+            since: Filtrar citantes publicados desde esta fecha
+                (``from_publication_date:YYYY-MM-DD`` en OpenAlex).  ``None``
+                = sin filtro de fecha.
 
         Returns:
             Tupla ``(attribution, works_map)`` donde:
@@ -955,6 +959,8 @@ class OpenAlexSource:
             batch_acc: dict[str, set[str]] = {tid: set() for tid in lote}
 
             filter_str = "cites:" + "|".join(lote)
+            if since is not None:
+                filter_str += f",from_publication_date:{since.isoformat()}"
 
             cursor: str = "*"
             with self._client() as client:
@@ -1006,7 +1012,11 @@ class OpenAlexSource:
         return result, works_map
 
     def fetch_citing_batch(
-        self, ids: list[str], *, max_per_paper: int | None = None
+        self,
+        ids: list[str],
+        *,
+        max_per_paper: int | None = None,
+        since: date | None = None,
     ) -> dict[str, list[str]]:
         """Trae en lote los citantes de varios papers usando ``cites:W1|W2|...``.
 
@@ -1045,12 +1055,16 @@ class OpenAlexSource:
             return {}
         normalized = [_oa_id_short(i) or i for i in ids]
         attribution, _ = self._fetch_citing_pages(
-            normalized, max_per_paper=max_per_paper
+            normalized, max_per_paper=max_per_paper, since=since
         )
         return attribution
 
     def fetch_citing_batch_with_works(
-        self, ids: list[str], *, max_per_paper: int | None = None
+        self,
+        ids: list[str],
+        *,
+        max_per_paper: int | None = None,
+        since: date | None = None,
     ) -> tuple[dict[str, list[str]], dict[str, dict[str, Any]]]:
         """Como ``fetch_citing_batch`` pero conserva los objetos JSON completos.
 
@@ -1080,7 +1094,9 @@ class OpenAlexSource:
         if not ids:
             return {}, {}
         normalized = [_oa_id_short(i) or i for i in ids]
-        return self._fetch_citing_pages(normalized, max_per_paper=max_per_paper)
+        return self._fetch_citing_pages(
+            normalized, max_per_paper=max_per_paper, since=since
+        )
 
     def _fetch_page_with_retry(
         self,

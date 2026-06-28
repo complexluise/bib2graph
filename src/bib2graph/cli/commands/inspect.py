@@ -1,7 +1,10 @@
-"""cli.commands.inspect — Subcomando ``b2g inspect``.
+"""cli.commands.inspect — Subcomando ``b2g inspect`` (alias deprecado, #165).
 
 Dump read-only del manifest y conteos. Con --id: datos de un paper.
 NO transiciona el CycleState.
+
+DEPRECADO (ADR 0038, #165): usar ``b2g read show`` (con ``--id``) o
+``b2g status`` (sin ``--id``).  Se retira en 0.11.0.
 """
 
 from __future__ import annotations
@@ -12,8 +15,10 @@ from typing import Any
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
+from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 from bib2graph.constants import Col
 
@@ -119,13 +124,7 @@ def run_inspect(
     default=None,
     help="ID del paper a inspeccionar.",
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    default=False,
-    help="Salida JSON estructurada.",
-)
+@json_option
 @click.pass_context
 @handle_errors("inspect")
 def inspect_cmd(
@@ -138,15 +137,19 @@ def inspect_cmd(
     Sin --id: muestra el manifest y conteos.
     Con --id: muestra datos + provenance de ese paper.
     """
+    # Forma canónica depende de si se pasa --id o no.
+    new_cmd = "b2g read show" if paper_id else "b2g status"
+    dep_msg = emit_deprecation("b2g inspect", new_cmd)
     store_path = resolve_library_path(ctx.obj)
     data = run_inspect(store_path, paper_id=paper_id)
 
-    if json_output:
+    if json_mode(json_output):
         envelope = build_envelope(
             command="inspect",
             ok=True,
             data=data,
             exit_code=0,
+            warnings=[dep_msg],
         )
         emit(envelope)
     else:

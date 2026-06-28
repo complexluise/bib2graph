@@ -1,4 +1,4 @@
-"""service.reads — Las 6 funciones de lectura del Hito G2 (ADR 0028).
+"""service.reads — Funciones de lectura de la capa de servicios (ADR 0028).
 
 Capa de servicios neutral: sin ``print``, ``sys.exit``, Click ni FastAPI.
 Cada función recibe el ``store_path`` o el ``Workspace`` ya resuelto (la
@@ -6,17 +6,26 @@ resolución de workspace se hace en el adaptador CLI), abre el store en
 modo lectura, y devuelve un ``dict`` serializable o lanza un ``B2GError``
 tipado.
 
-Lecturas implementadas:
+Lecturas del Hito G2 (6 originales):
   - ``get_workspace`` — estado del workspace activo (nombre, loop_state, ronda,
     conteos, staleness de cache de redes).
   - ``list_rounds`` — snapshots sellados en ``<workspace>/snapshots/`` más una
     entrada sintética ``id="live"`` para el corpus vivo.
-  - ``get_paper`` — fila completa del corpus por id (o ``DataError``).
+  - ``get_paper`` — fila completa del corpus resolviendo por id, doi o source_id
+    (ADR 0036; antes solo por id). Prioridad: id > doi > source_id.
   - ``get_scent`` — score de acoplamiento + vecinos compartidos de un paper
     ya en el corpus.
   - ``get_network`` — red de la ronda viva (desde cache ``networks/`` o recomputo).
   - ``compare_rounds`` — diff entre dos snapshots (added/removed paper_ids +
     métricas básicas).
+
+Lecturas del grupo ``read`` (sub-issues #156, #157):
+  - ``list_papers`` — lista papers con filtros opcionales: query (título
+    substring CI), status, is_seed, year. Payload mínimo para listados.
+  - ``corpus_stats`` — estadísticas agregadas del corpus, agrupadas por
+    ``status``, ``year`` o ``is_seed``.
+  - ``get_top`` — nodos más centrales de la red ``kind`` + pares de co-citación
+    con título resuelto (#157).
 
 Decisiones de producto (Bifurcaciones B-G2-1/B-G2-2/B-G2-3):
   - Ronda = snapshot sellado (Opción A). ``list_rounds``/``compare_rounds``
@@ -24,6 +33,8 @@ Decisiones de producto (Bifurcaciones B-G2-1/B-G2-2/B-G2-3):
   - ``get_scent`` expone el score de acoplamiento real (referencias compartidas
     + resoluciones de referencias e citantes en el corpus), NO 4 paneles cosméticos.
   - ``get_network`` sirve la red viva. ``kind`` inválido o sin red → ``DataError``.
+  - ``get_top``: red vacía → honest-empty (exit 0 + bloques vacíos + reason/fix_command);
+    NO ``DataError``.  ``n <= 0`` o ``kind`` inválido → ``DataError``.
 """
 
 from __future__ import annotations
@@ -195,22 +206,28 @@ def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def get_paper(ws: Workspace, paper_id: str) -> dict[str, Any]:
+def get_paper(ws: Workspace, ident: str) -> dict[str, Any]:
     """Devuelve la fila completa del corpus para un paper.
+
+    Resuelve ``ident`` contra tres columnas en orden de prioridad:
+    ``Col.ID`` (exacto) → ``Col.DOI`` (exacto) → ``Col.SOURCE_ID`` (exacto).
+    Si varios matchean, gana el que coincide por ``id``.
+    Coherente con ADR 0036 (identidad source-agnóstica, DOI ancla).
 
     Incluye todos los campos del ``CORPUS_SCHEMA``: id, source_id, doi,
     title, year, abstract, is_seed, curation_status, authors_raw,
-    keywords_id, references_id, cited_by_id, provenance.
+    authors_id, keywords_id, references_id, cited_by_id, provenance.
 
     Args:
         ws: Workspace resuelto.
-        paper_id: Valor de ``Col.ID`` del paper buscado.
+        ident: Valor a buscar; se prueba contra id, doi y source_id en ese
+            orden.
 
     Returns:
         Dict con todos los campos de la fila del corpus.
 
     Raises:
-        DataError: Si el ``paper_id`` no existe en el corpus.
+        DataError: Si ``ident`` no coincide con ningún paper.
         StoreError: Si el store no existe o está bloqueado.
     """
     store = _open_readonly(ws.library_path)
@@ -218,12 +235,31 @@ def get_paper(ws: Workspace, paper_id: str) -> dict[str, Any]:
     table = corpus.to_arrow()
 
     rows = table.to_pylist()
-    matching = [r for r in rows if str(r.get(Col.ID)) == paper_id]
+
+    # Prioridad: id > doi > source_id (ADR 0036)
+    matching_by_id = [r for r in rows if str(r.get(Col.ID)) == ident]
+    if matching_by_id:
+        matching = matching_by_id
+    else:
+        matching_by_doi = [
+            r
+            for r in rows
+            if r.get(Col.DOI) is not None and str(r.get(Col.DOI)) == ident
+        ]
+        if matching_by_doi:
+            matching = matching_by_doi
+        else:
+            matching = [
+                r
+                for r in rows
+                if r.get(Col.SOURCE_ID) is not None
+                and str(r.get(Col.SOURCE_ID)) == ident
+            ]
 
     if not matching:
         raise DataError(
-            f"Paper '{paper_id}' no encontrado en el corpus. "
-            "Verificá el id con 'b2g status' o 'b2g inspect'."
+            f"Paper '{ident}' no encontrado en el corpus. "
+            "Verificá el id con 'b2g read list' o 'b2g status'."
         )
 
     row = matching[0]
@@ -607,3 +643,311 @@ def compare_rounds(ws: Workspace, round_a: str, round_b: str) -> dict[str, Any]:
         "mutated_hubs": [],  # diferido: requiere redes construidas por snapshot
         "metrics_change": metrics_change,
     }
+
+
+# ---------------------------------------------------------------------------
+# 7. list_papers  (sub-issue #156 — grupo read)
+# ---------------------------------------------------------------------------
+
+
+def list_papers(
+    ws: Workspace,
+    *,
+    query: str | None = None,
+    status: str | None = None,
+    is_seed: bool | None = None,
+    year: int | None = None,
+) -> dict[str, Any]:
+    """Lista papers del corpus con filtros opcionales.
+
+    Devuelve un payload mínimo por paper (id, title, year, curation_status,
+    is_seed) más el conteo total.  Diseñado para listar en el CLI/SPA sin
+    cargar campos pesados (abstract, referencias, autores).
+
+    Filtros combinables (todos opcionales, se aplican con AND lógico):
+    - ``query``: substring case-insensitive sobre el título.
+    - ``status``: valor exacto de ``curation_status``
+      (``"candidate"``, ``"accepted"``, ``"rejected"``).
+    - ``is_seed``: ``True`` → solo semillas; ``False`` → solo no-semillas.
+    - ``year``: año exacto de publicación.
+
+    Args:
+        ws: Workspace resuelto.
+        query: Texto a buscar en el título (substring, case-insensitive).
+        status: Valor exacto de ``curation_status``.
+        is_seed: Filtro por campo is_seed.
+        year: Año exacto de publicación.
+
+    Returns:
+        Dict con ``papers`` (lista de dicts mínimos) y ``count`` (int).
+
+    Raises:
+        StoreError: Si el store no existe o está bloqueado.
+    """
+    store = _open_readonly(ws.library_path)
+    corpus = store.load()
+    table = corpus.to_arrow()
+    rows = table.to_pylist()
+
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        # Filtro por query: substring CI sobre el título
+        if query is not None:
+            title_val = str(row.get(Col.TITLE) or "")
+            if query.lower() not in title_val.lower():
+                continue
+
+        # Filtro por status (curation_status exacto)
+        if status is not None and str(row.get(Col.CURATION_STATUS)) != status:
+            continue
+
+        # Filtro por is_seed
+        if is_seed is not None and bool(row.get(Col.IS_SEED)) != is_seed:
+            continue
+
+        # Filtro por año exacto
+        if year is not None:
+            row_year = row.get(Col.YEAR)
+            if row_year is None or int(row_year) != year:
+                continue
+
+        result.append(
+            {
+                "id": row.get(Col.ID),
+                "title": row.get(Col.TITLE),
+                "year": row.get(Col.YEAR),
+                "curation_status": row.get(Col.CURATION_STATUS),
+                "is_seed": row.get(Col.IS_SEED),
+            }
+        )
+
+    return {"papers": result, "count": len(result)}
+
+
+# ---------------------------------------------------------------------------
+# 8. corpus_stats  (sub-issue #156 — grupo read)
+# ---------------------------------------------------------------------------
+
+_VALID_GROUP_BY: frozenset[str] = frozenset({"status", "year", "is_seed"})
+
+# Mapeo de alias CLI → nombre de columna SQL
+_GROUP_BY_COL: dict[str, str] = {
+    "status": Col.CURATION_STATUS.value,
+    "year": Col.YEAR.value,
+    "is_seed": Col.IS_SEED.value,
+}
+
+
+def corpus_stats(
+    ws: Workspace,
+    *,
+    group_by: str = "status",
+) -> dict[str, Any]:
+    """Estadísticas del corpus agrupadas por ``status``, ``year`` o ``is_seed``.
+
+    Para ``group_by="status"`` reutiliza la consulta GROUP BY de
+    ``get_workspace`` (``counts_by_status``); para ``year`` e ``is_seed``
+    aplica la misma estrategia sobre la columna correspondiente.
+
+    Args:
+        ws: Workspace resuelto.
+        group_by: Dimensión de agrupación.  Valores válidos:
+            ``"status"`` (default), ``"year"``, ``"is_seed"``.
+
+    Returns:
+        Dict con:
+        - ``group_by``: dimensión usada.
+        - ``total``: total de papers en el corpus.
+        - ``groups``: lista de ``{key, count}`` ordenada por clave.
+
+    Raises:
+        DataError: Si ``group_by`` no es un valor válido.
+        StoreError: Si el store no existe o está bloqueado.
+    """
+    if group_by not in _VALID_GROUP_BY:
+        valid = ", ".join(sorted(_VALID_GROUP_BY))
+        raise DataError(f"group_by '{group_by}' no válido. Valores admitidos: {valid}.")
+
+    store = _open_readonly(ws.library_path)
+    col = _GROUP_BY_COL[group_by]
+
+    counts_table = store.backend.query(
+        f"SELECT {col}, COUNT(*) AS cnt FROM corpus GROUP BY 1 ORDER BY 1"
+    )
+
+    groups: list[dict[str, Any]] = []
+    total = 0
+    if len(counts_table) > 0:
+        for row in counts_table.to_pylist():
+            key = row.get(col)
+            cnt = int(row["cnt"])
+            groups.append({"key": key, "count": cnt})
+            total += cnt
+
+    return {
+        "group_by": group_by,
+        "total": total,
+        "groups": groups,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 9. get_top  (sub-issue #157 — read top)
+# ---------------------------------------------------------------------------
+
+
+def get_top(
+    ws: Workspace,
+    *,
+    n: int = 10,
+    kind: str = "bibliographic_coupling",
+) -> dict[str, Any]:
+    """Devuelve los nodos más centrales de la red ``kind`` y los pares de co-citación.
+
+    El bloque "central" se extrae de la red del ``kind`` solicitado, ordenando
+    los nodos por ``degree_centrality`` descendente y tomando los primeros ``n``.
+    El bloque "cocitation" es **siempre** la red ``cocitation`` (top N pares
+    por peso descendente), independientemente del ``kind`` elegido.
+
+    La función es idempotente y no requiere ``build`` previo: recomputa las
+    redes en tiempo de lectura (mismo camino que ``get_network``).
+
+    Para redes de paper (``bibliographic_coupling``, ``cocitation``), los ids
+    de nodo son ids del corpus y se resuelven al título completo.  Para otras
+    redes (``author_collab``, ``institution_collab``, ``keyword_cooccurrence``),
+    los ids son ids de entidad y se usa el ``label`` decorado como título.
+
+    Red vacía → honest-empty (exit 0 + bloque vacío + ``reason``/``fix_command``),
+    NO ``DataError``.
+
+    Args:
+        ws: Workspace resuelto.
+        n: Número de nodos/pares a devolver (default 10). Debe ser > 0.
+        kind: Tipo de red para el bloque central. Uno de los 5 ``NetworkKind``
+            (default ``bibliographic_coupling``).
+
+    Returns:
+        Dict con:
+
+        - ``kind``: tipo de red usado para el bloque central.
+        - ``top``: ``n`` pedido.
+        - ``central``: lista de hasta ``n`` nodos ``{id, title,
+          degree_centrality, ?community}`` ordenados por
+          ``degree_centrality`` descendente.
+        - ``cocitation``: lista de hasta ``n`` pares ``{source,
+          source_title, target, target_title, weight}`` ordenados
+          por ``weight`` descendente.
+        - ``reason`` / ``fix_command``: presentes solo cuando
+          ``cocitation`` está vacío (honest-empty; NOT un error).
+
+    Raises:
+        DataError: Si ``kind`` no es un ``NetworkKind`` válido, si
+            ``n <= 0``, o si la construcción de alguna red falla
+            (error genuino, no vaciedad).
+        StoreError: Si el store no existe o está bloqueado.
+    """
+    if kind not in _VALID_KINDS:
+        valid = ", ".join(sorted(_VALID_KINDS))
+        raise DataError(
+            f"NetworkKind '{kind}' no reconocido. Valores válidos: {valid}."
+        )
+    if n <= 0:
+        raise DataError(f"top N debe ser un entero positivo; se recibió {n}.")
+
+    # Cargar corpus una vez para el índice id→título y para predict_build_preview
+    store = _open_readonly(ws.library_path)
+    corpus = store.load()
+    table = corpus.to_arrow()
+    id_to_title: dict[str, str | None] = {
+        str(r.get(Col.ID)): (str(r.get(Col.TITLE)) if r.get(Col.TITLE) else None)
+        for r in table.to_pylist()
+        if r.get(Col.ID)
+    }
+
+    # -------------------------------------------------------------------
+    # Bloque "central": top N nodos por degree_centrality en --kind
+    # -------------------------------------------------------------------
+    central_net = get_network(ws, kind)
+    sorted_nodes = sorted(
+        central_net["nodes"],
+        key=lambda node: node["degree_centrality"],
+        reverse=True,
+    )[:n]
+
+    central: list[dict[str, Any]] = []
+    for node in sorted_nodes:
+        node_id = node["id"]
+        # Redes de paper → id es un Col.ID → resolvible al título del corpus.
+        # Otras redes → id es un id de entidad → usar label decorado.
+        title = id_to_title.get(node_id) or node.get("label")
+        entry: dict[str, Any] = {
+            "id": node_id,
+            "title": title,
+            "degree_centrality": node["degree_centrality"],
+        }
+        if "community" in node:
+            entry["community"] = node["community"]
+        central.append(entry)
+
+    # -------------------------------------------------------------------
+    # Bloque "cocitation": top N pares por peso (SIEMPRE red cocitation)
+    # -------------------------------------------------------------------
+    coc_net = (
+        central_net
+        if kind == NetworkKind.COCITATION
+        else get_network(ws, NetworkKind.COCITATION)
+    )
+
+    sorted_edges = sorted(
+        coc_net["edges"],
+        key=lambda e: e["weight"],
+        reverse=True,
+    )[:n]
+
+    cocitation: list[dict[str, Any]] = []
+    for edge in sorted_edges:
+        src_id = str(edge["source"])
+        tgt_id = str(edge["target"])
+        cocitation.append(
+            {
+                "source": src_id,
+                "source_title": id_to_title.get(src_id),
+                "target": tgt_id,
+                "target_title": id_to_title.get(tgt_id),
+                "weight": edge["weight"],
+            }
+        )
+
+    result: dict[str, Any] = {
+        "kind": kind,
+        "top": n,
+        "central": central,
+        "cocitation": cocitation,
+    }
+
+    # Honest-empty: si co-citación vacía, agregar reason/fix_command.
+    # Igual que "build" con red vacía → exit 0, NO DataError.
+    coc_is_empty = not coc_net["edges"]
+    if coc_is_empty:
+        from bib2graph.networks.facade import predict_build_preview
+
+        preview = predict_build_preview(corpus)
+        coc_entry = next(
+            (p for p in preview if p["kind"] == str(NetworkKind.COCITATION)),
+            None,
+        )
+        if coc_entry is not None:
+            result["reason"] = coc_entry["reason"]
+            result["fix_command"] = coc_entry["fix_command"]
+
+    # Maturity (#160): siempre presente en read top (scope="all", redes vacías inferidas).
+    from bib2graph.service.maturity import compute_maturity
+
+    empty_network_kinds = ["cocitation"] if coc_is_empty else []
+    result["maturity"] = compute_maturity(
+        corpus,
+        scope="all",
+        empty_network_kinds=empty_network_kinds,
+    )
+
+    return result

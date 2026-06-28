@@ -323,24 +323,8 @@ def test_reatribucion_citante_sin_referencias_no_se_asigna() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
-def test_enrich_cited_by_idempotente() -> None:
-    """Re-enrich no duplica en cited_by_id."""
-    corpus = _corpus_from_rows([_make_row(id="P1", source_id="W100")])
-    citing_works = [_citing_work("C1", ["W100"])]
-    transport = _make_cited_by_transport(citing_works)
-
-    enricher = _make_enricher(transport)
-    once = enricher.enrich(corpus)
-    twice = enricher.enrich(once)
-
-    table = twice.to_arrow()
-    rows_data = table.to_pylist()
-    cited_by = rows_data[0].get("cited_by_id") or []
-
-    # No duplicados
-    assert len(cited_by) == len(set(cited_by)), "cited_by_id no debe tener duplicados"
-    assert "C1" in cited_by
+# Eliminado epic #184: cubierto por test_enrich_cocitacion_integrado.py::test_run_enrich_idempotente_corpus_hash_y_cocitacion
+# (verificación de corpus_hash más fuerte que conteo de cited_by_id).
 
 
 @pytest.mark.unit
@@ -363,21 +347,8 @@ def test_enrich_cited_by_enricher_ref_no_duplica() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
-def test_tope_max_citing_per_paper() -> None:
-    """max_citing_per_paper=2 trunca cited_by_id a 2 citantes por paper."""
-    corpus = _corpus_from_rows([_make_row(id="P1", source_id="W100")])
-    # 5 citantes que citan a W100
-    citing_works = [_citing_work(f"C{i}", ["W100"]) for i in range(1, 6)]
-    transport = _make_cited_by_transport(citing_works)
-
-    enricher = _make_enricher(transport, max_citing_per_paper=2)
-    result = enricher.enrich(corpus)
-
-    table = result.to_arrow()
-    rows_data = table.to_pylist()
-    cited_by = rows_data[0].get("cited_by_id") or []
-    assert len(cited_by) <= 2, f"Debe haber ≤2 citantes, hay {len(cited_by)}"
+# Eliminado epic #184: cubierto por test_enrich_cocitacion_integrado.py::test_run_enrich_max_citing_acota_cited_by_id
+# y test_enrich_absorb.py::test_build_max_citing_limita_citantes.
 
 
 @pytest.mark.unit
@@ -466,179 +437,24 @@ def test_candidato_no_se_enriquece() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 6. Networks.quick sin cited_by_id → 4 redes, sin fallo (regresión)
+# 6. Networks.quick sin cited_by_id → 4 redes (regresión)
+# Eliminado epic #184: cubierto por test_enrich_absorb.py::test_build_4_redes_sin_seeds_aceptadas.
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_networks_quick_sin_cited_by_omite_cocitacion_sin_fallar() -> None:
-    """Networks.quick con cited_by_id vacío → 4 redes, sin error."""
-    rows = [
-        {
-            "id": f"P{i}",
-            "source_id": None,
-            "doi": None,
-            "title": f"Paper {i}",
-            "year": 2020,
-            "abstract": None,
-            "source": None,
-            "language": None,
-            "publisher": None,
-            "research_areas": None,
-            "is_seed": True,
-            "curation_status": "candidate",
-            "provenance": None,
-            "authors_raw": None,
-            "authors_id": [f"AUTH_{i}", "AUTH_0"],
-            "authors_affiliations": None,
-            "keywords_raw": None,
-            "keywords_id": [f"KW_{i}", "KW_SHARED"],
-            "institutions_raw": None,
-            "institutions_id": [f"INST_{i}"],
-            "references_id": [f"REF_{i}", "REF_SHARED"],
-            "references_doi": None,
-            "cited_by_id": None,  # sin citantes
-        }
-        for i in range(3)
-    ]
-    table = pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
-    corpus = Corpus.from_arrow(table)
-
-    # No debe lanzar excepción
-    artifacts = Networks.quick(corpus)
-
-    assert len(artifacts) == 4, "Sin cited_by_id debe haber exactamente 4 redes"
-    kinds = {a.spec.kind for a in artifacts}
-    assert "cocitation" not in kinds
-
 
 # ---------------------------------------------------------------------------
 # 7. Networks.quick con cited_by_id → 5 redes
+# Eliminado epic #184: cubierto por test_enrich_absorb.py::test_build_co_citacion_en_redes_tras_cited_by
+# y test_enrich_cocitacion_integrado.py::test_run_enrich_produce_red_cocitacion_con_arista_esperada.
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_networks_quick_con_cited_by_incluye_cocitacion() -> None:
-    """Networks.quick con cited_by_id poblado → 5 redes, incluyendo cocitation."""
-    rows = [
-        {
-            "id": "P1",
-            "source_id": "W100",
-            "doi": None,
-            "title": "Paper 1",
-            "year": 2020,
-            "abstract": None,
-            "source": None,
-            "language": None,
-            "publisher": None,
-            "research_areas": None,
-            "is_seed": True,
-            "curation_status": "accepted",
-            "provenance": None,
-            "authors_raw": None,
-            "authors_id": ["AUTH_1"],
-            "authors_affiliations": None,
-            "keywords_raw": None,
-            "keywords_id": ["KW_1"],
-            "institutions_raw": None,
-            "institutions_id": ["INST_1"],
-            "references_id": None,
-            "references_doi": None,
-            "cited_by_id": ["C1"],  # ya tiene citante
-        },
-        {
-            "id": "P2",
-            "source_id": "W200",
-            "doi": None,
-            "title": "Paper 2",
-            "year": 2020,
-            "abstract": None,
-            "source": None,
-            "language": None,
-            "publisher": None,
-            "research_areas": None,
-            "is_seed": True,
-            "curation_status": "accepted",
-            "provenance": None,
-            "authors_raw": None,
-            "authors_id": ["AUTH_2"],
-            "authors_affiliations": None,
-            "keywords_raw": None,
-            "keywords_id": ["KW_2"],
-            "institutions_raw": None,
-            "institutions_id": ["INST_2"],
-            "references_id": None,
-            "references_doi": None,
-            "cited_by_id": ["C1"],  # mismo citante → co-cita P1 y P2
-        },
-    ]
-    table = pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
-    corpus = Corpus.from_arrow(table)
-
-    artifacts = Networks.quick(corpus)
-    kinds = {a.spec.kind for a in artifacts}
-
-    assert "cocitation" in kinds
-    assert len(artifacts) == 5
-
 
 # ---------------------------------------------------------------------------
 # 8. No pierde papers; corpus sin seeds aceptados → 0 fetch, sin error
+# Eliminado epic #184: test_corpus_sin_seeds_aceptados_0_fetch cubierto por
+#   test_enrich_cocitacion_integrado.py::test_run_enrich_sin_seeds_aceptadas_no_altera_corpus
+#   y test_enrich_absorb.py::test_build_noop_sin_seeds_aceptadas.
+# Eliminado epic #184: test_enrich_no_pierde_papers_con_semillas cubierto por
+#   test_enrichers.py::test_enrich_no_pierde_papers.
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_corpus_sin_seeds_aceptados_0_fetch() -> None:
-    """Corpus sin seeds aceptados → 0 requests a cited_by, sin error."""
-    corpus = _corpus_from_rows(
-        [
-            _make_row(
-                id="P1",
-                source_id="W100",
-                curation_status=CurationStatus.CANDIDATE,
-            ),
-            _make_row(
-                id="P2",
-                source_id="W200",
-                is_seed=False,
-                curation_status=CurationStatus.ACCEPTED,
-            ),
-        ]
-    )
-
-    transport, counters = _make_counting_cited_by_transport([])
-    enricher = _make_enricher(transport)
-    result = enricher.enrich(corpus)
-
-    # No se hicieron requests de cited_by (ninguna seed aceptada)
-    assert counters["citing"][0] == 0, (
-        "Sin seeds aceptadas no debe hacer requests citing"
-    )
-    # No pierde papers
-    assert len(result) == len(corpus)
-
-
-@pytest.mark.unit
-def test_enrich_no_pierde_papers_con_semillas() -> None:
-    """El corpus enriquecido tiene exactamente los mismos papers que el original."""
-    corpus = _corpus_from_rows(
-        [
-            _make_row(id="P1", source_id="W100"),
-            _make_row(
-                id="P2",
-                source_id="W200",
-                curation_status=CurationStatus.CANDIDATE,
-            ),
-            _make_row(id="P3", source_id=None),
-        ]
-    )
-    citing_works = [_citing_work("C1", ["W100"])]
-    transport = _make_cited_by_transport(citing_works)
-
-    enricher = _make_enricher(transport)
-    result = enricher.enrich(corpus)
-
-    assert len(result) == len(corpus), "No debe perder ni agregar papers"
 
 
 # ---------------------------------------------------------------------------
@@ -706,33 +522,9 @@ def test_papers_sin_openalex_id_no_son_objetivo() -> None:
 
 # ---------------------------------------------------------------------------
 # 11. run_enrich expone claves citing_new y citing_targets
+# Eliminado epic #184: cubierto por test_enrich_absorb.py::test_enrich_suelto_claves_numericas
+# (contrato completo de 5 claves con valores numéricos concretos).
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_run_enrich_8b_claves_en_salida(tmp_path: Any) -> None:
-    """``run_enrich`` devuelve las nuevas claves citing_new y citing_targets."""
-    from bib2graph.cli.commands.enrich import run_enrich
-    from bib2graph.stores.duckdb import DuckDBStore
-
-    rows = [_make_row(id="P1", source_id="W100")]
-    table = pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
-    corpus = Corpus.from_arrow(table)
-    store = DuckDBStore(tmp_path / "test.duckdb")
-    store.persist(corpus)
-
-    citing_works = [_citing_work("C1", ["W100"])]
-    transport = _make_cited_by_transport(citing_works)
-
-    data = run_enrich(tmp_path / "test.duckdb", transport=transport)
-
-    assert "citing_new" in data, "Debe incluir clave citing_new"
-    assert "citing_targets" in data, "Debe incluir clave citing_targets"
-    assert isinstance(data["citing_new"], int)
-    assert isinstance(data["citing_targets"], int)
-    assert data["citing_targets"] == 1  # 1 seed aceptada
-    assert data["citing_new"] == 1  # 1 nuevo citante
-
 
 # ---------------------------------------------------------------------------
 # 12. EnricherRef openalex_cited_by en Manifest

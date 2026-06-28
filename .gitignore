@@ -48,7 +48,6 @@ snapshots/*.parquet
 *.duckdb.*.bak
 prueba/
 prueba_e2e/
-app/
 redes/
 valoraciones_*
 
@@ -61,19 +60,6 @@ valoraciones_*
 # siquiera dentro de un workspace de ejemplo (ADR 0030 §Convención lo prohíbe).
 examples/**/*.duckdb
 
-# Frontend (app/) — prototipo local de la GUI (MVP), ver app/ARCHITECTURE.md
-app/node_modules/
-app/dist/
-app/.vite/
-
-# Frontend (frontend/) — SPA G4, build output no se commitea (va al wheel en G5)
-frontend/node_modules/
-frontend/dist/
-# Build output del frontend: se ignora el contenido pero se conserva un .gitkeep
-# para que el directorio EXISTA siempre — el force-include de hatchling (pyproject)
-# rompe el editable install (uv sync en lint/test) si el dir no existe.
-src/bib2graph/gui/static/*
-!src/bib2graph/gui/static/.gitkeep
 
 # Logs
 logs

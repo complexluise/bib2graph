@@ -34,7 +34,7 @@ vuelven **ejecutables con `pytest-bdd`** apuntando a este mismo directorio, sin 
 | C1 dedup/normalización autores+inst. | **`@pendiente`** | **No hay subcomando CLI**: `normalize`/`deduplicate_keywords` son API de librería (`preprocessors/`), no `b2g`. Instituciones diferidas (ROADMAP C1). El CLI no expone preprocesamiento |
 | C2 thesaurus multilingüe | **`@pendiente`** | **No hay subcomando CLI**: `apply_thesaurus` es API de librería (`preprocessors/thesaurus.py`), no `b2g`. Determinista, sin fallback LLM (ADR 0022/0011) |
 | C3 filtros incl/excl con conteo | verde | `filter` con `data.steps[].count_before/count_after/excluded` (flujo PRISMA) |
-| C4 aceptar/rechazar + biblioteca viva | verde | `accept`/`reject --ids`, `curate --dump`/`--from-csv`; persiste y crece entre corridas |
+| C4 aceptar/rechazar + biblioteca viva | verde | `curate {dump,apply,accept,reject,filter}` (grupo noun-verb #155); `accept`/`reject --ids` sueltos vivos (alias deprecados); persiste y crece entre corridas |
 | D1 cinco proyecciones | verde (parcial) | `build` da 4 redes; la 5ª (cocitación) requiere `enrich` previo (cited_by_id). Instituciones salen si hay `institutions_id` |
 | D2 métricas y comunidades | verde | `metrics.json` (density, etc.) + comunidades Louvain; `clusters.csv` en redes de paper |
 | D3 asortatividad + composición + proxy | **`@pendiente`** | **No hay camino CLI**: `assortativity()`/`community_composition()` existen como funciones puras en `networks/analyzer.py` y se re-exportan en `networks/__init__.py`, pero `facade._build_artifact` fija `assortativity=None` y **no consume** `NetworkSpec.assortativity_attribute`. Es API de librería, no de CLI |
@@ -62,9 +62,9 @@ uv run b2g chain --direction both --depth 1 --max-citing 25 --json
 
 # C — curar
 uv run b2g filter --year-gte 2010 --language en --json
-uv run b2g curate --dump --json                    # escribe exports/curacion.csv (solo candidatos)
+uv run b2g curate dump --json                      # escribe exports/curacion.csv (solo candidatos)
 # (editar la columna decision en exports/curacion.csv)
-uv run b2g curate --from-csv exports/curacion.csv --json
+uv run b2g curate apply exports/curacion.csv --json
 uv run b2g accept --ids oa:abc123 --json
 
 # D — redes

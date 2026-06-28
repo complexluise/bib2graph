@@ -41,7 +41,7 @@ Ver docs/API.md §5.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import pyarrow as pa
@@ -274,6 +274,7 @@ class Forager:
         corpus: Corpus,
         *,
         direction: Direction = "both",
+        since: date | None = None,
     ) -> RankedCandidates:
         """Computa candidatos rankeados por *information scent*.
 
@@ -315,7 +316,9 @@ class Forager:
                 bwd_observed.add(ref_id)
 
         if direction in ("forward", "both"):
-            fwd_scent, fwd_rows = self._fetch_forward(rows, fetched_at=fetched_at)
+            fwd_scent, fwd_rows = self._fetch_forward(
+                rows, fetched_at=fetched_at, since=since
+            )
             for cand_id, scent_val in fwd_scent.items():
                 combined_scent[cand_id] = combined_scent.get(cand_id, 0.0) + scent_val
                 if cand_id not in fwd_candidate_rows:
@@ -379,6 +382,7 @@ class Forager:
         corpus_rows: list[dict[str, Any]],
         *,
         fetched_at: str,
+        since: date | None = None,
     ) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
         """Trae citantes via batcheo y calcula scent forward.
 
@@ -453,24 +457,26 @@ class Forager:
                 unit="lote",
                 leave=False,
             ) as pbar:
+                _since_kw = {"since": since} if since is not None else {}
                 if use_with_works:
                     citing_dict, works_map = self._source.fetch_citing_batch_with_works(
-                        seed_ids, max_per_paper=self._max_citing_per_paper
+                        seed_ids, max_per_paper=self._max_citing_per_paper, **_since_kw
                     )
                 else:
                     citing_dict = self._source.fetch_citing_batch(
-                        seed_ids, max_per_paper=self._max_citing_per_paper
+                        seed_ids, max_per_paper=self._max_citing_per_paper, **_since_kw
                     )
                     works_map = {}
                 pbar.update(1)
         except ImportError:
+            _since_kw = {"since": since} if since is not None else {}
             if use_with_works:
                 citing_dict, works_map = self._source.fetch_citing_batch_with_works(
-                    seed_ids, max_per_paper=self._max_citing_per_paper
+                    seed_ids, max_per_paper=self._max_citing_per_paper, **_since_kw
                 )
             else:
                 citing_dict = self._source.fetch_citing_batch(
-                    seed_ids, max_per_paper=self._max_citing_per_paper
+                    seed_ids, max_per_paper=self._max_citing_per_paper, **_since_kw
                 )
                 works_map = {}
 
