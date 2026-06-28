@@ -331,15 +331,28 @@ def run_build(
             artifacts_dir.mkdir(parents=True, exist_ok=True)
             (artifacts_dir / ".corpus_hash").write_text("", encoding="utf-8")
             store.backend.set_loop_state(new_state, cycle_round=new_round)
+            # scope_display para early-return (corpus vacío): mismo cálculo que el path normal.
+            _scope_display_empty = (
+                scope_cli_token if scope_cli_token is not None else corpus_scope
+            )
+            # Maturity en early-return: curated desde corpus_full (el filtrado está vacío).
+            from bib2graph.service.maturity import compute_maturity as _compute_maturity
+
+            _maturity_empty = _compute_maturity(
+                corpus_full,
+                scope=_scope_display_empty,
+                empty_network_kinds=[],
+            )
             return {
                 "networks_built": 0,
                 "artifacts_dir": str(artifacts_dir),
                 "corpus_hash": "",
                 "corpus_scope": corpus_scope,
-                "scope": corpus_scope,
+                "scope": _scope_display_empty,
                 "networks": [],
                 "warnings": build_warnings,
                 "empty_networks": [],
+                "maturity": _maturity_empty,
             }
 
         # Diagnóstico pre-build (ADR 0037 §(e), fuente única con status-time).
@@ -423,15 +436,28 @@ def run_build(
         hash_file.write_text(corpus_hash, encoding="utf-8")
 
         store.backend.set_loop_state(new_state, cycle_round=new_round)
+
+        # FIX 2 — gancho para #160 (maturity): "scope" expone el token CLI tal como
+        # lo tipió el usuario ("seeds"/"accepted"/"all"), NO el vocab interno
+        # ("seeds_only"). Esto hace que la superficie de agents-first sea consistente.
+        # Cuando se llama sin CLI (tests unitarios directos), scope_cli_token=None
+        # y se usa corpus_scope como fallback (preserva compat pre-0.10.0).
+        scope_display = scope_cli_token if scope_cli_token is not None else corpus_scope
+
+        # Maturity (#160): computar DENTRO del try para acceder a corpus_full
+        # antes del store.close() en finally.  Extrae los kinds de empty_networks
+        # (lista de dicts {kind, reason, fix_command}) sin duplicar reason/fix_command.
+        from bib2graph.service.maturity import compute_maturity as _compute_maturity
+
+        empty_network_kinds = [str(en["kind"]) for en in empty_networks]
+        maturity = _compute_maturity(
+            corpus_full,
+            scope=scope_display,
+            empty_network_kinds=empty_network_kinds,
+        )
     finally:
         store.close()
 
-    # FIX 2 — gancho para #160 (maturity): "scope" expone el token CLI tal como
-    # lo tipió el usuario ("seeds"/"accepted"/"all"), NO el vocab interno
-    # ("seeds_only"). Esto hace que la superficie de agents-first sea consistente.
-    # Cuando se llama sin CLI (tests unitarios directos), scope_cli_token=None
-    # y se usa corpus_scope como fallback (preserva compat pre-0.10.0).
-    scope_display = scope_cli_token if scope_cli_token is not None else corpus_scope
     return {
         "networks_built": len(artifacts),
         "artifacts_dir": str(artifacts_dir),
@@ -441,6 +467,7 @@ def run_build(
         "networks": networks_info,
         "warnings": build_warnings,
         "empty_networks": empty_networks,
+        "maturity": maturity,
     }
 
 

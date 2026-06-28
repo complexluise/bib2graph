@@ -576,8 +576,12 @@ Si una red sale vacía por el `min_weight` del YAML (modo spec), el `reason` **c
 **Esquema de respuesta `--json` (`data`):** `networks_built`, `artifacts_dir`, `corpus_hash`,
 **`scope`** = **token CLI** (`seeds`/`accepted`/`all`, gancho estable para #160 maturity),
 **`corpus_scope`** = vocab interno (`seeds_only`/…, backward-compat), `networks` (lista, con
-`clusters_csv` condicional), `warnings` (corpus-level) y `empty_networks` (diagnóstico por-red).
-Invariante: envelope `schema="1"`, exit codes y FSM intactos; todo lo de #159 es **aditivo**.
+`clusters_csv` condicional), `warnings` (corpus-level), `empty_networks` (diagnóstico por-red) y
+**`maturity`** (bloque aditivo del one-shot, AS-BUILT #160 — ver Apéndice `maturity`; `curated`
+deriva del **corpus completo** pre-scope, `scope` reusa este `data["scope"]`, `empty_networks` es la
+lista de `kind` extraída de `data["empty_networks"]` sin duplicar `reason`/`fix_command`; presente
+también en el early-return de corpus vacío).
+Invariante: envelope `schema="1"`, exit codes y FSM intactos; todo lo de #159/#160 es **aditivo**.
 
 > **No-divergencia es por-corpus.** La garantía de no-divergencia entre el diagnóstico de red-vacía de
 > `build` y el de `status` (ADR 0037 §(e)) es **sobre el mismo corpus de entrada**. Con `--scope != all`,
@@ -588,7 +592,9 @@ Invariante: envelope `schema="1"`, exit codes y FSM intactos; todo lo de #159 es
 **`snapshot` (AS-BUILT #32, 2026-06-17):** `b2g snapshot` sella una foto reproducible del estado vivo
 (parquet + `manifest.json`, ADR 0017). **`--out-dir` pasó a override OPCIONAL** — sin él, escribe en
 **`<workspace>/snapshots/`** (resolución ambiente vía `resolve_workspace`, igual que `build`). No
-transiciona el `CycleState`.
+transiciona el `CycleState`. Su `--json.data` —`snapshot_dir`, `corpus_hash`, `total_papers`,
+`schema_version`— suma el bloque aditivo **`maturity`** (AS-BUILT #160, ver Apéndice `maturity`):
+`scope="all"`, `empty_networks=[]` (snapshot no proyecta redes), `curated` desde el corpus vivo.
 
 **Staleness de la cache de redes (AS-BUILT #32, 2026-06-17):** `b2g status` suma el campo aditivo
 `data["networks_cache_stale"]: bool` (`schema="1"` intacto) y, cuando es `true`, un `warnings`
@@ -639,7 +645,11 @@ materializó en #157 (antes diferido). La lógica vive en `service/reads.py` (`l
   Flags: `--top N` / `-n` (default 10), `--kind` (`Choice` sobre los 5 `NetworkKind`, **default
   `bibliographic_coupling`**), `--json`. Envelope:
   `data = {kind, top, central: [{id, title, degree_centrality, community?}],
-  cocitation: [{source, source_title, target, target_title, weight}], reason?, fix_command?}`.
+  cocitation: [{source, source_title, target, target_title, weight}], reason?, fix_command?,
+  maturity}`. El bloque **`maturity`** (aditivo del one-shot, AS-BUILT #160 — ver Apéndice `maturity`)
+  está **SIEMPRE presente**: `scope="all"`, `empty_networks=["cocitation"]` cuando la co-citación
+  quedó vacía (si no, `[]`), `curated` desde el corpus. **No** duplica `reason`/`fix_command` (esos
+  viven en el bloque honest-empty de abajo).
   - **`central`** — top `N` nodos de la red `--kind` por `degree_centrality` desc. En redes de paper
     (`bibliographic_coupling`/`cocitation`) `title` es el **título completo** (join id→title); en
     redes de autor/institución/keyword cae al `label` (nombre de la entidad).
@@ -726,6 +736,32 @@ se activa con la variable de entorno **`B2G_JSON`**:
 Aditivo y retrocompatible: el envelope `schema="1"`, los exit codes y la FSM **no cambian** (ver
 ADR [0021](decisiones/0021-cli-agente-native-contrato.md) §C, enmienda 2026-06-27).
 
+**Apéndice — bloque `maturity` del one-shot (AS-BUILT #160, ADR [0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md) §f; FORMA fijada aquí por delegación de ADR [0038](decisiones/0038-destino-verbos-huerfanos-0037.md) P3).**
+Los artefactos del camino **one-shot** llevan un bloque **aditivo** `data["maturity"]` que **se
+autodeclara borrador sin pulir**: honestidad **por construcción** (vom Brocke/PRISMA hecho
+self-description), para que ni un agente que optimiza por `exit 0` ni un humano apurado confundan un
+one-shot con un resultado terminado. **Aditivo: `schema="1"` intacto.**
+
+```json
+"maturity": {"curated": false, "scope": "all", "saturated": false, "empty_networks": []}
+```
+
+- **Forma estable: SIEMPRE 4 claves** (orden y tipos fijos). El bloque no muta de forma según el caso.
+
+| clave | tipo | valores | regla de derivación |
+|---|---|---|---|
+| `curated` | `bool` | `true`/`false` | `true` si el corpus **completo** (`corpus_full`, **antes** del filtro de `--corpus-scope`) tiene **≥1 paper** con `curation_status` ∈ {`accepted`, `rejected`}. Refleja si hay decisiones de curación aplicadas, **independiente** del scope y del FSM. |
+| `scope` | `str` \| `null` | token CLI (`all`/`accepted`/`seeds`…) \| `null` | En `build` reusa `data["scope"]` (el **token CLI** tal como se tipeó, no el vocab interno `seeds_only`). En `snapshot` y `read top` es `"all"`. `null` si no aplica. |
+| `saturated` | `bool` | **`false` constante** | **Siempre `false`** en one-shot: el PO decidió **no sobre-afirmar**. Gancho futuro (documentado en el código): comparar `referenced_refs_count()` entre rondas de `enrich` para detectar convergencia de referencias. |
+| `empty_networks` | `list[str]` | lista de `kind` (puede ser `[]`) | **Solo los tokens `kind`** de las redes vacías. `reason`/`fix_command` **NO se duplican** acá — siguen viviendo en `data["empty_networks"]` (lista de dicts `{kind, reason, fix_command}`) de `build`. En `build` se extraen de ahí; en `read top` es `["cocitation"]` si la co-citación quedó vacía; en `snapshot` es `[]`. |
+
+- **Dónde aparece (PRESENTE SIEMPRE):** `build` (incluido el early-return de corpus vacío),
+  `snapshot` y `read top`. **AUSENTE** en `read list`, `read stats` y `read show` (lecturas tabulares,
+  no artefactos one-shot) — no llevan `maturity`.
+- **Función pura:** lo calcula `service.maturity.compute_maturity(corpus, *, scope, empty_network_kinds)`
+  (sin I/O, re-exportada desde `bib2graph.service`), invariante de neutralidad de transporte intacta
+  (§0).
+
 ---
 
 ## 0. Capa de servicios `service/` — contrato neutral compartido (AS-BUILT G1, ADR 0028)
@@ -787,6 +823,18 @@ def code_for(exc: BaseException) -> int:
     httpx.HTTPError → 4. Excepción no mapeada → TypeError (el llamador decide).
     Lo usan la capa de servicio y los adaptadores para derivar exit code / HTTP status
     sin duplicar la política."""
+
+
+# service/maturity.py — bloque maturity del one-shot (#160, ADR 0037 §f / 0038 P3)
+def compute_maturity(
+    corpus: Corpus, *, scope: str | None, empty_network_kinds: list[str]
+) -> dict[str, Any]:
+    """Bloque maturity para el --json de build/snapshot/read top (ver Apéndice maturity).
+    Función PURA, sin I/O. Devuelve EXACTAMENTE 4 claves:
+    {curated: bool, scope: str|None, saturated: bool, empty_networks: list[str]}.
+    curated = corpus tiene ≥1 paper con curation_status ∈ {accepted, rejected};
+    saturated = False constante (one-shot never over-claims; gancho futuro referenced_refs_count);
+    empty_networks = solo los kind (reason/fix_command NO se duplican)."""
 ```
 
 **Adaptadores (el contrato se re-exporta, no se duplica).** `cli/_envelope.py` y `cli/_errors.py`
@@ -891,12 +939,15 @@ def get_top(ws: Workspace, *, n=10, kind="bibliographic_coupling") -> dict[str, 
     """Salida de investigación (#157): nodos centrales + pares de co-citación con título,
     sobre redes recomputadas (NO requiere `build`; mismo camino que get_network). Devuelve:
     {kind, top, central: [{id, title, degree_centrality, community?}],
-     cocitation: [{source, source_title, target, target_title, weight}], reason?, fix_command?}.
+     cocitation: [{source, source_title, target, target_title, weight}], reason?, fix_command?,
+     maturity}.
     `central` = top n nodos de la red `kind` por degree_centrality desc (título completo en redes
     de paper; label de entidad en author/institution/keyword). `cocitation` = SIEMPRE la red
     cocitation, top n aristas por weight desc.
     Honest-empty: co-citación vacía (sin cited_by_id) → bloque [] + reason/fix_command
-    (de predict_build_preview), NO error. Raises DataError si kind inválido, n <= 0, o la red
+    (de predict_build_preview), NO error. `maturity` (aditivo, #160, ver Apéndice `maturity`):
+    SIEMPRE presente, scope="all", empty_networks=["cocitation"] si la co-citación quedó vacía.
+    Raises DataError si kind inválido, n <= 0, o la red
     falla genuinamente; StoreError si el store falla. (Detrás de `read top`.)"""
 ```
 

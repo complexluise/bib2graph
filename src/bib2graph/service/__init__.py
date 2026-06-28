@@ -17,6 +17,8 @@ Contrato público re-exportado:
   - ``accept_papers``, ``reject_papers``, ``curate_paper`` — escrituras del
     Hito G3 (ADR 0028).
   - ``resolve_dois`` — resolución DOI→source_id (ADR 0035).
+  - ``compute_maturity`` — bloque ``maturity`` para build/snapshot/read top
+    (#160, sub-issue de la superficie CLI 0.10.0, ADR 0037 §f).
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from bib2graph.service.errors import (
     UsageError,
     code_for,
 )
+from bib2graph.service.maturity import compute_maturity
 from bib2graph.service.reads import (
     compare_rounds,
     corpus_stats,
@@ -57,6 +60,7 @@ __all__ = [
     "build_envelope",
     "code_for",
     "compare_rounds",
+    "compute_maturity",
     "corpus_stats",
     "curate_paper",
     "get_network",
