@@ -347,6 +347,10 @@ def test_skill_add_json_envelope_valido(tmp_path: Path, runner: CliRunner) -> No
     assert "install_path" in data, f"data no contiene 'install_path': {data!r}"
     assert "scope" in data, f"data no contiene 'scope': {data!r}"
     assert data["scope"] == "user"
+    # Campos agénticos: un agente agnóstico se onboardea desde el --json.
+    assert "skill_md" in data, f"data no contiene 'skill_md': {data!r}"
+    assert data["skill_md"].endswith("SKILL.md")
+    assert "how_to" in data, f"data no contiene 'how_to': {data!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -476,3 +480,46 @@ def test_skill_md_anti_drift_comandos_en_cli() -> None:
                 f"registrado. Subcomandos de '{cmd}': {sorted(sub_cmds.keys())}. "
                 "Actualizá SKILL.md o registrá el subcomando."
             )
+
+
+# ---------------------------------------------------------------------------
+# 12. Salida agéntica (AgenticExperience) — explícita y agnóstica al proveedor
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_skill_add_data_incluye_rutas_agenticas(tmp_path: Path) -> None:
+    """El ``data`` trae skill_md, reference_dir y how_to (auto-onboarding agnóstico)."""
+    data = run_skill_add(scope="user", force=False, home=tmp_path)
+    install = tmp_path / ".claude" / "skills" / "bib2graph"
+
+    assert data["skill_md"] == str(install / "SKILL.md")
+    assert data["reference_dir"] == str(install / "reference")
+    assert "seed→chain→build→read" in data["how_to"], (
+        "how_to debe resumir el ciclo a grandes rasgos."
+    )
+    # Las rutas apuntan a archivos realmente instalados.
+    assert Path(data["skill_md"]).exists()
+
+
+@pytest.mark.unit
+def test_skill_add_salida_humana_es_explicita(
+    tmp_path: Path, runner: CliRunner
+) -> None:
+    """La salida humana dice dónde está el SKILL.md y pide leerlo.
+
+    Es la pieza que vuelve la skill usable por un agente de **cualquier**
+    proveedor (no solo Claude Code): el CLI es explícito sobre el artículo a leer.
+    """
+    with patch.object(Path, "home", return_value=tmp_path):
+        result = runner.invoke(b2g, ["skill", "add", "--user"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    out = result.output
+    assert "SKILL.md" in out, "La salida debe nombrar el SKILL.md."
+    assert "leé" in out.lower() or "lee" in out.lower(), (
+        "La salida debe pedirle al agente que lea el artículo."
+    )
+    assert "seed→chain→build→read" in out or "ciclo" in out.lower(), (
+        "La salida debe explicar a grandes rasgos cómo opera bib2graph."
+    )
