@@ -325,8 +325,12 @@ una idea; el commit/PR sigue Conventional Commits (abajo); no bumpear versión n
 
 El repo versiona su propia config de Claude Code para que **el equipo herede los roles y los
 guardarraíles** al clonar (project-level **gana** sobre la config de usuario). Se versiona
-`.claude/settings.json` + `.claude/agents/` + `.claude/hooks/`; queda ignorado el estado local
-(`settings.local.json`, `worktrees/`, `System_prompt.md`).
+`.claude/settings.json` + `.claude/agents/` + `.claude/hooks/` + `.claude/commands/`; queda ignorado
+el estado local (`settings.local.json`, `worktrees/`, `System_prompt.md`).
+
+**Comandos de proyecto** (`.claude/commands/*.md`, slash commands del equipo): `/retro-ciclo` —
+retrospectiva metacognitiva de fin de ciclo que mide dónde se fue el tiempo y **baka las lecciones**
+en el proceso (ver §"Ejecución concurrente y testing").
 
 **Subagentes** (`.claude/agents/*.md`), afinados a bib2graph y con **una frontera dura por rol**
 ("cada uno es responsable de sus artefactos"):
@@ -353,6 +357,28 @@ bypass**, son más fuertes que los permisos). Se invocan con `uv run --no-sync -
 su frontmatter no toma efecto hasta reiniciar). Los **hooks de `settings.json` sí recargan en
 caliente**. Si un guardarraíl bloquea algo legítimo, se afloja editando el script en
 `.claude/hooks/`.
+
+### Ejecución concurrente y testing — lecciones del epic 0.10.0 (#167)
+
+Destiladas del giro de superficie 0.10.0 (medición forense: **~50% del tiempo de cada `coder` se
+fue esperando el suite completo de tests**). Las captura y actualiza el comando **`/retro-ciclo`**
+(`.claude/commands/`) al cerrar cada ciclo.
+
+- **Testing por capas.** El `coder` itera con **tests pertinentes** (`pytest test_X.py::test_Y`,
+  7-60 s) y auto-formatea (`ruff format` + `ruff check --fix`) antes de gatear; el **gate completo
+  (`pytest` entero, ~6 min) lo corren el `verifier` y el CI**, no el coder en loop. Elimina una de
+  las 3 corridas redundantes del suite por sub-issue.
+- **Paralelizar con prudencia (archivos disjuntos).** Fan-out de varios sub-issues a la vez **solo
+  si tocan archivos disjuntos**. Ramas que comparten un archivo caliente (`build.py`,
+  `cli/__init__.py`) → **serializar** (mergear una, rebasar la siguiente) para no pagar el baile de
+  conflictos. Batchear los encuadres y resolver las decisiones del PO en **una sola ronda** es
+  ganancia neta sin riesgo.
+- **Confiabilidad de worktrees.** Los `Edit`/`Write` de un subagente se aíslan al worktree de la
+  **sesión**, no a la ruta que se le pase en el prompt. Para trabajo sobre una rama: tenerla
+  **checked out en el worktree de la sesión** (o recuperar el trabajo vía `git diff`/patch). No
+  asumir que el agente escribe en la ruta del prompt.
+- **Windows:** evitar rutas con acentos en Git Bash (rompe el quoting); preferir PowerShell para
+  operaciones de filesystem. Reservar Bash para comandos POSIX simples.
 
 ## Comandos de build / lint / test
 
