@@ -33,11 +33,14 @@
   explícito), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `sources/equation.py` (capa declarativa de la
   ecuación, 9a), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/` con 19 subcomandos en `cli/commands/`, no un
-  placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9; el 17° `b2g restore`
-  rehidrata un corpus curado sin red, Ciclo 9a —**ahora `b2g snapshot restore`**, #163, abajo—; el 18° `b2g thesaurus` aplica el thesaurus curado,
-  único paso explícito del preproc, #88, abajo; el 19° `b2g gui` levanta la API local FastAPI, Hito G3
-  del MVP GUI, ADR 0028)—.
+  El **CLI `b2g` es real** —paquete `cli/`, no un placeholder—. **Superficie 0.10.0 (ADR 0037/0038,
+  AS-BUILT):** **10 verbos del ciclo** (`init`, `seed`, `chain`, `curate`, `build`, `read`, `export`,
+  `snapshot`, `status`, `validate`) **+ 3 grupos noun-verb** (`read {list,stats,show,top}`,
+  `curate {dump,apply,accept,reject,filter}`, `snapshot {create,restore}`) **+ `gui`** (excepción, ADR
+  0027/0028) **+ 9 aliases deprecados** (`accept`/`reject`/`filter`/`inspect`/`monitor`/`networks`/
+  `enrich`/`restore`/`resolve`, retiro 0.11.0). **`thesaurus` se retiró como verbo** (#164): su
+  capacidad es **`b2g build --thesaurus`**. Conteo verificable contra `b2g --help`; detalle en
+  `docs/API.md` §Convenciones CLI.
   **Grupo noun-verb `read {list,stats,show,top}` (#156/#157, ADR 0037 §b):** primer grupo del CLI (lectura pura
   del corpus, no transiciona); `read list` filtra por `--query`/`--status`/`--seeds|--candidates`/`--year`,
   `read stats --group-by {status,year,is_seed}`, `read show --id` (resuelve id/doi/source_id, ADR 0036),
@@ -116,8 +119,9 @@
   `cli/_ingest.py::normalize_and_dedup` sobre el corpus **completo mergeado** ⇒ dedup
   **cross-biblioteca**); el corpus queda siempre normalizado y deduplicado. **`rapidfuzz` pasa al
   núcleo** (`[project.dependencies]`; **el extra `[dedup]` se elimina**, import ya no perezoso).
-  Nuevo **18° subcomando `b2g thesaurus --from <archivo>`** (único paso explícito del preproc,
-  transversal al FSM). La ingesta y `thesaurus` persisten con **`persist_replace`** /
+  El thesaurus era entonces el 18° subcomando `b2g thesaurus --from <archivo>` —**RETIRADO como verbo
+  en 0.10.0 (#164, ADR 0038)**: su capacidad vive como flag **`b2g build --thesaurus`**—. La ingesta y
+  la pasada `build --thesaurus` persisten con **`persist_replace`** /
   `overwrite_corpus` (DELETE+INSERT, preservan tablas hermanas; evita que el upsert-concat D3
   reintroduzca variantes). `build`/`networks` siguen puros. Deuda conocida: dedup O(n²) por ingesta
   (optimización futura) y skip #93 (`test_run_seed_from_bib_reseed_incrementa_ronda`, crash
@@ -193,7 +197,7 @@
   `docs/API.md` §5/§4 y ADR [0020](docs/decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)
   §AS-BUILT #54.
 - **Forward chaining del `Forager` batcheado** (#21, 2026-06-16): el forward del `Forager`
-  (`b2g chain`/`b2g monitor`) **ya no es N+1** — reusa `OpenAlexSource.fetch_citing_batch` (batcheo OR
+  (`b2g chain`, incl. `chain --since` —ex `monitor`, #158) **ya no es N+1** — reusa `OpenAlexSource.fetch_citing_batch` (batcheo OR
   + cap por semilla `max_citing_per_paper`/`--max-citing`, default 50) con preview sin red. **Opera
   sobre `is_seed=True`** (todas las semillas, **sin** filtrar `curation_status`): el chaining precede a
   la curación; la restricción a `accepted` es del **Enricher** (Hito 8b), no del Forager. Ver
@@ -506,11 +510,13 @@ src/bib2graph/
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
                        # _ingest.py = helper normalize_and_dedup (auto-preproc en la ingesta, ADR 0031);
-                       # cli/commands/ = 19 subcomandos (incl. monitor FSM→MONITORED, enrich refs→DOI + co-citación,
-                       # init scaffold de workspace —ADR 0029, curate dump/import CSV —#22+#26,
-                       # networks capa declarativa YAML —Hito 9, restore rehidrata corpus curado sin
-                       # red →FILTERED —ADR 0030/9a, thesaurus aplica thesaurus curado transversal —#88/ADR 0031,
-                       # gui levanta la API local FastAPI —Hito G3 del MVP GUI/ADR 0028, extra [gui];
+                       # cli/commands/ = superficie 0.10.0 (ADR 0037/0038): 10 verbos del ciclo + 3 grupos
+                       # noun-verb (read/curate/snapshot) + gui (excepción) + 9 aliases deprecados
+                       # (accept/reject/filter/inspect/monitor/networks/enrich/restore/resolve, retiro 0.11.0).
+                       # chain --since absorbe monitor →MONITORED (#158); enrich absorbido en chain (refs→DOI)
+                       # + build (co-citación) (#162); thesaurus retirado → build --thesaurus (#164);
+                       # _deprecation.py emite avisos a stderr + warnings[] (#165). init scaffold —ADR 0029;
+                       # build --spec absorbe networks —#159; gui levanta la API local FastAPI —Hito G3/ADR 0028, extra [gui];
                        # G4: _make_index_response inyecta el token en el index.html servido vía ruta GET /).
                        # CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.

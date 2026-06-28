@@ -101,3 +101,29 @@ documentando que el 2º nivel se materializa como **`cited_by_id`** (8b): "citan
 > `OpenAlexSource.fetch_citing_batch` (batcheo OR ≤50 con presupuesto por semilla),
 > `Networks.quick` → 4/5 redes según `cited_by_id`. **13 subcomandos** (`enrich` incluido).
 > **365 tests verdes** (mypy/ruff limpios).
+
+---
+
+> **Nota append-only — superficie 0.10.0: `enrich` deja de ser verbo y `build` ya no es estrictamente
+> "puro/sin red" (2026-06-28, #162, ADR [0038](0038-destino-verbos-huerfanos-0037.md)).**
+> Esta nota **no revierte** la decisión de 0025 (la capacidad del Enricher sigue viva, núcleo,
+> opt-in); solo registra **dónde** vive ahora y un invariante que cambia:
+>
+> - **`enrich` deja de ser subcomando propio** (la decisión C de arriba — "`enrich` es subcomando CLI
+>   propio" — queda **superada como superficie**, no como capacidad). El verbo `enrich` pasa a **alias
+>   deprecado** (aviso a stderr, se elimina en 0.11.0) que delega en la misma lógica. La pasada
+>   **refs→DOI (8a)** corre **automática en `chain`** (forrajeo); la pasada **co-citación / `cited_by`
+>   (8b)** corre **automática en `build`** cuando hay semillas aceptadas. La implementación se unifica
+>   en el helper `cli/_enrich.py::enrich_corpus(corpus, source, *, max_citing, pass_name)` (pasadas
+>   `"refs_doi"`/`"cited_by"`/`"both"`), fuente única compartida por `chain`/`build`/el alias `enrich`.
+>   Ambos comandos suman un bloque **aditivo `data["enrichment"]`** al envelope `--json`
+>   (`refs_resolved`/`refs_total_unique` y/o `citing_new`/`citing_targets`, solo las claves de las
+>   pasadas ejecutadas). `build` suma además `--email` y `--max-citing`.
+> - **`build` ya NO es estrictamente "puro/sin red".** La frase de la decisión ("`build` sigue
+>   puro/sin red") **deja de ser cierta**: `build` hace requests `cited_by` a OpenAlex **cuando hay
+>   semillas aceptadas**. **Por qué (decisión del PO):** la co-citación necesita las semillas
+>   **aceptadas**, que recién están disponibles en *build-time* (después de curar); correrla en `build`
+>   es lo que hace que el camino one-shot del ADR 0037 produzca la red de co-citación sin un verbo
+>   aparte. **Sin semillas aceptadas, `build` es no-op de red (cero requests)** y mantiene su pureza
+>   de proyección (los proyectores siguen puros, ADR 0014). La pasada solo *puebla `cited_by_id`*; no
+>   crece el corpus (decisión A de arriba, intacta).
