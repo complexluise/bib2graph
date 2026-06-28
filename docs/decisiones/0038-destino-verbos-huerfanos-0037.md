@@ -173,3 +173,22 @@ contra `--help`**.
 - **Cerrar la ventana de deprecación por fecha calendario en vez de por versión.** Rechazada (P1):
   el criterio por **versión (0.11.0)** es verificable, reproducible y no depende del calendario de
   release; es coherente con cómo el proyecto versiona (release-please).
+
+## Enmienda 2026-06-27 (append-only) — corrige el gap de P1: `filter` también entra a la ventana (#155)
+
+> Anotación append-only (no revierte nada de arriba). Surge de la implementación del grupo `curate`
+> noun-verb (sub-issue [#155](https://github.com/complexluise/bib2graph/issues/155)): al absorber
+> `filter` en `curate filter` se constató que **P1 omitió `filter`** de la lista de aliases en
+> deprecación.
+
+El parámetro **(P1)** enumeró los aliases que cierran en `0.11.0` como *"`networks`, `accept`,
+`reject`, `inspect`, `monitor` —más `resolve` y el entry-point `bib2graph`"*. Pero el ADR
+[0037](0037-superficie-cli-10-verbos-ciclo.md) (decisión (b)) absorbió **`accept`/`reject`/`filter`**
+en el grupo `curate`: los tres verbos planos quedan como alias deprecados. P1 listó `accept` y
+`reject` pero **omitió `filter`** —un gap, no una decisión—.
+
+**Corrección:** el verbo suelto **`filter` se suma a la ventana de deprecación**, con el mismo
+criterio que `accept`/`reject`: sigue funcionando **con aviso** durante 0.10.x y **se elimina en
+0.11.0**, como alias deprecado del nuevo **`curate filter`**. (`filter` y `curate filter` comparten la
+lógica de servicio `filter_corpus`, fuente única; el suelto es un shim que delega.) El resto de P1 no
+cambia. AS-BUILT del grupo `curate` en [`../API.md`](../API.md) §`curate`.

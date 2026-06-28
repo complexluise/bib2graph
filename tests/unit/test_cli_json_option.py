@@ -156,7 +156,7 @@ _CMDS_NO_WORKSPACE: list[list[str]] = [
     ["resolve", "--json"],
     ["accept", "--ids", "DUMMY_ID", "--json"],
     ["reject", "--ids", "DUMMY_ID", "--json"],
-    ["curate", "--dump", "--json"],
+    ["curate", "dump", "--json"],
     ["restore", "--from-corpus", "nonexistent.parquet", "--json"],
     ["seed", "--equation", "test query", "--json"],
     ["thesaurus", "--from", "nonexistent.json", "--json"],

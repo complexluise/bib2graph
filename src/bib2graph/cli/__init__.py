@@ -1,18 +1,19 @@
-"""cli — CLI agente-native ``b2g`` (Hito 6 + ADR 0029 workspace).
+"""cli — CLI agente-native ``b2g`` (Hito 6 + ADR 0029 workspace + #155 surface CLI 0.10.0).
 
-Arma el grupo Click principal, registra los 21 subcomandos (20 planos + el
-grupo noun-verb ``read``) y expone ``main()`` como entry point del paquete.
+Arma el grupo Click principal, registra los subcomandos planos y los grupos
+noun-verb, y expone ``main()`` como entry point del paquete.
 
 Entry point en ``pyproject.toml``:
     b2g = "bib2graph.cli:main"
 
-Subcomandos planos (20):
+Subcomandos planos (19):
     init, seed, chain, filter, build, enrich, monitor, export, snapshot,
-    status, inspect, validate, accept, reject, curate, networks, restore,
+    status, inspect, validate, accept, reject, networks, restore,
     thesaurus, gui, resolve.
 
-Grupos noun-verb (1):
-    read [list|stats|show]  — lecturas read-only del corpus (#156).
+Grupos noun-verb (2):
+    read   [list|stats|show|top] — lecturas read-only del corpus (#156/#157).
+    curate [dump|apply|accept|reject|filter] — curación en lote (#155).
 
 Cada subcomando lleva:
   - ``--json``: salida JSON estructurada (envelope versionado, §API.md).
@@ -43,7 +44,7 @@ import click
 from bib2graph.cli.commands.accept import accept_cmd
 from bib2graph.cli.commands.build import build_cmd
 from bib2graph.cli.commands.chain import chain_cmd
-from bib2graph.cli.commands.curate import curate_cmd
+from bib2graph.cli.commands.curate import curate_grp
 from bib2graph.cli.commands.enrich import enrich_cmd
 from bib2graph.cli.commands.export import export_cmd
 from bib2graph.cli.commands.filter import filter_cmd
@@ -105,8 +106,9 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
     error accionable (exit 1) que sugiere 'b2g init' o '--workspace'.
 
     Subcomandos: init, seed, chain, filter, build, enrich, monitor, export,
-    snapshot, status, inspect, validate, accept, reject, curate, networks,
-    restore, thesaurus, gui, resolve, read [list|stats|show].
+    snapshot, status, inspect, validate, accept, reject, networks,
+    restore, thesaurus, gui, resolve,
+    read [list|stats|show|top], curate [dump|apply|accept|reject|filter].
 
     Ejemplo:
         b2g init mi-investigacion
@@ -118,7 +120,7 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
     ctx.obj["workspace"] = workspace
 
 
-# Registrar los 20 subcomandos planos + el grupo noun-verb read (#156)
+# Registrar subcomandos planos + grupos noun-verb read (#156) y curate (#155)
 b2g.add_command(init_cmd)
 b2g.add_command(seed_cmd)
 b2g.add_command(chain_cmd)
@@ -133,7 +135,7 @@ b2g.add_command(inspect_cmd)
 b2g.add_command(validate_cmd)
 b2g.add_command(accept_cmd)
 b2g.add_command(reject_cmd)
-b2g.add_command(curate_cmd)
+b2g.add_command(curate_grp)
 b2g.add_command(networks_cmd)
 b2g.add_command(restore_cmd)
 b2g.add_command(thesaurus_cmd)

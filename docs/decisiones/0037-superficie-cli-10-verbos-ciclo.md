@@ -258,3 +258,29 @@ sella). Es decir: lo que define la transición es **el verbo `build`**, no el mo
 - **Invariante:** envelope `schema="1"`, exit codes y la forma del FSM **no cambian**; D1 solo fija
   *cuándo* se dispara la transición ya existente. Contrato AS-BUILT en
   [`../API.md`](../API.md) §`build`.
+
+## Enmienda 2026-06-27 (append-only) — D2: en el grupo `curate` la transición la define el VERBO (#155)
+
+> Anotación append-only (gemela de la D1 de arriba; no revierte nada). Decidida por el **PO** durante
+> la implementación del grupo noun-verb `curate` (decisión (b)), sub-issue
+> [#155](https://github.com/complexluise/bib2graph/issues/155).
+
+La decisión (b) agrupó `dump`/`apply`/`accept`/`reject`/`filter` bajo `curate`. El cuerpo de arriba
+trata la curación como **transversal** (ver tabla de verbos: "`accept`/`reject`/`filter`→`curate …`"),
+y eso era cierto **como bloque** cuando eran verbos planos. Pero al volverse grupo surgió el mismo
+matiz que la D1 resolvió para `build`: **¿el grupo `curate` es transversal entero, o la transición la
+define cada verbo?** El verbo suelto `filter` —histórico— transicionaba a `FILTERED`.
+
+**D2 (PO):** **dentro del grupo `curate`, la transición del FSM la define el VERBO, no el grupo**
+—mismo principio que la D1 (el verbo `build`, no el modo, define la transición)—. Concretamente:
+
+- **`curate filter` transiciona a `FILTERED`** (idéntico al verbo suelto `filter`; reusa
+  `apply_transition`, fuente única).
+- **`curate dump` / `curate apply` / `curate accept` / `curate reject` son transversales** (NO
+  transicionan, disponibles en cualquier estado del lazo).
+
+Esto **matiza** —no revierte— la regla "curate es transversal" del cuerpo: era verdadera como bloque
+de verbos planos; ahora es por-verbo. **Invariante:** envelope `schema="1"`, exit codes y la forma del
+FSM **no cambian**; D2 solo fija *qué verbo del grupo* dispara la transición ya existente. La lógica es
+fuente única en `service/curate.py` (`filter_corpus` con `decided_at` inyectado, neutralidad de
+servicio ADR 0017). Contrato AS-BUILT en [`../API.md`](../API.md) §`curate`.

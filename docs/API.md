@@ -141,7 +141,7 @@
 > materializa el principio **CLI-puro** del PO (ADR
 > [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md) §AS-BUILT Ciclo B). `build_corpus.py`
 > **eliminado**: el ejemplo se arma y reproduce **100% por CLI** (`seed --spec equation.yaml`
-> `max_results 80` → `curate --from-csv curacion.csv` 10 `accepted` → `enrich --max-citing 25` →
+> `max_results 80` → `curate apply curacion.csv` 10 `accepted` → `enrich --max-citing 25` →
 > `snapshot`). Corpus = **~80 filas** (70 `candidate` + 10 `accepted` enriquecidas), **co-citación
 > presente** (rala) — antes 137 filas / co-citación vacía (9b). Nuevo artefacto congelado
 > **`curacion.csv`** (receta determinista de curación). Gate R2 ajustado (piso `n>=50`,
@@ -404,41 +404,60 @@ resolución DOI→`source_id` del flujo BibTeX e2e, issues #110/#112, ADR
   `networks/`/`snapshots/`/`exports/`; **`b2g init .`** inicializa el cwd. Si la carpeta ya es un
   workspace → error (`WorkspaceExistsError`). **NO transiciona** el `CycleState`. `data` =
   `{root, name, ...}`; `--json` con `schema="1"`.
-- **`curate`** (#22 + #26, AS-BUILT 2026-06-16): **curación en lote vía CSV** —cierra el hueco de la
-  [Nota 09](Notas/09-sesion-qa-prueba-ecologia-valoraciones.md) B4/B5/P1 (la curación a escala no era
-  viable con `accept`/`reject` por `--ids` uno a uno). **Dos modos mutuamente excluyentes** (exactamente
-  uno; pasar ambos o ninguno → error de uso, exit 1):
-  - **`--dump`** escribe un CSV revisable offline (Excel/Calc). Default
+- **`curate`** (#22 + #26 origen; **grupo noun-verb AS-BUILT #155**, ADR 0037 (b)): **grupo de
+  curación** con cinco subcomandos —`{dump, apply, accept, reject, filter}`—. Reorganiza la superficie
+  de curación a `b2g curate <verbo>` (decisión (b) del ADR
+  [0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md), 2° grupo noun-verb tras `read`).
+  **`b2g curate` sin subcomando → help + exit 0.**
+  **BREAKING (autorizado por ADR 0037 (b), sin alias):** la **forma-flag** `curate --dump` /
+  `curate --from-csv` fue **ELIMINADA**; `curate --all` también (usar `--scope all`). La lógica vive en
+  `service/curate.py` (fuente única, ver §0); el CLI solo parsea y delega.
+
+  **La transición del FSM la define el VERBO, no el grupo** (precedente D1 de #159): **`curate filter`
+  transiciona a `FILTERED`**; `dump`/`apply`/`accept`/`reject` son **transversales** (NO transicionan,
+  disponibles en cualquier estado del lazo). Esto matiza la regla previa "curate es transversal" —cierta
+  como bloque, ahora por-verbo (ver enmienda en el ADR 0037).
+
+  - **`curate dump`** (= ex `--dump`) escribe un CSV revisable offline (Excel/Calc). Default
     `<workspace>/exports/curacion.csv`; **`--out`** lo override. **`--scope [candidates|seeds|all]`**
     (default `candidates`) elige qué papers volcar: `candidates` = forrajeados a revisar
     (`curation_status == 'candidate'` **AND** `is_seed == False`, **excluye semillas** —arregla #72,
     donde el dump arrastraba seeds); `seeds` = semillas originales (`is_seed == True`); `all` = todo el
-    corpus. **`--all`** queda como **alias deprecado de `--scope all`** (tiene precedencia si se pasan
-    ambos). Sin candidatos (scope `candidates`/`seeds` vacío) → error accionable que sugiere `--scope all`
-    o `b2g chain`. Columnas (16, orden estable): `id, source_id, title, year, authors, venue, doi,
-    keywords, cited_by_count, references_count, is_seed, openalex_url, scent_score, cluster, decision,
-    note`. **Todas read-only salvo `decision` y `note`** (las editables por el humano). `venue` sale de
-    `source`; `keywords` se une con `" | "` (igual que `authors`); `openalex_url` es una **columna
-    derivada OpenAlex-específica**: se construye `https://openalex.org/<source_id>` solo cuando el
-    `source_id` parece un ID de OpenAlex (`W…`), si no queda vacía. **`cited_by_count`/`references_count` hoy salen vacías**:
-    no existen como escalares en el schema canónico de 23 columnas, así que la columna queda como
-    placeholder para llenado manual (limitación conocida, no falla). `decision` refleja el
-    `curation_status` actual (`candidate`→`undecided`, `accepted`→`accepted`, `rejected`→`rejected`).
-    `data` = `{csv_path, papers_exported, columns}`.
-  - **`--from-csv <archivo>`** aplica las decisiones en lote y persiste: `accepted`→`accept`,
-    `rejected`→`reject`, `undecided`→no-op (case-insensitive). **Idempotente** (reimportar el mismo CSV
-    = mismo `corpus_hash`; el reloj `decided_at` se inyecta en la **frontera CLI**, R2/ADR 0017, fuera
-    de la identidad). **Validación accionable** (exit 2): CSV sin `id`/`decision` → error que nombra las
-    columnas requeridas; `decision` con un valor fuera de `{accepted, rejected, undecided}` → error con
-    los valores válidos. **IDs huérfanos** (en el CSV pero no en el corpus) **NO se aplican** y se
-    reportan en `not_found_count` + aviso humano (cierra el no-op silencioso). `data` =
-    `{accepted_count, rejected_count, skipped_count, not_found_count, total_rows}` —los `*_count` de
-    accept/reject cuentan papers **efectivamente** encontrados y marcados, no filas del CSV.
-  - **`note` es advisory:** hace round-trip en el dump pero **se ignora al importar** (`ProvenanceEvent`
+    corpus. **`--all` ELIMINADO** (usar `--scope all`). Sin candidatos (scope `candidates`/`seeds`
+    vacío) → error accionable que sugiere `--scope all` o `b2g chain`. Columnas (16, orden estable):
+    `id, source_id, title, year, authors, venue, doi, keywords, cited_by_count, references_count,
+    is_seed, openalex_url, scent_score, cluster, decision, note`. **Todas read-only salvo `decision` y
+    `note`** (las editables por el humano). `venue` sale de `source`; `keywords` se une con `" | "`
+    (igual que `authors`); `openalex_url` es una **columna derivada OpenAlex-específica**: se construye
+    `https://openalex.org/<source_id>` solo cuando el `source_id` parece un ID de OpenAlex (`W…`), si no
+    queda vacía. **`cited_by_count`/`references_count` hoy salen vacías**: no existen como escalares en
+    el schema canónico de 23 columnas, así que la columna queda como placeholder para llenado manual
+    (limitación conocida, no falla). `decision` refleja el `curation_status` actual
+    (`candidate`→`undecided`, `accepted`→`accepted`, `rejected`→`rejected`). `data` =
+    `{csv_path, papers_exported, columns}`. Transversal (NO transiciona).
+  - **`curate apply <csv>`** (= ex `--from-csv`) aplica las decisiones en lote y persiste:
+    `accepted`→`accept`, `rejected`→`reject`, `undecided`→no-op (case-insensitive). **Idempotente**
+    (reimportar el mismo CSV = mismo `corpus_hash`; el reloj `decided_at` se inyecta en la **frontera
+    CLI**, R2/ADR 0017, fuera de la identidad). **Validación accionable** (exit 2): CSV sin
+    `id`/`decision` → error que nombra las columnas requeridas; `decision` con un valor fuera de
+    `{accepted, rejected, undecided}` → error con los valores válidos. **IDs huérfanos** (en el CSV pero
+    no en el corpus) **NO se aplican** y se reportan en `not_found_count` + aviso humano (cierra el no-op
+    silencioso). `data` = `{accepted_count, rejected_count, skipped_count, not_found_count, total_rows}`
+    —los `*_count` de accept/reject cuentan papers **efectivamente** encontrados y marcados, no filas del
+    CSV. Transversal (NO transiciona).
+  - **`curate accept --ids ... [--by NOMBRE]`** / **`curate reject --ids ... [--by NOMBRE]`**: aceptan
+    o rechazan papers por ID (curación uno-a-uno o en lote por flags). Comparten la lógica de servicio
+    (`accept_papers`/`reject_papers`) con los verbos sueltos `accept`/`reject` (que quedan INTACTOS como
+    alias deprecados, retiro 0.11.0 — ver §verbos huérfanos y ADR 0038). Transversales (NO transicionan).
+  - **`curate filter`** (flags PRISMA `--year-gte`/`--year-lte`, `--language`, `--type`,
+    `--min-citations`): aplica criterios de inclusión/exclusión MARCANDO `rejected` (no borra; conserva
+    la trazabilidad PRISMA) con conteo por paso. **Transiciona el `CycleState` a `FILTERED`** (único
+    verbo del grupo que transiciona). Comparte `filter_corpus` con el verbo suelto `filter` (alias
+    deprecado, retiro 0.11.0).
+  - **`note` es advisory:** hace round-trip en `dump` pero **se ignora en `apply`** (`ProvenanceEvent`
     no tiene campo de anotación; persistirla → ADR futuro). **`scent_score` best-effort** (vacío hasta
     que el Forager guarde `scent` en provenance) y **`cluster` siempre vacío** (integración con redes
-    diferida). **Curación TRANSVERSAL: `curate` NO transiciona el `CycleState`** (disponible en cualquier
-    estado del lazo, igual que `accept`/`reject`; ADR 0016 enmendado R3). `--json` con `schema="1"`.
+    diferida). `--json` con `schema="1"` en todos los subcomandos.
 - **`networks`** (Hito 9, **EN DEPRECACIÓN — absorbido por `build --spec`**, ADR 0037 (a) / 0038,
   ventana cierra 0.11.0): **capa declarativa** — construye redes desde un YAML versionable.
   **`b2g networks --spec <redes.yaml>`** carga la lista de specs con `load_specs` (§10;
@@ -580,11 +599,14 @@ cache **no existe** (nunca se corrió `build`), **no** es stale. `status` **avis
 invalidación por hash, **no** un build-system (ADR [0029](decisiones/0029-workspace-por-investigacion.md)).
 
 **Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`, `chain`→`FORAGED`,
-`filter`→`FILTERED`, `build`→`BUILT`, **`monitor`→`MONITORED`** (cleanup pre-v0.3),
+`filter`→`FILTERED`, **`curate filter`→`FILTERED`** (#155: dentro del grupo `curate` la transición la
+define el VERBO, no el grupo —precedente D1 de #159), `build`→`BUILT`,
+**`monitor`→`MONITORED`** (cleanup pre-v0.3),
 **`restore`→`FILTERED`** (Ciclo 9a, ADR 0030: el corpus restaurado ya pasó curación; reusa la
 transición permisiva `filter`);
-`accept`/`reject`/**`curate`**/**`read`**/`export`/`snapshot`/`status`/`inspect`/`validate`/**`enrich`**/**`networks`**
-**no transicionan** (`curate` y **`read`** son transversales/lectura pura; `enrich` y `networks` son
+`accept`/`reject`/**`curate {dump,apply,accept,reject}`**/**`read`**/`export`/`snapshot`/`status`/`inspect`/`validate`/**`enrich`**/**`networks`**
+**no transicionan** (los verbos transversales de `curate` y **`read`** son transversales/lectura pura
+—**salvo `curate filter`**, que sí transiciona; `enrich` y `networks` son
 ortogonales al lazo, ADR 0025 / Hito 9). El estado
 destino lo dicta `bib2graph.cycle.apply_transition`
 (fuente única de verdad; los comandos no hardcodean el destino). `seed` con **estado previo** se trata
@@ -636,6 +658,22 @@ materializó en #157 (antes diferido). La lógica vive en `service/reads.py` (`l
 
 `inspect` (verbo plano) **sigue vivo pero en deprecación** (#165): `read show` lo absorbe para
 papers y `status` para manifest/FSM. **No** está removido en este hito.
+
+**Grupo `curate {dump,apply,accept,reject,filter}` — SEGUNDO grupo noun-verb del CLI (#155, ADR
+[0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md) §b).** Mismo patrón que `read`: `curate`
+**sin subcomando** imprime la ayuda y sale con **exit 0**; el `command` del envelope usa la **ruta
+completa** (`"curate dump"`, `"curate apply"`, `"curate accept"`, `"curate reject"`,
+`"curate filter"`). La semántica de cada verbo está arriba (§`curate`). **A diferencia de `read`
+(transversal entero), la transición la define el VERBO** (precedente D1 de #159): solo
+`curate filter` transiciona a `FILTERED` (vía `apply_transition`, fuente única); el resto es
+transversal. La lógica vive en `service/curate.py` (fuente única CLI/FastAPI, §0):
+**`run_curate_dump`**, **`run_curate_from_csv`** (el verbo `apply`), **`filter_corpus`** y
+`accept_papers`/`reject_papers`. **`filter_corpus(store_path, *, year_gte, year_lte, language,
+type_in, min_citations, decided_at)`** recibe el **reloj `decided_at` inyectado** por ambos callers
+(el subcomando `curate filter` y el verbo suelto `filter`), preservando la neutralidad de servicio
+(ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md): el reloj entra por la frontera,
+no por el servicio). **BREAKING:** la forma-flag `curate --dump`/`--from-csv` y `--all` fueron
+eliminadas sin alias (autorizado por ADR 0037 §b).
 
 **Envelope JSON común y versionado** (ADR 0021 §C): en modo `--json`, cada subcomando emite **un
 objeto JSON** con `schema="1"`:
@@ -947,6 +985,15 @@ de un solo paper que valida `decision ∈ {accepted, rejected}`). Todas verifica
 (`DataError` si faltan), abren el store con `_open_writable` (`StoreLockedError`/`OSError` → `StoreError`)
 e **inyectan `decided_at`** desde la frontera. **`run_accept`/`run_reject` (CLI) quedan como shims que
 delegan**, con su firma intacta (`by="cli"`, `decided_at` inyectado), así que `test_cli.py` no cambia.
+
+**Extensión #155 (grupo `curate` noun-verb).** `service/curate.py` consolida la **fuente única** de
+toda la curación (CLI y FastAPI): suma **`run_curate_dump`** (= `curate dump`), **`run_curate_from_csv`**
+(= `curate apply`) y **`filter_corpus(store_path, *, year_gte, year_lte, language, type_in,
+min_citations, decided_at)`** (= `curate filter` y el verbo suelto `filter`) a las ya existentes
+`accept_papers`/`reject_papers`/`curate_paper`. `filter_corpus` recibe el **reloj `decided_at`
+inyectado** por ambos callers (subcomando y verbo suelto) → neutralidad de servicio restaurada
+(ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md): el reloj entra por la frontera,
+no por el servicio). Las funciones de comando del CLI quedan como **shims que delegan**.
 
 **Subcomando `b2g gui`.** Ver [`ARCHITECTURE.md`](ARCHITECTURE.md) §6.3 y §convenciones CLI (19°
 subcomando): levanta `uvicorn.run` sobre `create_app`, sirve la SPA buildeada de `gui/static/` **si
@@ -1428,7 +1475,7 @@ epic GUI #34). Reglas:
   - **`equation.yaml`** — la ecuación de procedencia (cargable con `EquationSpec`, §2). Documenta
     "de qué búsqueda salió este corpus"; **no** es el comando del gate.
   - **`curacion.csv`** *(cuando el ejemplo pasa por curación)* — las decisiones de curación
-    congeladas que `b2g curate --from-csv` consume: **receta determinista** de curación (aplicarlo
+    congeladas que `b2g curate apply` consume: **receta determinista** de curación (aplicarlo
     al corpus sembrado produce el mismo estado, independiente de cuándo se corra).
   - **`README.md`** — qué demuestra y con qué comandos se arma/reproduce. **Es la procedencia:**
     la **receta CLI** documentada (armado con red + reproducción offline), no un script.
@@ -1440,7 +1487,7 @@ epic GUI #34). Reglas:
 - **Ejemplos existentes:**
   - **`examples/valoraciones/`** (Ciclo B, AS-BUILT 2026-06-17): **~80 filas** (70 `candidate` +
     10 `accepted` enriquecidos), armado **100% por CLI** (sin script): `seed --spec equation.yaml`
-    (`max_results: 80`) → `curate --from-csv curacion.csv` → `enrich --max-citing 25` → `snapshot`.
+    (`max_results: 80`) → `curate apply curacion.csv` → `enrich --max-citing 25` → `snapshot`.
     **Co-citación presente** (rala) + coupling/author/institution/keyword sustanciales. Verificado por
     el gate R2 `tests/unit/test_example_r2_gate.py` (`corpus_hash` estable + comunidades Louvain
     estables entre corridas; piso `n>=50`, las 5 redes con datos). Se rehidrata con

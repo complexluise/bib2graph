@@ -607,6 +607,18 @@ corpus desde un parquet curado **sin red** (inverso de `snapshot`; preserva `dec
 una opción desconocida como `--store` —eliminada en #75—, o ningún workspace resoluble) sale **sin
 envelope** (Click aborta el parseo: stderr + exit 1).
 
+> **AS-BUILT — superficie noun-verb (ADR [0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md)
+> /[0038](decisiones/0038-destino-verbos-huerfanos-0037.md)):** la superficie del 0021 (verbos planos,
+> arriba) se reorganiza a **10 verbos que mapean el ciclo**, con **dos grupos noun-verb**:
+> **`read {list,stats,show,top}`** (1°, #156/#157) y **`curate {dump,apply,accept,reject,filter}`**
+> (2°, #155). En el grupo `curate` la transición la define el **VERBO** (precedente D1 de #159):
+> **`curate filter`→`FILTERED`**, el resto transversal. La lógica es fuente única en `service/`
+> (`service/reads.py`, `service/curate.py`). Los **verbos planos** `accept`/`reject`/`filter`/`inspect`
+> /`networks`/`monitor`/`resolve` quedan como **alias deprecados** (retiro **0.11.0**, ADR 0038 P1 +
+> enmienda #155 que sumó `filter` al gap), y `restore`→`snapshot restore`, `enrich`→`chain`/`build`,
+> `thesaurus` retirado (ADR 0038). El **contrato vivo de la superficie** está en
+> [`API.md`](API.md) §convenciones CLI (no se replica acá para evitar drift).
+
 **AS-BUILT R5 — UTF-8 en la frontera (Nota 06 RAÍZ 3):** `main()` llama `_force_utf8()` (reconfigura
 `sys.stdout`/`stderr` a UTF-8, con guarda por si la stream no es reconfigurable) **antes de que Click
 lea nada**. Sin esto, el envelope `--json` (`ensure_ascii=False`) y `--help` corrompen acentos en la
