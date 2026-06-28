@@ -1,8 +1,10 @@
-"""cli.commands.restore — Shim ``b2g restore`` (ADR 0038, #163).
+"""cli.commands.restore — Shim ``b2g restore`` (ADR 0038, #163, alias deprecado #165).
 
 El subcomando ``restore`` suelto se mantiene intacto como shim para
 compatibilidad con scripts y flujos existentes.  Su retiro está planificado
 en el sub-issue #165.
+
+DEPRECADO (ADR 0038, #165): usar ``b2g snapshot restore``.  Se retira en 0.11.0.
 
 La lógica vive en ``service.snapshot.run_restore`` (fuente única).  Este
 módulo es un adaptador delgado que:
@@ -30,6 +32,7 @@ from datetime import UTC, datetime
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
@@ -84,6 +87,7 @@ def restore_cmd(
     \b
     Alternativa canónica (ADR 0038): b2g snapshot restore --from-corpus ...
     """
+    dep_msg = emit_deprecation("b2g restore", "b2g snapshot restore")
     store_path = resolve_library_path(ctx.obj)
     # R2/ADR 0017: el reloj se inyecta en la frontera CLI.
     decided_at = datetime.now(UTC)
@@ -95,6 +99,7 @@ def restore_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=[dep_msg],
         )
         emit(envelope)
     else:

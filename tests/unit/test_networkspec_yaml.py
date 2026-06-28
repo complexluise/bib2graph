@@ -489,7 +489,8 @@ def test_networks_cmd_json_envelope_correcto(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0, f"Salida inesperada: {result.output}"
-    envelope = json.loads(result.output)
+    # Usar result.stdout porque b2g networks emite aviso de deprecación a stderr (#165).
+    envelope = json.loads(result.stdout)
 
     assert envelope["schema"] == "1"
     assert envelope["ok"] is True
@@ -532,7 +533,8 @@ def test_networks_cmd_yaml_invalido_emite_data_error(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 2  # DataError → exit 2
-    envelope = json.loads(result.output)
+    # Usar result.stdout porque b2g networks emite aviso de deprecación a stderr (#165).
+    envelope = json.loads(result.stdout)
     assert envelope["ok"] is False
     assert envelope["error"] is not None
     assert envelope["error"]["code"] == "DATA_ERROR"

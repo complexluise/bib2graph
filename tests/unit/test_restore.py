@@ -298,7 +298,9 @@ def test_restore_cmd_sin_red(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0, f"Salida inesperada: {result.output}"
-    envelope = json.loads(result.output)
+    # Usar result.stdout (solo stdout) porque b2g restore emite aviso de deprecación
+    # a stderr (#165); result.output mezcla ambas streams en Click 8.4.1.
+    envelope = json.loads(result.stdout)
     assert envelope["ok"] is True
     assert envelope["command"] == "restore"
     assert envelope["data"]["papers_loaded"] == 2
@@ -341,7 +343,8 @@ def test_restore_cmd_envelope_contiene_state(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0
-    envelope = json.loads(result.output)
+    # Usar result.stdout porque b2g restore emite aviso de deprecación a stderr (#165).
+    envelope = json.loads(result.stdout)
     assert "state" in envelope["data"]
     assert envelope["data"]["state"] == "FILTERED"
 

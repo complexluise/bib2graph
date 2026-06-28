@@ -1,4 +1,4 @@
-"""cli.commands.filter — Subcomando ``b2g filter``.
+"""cli.commands.filter — Subcomando ``b2g filter`` (alias deprecado, #165).
 
 Aplica filtros PRISMA deterministas al corpus: marca rejected (no borra).
 Transiciona el CycleState a FILTERED tras persistir con éxito.
@@ -9,6 +9,8 @@ de lógica para garantizar comportamiento idéntico.
 
 ``run_filter`` se mantiene aquí como función importable para tests existentes;
 internamente llama a ``service.curate.filter_corpus``.
+
+DEPRECADO (ADR 0038, #165): usar ``b2g curate filter``.  Se retira en 0.11.0.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from typing import Any
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
@@ -118,6 +121,7 @@ def filter_cmd(
 
     Tras el filtro, el estado del lazo transiciona a FILTERED.
     """
+    dep_msg = emit_deprecation("b2g filter", "b2g curate filter")
     store_path = resolve_library_path(ctx.obj)
     # R2: el reloj se inyecta en la frontera CLI (ADR 0017 enmendado).
     now = datetime.now(UTC)
@@ -137,6 +141,7 @@ def filter_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=[dep_msg],
         )
         emit(envelope)
     else:

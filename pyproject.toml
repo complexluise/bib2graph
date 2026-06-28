@@ -90,6 +90,9 @@ Issues = "https://github.com/complexluise/bib2graph/issues"
 # CLI entry point. Hito 6: implementación real del CLI agente-native.
 # El paquete bib2graph.cli (antes cli.py) expone main() en __init__.py.
 b2g = "bib2graph.cli:main"
+# Alias deprecado del ejecutable legado 'bib2graph' (ADR 0038, #165).
+# Emite aviso a stderr y delega en main(). Se retira en 0.11.0.
+bib2graph = "bib2graph.cli:main_bib2graph_alias"
 
 # ----- Build (hatchling, src layout) --------------------------------------
 

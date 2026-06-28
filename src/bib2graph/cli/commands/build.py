@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, handle_errors
@@ -703,11 +704,10 @@ def build_cmd(
         effective_out_dir = ws.networks_dir
 
     # Resolver scope: --corpus-scope deprecado tiene prioridad con aviso.
+    corpus_scope_dep_msg: str | None = None
     if corpus_scope_deprecated is not None:
-        print(
-            "AVISO: --corpus-scope está deprecado y se eliminará en 0.11.0; "
-            "usá --scope en su lugar.",
-            file=sys.stderr,
+        corpus_scope_dep_msg = emit_deprecation(
+            "b2g build --corpus-scope", "b2g build --scope"
         )
         # El vocab deprecado (all|accepted|seeds_only) ya es el vocab interno.
         # Preservamos el mismo token para scope_cli_token (compat pre-0.10.0).
@@ -740,12 +740,16 @@ def build_cmd(
     )
 
     if json_mode(json_output):
+        # Fusionar warnings de corpus con el aviso de deprecación de --corpus-scope.
+        all_warnings: list[str] = list(data.get("warnings") or [])
+        if corpus_scope_dep_msg is not None:
+            all_warnings.append(corpus_scope_dep_msg)
         envelope = build_envelope(
             command="build",
             ok=True,
             data=data,
             exit_code=0,
-            warnings=data.get("warnings"),
+            warnings=all_warnings or None,
         )
         emit(envelope)
     else:
