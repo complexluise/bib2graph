@@ -99,9 +99,15 @@ bib2graph = "bib2graph.cli:main_bib2graph_alias"
 [tool.hatch.build.targets.wheel]
 packages = ["src/bib2graph"]
 
-# Build output del frontend (gitignored → hatchling lo omite por defecto).
-# force-include vende el artefacto al wheel sin commitearlo al VCS (ADR 0028 §B.1, G5).
-# Requiere que `pnpm build` haya corrido ANTES de `uv build`.
+# force-include: vende al wheel artefactos que hatchling omitiría por defecto.
+# Solo el frontend GUI lo necesita: está gitignored (build artifact) → hatchling
+# lo omite (ADR 0028 §B.1, G5). Requiere que `pnpm build` haya corrido ANTES de
+# `uv build`.
+#
+# La skill vendida (src/bib2graph/skill/, Epic #188) NO va acá: es fuente
+# commiteada bajo el paquete, así que `packages = ["src/bib2graph"]` ya la
+# incluye. Agregarla a force-include la duplica y ROMPE el build
+# ("A second file is being added to the wheel archive at the same path").
 [tool.hatch.build.targets.wheel.force-include]
 "src/bib2graph/gui/static" = "bib2graph/gui/static"
 

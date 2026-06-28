@@ -289,9 +289,10 @@ invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción
 `--workspace`; `--store` fue eliminada en [#75](https://github.com/complexluise/bib2graph/issues/75),
 ver abajo).
 
-**Superficie 0.10.0 — 10 verbos del ciclo + 3 grupos noun-verb + `gui` (excepción) + 9 aliases
-deprecados** (AS-BUILT, ADR [0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md) /
-[0038](decisiones/0038-destino-verbos-huerfanos-0037.md)). La superficie por acreción del 0021 (que
+**Superficie 0.10.0 — 10 verbos del ciclo + 3 grupos noun-verb + `gui` y `skill` (excepciones meta)
++ 9 aliases deprecados** (AS-BUILT, ADR [0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md) /
+[0038](decisiones/0038-destino-verbos-huerfanos-0037.md) /
+[0039](decisiones/0039-skill-comando-meta-distribucion.md)). La superficie por acreción del 0021 (que
 llegó a ~20 subcomandos) se **consolidó** en una superficie que mapea 1:1 el ciclo de investigación
 (*más es menos*). El conteo es **verificable contra `b2g --help`**:
 
@@ -300,8 +301,11 @@ llegó a ~20 subcomandos) se **consolidó** en una superficie que mapea 1:1 el c
   ADR 0037 §"Los 10 verbos".)*
 - **3 grupos noun-verb:** **`read {list,stats,show,top}`** (#156/#157), **`curate
   {dump,apply,accept,reject,filter}`** (#155), **`snapshot {create,restore}`** (#163, ADR 0038).
-- **`gui`** — fuera del set de 10 por diseño (excepción explícita, gobernada por ADR 0027/0028,
-  gateada por #34; no es un paso del ciclo agents-first).
+- **2 comandos meta, fuera del set de 10 por diseño** (excepciones explícitas, **no** pasos del
+  ciclo agents-first; **no compiten con `status`** ni con ningún verbo del ciclo, viven al lado):
+  - **`gui`** — lanza la GUI local (gobernado por ADR 0027/0028, gateado por #34).
+  - **`skill`** (`skill add`) — instala la skill de Claude Code end-user (gobernado por ADR 0039,
+    epic #188). Ver §`skill` abajo.
 - **9 aliases deprecados** (siguen vivos con aviso a stderr, se eliminan en **0.11.0** — ADR 0038 P1):
   `accept`, `reject`, `filter`, `inspect`, `monitor`, `networks`, `enrich`, `restore`, `resolve`. Más el
   entry-point `bib2graph`→`b2g` y la opción `build --corpus-scope`→`build --scope`. Ver §Avisos de
@@ -536,6 +540,28 @@ llegó a ~20 subcomandos) se **consolidó** en una superficie que mapea 1:1 el c
   import perezoso): si falta → `DependencyError`, **exit 3** con sugerencia `uv sync --extra gui`. **NO
   transiciona** el `CycleState`. La API es un adaptador delgado sobre `service/` (reusa el envelope
   `schema="1"` + `code_for`, no reimplementa el contrato); el mapeo código→HTTP y la auth viven en §0.2.
+- **`skill`** (comando **meta/distribución**, ADR
+  [0039](decisiones/0039-skill-comando-meta-distribucion.md), epic #188): **2.ª excepción meta**
+  (junto a `gui`) — fuera del set de 10, **no** es un paso del ciclo y **no compite con `status`**.
+  Subcomando **`b2g skill add [--user|--project] [--force]`**: **instala la skill de Claude Code
+  end-user** (que entrevista al investigador y le enseña al agente la mejor forma de usar bib2graph —
+  los 10 verbos del 0037 y la historia one-shot `init→seed→chain→build→read`). **Empaquetado:** la
+  skill viaja **vendoreada en el wheel** bajo `src/bib2graph/skill/` (`SKILL.md` + `reference/`) como
+  **fuente commiteada del paquete** — la incluye `packages = ["src/bib2graph"]`, **sin** `force-include`.
+  (A diferencia del frontend `gui/static/`, que **sí** necesita `force-include` por ser un artefacto
+  gitignored; agregar la skill a `force-include` la **duplicaría y rompería el build**.) Vendorear en el
+  mismo artefacto **es** el version-lock → **garantía skill-version == cli-version** (la skill siempre
+  enseña los verbos que el CLI realmente expone; no hay forma de tener una skill v0.10 sobre un CLI
+  v0.11). `skill add` **copia** la skill vendida al directorio
+  de skills del cliente: **`--user`** (default) → `~/.claude/skills/bib2graph/`, **`--project`** →
+  `.claude/skills/bib2graph/` (relativo al cwd). **Idempotente** (si ya está en la versión vendida, no
+  hace nada y lo reporta); si el destino **existe pero difiere** (edición del usuario u otra versión),
+  falla con error accionable y **`--force`** pisa la instalación existente. **Funciona SIN workspace**
+  (comando meta global, no requiere `workspace.json` ni resolución de ambiente) y **emite el envelope
+  `--json` `schema="1"` SIN transición de FSM** (ortogonal al lazo, igual que `gui`/`resolve`). La
+  skill es **markdown sin dependencias Python** (no usa IA en el producto, ADR 0022: la IA está en el
+  Claude Code del usuario). *(El `data` emitido es `{install_path, scope, installed,
+  already_present}`, `schema="1"` intacto.)*
 - **`resolve`** (issues #110/#112, AS-BUILT, ADR
   [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md), 20° subcomando): **resuelve los DOIs del
   corpus a IDs de OpenAlex (`source_id`)** — cierra el **GAP-1** del flujo BibTeX e2e. Los papers

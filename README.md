@@ -50,6 +50,21 @@ b2g export --format graphml                                           # → rede
 Cada comando acepta `--json` para orquestarlo desde scripts o agentes. Lista completa de
 comandos: `b2g --help`.
 
+### Con Claude Code: pedile a Claude que lo use
+
+La forma más simple de usar bib2graph es **pedirle a Claude que lo use por vos**. bib2graph trae una
+**skill de Claude Code** que entrevista tu pregunta de investigación y corre el ciclo completo
+(`init → seed → chain → build → read`) sin que escribas comandos:
+
+```bash
+pip install bib2graph
+b2g skill add            # instala la skill en ~/.claude/skills/bib2graph/
+```
+
+Después, en Claude Code: *"usá bib2graph para armar la red de citación de estos papers…"*. La skill
+viaja **dentro del mismo paquete** que el CLI, así que **siempre está al día con tu versión** de
+bib2graph. Usá `--project` para instalarla solo en el proyecto actual.
+
 ### Desde Python
 
 ```python
