@@ -43,7 +43,10 @@
   `read stats --group-by {status,year,is_seed}`, `read show --id` (resuelve id/doi/source_id, ADR 0036),
   `read top --top N --kind {…}` (la salida de investigación: nodos centrales + co-citación con título;
   default `bibliographic_coupling`, robusto en one-shot; co-citación vacía → honest-empty exit 0 +
-  reason/fix_command). `read` sin subcomando → ayuda + exit 0 (`invoke_without_command=True`, workaround Click 8.4); el
+  reason/fix_command). **Artefactos one-shot honestos (#160, ADR 0037 §f):** el `--json` de `build`,
+  `snapshot` y `read top` suma un bloque aditivo **`maturity`** (`{curated, scope, saturated,
+  empty_networks}`, `schema="1"` intacto) que autodeclara que el resultado es un borrador sin pulir;
+  forma estable en `docs/API.md` §Apéndice `maturity`. `read` sin subcomando → ayuda + exit 0 (`invoke_without_command=True`, workaround Click 8.4); el
   `command` del envelope usa la ruta completa (`"read list"`). `inspect` queda **en deprecación** (#165,
   lo absorben `read show` + `status`) pero **sigue vivo**. Ver `docs/API.md` §Convenciones CLI.
   **Grupo noun-verb `curate {dump,apply,accept,reject,filter}` (#155, ADR 0037 §b):** SEGUNDO grupo del

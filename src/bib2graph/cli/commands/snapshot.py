@@ -50,11 +50,20 @@ def run_snapshot(
 
     snap = corpus.snapshot(Path(out_dir))
 
+    from bib2graph.service.maturity import compute_maturity
+
+    maturity = compute_maturity(
+        corpus,
+        scope="all",
+        empty_network_kinds=[],
+    )
+
     return {
         "snapshot_dir": str(snap.path),
         "corpus_hash": snap.manifest.corpus_hash,
         "total_papers": len(corpus),
         "schema_version": snap.manifest.schema_version,
+        "maturity": maturity,
     }
 
 

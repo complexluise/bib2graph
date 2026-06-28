@@ -927,7 +927,8 @@ def get_top(
 
     # Honest-empty: si co-citación vacía, agregar reason/fix_command.
     # Igual que "build" con red vacía → exit 0, NO DataError.
-    if not coc_net["edges"]:
+    coc_is_empty = not coc_net["edges"]
+    if coc_is_empty:
         from bib2graph.networks.facade import predict_build_preview
 
         preview = predict_build_preview(corpus)
@@ -938,5 +939,15 @@ def get_top(
         if coc_entry is not None:
             result["reason"] = coc_entry["reason"]
             result["fix_command"] = coc_entry["fix_command"]
+
+    # Maturity (#160): siempre presente en read top (scope="all", redes vacías inferidas).
+    from bib2graph.service.maturity import compute_maturity
+
+    empty_network_kinds = ["cocitation"] if coc_is_empty else []
+    result["maturity"] = compute_maturity(
+        corpus,
+        scope="all",
+        empty_network_kinds=empty_network_kinds,
+    )
 
     return result
