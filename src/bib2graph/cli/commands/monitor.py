@@ -7,6 +7,11 @@ CycleState a MONITORED (paso 8 del ciclo, Ellis).
 Requiere que el corpus tenga al menos una semilla con ``source_id``
 conocido (de lo contrario el forward chaining no encuentra nada).  Si no
 hay corpus ni estado previo, falla con un error accionable.
+
+**Implementación:** ``run_monitor`` es ahora un delegador fino sobre
+``run_chain`` (con ``_fsm_action="monitor"``), garantizando fuente única
+de la lógica de forrajeo (ADR 0037 §c).  La retirada formal de este
+subcomando es el issue #165.
 """
 
 from __future__ import annotations
@@ -17,9 +22,9 @@ from typing import Any
 import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
-from bib2graph.cli._errors import DataError, handle_errors
+from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import open_store, resolve_library_path
+from bib2graph.cli._store import resolve_library_path
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -34,11 +39,9 @@ def run_monitor(
 ) -> dict[str, Any]:
     """Re-chequea OpenAlex por nuevos citantes del corpus y transiciona a MONITORED.
 
-    Usa forward chaining (``Forager`` con ``direction="forward"``, que usa
-    ``fetch_citing_batch`` del source, batcheado y con cap por semilla) para
-    encontrar nuevos papers que citan al corpus.
-    Mergea los candidatos nuevos a la biblioteca viva y transiciona el estado a
-    MONITORED vía ``apply_transition(current_state, "monitor", current_round)``.
+    Delega en ``run_chain`` con ``direction="forward"`` y
+    ``_fsm_action="monitor"`` para mantener fuente única de la lógica de
+    forrajeo (ADR 0037 §c).
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
@@ -53,63 +56,20 @@ def run_monitor(
         NetworkError: Si falla la conexión a OpenAlex.
         StoreError: Si el store está bloqueado.
     """
-    from bib2graph.cycle import apply_transition
-    from bib2graph.foraging import Forager
-    from bib2graph.sources.openalex import OpenAlexSource
+    from bib2graph.cli.commands.chain import run_chain
 
-    merged_backend_close = None
-    store = open_store(store_path)
-    try:
-        current_state = store.backend.loop_state()
-        current_round = store.backend.loop_round()
-
-        # Error accionable: monitor requiere un corpus previo sembrado.
-        if current_state is None:
-            raise DataError(
-                "No hay corpus ni estado previo en el store. "
-                "Iniciá la investigación con 'b2g seed' antes de monitorear."
-            )
-
-        corpus = store.load()
-        if len(corpus) == 0:
-            raise DataError(
-                "El corpus está vacío. "
-                "Usá 'b2g seed' para sembrar papers antes de monitorear."
-            )
-
-        new_state, new_round = apply_transition(current_state, "monitor", current_round)
-
-        source = OpenAlexSource(email=email, transport=transport)
-
-        # Forward chaining: nuevos citantes del corpus.
-        forager = Forager(source, depth=1)
-        ranked = forager.chain(corpus, direction="forward")
-
-        # Calcular cuántos son genuinamente nuevos (no estaban en el corpus).
-        existing_ids = set(corpus.to_arrow().column("id").to_pylist())
-        new_candidate_ids = [
-            id_
-            for id_ in ranked.corpus.to_arrow().column("id").to_pylist()
-            if id_ not in existing_ids
-        ]
-        new_candidates_count = len(new_candidate_ids)
-
-        # Merge de candidatos nuevos y persistencia.
-        merged = corpus.merge(ranked.corpus)
-        total_papers = len(merged)
-        merged_backend_close = getattr(merged._backend, "close", None)
-        store.persist(merged)
-        store.backend.set_loop_state(new_state, cycle_round=new_round)
-    finally:
-        if merged_backend_close is not None:
-            merged_backend_close()
-        store.close()
-
+    result = run_chain(
+        store_path,
+        direction="forward",
+        email=email,
+        transport=transport,
+        _fsm_action="monitor",
+    )
     return {
-        "new_candidates": new_candidates_count,
-        "total_papers": total_papers,
-        "loop_state": new_state.value,
-        "round": new_round,
+        "new_candidates": result["new_candidates"],
+        "total_papers": result["total_papers"],
+        "loop_state": result["loop_state"],
+        "round": result["round"],
     }
 
 
