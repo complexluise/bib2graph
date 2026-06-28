@@ -148,7 +148,7 @@ _CMDS_NO_WORKSPACE: list[list[str]] = [
     ["inspect", "--json"],
     ["build", "--json"],
     ["export", "--json"],
-    ["snapshot", "--json"],
+    ["snapshot", "create", "--json"],
     ["chain", "--json"],
     ["filter", "--json"],
     ["enrich", "--json"],

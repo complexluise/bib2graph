@@ -580,7 +580,8 @@ cambios). Dos convenciones del grupo: (1) el `command` del envelope usa la **rut
 error de uso— vía `invoke_without_command=True` + `ctx.get_help()` en el callback del grupo
 (**workaround a la regresión de Click 8.4** donde un grupo sin subcomando devolvía exit 2). Un valor
 de flag `Choice` inválido sigue siendo error de uso de Click → **exit 1** (no exit 2). Es el molde
-para los próximos grupos previstos por el ADR 0037 (`curate {…}`).
+de los grupos siguientes: **`curate {…}`** (2°, #155) y **`snapshot {create, restore}`** (3°, #163,
+ADR 0038 — el `snapshot` plano → `snapshot create`, BREAKING; aloja `snapshot restore` = ex `restore`).
 
 Son **19 subcomandos** (`seed`, `chain`, `filter`, `build`, `export`, `snapshot`, `status`,
 `inspect`, `validate`, `accept`, `reject`, **`monitor`**, **`enrich`**, **`init`**, **`curate`**,
@@ -601,22 +602,26 @@ curación a escala vía CSV (dump/import en lote, transversal: **no transiciona*
 **`networks`** (Hito 9, AS-BUILT 2026-06-17) construye redes desde un YAML declarativo
 (`b2g networks --spec <yaml>`, `load_specs` + `Networks.build` por red, helper compartido
 `_write_artifacts`) y **no transiciona** el ciclo ni sella `.corpus_hash` (transversal al lazo). El 17°
-**`restore`** (Ciclo 9a, ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)) rehidrata el
-corpus desde un parquet curado **sin red** (inverso de `snapshot`; preserva `decision`/`curation_status`/
-`is_seed`) y transiciona a `FILTERED` (reusa la transición permisiva `filter`, ADR 0016). El error de uso (p. ej.
+**`restore`** (Ciclo 9a, ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md); **ahora
+`snapshot restore`**, #163/ADR 0038 —el verbo suelto `restore` queda como alias deprecado, retiro #165—)
+rehidrata el corpus desde un parquet curado **sin red** (inverso de `snapshot create`; preserva
+`decision`/`curation_status`/`is_seed`) y transiciona a `FILTERED` (reusa la transición permisiva
+`filter`, ADR 0016). El error de uso (p. ej.
 una opción desconocida como `--store` —eliminada en #75—, o ningún workspace resoluble) sale **sin
 envelope** (Click aborta el parseo: stderr + exit 1).
 
 > **AS-BUILT — superficie noun-verb (ADR [0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md)
 > /[0038](decisiones/0038-destino-verbos-huerfanos-0037.md)):** la superficie del 0021 (verbos planos,
-> arriba) se reorganiza a **10 verbos que mapean el ciclo**, con **dos grupos noun-verb**:
-> **`read {list,stats,show,top}`** (1°, #156/#157) y **`curate {dump,apply,accept,reject,filter}`**
-> (2°, #155). En el grupo `curate` la transición la define el **VERBO** (precedente D1 de #159):
-> **`curate filter`→`FILTERED`**, el resto transversal. La lógica es fuente única en `service/`
-> (`service/reads.py`, `service/curate.py`). Los **verbos planos** `accept`/`reject`/`filter`/`inspect`
-> /`networks`/`monitor`/`resolve` quedan como **alias deprecados** (retiro **0.11.0**, ADR 0038 P1 +
-> enmienda #155 que sumó `filter` al gap), y `restore`→`snapshot restore`, `enrich`→`chain`/`build`,
-> `thesaurus` retirado (ADR 0038). El **contrato vivo de la superficie** está en
+> arriba) se reorganiza a **10 verbos que mapean el ciclo**, con **TRES grupos noun-verb**:
+> **`read {list,stats,show,top}`** (1°, #156/#157), **`curate {dump,apply,accept,reject,filter}`**
+> (2°, #155) y **`snapshot {create, restore}`** (3°, #163 —el `snapshot` plano → `snapshot create`,
+> BREAKING—). En `curate` y `snapshot` la transición la define el **VERBO** (precedente D1 de #159):
+> **`curate filter`→`FILTERED`** y **`snapshot restore`→`FILTERED`**, el resto transversal
+> (`snapshot create` no transiciona). La lógica es fuente única en `service/`
+> (`service/reads.py`, `service/curate.py`, `service/snapshot.py`). Los **verbos planos**
+> `accept`/`reject`/`filter`/`inspect`/`networks`/`monitor`/`resolve`/**`restore`** quedan como
+> **alias deprecados** (retiro **0.11.0**; `restore`/`inspect` en #165; ADR 0038 P1 + enmienda #155 que
+> sumó `filter` al gap), y `enrich`→`chain`/`build`, `thesaurus` retirado (ADR 0038). El **contrato vivo de la superficie** está en
 > [`API.md`](API.md) §convenciones CLI (no se replica acá para evitar drift).
 
 **AS-BUILT R5 — UTF-8 en la frontera (Nota 06 RAÍZ 3):** `main()` llama `_force_utf8()` (reconfigura

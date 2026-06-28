@@ -110,7 +110,10 @@
 > transiciona el `CycleState` a **`FILTERED`** (reusa la transición permisiva `filter`, ADR 0016; deja
 > correr `build`/`networks` sin re-forrajeo). **NO** existe `seed --from-corpus` (la rehidratación es
 > `restore`). En Ciclo 9a `seed --from-bib` estaba diferido; el **Ciclo 10 lo construyó** (ver banner
-> abajo). Ver §2 + §convenciones CLI.
+> abajo). Ver §2 + §convenciones CLI. **(Actualización #163, ADR 0038):** este `restore` plano pasa a
+> **`snapshot restore`** (noun-verb del grupo `snapshot`, que se vuelve grupo `{create, restore}`); el
+> verbo suelto `restore` queda como **alias deprecado** (shim que delega, `command="restore"` por
+> backward-compat; retiro en #165). La capacidad no cambia. Ver §`snapshot`.
 >
 > **Sincronizado con el corpus de ejemplo + gate R2 — #33 / Ciclo 9b (AS-BUILT, 2026-06-17):**
 > se materializa la convención **`examples/`** (§convención `examples/`) y se construye el primer
@@ -285,7 +288,12 @@ preprocesamiento automático en la ingesta, #88, ADR
 local + frontend, Hito G3 del MVP GUI, ADR
 [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md); el 20° **`resolve`** con la
 resolución DOI→`source_id` del flujo BibTeX e2e, issues #110/#112, ADR
-[0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)):
+[0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)). **(Reorganización 0037/0038, en
+curso):** esta superficie por acreción se consolidó en **10 verbos del ciclo + 3 grupos noun-verb**
+(`read`, `curate`, **`snapshot {create, restore}`** —#163, ver §`snapshot`—) + `gui` como excepción;
+el `restore` plano pasó a **`snapshot restore`** (#163, alias deprecado), y `networks`/`enrich`/
+`resolve`/`thesaurus` se absorben o retiran (ADR 0038, ventana cierra 0.11.0). El conteo histórico de
+abajo refleja la acreción, no la superficie objetivo:
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -350,8 +358,11 @@ resolución DOI→`source_id` del flujo BibTeX e2e, issues #110/#112, ADR
   permite con `--from-bib` cuando va junto a `--resolve` (ver `--resolve` arriba); `--email` +
   `--from-bib` sin `--resolve` → error. En modo `--native`, `--min-year`/`--max-year` no se aplican
   (nativo = sin traducción).
-- **`restore`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md), Ciclo 9a, 17°
-  subcomando): **rehidrata un corpus ya curado desde un parquet, SIN red** — inverso de `snapshot`,
+- **`snapshot restore`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md), Ciclo 9a;
+  **AS-BUILT #163, ADR 0038**: ex verbo plano `restore`, ahora **noun-verb del grupo `snapshot`** —ver
+  §`snapshot`—; el verbo suelto `restore` **sigue vivo como alias deprecado**, shim que delega con
+  `command="restore"` por backward-compat, retiro en #165): **rehidrata un corpus ya curado desde un
+  parquet, SIN red** — inverso de `snapshot create`,
   como `load` es a `dump`. **`--from-corpus <parquet>`** (requerido) lee el parquet con el schema
   canónico (`CORPUS_SCHEMA`), lo hidrata con `Corpus.from_arrow`, hace merge con el corpus existente y
   persiste; **cero llamadas a `OpenAlexSource`, cero red**. **Preserva la curación** del parquet
@@ -589,12 +600,32 @@ Invariante: envelope `schema="1"`, exit codes y FSM intactos; todo lo de #159/#1
 > diferir legítimamente de los de `status` sobre el corpus completo. La **lógica es fuente única**; lo
 > que varía es el corpus que se le pasa.
 
-**`snapshot` (AS-BUILT #32, 2026-06-17):** `b2g snapshot` sella una foto reproducible del estado vivo
-(parquet + `manifest.json`, ADR 0017). **`--out-dir` pasó a override OPCIONAL** — sin él, escribe en
-**`<workspace>/snapshots/`** (resolución ambiente vía `resolve_workspace`, igual que `build`). No
-transiciona el `CycleState`. Su `--json.data` —`snapshot_dir`, `corpus_hash`, `total_papers`,
-`schema_version`— suma el bloque aditivo **`maturity`** (AS-BUILT #160, ver Apéndice `maturity`):
-`scope="all"`, `empty_networks=[]` (snapshot no proyecta redes), `curated` desde el corpus vivo.
+**Grupo `snapshot {create, restore}` — TERCER grupo noun-verb del CLI (#163, ADR 0038).** Para alojar
+`snapshot restore` (= ex verbo plano `restore`, ADR 0038), **`snapshot` deja de ser verbo plano y se
+vuelve grupo noun-verb** —mismo patrón que `read` (1°, #156/#157) y `curate` (2°, #155)—. `snapshot`
+**sin subcomando** imprime la ayuda y sale **exit 0**; el `command` del envelope usa la **ruta
+completa** (`"snapshot create"` / `"snapshot restore"`). **BREAKING (autorizado por ADR 0038, sin
+alias):** el `snapshot` plano → **`snapshot create`** (mismo criterio que el BREAKING de `curate`).
+**La transición la define el VERBO** (precedente D1 de #159): `snapshot create` **NO** transiciona,
+`snapshot restore`→`FILTERED`. **Fuente única en `service/snapshot.py`** (`run_snapshot`/`run_restore`,
+servicio neutral con `decided_at` inyectado en la frontera, ADR 0017): `snapshot create`,
+`snapshot restore` y el shim del verbo suelto `restore` (alias deprecado, retiro #165) **delegan** en
+ella.
+
+- **`snapshot create`** (= ex `snapshot` plano, AS-BUILT #32): sella una foto reproducible del estado
+  vivo (parquet + `manifest.json`, ADR 0017). **`--out-dir` pasó a override OPCIONAL** — sin él,
+  escribe en **`<workspace>/snapshots/`** (resolución ambiente vía `resolve_workspace`, igual que
+  `build`). **NO transiciona** el `CycleState`. Su `--json.data` —`snapshot_dir`, `corpus_hash`,
+  `total_papers`, `schema_version`— suma el bloque aditivo **`maturity`** (AS-BUILT #160, ver Apéndice
+  `maturity`): `scope="all"`, `empty_networks=[]` (no proyecta redes), `curated` desde el corpus vivo
+  (`run_snapshot` lleva el bloque, coherente con `build`/`read top`).
+- **`snapshot restore`** (= ex verbo plano `restore`): rehidrata un corpus curado desde un parquet
+  **sin red** (mergea+dedup, preserva la curación), **transiciona a `FILTERED`**. Semántica completa
+  en §`snapshot restore` (arriba). El verbo suelto `restore` queda como **alias deprecado** (shim que
+  delega con `command="restore"`; retiro #165).
+
+> **Follow-up (BAJO, #175):** `service/snapshot.py` duplica `normalize_and_dedup` respecto del helper
+> `cli/_ingest.py`. Es deuda DRY, **no** afecta el contrato; se resuelve en su issue, no aquí.
 
 **Staleness de la cache de redes (AS-BUILT #32, 2026-06-17):** `b2g status` suma el campo aditivo
 `data["networks_cache_stale"]: bool` (`schema="1"` intacto) y, cuando es `true`, un `warnings`
@@ -608,9 +639,9 @@ invalidación por hash, **no** un build-system (ADR [0029](decisiones/0029-works
 `filter`→`FILTERED`, **`curate filter`→`FILTERED`** (#155: dentro del grupo `curate` la transición la
 define el VERBO, no el grupo —precedente D1 de #159), `build`→`BUILT`,
 **`monitor`→`MONITORED`** (cleanup pre-v0.3),
-**`restore`→`FILTERED`** (Ciclo 9a, ADR 0030: el corpus restaurado ya pasó curación; reusa la
-transición permisiva `filter`);
-`accept`/`reject`/**`curate {dump,apply,accept,reject}`**/**`read`**/`export`/`snapshot`/`status`/`inspect`/`validate`/**`enrich`**/**`networks`**
+**`snapshot restore`→`FILTERED`** (Ciclo 9a, ADR 0030/0038: el corpus restaurado ya pasó curación;
+reusa la transición permisiva `filter`; el verbo suelto `restore` —alias deprecado— transiciona igual);
+`accept`/`reject`/**`curate {dump,apply,accept,reject}`**/**`read`**/`export`/**`snapshot create`**/`status`/`inspect`/`validate`/**`enrich`**/**`networks`**
 **no transicionan** (los verbos transversales de `curate` y **`read`** son transversales/lectura pura
 —**salvo `curate filter`**, que sí transiciona; `enrich` y `networks` son
 ortogonales al lazo, ADR 0025 / Hito 9). El estado
@@ -751,12 +782,12 @@ one-shot con un resultado terminado. **Aditivo: `schema="1"` intacto.**
 | clave | tipo | valores | regla de derivación |
 |---|---|---|---|
 | `curated` | `bool` | `true`/`false` | `true` si el corpus **completo** (`corpus_full`, **antes** del filtro de `--corpus-scope`) tiene **≥1 paper** con `curation_status` ∈ {`accepted`, `rejected`}. Refleja si hay decisiones de curación aplicadas, **independiente** del scope y del FSM. |
-| `scope` | `str` \| `null` | token CLI (`all`/`accepted`/`seeds`…) \| `null` | En `build` reusa `data["scope"]` (el **token CLI** tal como se tipeó, no el vocab interno `seeds_only`). En `snapshot` y `read top` es `"all"`. `null` si no aplica. |
+| `scope` | `str` \| `null` | token CLI (`all`/`accepted`/`seeds`…) \| `null` | En `build` reusa `data["scope"]` (el **token CLI** tal como se tipeó, no el vocab interno `seeds_only`). En `snapshot create` y `read top` es `"all"`. `null` si no aplica. |
 | `saturated` | `bool` | **`false` constante** | **Siempre `false`** en one-shot: el PO decidió **no sobre-afirmar**. Gancho futuro (documentado en el código): comparar `referenced_refs_count()` entre rondas de `enrich` para detectar convergencia de referencias. |
-| `empty_networks` | `list[str]` | lista de `kind` (puede ser `[]`) | **Solo los tokens `kind`** de las redes vacías. `reason`/`fix_command` **NO se duplican** acá — siguen viviendo en `data["empty_networks"]` (lista de dicts `{kind, reason, fix_command}`) de `build`. En `build` se extraen de ahí; en `read top` es `["cocitation"]` si la co-citación quedó vacía; en `snapshot` es `[]`. |
+| `empty_networks` | `list[str]` | lista de `kind` (puede ser `[]`) | **Solo los tokens `kind`** de las redes vacías. `reason`/`fix_command` **NO se duplican** acá — siguen viviendo en `data["empty_networks"]` (lista de dicts `{kind, reason, fix_command}`) de `build`. En `build` se extraen de ahí; en `read top` es `["cocitation"]` si la co-citación quedó vacía; en `snapshot create` es `[]`. |
 
 - **Dónde aparece (PRESENTE SIEMPRE):** `build` (incluido el early-return de corpus vacío),
-  `snapshot` y `read top`. **AUSENTE** en `read list`, `read stats` y `read show` (lecturas tabulares,
+  `snapshot create` y `read top`. **AUSENTE** en `read list`, `read stats` y `read show` (lecturas tabulares,
   no artefactos one-shot) — no llevan `maturity`.
 - **Función pura:** lo calcula `service.maturity.compute_maturity(corpus, *, scope, empty_network_kinds)`
   (sin I/O, re-exportada desde `bib2graph.service`), invariante de neutralidad de transporte intacta
@@ -829,7 +860,7 @@ def code_for(exc: BaseException) -> int:
 def compute_maturity(
     corpus: Corpus, *, scope: str | None, empty_network_kinds: list[str]
 ) -> dict[str, Any]:
-    """Bloque maturity para el --json de build/snapshot/read top (ver Apéndice maturity).
+    """Bloque maturity para el --json de build/snapshot create/read top (ver Apéndice maturity).
     Función PURA, sin I/O. Devuelve EXACTAMENTE 4 claves:
     {curated: bool, scope: str|None, saturated: bool, empty_networks: list[str]}.
     curated = corpus tiene ≥1 paper con curation_status ∈ {accepted, rejected};
@@ -1530,19 +1561,21 @@ epic GUI #34). Reglas:
     al corpus sembrado produce el mismo estado, independiente de cuándo se corra).
   - **`README.md`** — qué demuestra y con qué comandos se arma/reproduce. **Es la procedencia:**
     la **receta CLI** documentada (armado con red + reproducción offline), no un script.
-- **Cómo se restaura:** `b2g restore --from-corpus examples/<nombre>/corpus.parquet` (§2.`restore`)
-  rehidrata el corpus **sin red** en el `library.duckdb` de un workspace temporal, preserva la
-  curación y transiciona a `FILTERED`; luego `build` → `networks`/`clusters` corren localmente.
+- **Cómo se restaura:** `b2g snapshot restore --from-corpus examples/<nombre>/corpus.parquet`
+  (§`snapshot restore`; #163/ADR 0038 — el verbo suelto `restore` sigue funcionando como alias
+  deprecado, retiro #165) rehidrata el corpus **sin red** en el `library.duckdb` de un workspace
+  temporal, preserva la curación y transiciona a `FILTERED`; luego `build` → `networks`/`clusters`
+  corren localmente.
 - **`.gitignore`:** `!examples/` trackea el ejemplo; `examples/**/*.duckdb` lo protege de que un
   store vivo se cuele. El resto de la política de datos de usuario no cambia.
 - **Ejemplos existentes:**
   - **`examples/valoraciones/`** (Ciclo B, AS-BUILT 2026-06-17): **~80 filas** (70 `candidate` +
     10 `accepted` enriquecidos), armado **100% por CLI** (sin script): `seed --spec equation.yaml`
-    (`max_results: 80`) → `curate apply curacion.csv` → `enrich --max-citing 25` → `snapshot`.
+    (`max_results: 80`) → `curate apply curacion.csv` → `enrich --max-citing 25` → `snapshot create`.
     **Co-citación presente** (rala) + coupling/author/institution/keyword sustanciales. Verificado por
     el gate R2 `tests/unit/test_example_r2_gate.py` (`corpus_hash` estable + comunidades Louvain
     estables entre corridas; piso `n>=50`, las 5 redes con datos). Se rehidrata con
-    `b2g restore --from-corpus`. Procedencia = receta CLI del README + `equation.yaml` + `curacion.csv`.
+    `b2g snapshot restore --from-corpus`. Procedencia = receta CLI del README + `equation.yaml` + `curacion.csv`.
   - **`examples/bibtex/`** (Ciclo 10, AS-BUILT 2026-06-17): un `sample.bib` chico (10 entradas, con
     variedad deliberada de campos faltantes para ejercitar el parser defensivo) + `README.md` con la
     receta 100% CLI (`b2g init` → `b2g seed --from-bib examples/bibtex/sample.bib` → `b2g build`).
