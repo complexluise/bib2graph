@@ -11,6 +11,47 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.10.0](https://github.com/complexluise/bib2graph/compare/v0.9.0...v0.10.0) (2026-06-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** se elimina el subcomando b2g gui y el extra [gui]; el wheel ya no vendorea frontend.
+
+### Features
+
+* **build:** absorber networks via --spec + --scope/--min-weight + diagnóstico red-vacía ([#159](https://github.com/complexluise/bib2graph/issues/159)) ([#169](https://github.com/complexluise/bib2graph/issues/169)) ([c4aee24](https://github.com/complexluise/bib2graph/commit/c4aee240bc6c3b95650bf2f0015025ff60e2b970))
+* **chain:** absorber monitor como chain --since (forrajeo incremental) ([#158](https://github.com/complexluise/bib2graph/issues/158)) ([#176](https://github.com/complexluise/bib2graph/issues/176)) ([6541663](https://github.com/complexluise/bib2graph/commit/6541663a29eaf41f3427f9dd1370dda7a994c5dd))
+* **cli:** --json unificado por decorador + B2G_JSON env + stdout puro enforced ([#151](https://github.com/complexluise/bib2graph/issues/151)) ([#168](https://github.com/complexluise/bib2graph/issues/168)) ([214d230](https://github.com/complexluise/bib2graph/commit/214d2308029a492ddc8b892eda5fc281482d8a75))
+* **cli:** absorber enrich en chain/build ([#162](https://github.com/complexluise/bib2graph/issues/162)) ([#178](https://github.com/complexluise/bib2graph/issues/178)) ([df9fea2](https://github.com/complexluise/bib2graph/commit/df9fea29c1176e88f31f8fc2a0d2c7d5cf2a2d88))
+* **cli:** aliases de retrocompat con aviso de deprecación + entry-point bib2graph ([#165](https://github.com/complexluise/bib2graph/issues/165)) ([#180](https://github.com/complexluise/bib2graph/issues/180)) ([d4cdf0b](https://github.com/complexluise/bib2graph/commit/d4cdf0b53aa9f5d5c8e2a784917001d436bccb7e))
+* **cli:** grupo noun-verb read {list,stats,show} absorbiendo inspect ([#156](https://github.com/complexluise/bib2graph/issues/156)) ([#170](https://github.com/complexluise/bib2graph/issues/170)) ([d00fe8c](https://github.com/complexluise/bib2graph/commit/d00fe8cad323a95dff8236672be8b061de2b9829))
+* **cli:** maturity-stamp en artefactos one-shot (build/snapshot/read top) ([#160](https://github.com/complexluise/bib2graph/issues/160)) ([#173](https://github.com/complexluise/bib2graph/issues/173)) ([8697144](https://github.com/complexluise/bib2graph/commit/8697144e9b15f99767bcaf8d2ab2541956f64832))
+* **cli:** retirar la GUI local (api/SPA/b2g gui) — fuera del foco de la librería ([#197](https://github.com/complexluise/bib2graph/issues/197)) ([fa19291](https://github.com/complexluise/bib2graph/commit/fa1929154a9972f65dbecd722b6cbd03d5ced805))
+* **cli:** status como mapa — next_best_action, readiness y preview por-red (ADR 0037 §e) ([#153](https://github.com/complexluise/bib2graph/issues/153)) ([726272b](https://github.com/complexluise/bib2graph/commit/726272b82bfd4e99d408f7e8e480711caac523cb))
+* **read:** read top — centrales + co-citación con título (salida de investigación) ([#157](https://github.com/complexluise/bib2graph/issues/157)) ([#171](https://github.com/complexluise/bib2graph/issues/171)) ([b66ac4a](https://github.com/complexluise/bib2graph/commit/b66ac4a69ff6b885bc7e93aa273a6016eace386d))
+* **skill:** distribuir skill de Claude Code end-user vía `b2g skill add` ([#188](https://github.com/complexluise/bib2graph/issues/188)) ([#192](https://github.com/complexluise/bib2graph/issues/192)) ([29b3f13](https://github.com/complexluise/bib2graph/commit/29b3f139051be90ce20471dc6d434641f59e5752))
+* **skill:** salida agéntica explícita en `skill add` (ruta + cómo opera + leelo) ([#194](https://github.com/complexluise/bib2graph/issues/194)) ([9c81be8](https://github.com/complexluise/bib2graph/commit/9c81be8f0c32e0d65a0ce8d98c2d271a8199d073))
+
+
+### Bug Fixes
+
+* **provenance:** persistir manifest.enrichers vía enricher_log ([#141](https://github.com/complexluise/bib2graph/issues/141)) ([#198](https://github.com/complexluise/bib2graph/issues/198)) ([c489064](https://github.com/complexluise/bib2graph/commit/c48906466d6a8ff638faf16e9576901c12eb0765))
+
+
+### Performance Improvements
+
+* **test:** eliminar build redundante en idempotencia de comunidades (~-24%) ([#189](https://github.com/complexluise/bib2graph/issues/189)) ([50a9f68](https://github.com/complexluise/bib2graph/commit/50a9f68afe64760d4c65761a88876a21e0871790))
+
+
+### Documentation
+
+* **adr:** 0037 — superficie CLI 0.10.0 (10 verbos agents-first que mapean el ciclo) ([#150](https://github.com/complexluise/bib2graph/issues/150)) ([35099b1](https://github.com/complexluise/bib2graph/commit/35099b14702f7f6c26f0d5135bb8d05fd5158f24))
+* **adr:** 0038 — destino de los 5 verbos huérfanos del 0037 (10 verbos verificable) ([#154](https://github.com/complexluise/bib2graph/issues/154)) ([a8af1e5](https://github.com/complexluise/bib2graph/commit/a8af1e5731d8fa7146a370cf2d4dab72a170fe94))
+* alinear docs vivos al presente de v0.10.0 ([#191](https://github.com/complexluise/bib2graph/issues/191)) ([#199](https://github.com/complexluise/bib2graph/issues/199)) ([bc36b2c](https://github.com/complexluise/bib2graph/commit/bc36b2c26a970865ab33d128fea328cde3e05cfa))
+* **api:** consolidar superficie CLI 0.10.0 + enmiendas ADR 0025/0031/0038 ([#166](https://github.com/complexluise/bib2graph/issues/166)) ([#181](https://github.com/complexluise/bib2graph/issues/181)) ([fc7c9b6](https://github.com/complexluise/bib2graph/commit/fc7c9b6c96ce6c9c68afdb3e52dd688e368d7415))
+* **notas:** Nota 21 — descomposición de la suite de tests para poda ([#184](https://github.com/complexluise/bib2graph/issues/184)) ([#185](https://github.com/complexluise/bib2graph/issues/185)) ([272d87c](https://github.com/complexluise/bib2graph/commit/272d87c0e5eeb4b0b0ad84670809c9d87cfcb7b1))
+
 ## [0.9.0](https://github.com/complexluise/bib2graph/compare/v0.8.0...v0.9.0) (2026-06-25)
 
 
