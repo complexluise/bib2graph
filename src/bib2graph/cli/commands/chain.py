@@ -191,6 +191,8 @@ def run_chain(
         total_papers = len(merged_deduped)
         merged_backend_close = getattr(merged_deduped._backend, "close", None)
         store.persist_replace(merged_deduped)
+        # #141: persistir EnricherRef (refs_doi) para que manifest.enrichers sobreviva.
+        store.backend.persist_enricher_refs(merged_deduped.manifest.enrichers)
 
         # #54: persistir IDs backward observados en la tabla auxiliar.
         # El backend del store (DuckDBBackend) ya tiene add_referenced_refs;

@@ -81,6 +81,8 @@ def run_enrich(
             corpus, source, max_citing=max_citing, pass_name="both"
         )
         store.persist(enriched)
+        # #141: persistir EnricherRef para que manifest.enrichers sobreviva al reload.
+        store.backend.persist_enricher_refs(enriched.manifest.enrichers)
         total_papers = len(enriched)
     finally:
         store.close()

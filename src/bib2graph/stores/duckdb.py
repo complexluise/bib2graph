@@ -82,13 +82,15 @@ class DuckDBStore:
 
         #126: reconstruye ``manifest.filters`` desde ``filter_log`` para que
         los pasos PRISMA persistan entre sesiones.
+        #141: reconstruye ``manifest.enrichers`` desde ``enricher_log`` para
+        que los ``EnricherRef`` persistan entre sesiones.
 
         Returns:
             El ``Corpus`` acumulado en el store.
         """
         import pyarrow as pa
 
-        from bib2graph.corpus import FilterStep
+        from bib2graph.corpus import EnricherRef, FilterStep
 
         table = self._backend.to_arrow()
         if len(table) == 0:
@@ -112,6 +114,21 @@ class DuckDBStore:
                 for s in raw_steps
             ]
             new_manifest = corpus.manifest.model_copy(update={"filters": filter_steps})
+            corpus = corpus.with_manifest(new_manifest)
+
+        # #141: reconstruir manifest.enrichers desde enricher_log
+        raw_refs = self._backend.load_enricher_refs()
+        if raw_refs:
+            enricher_refs = [
+                EnricherRef(
+                    name=str(r["name"]),
+                    params={str(k): str(v) for k, v in r["params"].items()},
+                )
+                for r in raw_refs
+            ]
+            new_manifest = corpus.manifest.model_copy(
+                update={"enrichers": enricher_refs}
+            )
             corpus = corpus.with_manifest(new_manifest)
 
         return corpus
