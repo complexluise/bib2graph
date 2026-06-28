@@ -552,7 +552,7 @@ class TestSnapshotMaturity:
         runner = CliRunner()
         result = runner.invoke(
             b2g,
-            ["--workspace", str(ws_dir), "snapshot", "--json"],
+            ["--workspace", str(ws_dir), "snapshot", "create", "--json"],
             catch_exceptions=False,
         )
         assert result.exit_code == 0, f"Error: {result.output}"

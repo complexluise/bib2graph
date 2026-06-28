@@ -35,7 +35,7 @@
   ecuación, 9a), `exporters/` (GraphML, CSV) y `cli/`.
   El **CLI `b2g` es real** —paquete `cli/` con 19 subcomandos en `cli/commands/`, no un
   placeholder (el 16° `b2g networks` es la capa declarativa YAML del Hito 9; el 17° `b2g restore`
-  rehidrata un corpus curado sin red, Ciclo 9a; el 18° `b2g thesaurus` aplica el thesaurus curado,
+  rehidrata un corpus curado sin red, Ciclo 9a —**ahora `b2g snapshot restore`**, #163, abajo—; el 18° `b2g thesaurus` aplica el thesaurus curado,
   único paso explícito del preproc, #88, abajo; el 19° `b2g gui` levanta la API local FastAPI, Hito G3
   del MVP GUI, ADR 0028)—.
   **Grupo noun-verb `read {list,stats,show,top}` (#156/#157, ADR 0037 §b):** primer grupo del CLI (lectura pura
@@ -44,7 +44,7 @@
   `read top --top N --kind {…}` (la salida de investigación: nodos centrales + co-citación con título;
   default `bibliographic_coupling`, robusto en one-shot; co-citación vacía → honest-empty exit 0 +
   reason/fix_command). **Artefactos one-shot honestos (#160, ADR 0037 §f):** el `--json` de `build`,
-  `snapshot` y `read top` suma un bloque aditivo **`maturity`** (`{curated, scope, saturated,
+  `snapshot create` y `read top` suma un bloque aditivo **`maturity`** (`{curated, scope, saturated,
   empty_networks}`, `schema="1"` intacto) que autodeclara que el resultado es un borrador sin pulir;
   forma estable en `docs/API.md` §Apéndice `maturity`. `read` sin subcomando → ayuda + exit 0 (`invoke_without_command=True`, workaround Click 8.4); el
   `command` del envelope usa la ruta completa (`"read list"`). `inspect` queda **en deprecación** (#165,
@@ -57,10 +57,16 @@
   en `service/curate.py` (`run_curate_dump`/`run_curate_from_csv`/`filter_corpus` con `decided_at`
   inyectado). Los verbos sueltos `accept`/`reject`/`filter` siguen vivos como **alias deprecados**
   (retiro 0.11.0, ADR 0038 P1 + enmienda #155). Ver `docs/API.md` §`curate`.
+  **Grupo noun-verb `snapshot {create, restore}` (#163, ADR 0038):** TERCER grupo del CLI. **BREAKING:**
+  el `snapshot` plano → **`snapshot create`** (sin alias); `snapshot restore` = ex verbo plano `restore`
+  (el suelto `restore` sigue vivo como **alias deprecado**, `command="restore"`, retiro #165). La
+  transición la define el VERBO: `snapshot create` **NO** transiciona y lleva el bloque `maturity`;
+  `snapshot restore`→`FILTERED`. Lógica fuente única en `service/snapshot.py`
+  (`run_snapshot`/`run_restore`, `decided_at` inyectado). Ver `docs/API.md` §`snapshot`.
   **645 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`
-  (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2). **`b2g snapshot`/`b2g export` resuelven por
+  (#31, AS-BUILT 2026-06-17; ver `docs/API.md` §7.2). **`b2g snapshot create`/`b2g export` resuelven por
   workspace** (`--out-dir` override opcional → `<workspace>/snapshots|exports/`) y **`b2g status` avisa
   de staleness** de la cache de redes (`networks_cache_stale`; avisa, no regenera) — remanentes del
   modelo workspace cerrados (#32, AS-BUILT 2026-06-17; ver el bullet de workspace abajo).

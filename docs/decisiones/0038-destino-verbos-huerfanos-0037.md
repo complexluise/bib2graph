@@ -192,3 +192,40 @@ criterio que `accept`/`reject`: sigue funcionando **con aviso** durante 0.10.x y
 0.11.0**, como alias deprecado del nuevo **`curate filter`**. (`filter` y `curate filter` comparten la
 lógica de servicio `filter_corpus`, fuente única; el suelto es un shim que delega.) El resto de P1 no
 cambia. AS-BUILT del grupo `curate` en [`../API.md`](../API.md) §`curate`.
+
+## Enmienda 2026-06-27 (append-only) — fija el detalle de `restore`→`snapshot restore`: `snapshot` se vuelve grupo noun-verb y el plano → `snapshot create` [BREAKING] (#163)
+
+> Anotación append-only (gemela de las enmiendas D1 (#159) / #155; no revierte nada de arriba). Surge
+> de la implementación del sub-issue [#163](https://github.com/complexluise/bib2graph/issues/163). La
+> **Decisión** de arriba ya fijó que `restore` pasa a **`snapshot restore`** (tabla de huérfanos +
+> Consecuencias §`restore` vs 0030, líneas ~85/154-157), pero **no explicitó** qué pasa con el verbo
+> `snapshot` mismo. La implementación lo resuelve: para alojar `snapshot restore`, **`snapshot` deja
+> de ser verbo plano y se vuelve grupo noun-verb** —y eso obliga a renombrar el `snapshot` plano—.
+
+El ADR decidió el **destino** de `restore` (→ `snapshot restore`) pero no el **detalle del grupo**.
+Concretamente, al volverse `snapshot` un grupo:
+
+- **(a) `snapshot` es ahora grupo noun-verb `{create, restore}`** —el **3er grupo del CLI**, mismo
+  patrón que `read` (1°, #156/#157) y `curate` (2°, #155): `snapshot` **sin subcomando** imprime la
+  ayuda y sale **exit 0**; el `command` del envelope usa la **ruta completa** (`"snapshot create"` /
+  `"snapshot restore"`).
+- **(b) El `snapshot` plano → `snapshot create`** —**BREAKING, sin alias**, mismo criterio que el
+  BREAKING de `curate` (decisión (b) del 0037, forma-flag eliminada sin alias). `snapshot create` es
+  el ex `snapshot` plano sin cambios de semántica: sella la foto reproducible (parquet +
+  `manifest.json`, ADR 0017), **NO transiciona** el `CycleState` y **lleva el bloque `maturity`** del
+  one-shot (AS-BUILT #160, coherente con `build`/`read top`).
+- **(c) `snapshot restore` es el ex `restore`** (mergea+dedup, preserva la curación, **transiciona a
+  `FILTERED`** reusando la transición permisiva `filter`, ADR 0016/0030). El **verbo suelto `restore`
+  queda INTACTO como alias deprecado** (shim que delega; su envelope lleva `command="restore"` por
+  backward-compat). Su **retiro se agenda en #165** (junto con `inspect`), no en este hito.
+- **(d) Fuente única en `service/snapshot.py`** (`run_snapshot`/`run_restore`, servicio neutral con
+  reloj `decided_at` inyectado en la frontera, ADR 0017): `snapshot create`, `snapshot restore` y el
+  shim `restore` suelto **delegan** en ella. `run_snapshot` lleva el bloque `maturity` (de #160).
+
+**Invariantes intactos:** envelope `schema="1"`, exit codes y la forma del FSM no cambian; `create`
+**NO** transiciona, `restore`→`FILTERED` (igual que antes). Esta enmienda solo fija el detalle del
+grupo y el BREAKING que la Decisión no explicitó. AS-BUILT en [`../API.md`](../API.md) §`snapshot`.
+
+> **Follow-up (BAJO, #175):** la implementación dejó `normalize_and_dedup` duplicado en
+> `service/snapshot.py` respecto del helper de `cli/_ingest.py`. Es deuda de DRY, **no** afecta el
+> contrato; se trata en su propio issue, no aquí.
