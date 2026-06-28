@@ -254,6 +254,20 @@
 > pasa a estar **permitido con `--from-bib`** cuando se usa junto a `--resolve` (se propaga al polite
 > pool en la resolución). Solo `source_id` (no `external_ids`, diferido #120). Ver §2 + §convenciones
 > CLI.
+>
+> **Sincronizado con la superficie CLI 0.10.0 — ADR [0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md)
+> + [0038](decisiones/0038-destino-verbos-huerfanos-0037.md) (AS-BUILT 2026-06-28, epic #167):** la
+> superficie por acreción (~20 subcomandos) se **consolidó en 10 verbos del ciclo + 3 grupos noun-verb
+> (`read`/`curate`/`snapshot`) + `gui` como excepción**, con una **ventana de deprecación** de 9 aliases
+> (retiro 0.11.0). Cierres de este consolidado docs (#166): **`monitor` → `chain --since`** (#158:
+> forrajeo incremental, fecha ISO o atajo `90d/6m/1y`, fuerza forward, transiciona a **`MONITORED`** —no
+> existe `CHAINED`); **`enrich` absorbido** (#162: refs→DOI en `chain`, co-citación en `build` cuando hay
+> aceptadas → `build` deja de ser estrictamente "puro/sin red"; bloque `data["enrichment"]`);
+> **`thesaurus` retirado como verbo** (#164: la capacidad es `build --thesaurus`); **avisos de
+> deprecación** a stderr + `warnings[]` (#165). El contrato de salida (envelope `schema="1"`, exit codes,
+> FSM) **no cambia** (reorganización semántica). Ver §convenciones CLI (header "Superficie 0.10.0",
+> §`chain`, §`build`, §`enrich`, §Avisos de deprecación). *(Banner de cierre; las notas AS-BUILT de
+> arriba describen la acreción previa y quedan como historia inmutable.)*
 
 ## Convenciones
 
@@ -275,25 +289,31 @@ invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción
 `--workspace`; `--store` fue eliminada en [#75](https://github.com/complexluise/bib2graph/issues/75),
 ver abajo).
 
-**Set de 20 subcomandos** (decisión del PO, ADR 0021 §A — **amplía** este doc, que antes listaba 9
-y dejaba `accept`/`reject` como "solo programático"; el 12° `monitor` se agregó en el cleanup
-pre-v0.3; el 13° `enrich` en el Ciclo 8a, ADR
-[0025](decisiones/0025-enricher-cocitacion-openalex.md); el 14° `init` con el workspace, ADR
-[0029](decisiones/0029-workspace-por-investigacion.md); el 15° `curate` con la curación a escala,
-#22 + #26; el 16° `networks` con la capa declarativa YAML, Hito 9; el 17° `restore` con la
-rehidratación de corpus curado sin red, Ciclo 9a, ADR
-[0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md); el 18° `thesaurus` con el
-preprocesamiento automático en la ingesta, #88, ADR
-[0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md); el 19° **`gui`** con la API
-local + frontend, Hito G3 del MVP GUI, ADR
-[0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md); el 20° **`resolve`** con la
-resolución DOI→`source_id` del flujo BibTeX e2e, issues #110/#112, ADR
-[0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)). **(Reorganización 0037/0038, en
-curso):** esta superficie por acreción se consolidó en **10 verbos del ciclo + 3 grupos noun-verb**
-(`read`, `curate`, **`snapshot {create, restore}`** —#163, ver §`snapshot`—) + `gui` como excepción;
-el `restore` plano pasó a **`snapshot restore`** (#163, alias deprecado), y `networks`/`enrich`/
-`resolve`/`thesaurus` se absorben o retiran (ADR 0038, ventana cierra 0.11.0). El conteo histórico de
-abajo refleja la acreción, no la superficie objetivo:
+**Superficie 0.10.0 — 10 verbos del ciclo + 3 grupos noun-verb + `gui` (excepción) + 9 aliases
+deprecados** (AS-BUILT, ADR [0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md) /
+[0038](decisiones/0038-destino-verbos-huerfanos-0037.md)). La superficie por acreción del 0021 (que
+llegó a ~20 subcomandos) se **consolidó** en una superficie que mapea 1:1 el ciclo de investigación
+(*más es menos*). El conteo es **verificable contra `b2g --help`**:
+
+- **10 verbos del ciclo:** `init`, `seed`, `chain`, `curate` (grupo), `build`, `read` (grupo),
+  `export`, `snapshot` (grupo), `status`, `validate`. *(El par EXPORT/SNAPSHOT cuenta como uno; ver
+  ADR 0037 §"Los 10 verbos".)*
+- **3 grupos noun-verb:** **`read {list,stats,show,top}`** (#156/#157), **`curate
+  {dump,apply,accept,reject,filter}`** (#155), **`snapshot {create,restore}`** (#163, ADR 0038).
+- **`gui`** — fuera del set de 10 por diseño (excepción explícita, gobernada por ADR 0027/0028,
+  gateada por #34; no es un paso del ciclo agents-first).
+- **9 aliases deprecados** (siguen vivos con aviso a stderr, se eliminan en **0.11.0** — ADR 0038 P1):
+  `accept`, `reject`, `filter`, `inspect`, `monitor`, `networks`, `enrich`, `restore`, `resolve`. Más el
+  entry-point `bib2graph`→`b2g` y la opción `build --corpus-scope`→`build --scope`. Ver §Avisos de
+  deprecación. **`thesaurus` NO es alias: se retiró por completo** (su capacidad es `build --thesaurus`,
+  #164).
+
+> **Historia de la acreción (contexto, no superficie objetivo):** el 0021 listaba 9 subcomandos y
+> dejaba `accept`/`reject` como "solo programático"; luego crecieron `monitor` (cleanup pre-v0.3),
+> `enrich` (Ciclo 8a, ADR 0025), `init` (workspace, ADR 0029), `curate` (#22+#26), `networks` (Hito 9),
+> `restore` (Ciclo 9a, ADR 0030), `thesaurus` (#88, ADR 0031), `gui` (Hito G3, ADR 0028) y `resolve`
+> (#110/#112, ADR 0035). Los ADR 0037/0038 los reorganizaron a la superficie de arriba. Las secciones
+> por-comando de abajo describen cada verbo/grupo **en su forma 0.10.0**:
 
 - `seed`, `chain`, **`filter`** (filtros PRISMA deterministas: año/tipo/idioma/citas **con conteo
   en cada paso**), `build`, `export`, `snapshot`, **`status`** (expone el ciclo: estado actual,
@@ -380,36 +400,57 @@ abajo refleja la acreción, no la superficie objetivo:
   biblioteca viva por subprocess (historia C4). **AS-BUILT #22/#26:** la curación **a escala** ya no es
   uno-a-uno —el subcomando **`curate`** (abajo) hace dump/import CSV en lote—; la **curación
   interactiva rica y la GUI siguen siendo futuro**. Ver [`ROADMAP.md`](ROADMAP/README.md) Hito 6.
-- **`monitor`** (cleanup pre-v0.3): re-chequea OpenAlex por **citantes nuevos** del corpus (forward
-  chaining **batcheado**, AS-BUILT #21: reusa `fetch_citing_batch` con cap por semilla, scope
-  `is_seed`), mergea los candidatos nuevos a la biblioteca viva y **transiciona a `MONITORED`** vía
-  `apply_transition(state, "monitor", round)` (paso 8 del ciclo, Ellis). `data` =
-  `{new_candidates, total_papers, loop_state, round}`; `--email` para el polite pool; `--json` con
-  `schema="1"`. **Sin pre-check de capacidad** (a diferencia de `chain`): instancia `OpenAlexSource`
-  fijo, que **siempre** tiene `fetch_citing` (asimetría deliberada con `chain`, que acepta
-  `--direction` variable y sí pre-chequea). Errores accionables: sin corpus/estado previo →
-  `DataError` (exit 2). Con `monitor`, **`MONITORED` deja de ser inalcanzable**.
+- **`chain`** (paso CHAIN del ciclo): expande el corpus con candidatos rankeados por *information
+  scent* (forward/backward chaining batcheado, §5). **`--direction [backward|forward|both]`** (default
+  `both`), **`--depth`** (solo 1), **`--max-candidates`**, **`--max-citing`** (presupuesto de citantes
+  por semilla en forward, default 50), **`--email`** (polite pool), **`--preview`** (dry-run: estima el
+  crecimiento **sin** fetchear ni transicionar — backward exacto desde `references_id`; forward exacto
+  solo si el corpus tiene `cited_by_id` poblado, si no avisa que requiere fetch). En el camino normal
+  **transiciona a `FORAGED`** y corre **automáticamente la pasada de enriquecimiento refs→DOI** (#162,
+  ver §`enrich`): el envelope `--json` suma el bloque aditivo `data["enrichment"]`. `data` =
+  `{candidates_found, new_candidates, total_papers, direction, depth, ranking_preview,
+  observed_refs_count, loop_state, round, enrichment}`.
+
+  **`--since` — forrajeo incremental (#158, ADR 0037 §c; absorbe `monitor`):** trae **solo citantes
+  publicados desde** una fecha. Acepta **fecha ISO `YYYY-MM-DD`** o **atajo relativo** (`90d` = 90 días,
+  `6m` = 6 meses, `1y` = 1 año), parseado en la frontera CLI (`cli/_options.py::parse_since`, reloj
+  R2/ADR 0017). **`--since` fuerza forward** y **transiciona a `MONITORED`** (no a `FORAGED`): es el paso
+  MONITOR (Ellis) reexpresado como modo de `chain`. Reglas de dirección: **`backward` + `--since` →
+  `UsageError` (exit 1)** (no tiene sentido); **`both` + `--since` → la ventana aplica solo al tramo
+  forward** (`effective_direction=forward`). Guarda de portada (como el ex `monitor`): sin corpus/estado
+  previo o corpus vacío → `DataError` (exit 2), sugiere `b2g seed`. **`b2g monitor` queda como alias
+  deprecado** (retiro 0.11.0) que delega en `chain` con la acción FSM `monitor`. **AS-BUILT #158:** tras
+  el merge, `chain --since` **deduplica** el corpus (ingesta normalizada, ADR 0031). **Corrección de
+  drift:** `chain` (normal) transiciona a **`FORAGED`**, y `chain --since`/`monitor` a **`MONITORED`** —
+  **no existe** ningún estado `CHAINED`.
 - **`enrich`** (Hito 8 = Ciclos 8a + 8b, ADR
-  [0025](decisiones/0025-enricher-cocitacion-openalex.md)): corre el `OpenAlexEnricher` (§3) sobre
-  la biblioteca viva en **2 pasadas**. **8a:** resuelve `references_id`→`references_doi` (batching
-  por OR) y registra el `EnricherRef` en el `Manifest` (idempotente). **8b:** la pasada de
-  **co-citación** trae los citantes de las **semillas aceptadas** y **mergea sus `openalex_id` en
-  `cited_by_id`** (unión idempotente; no crece el corpus). Flags: `--email` (polite pool),
-  `--api-key` (opcional), **`--max-citing INTEGER`** (tope de citantes **por semilla**, acota el
-  fetch), `--json`. `data` = `{enriched, references_resolved, ...}`. **NO transiciona el
-  `CycleState`** (ortogonal al lazo): se puede enriquecer en cualquier estado sin perturbar el FSM.
-  `build` sigue puro/sin red.
-- **`thesaurus`** (#88, ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md), 18°
-  subcomando): aplica un **thesaurus multilingüe curado** al corpus —**`--from <archivo>`**
-  (requerido, JSON formato ADR 0011)— sobrescribiendo `keywords_id` con los conceptos canónicos del
-  mapa (`Preprocessor.apply_thesaurus`, §6). Es el **único paso explícito del preproc**: requiere el
-  mapeo del usuario, por eso no es automático (a diferencia de `normalize`+dedup, que corren solos en
-  la ingesta). **NO transiciona el `CycleState`** (transversal al lazo, igual que `enrich`/`curate`/
-  `networks`). Persiste con **`persist_replace`** (§4.1): el thesaurus reemplaza los `keywords_id` del
-  corpus completo; el upsert-concat reintroduciría los canónicos viejos junto a los nuevos si el mapeo
-  cambió. `data` = `{keywords_mapped, keywords_total, aliases_loaded, applied_at}`; `--json` con
-  `schema="1"`. Errores accionables: thesaurus inexistente o con formato inválido → `DataError`
-  (exit 2).
+  [0025](decisiones/0025-enricher-cocitacion-openalex.md); **ABSORBIDO en `chain`/`build`** — #162,
+  ADR 0038): el `OpenAlexEnricher` (§3) **deja de ser verbo propio**. Sus dos pasadas corren ahora
+  automáticas en los pasos del ciclo, vía el helper único `cli/_enrich.py::enrich_corpus(corpus,
+  source, *, max_citing, pass_name)`:
+  - **Pasada 8a (`refs_doi`)** — resuelve `references_id`→`references_doi` (batching por OR): corre
+    **automática en `chain`** (forrajeo).
+  - **Pasada 8b (`cited_by`)** — co-citación: trae los citantes de las **semillas aceptadas** y
+    mergea sus `openalex_id` en `cited_by_id` (unión idempotente; no crece el corpus): corre
+    **automática en `build`** cuando hay semillas aceptadas (**no-op de red, cero requests, si no las
+    hay**). Por eso **`build` ya NO es estrictamente "puro/sin red"** (ADR 0025 enmendado, #162): hace
+    requests `cited_by` en build-time porque la co-citación necesita las aceptadas, recién disponibles
+    tras curar.
+
+  Ambos comandos suman el bloque **aditivo `data["enrichment"]`** al `--json` (`refs_resolved`/
+  `refs_total_unique` y/o `citing_new`/`citing_targets`, solo las claves de las pasadas ejecutadas).
+  `build` suma además **`--email`** y **`--max-citing`** (tope de citantes por semilla en la pasada
+  `cited_by`). **`b2g enrich` queda como alias deprecado** (retiro 0.11.0, ver §Avisos de deprecación)
+  que corre ambas pasadas (`pass_name="both"`) y **NO transiciona el `CycleState`**.
+- **`thesaurus` — RETIRADO como verbo (#164, ADR 0038).** El subcomando `b2g thesaurus` **ya no
+  existe** (no queda ni como alias; la issue [#149](https://github.com/complexluise/bib2graph/issues/149)
+  constató que no implementaba un tesauro como tal). La capacidad —consolidación cross-lingüe de
+  keywords (ADR [0011](decisiones/0011-thesaurus-multilingue.md), `Preprocessor.apply_thesaurus`, §6)—
+  **se preserva como flag `b2g build --thesaurus <archivo>`** (JSON formato ADR 0011): `build` aplica el
+  thesaurus sobre `keywords_id` **antes** de scopear/proyectar, persiste con **`persist_replace`** (§4.1)
+  y suma el bloque aditivo `data["thesaurus"] = {keywords_mapped, keywords_total, aliases_loaded,
+  applied_at}`. (Coherente con el ADR 0031 enmendado: `normalize`+dedup siguen automáticos en la
+  ingesta; lo que cae es el *verbo* explícito.)
 - **`init`** (ADR [0029](decisiones/0029-workspace-por-investigacion.md)): **scaffold de un
   workspace**. `b2g init <name>` crea `<name>/` con `workspace.json` + `library.duckdb` +
   `networks/`/`snapshots/`/`exports/`; **`b2g init .`** inicializa el cwd. Si la carpeta ya es un
@@ -576,6 +617,19 @@ aplica sin `--spec`.** Con `--spec`, cada red usa el `min_weight` declarado en s
 pasar **`--min-weight` junto a `--spec` emite un warning a stderr** ("se ignora con `--spec`") — no
 falla, pero el valor del CLI se descarta.
 
+**`--thesaurus <archivo>` (#164, absorbe el verbo retirado `b2g thesaurus`):** aplica un thesaurus
+multilingüe curado (JSON formato ADR [0011](decisiones/0011-thesaurus-multilingue.md)) sobre
+`keywords_id` **antes** de scopear y proyectar, y persiste el corpus actualizado con `persist_replace`
+(§4.1). Suma el bloque aditivo `data["thesaurus"] = {keywords_mapped, keywords_total, aliases_loaded,
+applied_at}`. Thesaurus inexistente/mal formado → `DataError` (exit 2).
+
+**`--email` / `--max-citing` (#162, pasada de co-citación):** `build` corre **automáticamente la pasada
+`cited_by`** del Enricher (§`enrich`) cuando hay **semillas aceptadas** —puebla `cited_by_id` para la
+red de co-citación—; **`--max-citing INTEGER`** acota los citantes por semilla y **`--email`** va al
+polite pool de OpenAlex. **Sin semillas aceptadas la pasada es no-op (cero requests).** Suma el bloque
+aditivo `data["enrichment"]` (`citing_new`/`citing_targets`). Por esto `build` **ya no es
+estrictamente puro/sin red** (ADR 0025 enmendado); los proyectores sí siguen puros (ADR 0014).
+
 **Diagnóstico de red-vacía en build-time (ADR 0037 §(e), no-divergencia con status-time):** `build`
 reusa `predict_build_preview` (la **misma** fuente que usa `status`) para diagnosticar redes que salen
 vacías. En modo humano va como `warning` a stderr; en `--json` va en el envelope como
@@ -591,8 +645,11 @@ Si una red sale vacía por el `min_weight` del YAML (modo spec), el `reason` **c
 **`maturity`** (bloque aditivo del one-shot, AS-BUILT #160 — ver Apéndice `maturity`; `curated`
 deriva del **corpus completo** pre-scope, `scope` reusa este `data["scope"]`, `empty_networks` es la
 lista de `kind` extraída de `data["empty_networks"]` sin duplicar `reason`/`fix_command`; presente
-también en el early-return de corpus vacío).
-Invariante: envelope `schema="1"`, exit codes y FSM intactos; todo lo de #159/#160 es **aditivo**.
+también en el early-return de corpus vacío), **`enrichment`** (#162, métricas de la pasada `cited_by`:
+`citing_new`/`citing_targets`; presente aun cuando es no-op) y **`thesaurus`** (#164, presente solo si
+se pasó `--thesaurus`).
+Invariante: envelope `schema="1"`, exit codes y FSM intactos; todo lo de #159/#160/#162/#164 es
+**aditivo**.
 
 > **No-divergencia es por-corpus.** La garantía de no-divergencia entre el diagnóstico de red-vacía de
 > `build` y el de `status` (ADR 0037 §(e)) es **sobre el mismo corpus de entrada**. Con `--scope != all`,
@@ -635,16 +692,18 @@ accionable ("ejecutá `b2g build`"). Lo dispara que el `networks/.corpus_hash` *
 cache **no existe** (nunca se corrió `build`), **no** es stale. `status` **avisa, NO regenera**:
 invalidación por hash, **no** un build-system (ADR [0029](decisiones/0029-workspace-por-investigacion.md)).
 
-**Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`, `chain`→`FORAGED`,
-`filter`→`FILTERED`, **`curate filter`→`FILTERED`** (#155: dentro del grupo `curate` la transición la
-define el VERBO, no el grupo —precedente D1 de #159), `build`→`BUILT`,
-**`monitor`→`MONITORED`** (cleanup pre-v0.3),
+**Transiciones automáticas del ciclo** (ADR 0021 §F; AS-BUILT R3): `seed`→`SEEDED`,
+**`chain`→`FORAGED`** (chaining normal), **`chain --since`→`MONITORED`** (#158: forrajeo incremental;
+el alias deprecado `monitor` transiciona igual, vía la acción FSM `monitor`), `filter`→`FILTERED`,
+**`curate filter`→`FILTERED`** (#155: dentro del grupo `curate` la transición la define el VERBO, no el
+grupo —precedente D1 de #159), `build`→`BUILT`,
 **`snapshot restore`→`FILTERED`** (Ciclo 9a, ADR 0030/0038: el corpus restaurado ya pasó curación;
-reusa la transición permisiva `filter`; el verbo suelto `restore` —alias deprecado— transiciona igual);
-`accept`/`reject`/**`curate {dump,apply,accept,reject}`**/**`read`**/`export`/**`snapshot create`**/`status`/`inspect`/`validate`/**`enrich`**/**`networks`**
+reusa la transición permisiva `filter`; el verbo suelto `restore` —alias deprecado— transiciona igual).
+**No existe un estado `CHAINED`:** `chain` va a `FORAGED` y `chain --since` a `MONITORED`.
+`accept`/`reject`/**`curate {dump,apply,accept,reject}`**/**`read`**/`export`/**`snapshot create`**/`status`/`inspect`/`validate`/el alias `enrich`/el alias `networks`
 **no transicionan** (los verbos transversales de `curate` y **`read`** son transversales/lectura pura
-—**salvo `curate filter`**, que sí transiciona; `enrich` y `networks` son
-ortogonales al lazo, ADR 0025 / Hito 9). El estado
+—**salvo `curate filter`**, que sí transiciona; el enriquecimiento absorbido en `chain`/`build` y el
+alias `networks` son ortogonales al lazo, ADR 0025 / Hito 9). El estado
 destino lo dicta `bib2graph.cycle.apply_transition`
 (fuente única de verdad; los comandos no hardcodean el destino). `seed` con **estado previo** se trata
 como **`reseed`** (loop-back a `SEEDED`, ronda++, acumula sobre lo curado).
@@ -792,6 +851,47 @@ one-shot con un resultado terminado. **Aditivo: `schema="1"` intacto.**
 - **Función pura:** lo calcula `service.maturity.compute_maturity(corpus, *, scope, empty_network_kinds)`
   (sin I/O, re-exportada desde `bib2graph.service`), invariante de neutralidad de transporte intacta
   (§0).
+
+### Avisos de deprecación (AS-BUILT #165, ADR [0038](decisiones/0038-destino-verbos-huerfanos-0037.md) P1)
+
+La consolidación 0.10.0 retira solapamientos **sin romper de una**: los nombres viejos siguen
+funcionando durante 0.10.x con un **aviso de deprecación**, y **se eliminan en 0.11.0** (criterio por
+versión, no fecha). El helper único es `cli/_deprecation.py::emit_deprecation`.
+
+**Formato canónico** (exacto):
+
+```text
+AVISO: '<viejo>' está deprecado y se eliminará en 0.11.0; usá '<nuevo>'.
+```
+
+- **Canal: stderr SIEMPRE** (modo humano y modo `--json`), nunca stdout — preserva el stdout puro de
+  una línea-envelope (#151). En `--json`, el mismo mensaje se propaga además al **`warnings[]`
+  top-level** del envelope (no a `data`), enhebrado vía `build_envelope(..., warnings=[msg])`.
+- **No cambia el contrato:** el alias delega en la misma lógica de servicio (fuente única) y conserva
+  su `command`/envelope; `schema="1"`, exit codes y FSM intactos.
+
+**Los 9 verbos deprecados** (alias vivo con aviso → forma canónica):
+
+| Alias deprecado | Forma canónica |
+|---|---|
+| `b2g accept` | `b2g curate accept` |
+| `b2g reject` | `b2g curate reject` |
+| `b2g filter` | `b2g curate filter` |
+| `b2g inspect` | `b2g read show` (papers) / `b2g status` (manifest/FSM) |
+| `b2g monitor` | `b2g chain --since` |
+| `b2g networks` | `b2g build --spec` |
+| `b2g enrich` | `b2g chain` (refs→DOI) + `b2g build` (co-citación) |
+| `b2g restore` | `b2g snapshot restore` |
+| `b2g resolve` | `b2g seed --resolve` |
+
+**Además** (mismo corte 0.11.0):
+
+- **Entry-point `bib2graph` → `b2g`** (`main_bib2graph_alias` emite el aviso y delega en `main`).
+- **Opción `build --corpus-scope` → `build --scope`** (deprecación de **flag**, oculta en `--help`;
+  el vocab viejo `seeds_only` sigue aceptado y tiene precedencia si se pasan ambos).
+
+**`thesaurus` NO está en esta lista:** se **retiró por completo** (sin alias). Su capacidad vive como
+`b2g build --thesaurus <archivo>` (#164, ver §`build`).
 
 ---
 
@@ -1503,18 +1603,20 @@ contrato universal; las consumen el `Forager` y el `Enricher`):
 
 - **`fetch_citing(openalex_id) -> list[dict]`** (singular, Forager forward chaining): `GET
   works?filter=cites:`, con retry/backoff ante 429/5xx (R5). No cambió en el Hito 8.
-- **`fetch_citing_batch(ids, *, max_per_paper) -> dict[seed_id, list[citer_id]]`** (Hito 8b, ADR
+- **`fetch_citing_batch(ids, *, max_per_paper, since: date | None = None) -> dict[seed_id, list[citer_id]]`** (Hito 8b, ADR
   [0025](decisiones/0025-enricher-cocitacion-openalex.md)): trae los citantes de un conjunto de
   semillas **batcheando por OR** (`cites:W1|W2|...`, lotes ≤50), pagina por cursor y **atribuye
-  página a página** (cruza `referenced_works` del citante con el set objetivo, por short-id). Con
+  página a página** (cruza `referenced_works` del citante con el set objetivo, por short-id). **`since`
+  (#158, forrajeo incremental):** filtra los citantes a los publicados desde esa fecha agregando
+  `,from_publication_date:<since.isoformat()>` al `filter` de OpenAlex (lo usa `chain --since`). Con
   **presupuesto por semilla**: corta la paginación cuando **todas** las semillas del lote alcanzan
   `max_per_paper` (acota el *fetch*, no solo la columna; **sin starvation** entre semillas; mata el
   N+1 diferido de R5). Lo consume el `OpenAlexEnricher` (§3) para poblar `cited_by_id`. **AS-BUILT
   #78 (2026-06-17): firma y contrato INTACTOS** —sigue devolviendo solo el mapeo de atribución— pero
   internamente es un **thin wrapper** sobre `_fetch_citing_pages` que **descarta `works_map`** (la
   metadata que ya viaja en la misma request). El Enricher 8b no cambia.
-- **`fetch_citing_batch_with_works(ids, *, max_per_paper) -> tuple[dict[seed_id, list[citer_id]], dict[citer_id, work]]`**
-  (#78, 2026-06-17, Forager forward chaining): la **variante que conserva la metadata**. Misma red,
+- **`fetch_citing_batch_with_works(ids, *, max_per_paper, since: date | None = None) -> tuple[dict[seed_id, list[citer_id]], dict[citer_id, work]]`**
+  (#78, 2026-06-17, Forager forward chaining; `since` #158): la **variante que conserva la metadata**. Misma red,
   mismo batcheo/atribución/presupuesto que `fetch_citing_batch` (comparten `_fetch_citing_pages`),
   pero devuelve además el `works_map` (`citer_id → work JSON con _FIELDS`) que `fetch_citing_batch`
   tira. **Cero red extra**: la metadata ya venía en la query de citantes y antes se descartaba. La
@@ -1571,7 +1673,9 @@ epic GUI #34). Reglas:
 - **Ejemplos existentes:**
   - **`examples/valoraciones/`** (Ciclo B, AS-BUILT 2026-06-17): **~80 filas** (70 `candidate` +
     10 `accepted` enriquecidos), armado **100% por CLI** (sin script): `seed --spec equation.yaml`
-    (`max_results: 80`) → `curate apply curacion.csv` → `enrich --max-citing 25` → `snapshot create`.
+    (`max_results: 80`) → `curate apply curacion.csv` → `enrich --max-citing 25` → `snapshot create`
+    (receta histórica; en la superficie 0.10.0 la co-citación corre en `build --max-citing 25`, ya que
+    `enrich` quedó deprecado — #162).
     **Co-citación presente** (rala) + coupling/author/institution/keyword sustanciales. Verificado por
     el gate R2 `tests/unit/test_example_r2_gate.py` (`corpus_hash` estable + comunidades Louvain
     estables entre corridas; piso `n>=50`, las 5 redes con datos). Se rehidrata con
@@ -1593,6 +1697,11 @@ queda opt-in para **resolver `references` a DOI** y el **segundo nivel de fetch*
 end-to-end** (Hito 8 completo). El `Enricher` vive en el **núcleo,
 sobre OpenAlex** (ADR 0025, decisión B), **no** en el extra `[s2]` (ese DoD pre-giro queda superado;
 `[s2]` se reserva para un futuro `SemanticScholarEnricher` de señal adicional).
+
+> **Superficie CLI (#162, ADR 0038):** el `Enricher` **ya no se invoca por un verbo propio**. La pasada
+> refs→DOI corre automática en **`chain`** y la de co-citación (`cited_by`) en **`build`** (cuando hay
+> aceptadas); el helper único es `cli/_enrich.py::enrich_corpus`. El verbo `b2g enrich` sobrevive como
+> **alias deprecado** (retiro 0.11.0). Ver §convenciones CLI (§`enrich`, §`build`, §Avisos de deprecación).
 
 ```python
 @runtime_checkable
@@ -1671,7 +1780,8 @@ class DuckDBStore:
 ```
 
 > **`persist_replace` vs `persist` (#88, ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)).**
-> La **ingesta automática** (`seed`/`seed_from_bib`/`chain`/`restore`) y **`b2g thesaurus`** persisten
+> La **ingesta automática** (`seed`/`seed_from_bib`/`chain`/`restore`) y la pasada **`build
+> --thesaurus`** (#164) persisten
 > con **`persist_replace`** (→ `DuckDBBackend.overwrite_corpus`, DELETE+INSERT reasignando `_seq`
 > desde 0, ADR 0024), porque ya tienen el corpus **completo, normalizado y deduplicado** en memoria y
 > el upsert-concat D3 (`persist`) **reintroduciría** las variantes que el dedup cross-biblioteca acaba
@@ -1709,8 +1819,9 @@ El estado + la **ronda** se persisten en `loop_state_log` (append-only; estado a
 columna `round`); las transiciones son **permisivas** (ADR 0016: no se bloquea ningún salto). `reseed`
 es de **primera clase** (loop-back a `SEEDED` + ronda++, acumula sobre lo curado); `seed.py` lo cablea
 cuando hay estado previo. **Fuente única de verdad:** `chain`/`filter`/`build` derivan su destino de
-`apply_transition`, no de un literal. **`MONITORED`** es **alcanzable** desde el cleanup pre-v0.3: el
-comando **`b2g monitor`** lo dispara (`apply_transition(state, "monitor", round)`, paso 8 del ciclo).
+`apply_transition`, no de un literal. **`MONITORED`** es **alcanzable** vía **`b2g chain --since`**
+(#158, forrajeo incremental; el alias deprecado `b2g monitor` delega), que dispara
+`apply_transition(state, "monitor", round)` (paso 8 del ciclo).
 El comando `b2g status` consume `loop_state()`/`loop_round()`/`available_transitions()` y expone
 `curation_available`/`round` (ver §convenciones CLI).
 
@@ -1796,10 +1907,14 @@ class Forager:
         SIN filtrar curation_status) con by_direction['forward']=0 y forward_requires_fetch=True;
         el conteo de citantes reales solo llega con chain(). NO muta el corpus."""
 
-    def chain(self, corpus: Corpus, *, direction: Direction = "both") -> "RankedCandidates":
+    def chain(self, corpus: Corpus, *, direction: Direction = "both",
+              since: date | None = None) -> "RankedCandidates":
         """Computa candidatos (curation_status='candidate', is_seed=False) rankeados por scent.
         Devuelve SOLO los candidatos nuevos (no mergeados): el humano hace
-        corpus.merge(ranked.corpus). NO muta el corpus de entrada. Sella Manifest.chaining."""
+        corpus.merge(ranked.corpus). NO muta el corpus de entrada. Sella Manifest.chaining.
+        `since` (#158, forrajeo incremental): propaga a fetch_citing_batch(since=) →
+        from_publication_date en OpenAlex; solo afecta el tramo forward. Lo usa `b2g chain --since`
+        (transición a MONITORED)."""
 
 class GrowthPreview(BaseModel):
     estimated_new: int             # total estimable localmente (forward=0 si requiere fetch)
@@ -1849,7 +1964,7 @@ class RankedCandidates(BaseModel):
   el Forager forrajeando solo `accepted`— fue la causa del bug que este AS-BUILT cierra.)*
 - **`preview` del forward sin red (#21):** estima el **nº de semillas a forrajear** (`is_seed`) sin
   emitir requests, manteniendo `forward_requires_fetch=True` (el conteo de citantes reales solo llega
-  con `chain`). `b2g monitor` usa este mismo forward batcheado.
+  con `chain`). **`b2g chain --since`** (#158, ex `monitor`) usa este mismo forward batcheado.
 - **`fetch_citing` (singular) con retry/backoff** ante 429/5xx (`_fetch_all_with_retry`: exponential
   backoff, 3 intentos) sigue disponible; el forward del Forager lo consume ahora vía la variante
   **batcheada** `fetch_citing_batch`.
@@ -1875,9 +1990,10 @@ class RankedCandidates(BaseModel):
 > ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** `normalize` (+ el dedup
 > fuzzy de §11) corre **automáticamente en cada ingesta** vía el helper de frontera
 > `cli/_ingest.py::normalize_and_dedup` (sobre el corpus completo mergeado). `apply_thesaurus`, que
-> requiere el mapeo curado del usuario, queda como el **único paso explícito** del preproc:
-> **`b2g thesaurus --from <archivo>`** (18° subcomando, transversal, NO transiciona el FSM;
-> §convenciones CLI). Ambos métodos aceptan `applied_at` inyectado desde la frontera (R2, ADR 0017).
+> requiere el mapeo curado del usuario, se expone (**#164, ADR 0038**) como el flag
+> **`b2g build --thesaurus <archivo>`** —el verbo suelto `b2g thesaurus` **se retiró** (ya no existe ni
+> como alias); ver §`build` y §Avisos de deprecación—. Ambos métodos aceptan `applied_at` inyectado
+> desde la frontera (R2, ADR 0017).
 
 ```python
 class Preprocessor:
@@ -1895,7 +2011,7 @@ class Preprocessor:
         multilingüe CURADO (en/es/pt), dict canónico→aliases en JSON o Path a ese JSON.
         Determinista e idempotente (ADR 0011). SIN fallback semántico/LLM (ADR 0011 enmendado /
         0022): lo que no matchea queda fuera, sin inventar conceptos con un modelo. Paso EXPLÍCITO
-        (`b2g thesaurus`), NO automático: requiere el mapeo del usuario (ADR 0031)."""
+        (flag `b2g build --thesaurus`, #164), NO automático: requiere el mapeo del usuario (ADR 0031)."""
 ```
 
 **Filtros de inclusión/exclusión** (funciones puras, flujo PRISMA; ADR
@@ -2315,7 +2431,9 @@ networks:
 > ingesta** (`seed`/`seed_from_bib`/`chain`/`restore`). **`rapidfuzz` pasa al núcleo**
 > (`[project.dependencies]`); **el extra `[dedup]` se ELIMINA** y el import deja de ser perezoso. El
 > **algoritmo** de 0026 (token_sort_ratio + Union-Find + canónico) **no cambia**: cambia *quién lo
-> invoca y cuándo*. `b2g thesaurus` es el único paso explícito del preproc (§convenciones CLI, §6).
+> invoca y cuándo*. La consolidación de keywords (thesaurus) es el único paso **no automático** del
+> preproc y se expone como el flag **`b2g build --thesaurus`** (#164; el verbo `b2g thesaurus` se
+> retiró — §convenciones CLI, §6).
 
 **Dedup fuzzy determinista** con `rapidfuzz` (núcleo desde #88): el complemento aproximado de la
 normalización conservadora del `Preprocessor` (§6). Las funciones siguen exportadas desde
@@ -2328,7 +2446,7 @@ normalización conservadora del `Preprocessor` (§6). Las funciones siguen expor
 def normalize_and_dedup(corpus: Corpus, *, applied_at: datetime | None = None) -> Corpus:
     """normalize → deduplicate_authors(0.92) → deduplicate_keywords(0.90), en ese orden, sobre el
     corpus COMPLETO YA MERGEADO (existing + incoming) ⇒ dedup CROSS-BIBLIOTECA. NO aplica thesaurus
-    (eso es el paso explícito `b2g thesaurus`). `applied_at` se inyecta desde la frontera (R2)."""
+    (eso es el flag explícito `b2g build --thesaurus`, #164). `applied_at` se inyecta desde la frontera (R2)."""
 
 # Funciones de librería (ADR 0026, intactas; ahora invocadas por el helper, no a mano)
 def deduplicate_authors(corpus: Corpus, *, threshold: float = 0.92) -> Corpus:

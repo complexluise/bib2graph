@@ -129,3 +129,22 @@ El preprocesamiento determinista se ejecuta **automáticamente en la ingesta**, 
 > `DuckDBBackend.overwrite_corpus` (DELETE+INSERT, preservan tablas hermanas, reasignan `_seq`);
 > `Preprocessor.normalize`/`apply_thesaurus` aceptan `applied_at`. Deuda: O(n²) del dedup por
 > ingesta (optimización futura) y skip #93.
+
+---
+
+> **Nota append-only — el "único paso explícito" `thesaurus` se retira como verbo (2026-06-28, #164,
+> ADR [0038](0038-destino-verbos-huerfanos-0037.md)).** El punto 3 de la decisión arriba ("El
+> thesaurus es el ÚNICO paso explícito del preproc — `b2g thesaurus --from <archivo>`, 18°
+> subcomando") **se revisa**: el verbo `thesaurus` **se elimina** (no queda ni como alias). El ADR 0038
+> ya lo anticipó (issue [#149](https://github.com/complexluise/bib2graph/issues/149), cerrada
+> *invalid*); esta nota cierra el círculo en el 0031.
+>
+> - **La capacidad se preserva como flag `b2g build --thesaurus <archivo>`** (consolidación
+>   cross-lingüe de keywords, ADR [0011](0011-thesaurus-multilingue.md) **intacto**): `build` aplica
+>   `Preprocessor.apply_thesaurus` sobre `keywords_id` **antes** de scopear y proyectar, persiste el
+>   corpus actualizado con `persist_replace` (punto 4, intacto) y suma un bloque aditivo
+>   `data["thesaurus"]` (`keywords_mapped`/`keywords_total`/`aliases_loaded`/`applied_at`).
+> - **El resto del 0031 sigue vigente:** `normalize` + dedup **automáticos en la ingesta** (puntos 1,
+>   2, 4, 5) no cambian; `rapidfuzz` sigue en el núcleo. Lo único que cae es el *verbo* explícito: la
+>   consolidación de keywords pasa de paso-CLI propio a flag de `build`. (Sutileza vs. el 0031: ya no
+>   hay "único paso explícito" del preproc; el thesaurus es ahora un *opt-in de `build`*, no un verbo.)
