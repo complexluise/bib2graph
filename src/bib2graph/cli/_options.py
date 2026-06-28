@@ -1,8 +1,9 @@
 """cli._options — Opciones Click compartidas entre subcomandos.
 
-Define el decorador ``json_option`` (una sola declaración del flag ``--json``)
-y los helpers ``_env_truthy`` / ``json_mode`` para resolver el modo JSON desde
-el flag local o la variable de entorno ``B2G_JSON``.
+Define el decorador ``json_option`` (una sola declaración del flag ``--json``),
+los helpers ``_env_truthy`` / ``json_mode`` para resolver el modo JSON desde
+el flag local o la variable de entorno ``B2G_JSON``, y ``parse_since`` para
+convertir el flag ``--since`` de ``chain`` en un ``date`` concreto.
 
 Precedencia para activar el modo JSON:
   1. ``--json`` explícito en el comando (flag local ``json_output=True``).
@@ -19,12 +20,18 @@ var están presentes.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable
+from datetime import date, timedelta
 from typing import Any, TypeVar
 
 import click
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+# ---------------------------------------------------------------------------
+# Helpers de modo JSON
+# ---------------------------------------------------------------------------
 
 
 def _env_truthy(name: str) -> bool:
@@ -86,3 +93,64 @@ def json_option(func: F) -> F:
         default=False,
         help="Salida JSON estructurada (también activado por B2G_JSON=1).",
     )(func)
+
+
+# ---------------------------------------------------------------------------
+# Helper de --since
+# ---------------------------------------------------------------------------
+
+_RELATIVE_RE = re.compile(r"^(\d+)(d|m|y)$", re.IGNORECASE)
+
+_DAYS_PER_UNIT: dict[str, int] = {
+    "d": 1,
+    "m": 30,
+    "y": 365,
+}
+
+
+def parse_since(value: str, *, now: date | None = None) -> date:
+    """Parsea el valor de ``--since`` en un ``date`` concreto.
+
+    Acepta dos formatos:
+    - Fecha ISO ``YYYY-MM-DD`` (p. ej. ``"2024-01-01"``).
+    - Atajo relativo ``Nd``, ``Nm``, ``Ny`` (p. ej. ``"90d"``, ``"6m"``, ``"1y"``).
+      El relativo se resuelve contra ``now`` o ``datetime.now(UTC).date()``
+      inyectado en la frontera (R2/ADR 0017).
+
+    La resolución del reloj se hace en la -frontera- (el comando Click), NO
+    dentro del núcleo ni del servicio.
+
+    Args:
+        value: Cadena recibida del flag CLI.
+        now: Fecha base para relativos (inyectable en tests).  Cuando es
+            ``None``, se usa ``date.today()`` (equivalente a ``datetime.now(UTC).date()``).
+
+    Returns:
+        Fecha resuelta como ``date``.
+
+    Raises:
+        UsageError: Si el formato no es reconocido.
+    """
+    from bib2graph.service.errors import UsageError
+
+    value = value.strip()
+
+    # Intento ISO primero
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        pass
+
+    # Intento relativo
+    m = _RELATIVE_RE.match(value)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2).lower()
+        base = now if now is not None else date.today()
+        delta_days = n * _DAYS_PER_UNIT[unit]
+        return base - timedelta(days=delta_days)
+
+    raise UsageError(
+        f"Formato de --since no reconocido: {value!r}.  "
+        "Usá una fecha ISO (YYYY-MM-DD) o un atajo relativo (90d, 6m, 1y)."
+    )
