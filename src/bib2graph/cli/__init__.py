@@ -7,10 +7,10 @@ Entry points en ``pyproject.toml``:
     b2g      = "bib2graph.cli:main"
     bib2graph = "bib2graph.cli:main_bib2graph_alias"  # deprecado, #165
 
-Subcomandos planos (18):
+Subcomandos planos (17):
     init, seed, chain, filter, build, enrich, monitor, export,
     status, validate, accept, reject, networks, restore (shim #163),
-    gui, resolve.
+    resolve.
 
     inspect: absorbido por ``read show`` (#156); permanece como alias.
 
@@ -58,7 +58,6 @@ from bib2graph.cli.commands.curate import curate_grp
 from bib2graph.cli.commands.enrich import enrich_cmd
 from bib2graph.cli.commands.export import export_cmd
 from bib2graph.cli.commands.filter import filter_cmd
-from bib2graph.cli.commands.gui import gui_cmd
 from bib2graph.cli.commands.init import init_cmd
 from bib2graph.cli.commands.inspect import inspect_cmd
 from bib2graph.cli.commands.monitor import monitor_cmd
@@ -118,7 +117,7 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
 
     Subcomandos: init, seed, chain, filter, build, enrich, monitor, export,
     status, validate, accept, reject, networks, restore (shim),
-    gui, resolve,
+    resolve,
     read [list|stats|show|top], curate [dump|apply|accept|reject|filter],
     snapshot [create|restore] (ADR 0038),
     skill [add] (Epic #188).
@@ -152,7 +151,6 @@ b2g.add_command(reject_cmd)
 b2g.add_command(curate_grp)
 b2g.add_command(networks_cmd)
 b2g.add_command(restore_cmd)
-b2g.add_command(gui_cmd)
 b2g.add_command(resolve_cmd)
 b2g.add_command(read_grp)
 b2g.add_command(skill_grp)

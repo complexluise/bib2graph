@@ -289,10 +289,13 @@ invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción
 `--workspace`; `--store` fue eliminada en [#75](https://github.com/complexluise/bib2graph/issues/75),
 ver abajo).
 
-**Superficie 0.10.0 — 10 verbos del ciclo + 3 grupos noun-verb + `gui` y `skill` (excepciones meta)
+**Superficie 0.10.0 — 10 verbos del ciclo + 3 grupos noun-verb + `skill` (excepción meta)
 + 9 aliases deprecados** (AS-BUILT, ADR [0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md) /
 [0038](decisiones/0038-destino-verbos-huerfanos-0037.md) /
-[0039](decisiones/0039-skill-comando-meta-distribucion.md)). La superficie por acreción del 0021 (que
+[0039](decisiones/0039-skill-comando-meta-distribucion.md) /
+[0040](decisiones/0040-retiro-gui-local.md)). *(El verbo `gui` se **retiró** con la GUI local — ADR
+0040, [#190](https://github.com/complexluise/bib2graph/issues/190); `skill` queda como única excepción
+meta.)* La superficie por acreción del 0021 (que
 llegó a ~20 subcomandos) se **consolidó** en una superficie que mapea 1:1 el ciclo de investigación
 (*más es menos*). El conteo es **verificable contra `b2g --help`**:
 
@@ -301,11 +304,12 @@ llegó a ~20 subcomandos) se **consolidó** en una superficie que mapea 1:1 el c
   ADR 0037 §"Los 10 verbos".)*
 - **3 grupos noun-verb:** **`read {list,stats,show,top}`** (#156/#157), **`curate
   {dump,apply,accept,reject,filter}`** (#155), **`snapshot {create,restore}`** (#163, ADR 0038).
-- **2 comandos meta, fuera del set de 10 por diseño** (excepciones explícitas, **no** pasos del
-  ciclo agents-first; **no compiten con `status`** ni con ningún verbo del ciclo, viven al lado):
-  - **`gui`** — lanza la GUI local (gobernado por ADR 0027/0028, gateado por #34).
+- **1 comando meta, fuera del set de 10 por diseño** (excepción explícita, **no** un paso del
+  ciclo agents-first; **no compite con `status`** ni con ningún verbo del ciclo, vive al lado):
   - **`skill`** (`skill add`) — instala la skill de Claude Code end-user (gobernado por ADR 0039,
     epic #188). Ver §`skill` abajo.
+  - *(El verbo `gui` —ex 2.ª excepción meta— se **retiró** con la GUI local: ADR
+    [0040](decisiones/0040-retiro-gui-local.md), [#190](https://github.com/complexluise/bib2graph/issues/190).)*
 - **9 aliases deprecados** (siguen vivos con aviso a stderr, se eliminan en **0.11.0** — ADR 0038 P1):
   `accept`, `reject`, `filter`, `inspect`, `monitor`, `networks`, `enrich`, `restore`, `resolve`. Más el
   entry-point `bib2graph`→`b2g` y la opción `build --corpus-scope`→`build --scope`. Ver §Avisos de
@@ -529,20 +533,15 @@ llegó a ~20 subcomandos) se **consolidó** en una superficie que mapea 1:1 el c
   ADR 0038 — ver §`build`). **Recomendado:** usá `build --spec` (paso BUILD pleno). Errores
   accionables: YAML malformado / spec inválida → `DataError` (exit 2); falta `python-louvain` →
   `DependencyError` (exit 3).
-- **`gui`** (Hito G3 del MVP GUI, AS-BUILT 2026-06-18, ADR
-  [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md), 19° subcomando): **levanta la API
-  local FastAPI** (§0.2) con `uvicorn` y sirve la SPA buildeada de `gui/static/` si existe (AS-BUILT G4;
-  el build local lo genera, el wheel lo incluirá en G5). Genera un **token Bearer efímero**
-  (`secrets.token_urlsafe(32)`), lo **inyecta en el `index.html` servido** (ruta `GET /`, placeholder
-  `__B2G_TOKEN__` → `window.__B2G_TOKEN__`; ver §0.2 "Wiring del token") e imprime URL + token al
-  arrancar. Flags: **`--host`** (default `127.0.0.1`, local-first — no expone red), **`--port`** (default
-  `8765`), **`--no-browser`** (no abre el browser). Requiere el extra **`[gui]`** (`fastapi` + `uvicorn`,
-  import perezoso): si falta → `DependencyError`, **exit 3** con sugerencia `uv sync --extra gui`. **NO
-  transiciona** el `CycleState`. La API es un adaptador delgado sobre `service/` (reusa el envelope
-  `schema="1"` + `code_for`, no reimplementa el contrato); el mapeo código→HTTP y la auth viven en §0.2.
+- ~~**`gui`**~~ — ⛔ **RETIRADO (ADR [0040](decisiones/0040-retiro-gui-local.md),
+  [#190](https://github.com/complexluise/bib2graph/issues/190)).** El subcomando `b2g gui`, la API
+  local FastAPI, la SPA `frontend/` y el extra `[gui]` se **eliminaron** de la librería (la GUI local
+  está fuera del foco; el core es CLI/agente-native). **No hay alias de retrocompat** (es retiro de
+  capacidad, no renombre). La capa de servicios `service/` que usaba sigue viva (la consume el CLI).
 - **`skill`** (comando **meta/distribución**, ADR
-  [0039](decisiones/0039-skill-comando-meta-distribucion.md), epic #188): **2.ª excepción meta**
-  (junto a `gui`) — fuera del set de 10, **no** es un paso del ciclo y **no compite con `status`**.
+  [0039](decisiones/0039-skill-comando-meta-distribucion.md), epic #188): **única excepción meta**
+  (tras el retiro de `gui`, ADR 0040) — fuera del set de 10, **no** es un paso del ciclo y **no compite
+  con `status`**.
   Subcomando **`b2g skill add [--user|--project] [--force]`**: **instala la skill de Claude Code
   end-user** (que entrevista al investigador y le enseña al agente la mejor forma de usar bib2graph —
   los 10 verbos del 0037 y la historia one-shot `init→seed→chain→build→read`). **Empaquetado:** la
@@ -1007,7 +1006,15 @@ decorador `handle_errors` (CLI) conserva su propia escalera `try/except` por tip
 adaptadores (incluida la API TARGET, que lo traducirá a HTTP status, ADR 0028 §7). El mapeo de
 `code_for` y el de `handle_errors` describen la **misma política** (ADR 0021 §D).
 
-### 0.1 Lecturas de servicio `service/reads.py` — las 6 lecturas de la SPA (AS-BUILT G2, ADR 0028)
+### 0.1 Lecturas de servicio `service/reads.py` — lecturas read-only del corpus (AS-BUILT G2, ADR 0028)
+
+> **NOTA (2026-06-28) — `service/reads.py` SE CONSERVA tras retirar la GUI** (ADR
+> [0040](decisiones/0040-retiro-gui-local.md), [#190](https://github.com/complexluise/bib2graph/issues/190)).
+> Aunque nació en el G2 "para la SPA", **el grupo CLI `read` la usa** (`list_papers`/`corpus_stats`/
+> `get_paper`/`get_top`, #156/#157), así que **no se borra**. Lo que se retiró es su consumidor HTTP (la
+> API `api/`). Las funciones que **solo** consumía la API —`get_workspace`/`list_rounds`/`get_scent`/
+> `get_network`/`compare_rounds`— quedan como **código inerte**; su poda es opcional y se difiere a la
+> limpieza profunda ([#191](https://github.com/complexluise/bib2graph/issues/191)).
 
 > **AS-BUILT del Hito G2 del MVP GUI (2026-06-18, ADR
 > [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)).** Documenta una decisión **ya tomada**:
@@ -1119,6 +1126,12 @@ no emite los 4 paneles cosméticos, `get_network` no entrega `modularity` ni un 
 y los "mock-no-sostenido" están en [`ROADMAP/05-gui.md`](ROADMAP/05-gui.md) §G2.
 
 ### 0.2 API local `api/` — la frontera HTTP de la SPA (AS-BUILT G3, ADR 0028)
+
+> ⛔ **RETIRADA (2026-06-28) — la API local `api/` se eliminó** (ADR
+> [0040](decisiones/0040-retiro-gui-local.md), [#190](https://github.com/complexluise/bib2graph/issues/190);
+> supersede 0027/0028). Ya **no existen** `src/bib2graph/api/`, `b2g gui` ni el extra `[gui]`. **Todo lo
+> de abajo es HISTORIA** del AS-BUILT G3, no el estado actual. La capa neutral `service/` (§0/§0.1) se
+> conserva; lo retirado es este adaptador HTTP. Limpieza profunda: [#191](https://github.com/complexluise/bib2graph/issues/191).
 
 > **AS-BUILT del Hito G3 del MVP GUI (2026-06-18, ADR
 > [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md)).** Documenta una decisión **ya

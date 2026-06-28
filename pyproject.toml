@@ -74,10 +74,6 @@ viz = []
 bibtex = [
     "bibtexparser>=1.4.4",
 ]
-gui = [
-    "fastapi>=0.110",
-    "uvicorn>=0.29",
-]
 
 [project.urls]
 Homepage = "https://github.com/complexluise/bib2graph"
@@ -99,17 +95,6 @@ bib2graph = "bib2graph.cli:main_bib2graph_alias"
 [tool.hatch.build.targets.wheel]
 packages = ["src/bib2graph"]
 
-# force-include: vende al wheel artefactos que hatchling omitiría por defecto.
-# Solo el frontend GUI lo necesita: está gitignored (build artifact) → hatchling
-# lo omite (ADR 0028 §B.1, G5). Requiere que `pnpm build` haya corrido ANTES de
-# `uv build`.
-#
-# La skill vendida (src/bib2graph/skill/, Epic #188) NO va acá: es fuente
-# commiteada bajo el paquete, así que `packages = ["src/bib2graph"]` ya la
-# incluye. Agregarla a force-include la duplica y ROMPE el build
-# ("A second file is being added to the wheel archive at the same path").
-[tool.hatch.build.targets.wheel.force-include]
-"src/bib2graph/gui/static" = "bib2graph/gui/static"
 
 # El sdist incluye fuente, tests y docs para reproducibilidad, pero NO el sandbox
 # de exploración (datos de investigación IED: CSV/parquet/graphml) ni los binarios
@@ -170,8 +155,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]  # asserts en tests están bien
-"src/bib2graph/api/routers/*" = ["B008"]  # Depends() en defaults es el patrón canónico de FastAPI
-"src/bib2graph/api/deps.py" = ["B008"]    # idem
 
 [tool.ruff.format]
 quote-style = "double"
@@ -195,10 +178,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "rapidfuzz.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "uvicorn.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

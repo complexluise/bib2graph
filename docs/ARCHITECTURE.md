@@ -374,7 +374,17 @@ post-V1 (`[neo4j]`): un destino más, **ya no el sustrato** (ADR 0002).
 > la **única** unidad canónica y un `.duckdb` legacy se adopta con `b2g init .` (ver ADR 0029,
 > enmienda 2026-06-17).
 
-### 4.4 `LocalApiServer` / API local (costura opt-in, `[gui]`) — `AS-BUILT (G3)` · SPA `frontend/` `AS-BUILT (G4)` · empaquetado `AS-BUILT (G5)`
+### 4.4 `LocalApiServer` / API local (costura opt-in, `[gui]`) — ⛔ `RETIRADA (ADR 0040, #190)`
+
+> ⛔ **RETIRADA (2026-06-28) — la GUI local se eliminó de la librería** (ADR
+> [0040](decisiones/0040-retiro-gui-local.md), issue
+> [#190](https://github.com/complexluise/bib2graph/issues/190); supersede 0027/0028). Ya **no existen**
+> `b2g gui`, la API local FastAPI (`src/bib2graph/api/`), la SPA `frontend/` ni el extra `[gui]`; el
+> core es CLI/agente-native sobre la biblioteca viva. **Todo lo de abajo es HISTORIA** (describe el
+> AS-BUILT G3–G5 que se retiró), no el estado actual. **La capa de servicios neutral
+> `src/bib2graph/service/` se conserva** (la usa el CLI: `read`/`curate`/`snapshot`/…); lo que se
+> retira es el adaptador HTTP y su frontend, no la capa neutral. La limpieza profunda de esta sección
+> es [#191](https://github.com/complexluise/bib2graph/issues/191).
 
 > **ROTA EN 0.8 A PROPÓSITO ([#117](https://github.com/complexluise/bib2graph/issues/117)):** el rename
 > de columna a **`source_id`** (ADR 0036) rompió la API/SPA; **la GUI NO funciona hoy** hasta que se
