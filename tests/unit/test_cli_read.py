@@ -509,40 +509,8 @@ def test_get_paper_devuelve_catorce_campos(tmp_path: Path) -> None:
         assert key in result, f"Falta clave: {key}"
 
 
-# ---------------------------------------------------------------------------
-# 4. Neutralidad de transporte — service/reads.py sigue siendo neutral
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_service_reads_sigue_siendo_neutral_despues_de_nuevas_funciones() -> None:
-    """list_papers y corpus_stats no rompen la neutralidad de service.reads."""
-    import ast
-    import importlib
-    import pathlib
-
-    mod = importlib.import_module("bib2graph.service.reads")
-    source_file = mod.__file__
-    assert source_file is not None
-    tree = ast.parse(pathlib.Path(source_file).read_text(encoding="utf-8"))
-
-    forbidden = {"click", "fastapi"}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                assert alias.name.split(".")[0] not in forbidden
-        elif isinstance(node, ast.ImportFrom):
-            assert (node.module or "").split(".")[0] not in forbidden
-        elif isinstance(node, ast.Call):
-            if (
-                isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "sys"
-                and node.func.attr == "exit"
-            ):
-                raise AssertionError("service.reads llama a sys.exit")
-            if isinstance(node.func, ast.Name) and node.func.id == "print":
-                raise AssertionError("service.reads llama a print()")
+# Neutralidad de transporte de service.reads: consolidada en
+# test_service.py::test_service_modulo_neutral_de_transporte (epic #184).
 
 
 # ---------------------------------------------------------------------------
@@ -979,57 +947,8 @@ def test_cli_read_sin_subcomando_imprime_ayuda() -> None:
     assert "show" in result.output
 
 
-# ---------------------------------------------------------------------------
-# 9. stdout puro — una sola línea JSON
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_cli_read_list_stdout_una_linea_json(tmp_path: Path) -> None:
-    """read list --json: stdout es exactamente una línea no-vacía."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, [_row(id="P1")])
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "read", "list", "--json"],
-        catch_exceptions=False,
-    )
-    lineas = [ln for ln in result.stdout.splitlines() if ln.strip()]
-    assert len(lineas) == 1
-
-
-@pytest.mark.unit
-def test_cli_read_show_stdout_una_linea_json(tmp_path: Path) -> None:
-    """read show --json (error o éxito): stdout es exactamente una línea."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, [_row(id="P1")])
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "read", "show", "--id", "P1", "--json"],
-        catch_exceptions=False,
-    )
-    lineas = [ln for ln in result.stdout.splitlines() if ln.strip()]
-    assert len(lineas) == 1
-
-
-@pytest.mark.unit
-def test_cli_read_stats_stdout_una_linea_json(tmp_path: Path) -> None:
-    """read stats --json: stdout es exactamente una línea."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, [_row(id="P1", curation_status="candidate")])
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "read", "stats", "--json"],
-        catch_exceptions=False,
-    )
-    lineas = [ln for ln in result.stdout.splitlines() if ln.strip()]
-    assert len(lineas) == 1
+# stdout de 1 línea JSON (list/show/stats): ya garantizado por _assert_one_json_line
+# en los tests *_envelope_forma de cada comando (epic #184, sub-tarea 2).
 
 
 # ---------------------------------------------------------------------------

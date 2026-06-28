@@ -284,33 +284,9 @@ class TestBuildMaturity:
         assert "maturity" in data, "data debe tener clave 'maturity'"
         _assert_maturity_shape(data["maturity"])
 
-    def test_maturity_curated_false_en_build_todo_candidate(
-        self, tmp_path: Path
-    ) -> None:
-        """run_build con corpus de puros candidates → maturity.curated=False."""
-        from bib2graph.cli.commands.build import run_build
-
-        store_path = tmp_path / "lib.duckdb"
-        _seed_store(store_path, _rows_bib_coupling())  # todos candidate
-
-        data = run_build(store_path, out_dir=tmp_path / "nets")
-
-        assert data["maturity"]["curated"] is False
-
-    def test_maturity_curated_true_en_build_con_accepted(self, tmp_path: Path) -> None:
-        """run_build con ≥1 accepted → maturity.curated=True."""
-        from bib2graph.cli.commands.build import run_build
-
-        store_path = tmp_path / "lib.duckdb"
-        rows = [
-            _row("P1", curation_status="accepted", references_id=["R1", "R2"]),
-            _row("P2", curation_status="candidate", references_id=["R1", "R3"]),
-        ]
-        _seed_store(store_path, rows)
-
-        data = run_build(store_path, out_dir=tmp_path / "nets")
-
-        assert data["maturity"]["curated"] is True
+    # Semántica curated=False/True eliminada aquí (epic #184):
+    # la invariante vive en TestComputeMaturity::test_curated_false_todo_candidate
+    # y test_curated_true_con_accepted; este archivo solo verifica presencia y forma.
 
     def test_maturity_scope_coincide_con_data_scope(self, tmp_path: Path) -> None:
         """maturity.scope coincide con data['scope']."""
@@ -356,16 +332,8 @@ class TestBuildMaturity:
                 f"maturity.empty_networks debe contener strings, no dicts: {item!r}"
             )
 
-    def test_maturity_saturated_false_en_build(self, tmp_path: Path) -> None:
-        """maturity.saturated siempre False en build."""
-        from bib2graph.cli.commands.build import run_build
-
-        store_path = tmp_path / "lib.duckdb"
-        _seed_store(store_path, _rows_bib_coupling())
-
-        data = run_build(store_path, out_dir=tmp_path / "nets")
-
-        assert data["maturity"]["saturated"] is False
+    # Semántica saturated=False eliminada aquí (epic #184):
+    # la invariante vive en TestComputeMaturity::test_saturated_siempre_false.
 
     def test_maturity_presente_en_early_return_corpus_vacio(
         self, tmp_path: Path
@@ -500,44 +468,8 @@ class TestSnapshotMaturity:
 
         assert data["maturity"]["empty_networks"] == []
 
-    def test_snapshot_maturity_curated_false_todo_candidate(
-        self, tmp_path: Path
-    ) -> None:
-        """snapshot con corpus de candidates → maturity.curated=False."""
-        from bib2graph.cli.commands.snapshot import run_snapshot
-
-        store_path = tmp_path / "lib.duckdb"
-        _seed_store(store_path, _rows_bib_coupling())
-
-        data = run_snapshot(store_path, out_dir=tmp_path / "snaps")
-
-        assert data["maturity"]["curated"] is False
-
-    def test_snapshot_maturity_curated_true_con_accepted(self, tmp_path: Path) -> None:
-        """snapshot con ≥1 accepted → maturity.curated=True."""
-        from bib2graph.cli.commands.snapshot import run_snapshot
-
-        store_path = tmp_path / "lib.duckdb"
-        rows = [
-            _row("P1", curation_status="accepted"),
-            _row("P2", curation_status="candidate"),
-        ]
-        _seed_store(store_path, rows)
-
-        data = run_snapshot(store_path, out_dir=tmp_path / "snaps")
-
-        assert data["maturity"]["curated"] is True
-
-    def test_snapshot_maturity_saturated_false(self, tmp_path: Path) -> None:
-        """snapshot: maturity.saturated=False."""
-        from bib2graph.cli.commands.snapshot import run_snapshot
-
-        store_path = tmp_path / "lib.duckdb"
-        _seed_store(store_path, _rows_bib_coupling())
-
-        data = run_snapshot(store_path, out_dir=tmp_path / "snaps")
-
-        assert data["maturity"]["saturated"] is False
+    # Semántica curated=False/True y saturated=False eliminada aquí (epic #184):
+    # las invariantes viven en TestComputeMaturity; aquí solo se verifica wiring.
 
     def test_snapshot_schema_1_intacto(self, tmp_path: Path) -> None:
         """snapshot --json: schema='1' intacto después de agregar maturity."""
@@ -621,44 +553,8 @@ class TestReadTopMaturity:
 
         assert result["maturity"]["empty_networks"] == []
 
-    def test_read_top_maturity_curated_false_todo_candidate(
-        self, tmp_path: Path
-    ) -> None:
-        """read top con corpus de candidates → maturity.curated=False."""
-        from bib2graph.service.reads import get_top
-
-        ws = _init_workspace(tmp_path)
-        _seed_workspace(ws, _rows_bib_coupling())
-
-        result = get_top(ws, n=3)
-
-        assert result["maturity"]["curated"] is False
-
-    def test_read_top_maturity_curated_true_con_accepted(self, tmp_path: Path) -> None:
-        """read top con ≥1 accepted → maturity.curated=True."""
-        from bib2graph.service.reads import get_top
-
-        ws = _init_workspace(tmp_path)
-        rows = [
-            _row("P1", curation_status="accepted", references_id=["R1", "R2"]),
-            _row("P2", curation_status="candidate", references_id=["R1", "R3"]),
-        ]
-        _seed_workspace(ws, rows)
-
-        result = get_top(ws, n=3)
-
-        assert result["maturity"]["curated"] is True
-
-    def test_read_top_maturity_saturated_false(self, tmp_path: Path) -> None:
-        """read top: maturity.saturated=False."""
-        from bib2graph.service.reads import get_top
-
-        ws = _init_workspace(tmp_path)
-        _seed_workspace(ws, _rows_bib_coupling())
-
-        result = get_top(ws, n=3)
-
-        assert result["maturity"]["saturated"] is False
+    # Semántica curated=False/True y saturated=False eliminada aquí (epic #184):
+    # las invariantes viven en TestComputeMaturity; aquí solo se verifica wiring.
 
     def test_read_top_schema_1_intacto_con_maturity(self, tmp_path: Path) -> None:
         """read top --json: schema='1' intacto después de agregar maturity."""

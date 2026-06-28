@@ -664,33 +664,10 @@ class TestNoDivergencia:
 class TestJsonOutput:
     """--json: stdout una línea JSON, warnings en envelope, data.empty_networks."""
 
-    def test_json_stdout_una_sola_linea(self, tmp_path: Path) -> None:
-        """--json: stdout es exactamente 1 línea JSON (stdout puro, ADR 0021 §C)."""
-        from click.testing import CliRunner
-
-        from bib2graph.cli import b2g
-        from bib2graph.workspace import Workspace
-
-        ws_dir = tmp_path / "ws"
-        ws = Workspace.init(ws_dir, "test")
-        _seed_store(ws.library_path, _rows_con_referencias())
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws_dir), "build", "--json"],
-        )
-
-        assert result.exit_code == 0, f"Error: {result.output}"
-        # result.stdout = solo stdout (Click 8.4.1 separa stdout/stderr).
-        # En modo --json no hay prints a stderr (warnings van en envelope.warnings).
-        stdout_lines = [line for line in result.stdout.splitlines() if line.strip()]
-        assert len(stdout_lines) == 1, (
-            f"stdout debe tener exactamente 1 línea JSON, tiene {len(stdout_lines)}: "
-            f"{result.stdout!r}"
-        )
-        # Debe ser JSON válido
-        json.loads(stdout_lines[0])
+    # stdout de 1 línea JSON (camino de éxito) lo cubre
+    # test_json_warnings_en_envelope_no_en_stdout (asserta len==1 + colocación de
+    # warnings); el camino de error lo cubre el guard de test_cli_json_option
+    # (build en _CMDS_NO_WORKSPACE). Epic #184, sub-tarea 2.
 
     def test_json_schema_1(self, tmp_path: Path) -> None:
         """--json: envelope tiene schema='1'."""

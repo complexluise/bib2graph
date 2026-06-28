@@ -592,83 +592,9 @@ def test_cli_read_top_kind_invalido_exit_nonzero(tmp_path: Path) -> None:
     assert result.exit_code != 0
 
 
-# ---------------------------------------------------------------------------
-# 10. stdout puro — exactamente una línea JSON (#151)
-# ---------------------------------------------------------------------------
+# stdout de 1 línea JSON (#151) para read top: ya garantizado por
+# _assert_one_json_line en test_cli_read_top_json_envelope_forma (epic #184, sub-tarea 2).
 
 
-@pytest.mark.unit
-def test_cli_read_top_stdout_una_linea_json(tmp_path: Path) -> None:
-    """read top --json: stdout es exactamente una línea no-vacía."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, _bib_coupling_rows())
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "read", "top", "--json"],
-        catch_exceptions=False,
-    )
-    lineas = [ln for ln in result.stdout.splitlines() if ln.strip()]
-    assert len(lineas) == 1, (
-        f"Se esperaba exactamente 1 línea en stdout, se obtuvieron {len(lineas)}:\n"
-        f"{result.stdout!r}"
-    )
-
-
-@pytest.mark.unit
-def test_cli_read_top_stdout_una_linea_json_cocitacion_vacia(
-    tmp_path: Path,
-) -> None:
-    """read top --json con co-citación vacía: sigue siendo 1 línea JSON."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, _bib_coupling_rows())
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "read", "top", "--json"],
-        catch_exceptions=False,
-    )
-    lineas = [ln for ln in result.stdout.splitlines() if ln.strip()]
-    assert len(lineas) == 1
-
-
-# ---------------------------------------------------------------------------
-# 11. Neutralidad de transporte — get_top no viola service.reads
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_service_reads_sigue_siendo_neutral_con_get_top() -> None:
-    """service.reads con get_top no importa click, fastapi, print ni sys.exit."""
-    import ast
-    import importlib
-    import pathlib
-
-    mod = importlib.import_module("bib2graph.service.reads")
-    source_file = mod.__file__
-    assert source_file is not None
-    tree = ast.parse(pathlib.Path(source_file).read_text(encoding="utf-8"))
-
-    forbidden = {"click", "fastapi"}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                assert alias.name.split(".")[0] not in forbidden, (
-                    f"service.reads importa '{alias.name}' — viola neutralidad"
-                )
-        elif isinstance(node, ast.ImportFrom):
-            assert (node.module or "").split(".")[0] not in forbidden, (
-                f"service.reads importa de '{node.module}' — viola neutralidad"
-            )
-        elif isinstance(node, ast.Call):
-            if (
-                isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "sys"
-                and node.func.attr == "exit"
-            ):
-                raise AssertionError("service.reads llama a sys.exit")
-            if isinstance(node.func, ast.Name) and node.func.id == "print":
-                raise AssertionError("service.reads llama a print()")
+# Neutralidad de transporte de service.reads (incl. get_top): consolidada en
+# test_service.py::test_service_modulo_neutral_de_transporte (epic #184).

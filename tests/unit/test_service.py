@@ -163,14 +163,28 @@ def test_code_for_excepcion_no_mapeada_lanza_typeerror() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _service_module_names() -> list[str]:
+    """Todos los módulos del paquete service/ (auto-descubrimiento: cubre módulos
+    futuros sin tocar el test). Fuente única del contrato de neutralidad ADR 0028.
+    Consolida las copias que vivían en test_service_reads, test_api, test_cli_read
+    y test_cli_read_top (epic #184)."""
+    import importlib
+    import pkgutil
+
+    pkg = importlib.import_module("bib2graph.service")
+    names = ["bib2graph.service"]
+    names += [
+        f"bib2graph.service.{info.name}" for info in pkgutil.iter_modules(pkg.__path__)
+    ]
+    return sorted(names)
+
+
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "module_name", ["bib2graph.service.envelope", "bib2graph.service.errors"]
-)
+@pytest.mark.parametrize("module_name", _service_module_names())
 def test_service_modulo_neutral_de_transporte(module_name: str) -> None:
-    """Los módulos de service/ son agnósticos de transporte (ADR 0028): no importan
-    click/fastapi ni hacen sys.exit/print. Detección por AST real (no substrings),
-    sobre TODOS los módulos del contrato (no solo envelope)."""
+    """Cada módulo de service/ es agnóstico de transporte (ADR 0028): no importa
+    click/fastapi ni hace sys.exit/print. Detección por AST real (no substrings),
+    sobre TODO el paquete service/ (no solo envelope/errors)."""
     import ast
     import importlib
     import pathlib

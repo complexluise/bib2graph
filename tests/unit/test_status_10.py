@@ -31,6 +31,13 @@ from bib2graph.schemas import CORPUS_SCHEMA
 
 pytestmark = pytest.mark.unit
 
+# Comandos de arreglo (fix_command) esperados, en un solo lugar: si cambia el copy
+# user-facing se edita acá y no en ~10 asserts dispersos (epic #184, sub-tarea 8).
+# Espejan los literales de networks/facade.py (_predict/_empty_network_entry).
+FIX_RESOLVE = "b2g seed --resolve"
+FIX_ENRICH = "b2g enrich"
+FIX_THESAURUS = "b2g build --thesaurus <archivo>"
+
 # ---------------------------------------------------------------------------
 # Helpers de fixture
 # ---------------------------------------------------------------------------
@@ -222,31 +229,31 @@ class TestPredictBuildPreview:
         bc = by_kind[NetworkKind.BIBLIOGRAPHIC_COUPLING]
         assert bc["would_be_empty"] is True
         assert "references_id" in str(bc["reason"])
-        assert bc["fix_command"] == "b2g seed --resolve"
+        assert bc["fix_command"] == FIX_RESOLVE
 
         # cocitation vacía: sin cited_by_id
         coc = by_kind[NetworkKind.COCITATION]
         assert coc["would_be_empty"] is True
         assert "cited_by_id" in str(coc["reason"])
-        assert coc["fix_command"] == "b2g enrich"
+        assert coc["fix_command"] == FIX_ENRICH
 
         # author_collab vacía: sin authors_id
         ac = by_kind[NetworkKind.AUTHOR_COLLAB]
         assert ac["would_be_empty"] is True
         assert "authors_id" in str(ac["reason"])
-        assert ac["fix_command"] == "b2g seed --resolve"
+        assert ac["fix_command"] == FIX_RESOLVE
 
         # institution_collab vacía: sin institutions_id
         ic = by_kind[NetworkKind.INSTITUTION_COLLAB]
         assert ic["would_be_empty"] is True
         assert "institutions_id" in str(ic["reason"])
-        assert ic["fix_command"] == "b2g seed --resolve"
+        assert ic["fix_command"] == FIX_RESOLVE
 
         # keyword_cooccurrence vacía: keywords_raw tiene datos pero keywords_id no
         # Fix debe ser build --thesaurus (puede generarlos sin red)
         kw = by_kind[NetworkKind.KEYWORD_COOCCURRENCE]
         assert kw["would_be_empty"] is True
-        assert kw["fix_command"] == "b2g build --thesaurus <archivo>"
+        assert kw["fix_command"] == FIX_THESAURUS
 
     def test_keywords_id_poblado_produce_red_no_vacia(self) -> None:
         """Con keywords_id >= 2 por paper, keyword_cooccurrence sale no-vacía.
@@ -335,7 +342,7 @@ class TestPredictBuildPreview:
         by_kind = {str(e["kind"]): e for e in preview}
         kw = by_kind[NetworkKind.KEYWORD_COOCCURRENCE]
         assert kw["would_be_empty"] is True
-        assert kw["fix_command"] == "b2g build --thesaurus <archivo>"
+        assert kw["fix_command"] == FIX_THESAURUS
 
     def test_fix_seed_resolve_cuando_no_hay_keywords_raw(self) -> None:
         """Sin keywords_raw, fix_command para keyword_cooccurrence='b2g seed --resolve'."""
@@ -344,7 +351,7 @@ class TestPredictBuildPreview:
         by_kind = {str(e["kind"]): e for e in preview}
         kw = by_kind[NetworkKind.KEYWORD_COOCCURRENCE]
         assert kw["would_be_empty"] is True
-        assert kw["fix_command"] == "b2g seed --resolve"
+        assert kw["fix_command"] == FIX_RESOLVE
 
     def test_kinds_son_strings_de_networkkind(self) -> None:
         """El campo kind de cada entrada es un string válido de NetworkKind."""
@@ -396,18 +403,9 @@ class TestRunStatusCamposAditivos:
         assert "total_papers" in data
         assert "referenced_not_fetched" in data
 
-    def test_next_best_action_sin_estado_es_seed(self, tmp_path: Path) -> None:
-        """Sin estado previo (store vacío), next_best_action='seed'."""
-        from bib2graph.cli.commands.status import run_status
-        from bib2graph.stores.duckdb import DuckDBStore
-
-        store_path = tmp_path / "empty.duckdb"
-        DuckDBStore(store_path)  # solo inicializa tablas
-
-        data = run_status(store_path)
-
-        assert data["next_best_action"] == "seed"
-
+    # Semántica del FSM (None→seed, FORAGED→build, BUILT→read) eliminada aquí (epic #184):
+    # las invariantes viven en TestNextBestAction; este smoke verifica que run_status
+    # expone el campo con el valor correcto para un estado representativo.
     def test_next_best_action_seeded_es_chain(self, tmp_path: Path) -> None:
         """Tras seed (SEEDED), next_best_action='chain'."""
         from bib2graph.cli.commands.status import run_status
@@ -418,28 +416,6 @@ class TestRunStatusCamposAditivos:
         data = run_status(store_path)
 
         assert data["next_best_action"] == "chain"
-
-    def test_next_best_action_foraged_es_build(self, tmp_path: Path) -> None:
-        """Tras chain (FORAGED), next_best_action='build'."""
-        from bib2graph.cli.commands.status import run_status
-
-        store_path = tmp_path / "foraged.duckdb"
-        _seed_store_with_state(store_path, [_row("P1")], CycleState.FORAGED)
-
-        data = run_status(store_path)
-
-        assert data["next_best_action"] == "build"
-
-    def test_next_best_action_built_es_read(self, tmp_path: Path) -> None:
-        """Tras build (BUILT), next_best_action='read'."""
-        from bib2graph.cli.commands.status import run_status
-
-        store_path = tmp_path / "built.duckdb"
-        _seed_store_with_state(store_path, [_row("P1")], CycleState.BUILT)
-
-        data = run_status(store_path)
-
-        assert data["next_best_action"] == "read"
 
     def test_build_preview_tiene_cinco_entradas(self, tmp_path: Path) -> None:
         """build_preview incluye siempre las 5 redes posibles."""
@@ -578,16 +554,13 @@ class TestCasoCanonicoNota20:
         assert by_kind[NetworkKind.COCITATION]["would_be_empty"] is True
 
         # Fix para citación/colaboración = seed --resolve
-        assert (
-            by_kind[NetworkKind.BIBLIOGRAPHIC_COUPLING]["fix_command"]
-            == "b2g seed --resolve"
-        )
-        assert by_kind[NetworkKind.COCITATION]["fix_command"] == "b2g enrich"
+        assert by_kind[NetworkKind.BIBLIOGRAPHIC_COUPLING]["fix_command"] == FIX_RESOLVE
+        assert by_kind[NetworkKind.COCITATION]["fix_command"] == FIX_ENRICH
 
         # Keyword fix = build --thesaurus (hay keywords_raw pero no keywords_id)
         kw = by_kind[NetworkKind.KEYWORD_COOCCURRENCE]
         assert kw["would_be_empty"] is True
-        assert kw["fix_command"] == "b2g build --thesaurus <archivo>"
+        assert kw["fix_command"] == FIX_THESAURUS
 
     def test_bibtex_con_thesaurus_keyword_no_vacia(self, tmp_path: Path) -> None:
         """Tras thesaurus, keywords_id se puebla → keyword_cooccurrence no-vacía.

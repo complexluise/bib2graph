@@ -1,11 +1,13 @@
 """Tests de los alias deprecados y el entry-point ``bib2graph`` (ADR 0038, #165).
 
+Poda epic #184: solo se conserva la verificación del aviso de deprecación.
+La delegación funcional y el contrato de schema/stdout se cubren en los tests
+del verbo canónico (test_cli.py y sus homólogos).
+
 Casos cubiertos por alias:
-  1. El alias corre sin error y delega correctamente (exit 0).
-  2. El aviso de deprecación va a **stderr** (result.stderr contiene "AVISO").
-  3. En modo ``--json``, stdout es JSON puro parseable (exactamente 1 línea).
-  4. ``envelope["warnings"]`` contiene el mensaje de deprecación.
-  5. ``envelope["schema"] == "1"`` (invariante de contrato).
+  1. El aviso de deprecación va a **stderr** (result.stderr contiene "AVISO").
+  2. En modo ``--json``, ``envelope["warnings"]`` contiene el mensaje de deprecación
+     (el helper _assert_one_json_stdout también verifica stdout==1 línea y schema=="1").
 
 Comandos deprecados testeados:
   - ``b2g accept``       → ``b2g curate accept``
@@ -13,6 +15,7 @@ Comandos deprecados testeados:
   - ``b2g filter``       → ``b2g curate filter``
   - ``b2g inspect``      → ``b2g read show`` / ``b2g status``
   - ``b2g restore``      → ``b2g snapshot restore``
+  - ``b2g networks``     → ``b2g build --spec``
 
 Casos de error (sin workspace → error envelope en stdout, aviso igual a stderr):
   - ``b2g monitor --json``   → error envelope, pero aviso sigue en stderr
@@ -203,20 +206,11 @@ class TestEmitDeprecation:
 
 
 class TestAcceptDeprecado:
-    """b2g accept emite aviso de deprecación y delega en curate accept."""
+    """b2g accept emite aviso de deprecación y delega en curate accept.
 
-    def test_corre_y_delega(self, tmp_path: Path) -> None:
-        """b2g accept sigue funcionando: exit 0 y accepted_count correcto."""
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1")])
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "accept", "--ids", "P1"],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0, result.output
+    Delegación funcional y contrato schema/stdout se cubren en los tests de
+    'b2g curate accept' (test_cli.py). Aquí solo se conserva el aviso (epic #184).
+    """
 
     def test_aviso_va_a_stderr(self, tmp_path: Path) -> None:
         """b2g accept emite aviso de deprecación a stderr."""
@@ -234,20 +228,6 @@ class TestAcceptDeprecado:
         )
         assert "curate accept" in result.stderr.lower()
 
-    def test_json_stdout_puro_una_linea(self, tmp_path: Path) -> None:
-        """b2g accept --json: stdout es exactamente 1 línea JSON puro (#151)."""
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1")])
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "accept", "--ids", "P1", "--json"],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0
-        _assert_one_json_stdout(result)
-
     def test_json_warnings_contiene_deprecacion(self, tmp_path: Path) -> None:
         """b2g accept --json: envelope['warnings'] contiene el aviso de deprecación."""
         ws = _init_workspace(tmp_path)
@@ -264,20 +244,6 @@ class TestAcceptDeprecado:
         assert any("deprecad" in w.lower() for w in envelope["warnings"])
         assert any("curate accept" in w.lower() for w in envelope["warnings"])
 
-    def test_schema_1_intacto(self, tmp_path: Path) -> None:
-        """b2g accept --json: envelope['schema'] == '1' (invariante)."""
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1")])
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "accept", "--ids", "P1", "--json"],
-            catch_exceptions=False,
-        )
-        envelope = _assert_one_json_stdout(result)
-        assert envelope["schema"] == "1"
-
 
 # ---------------------------------------------------------------------------
 # Tests b2g reject (alias deprecado → b2g curate reject)
@@ -285,20 +251,11 @@ class TestAcceptDeprecado:
 
 
 class TestRejectDeprecado:
-    """b2g reject emite aviso de deprecación y delega en curate reject."""
+    """b2g reject emite aviso de deprecación y delega en curate reject.
 
-    def test_corre_y_delega(self, tmp_path: Path) -> None:
-        """b2g reject sigue funcionando: exit 0 y rejected_count correcto."""
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1")])
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "reject", "--ids", "P1"],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0, result.output
+    Delegación funcional y contrato schema/stdout se cubren en los tests de
+    'b2g curate reject' (test_cli.py). Aquí solo se conserva el aviso (epic #184).
+    """
 
     def test_aviso_va_a_stderr(self, tmp_path: Path) -> None:
         """b2g reject emite aviso de deprecación a stderr."""
@@ -313,20 +270,6 @@ class TestRejectDeprecado:
         )
         assert "deprecad" in result.stderr.lower()
         assert "curate reject" in result.stderr.lower()
-
-    def test_json_stdout_puro_una_linea(self, tmp_path: Path) -> None:
-        """b2g reject --json: stdout es exactamente 1 línea JSON puro."""
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1")])
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "reject", "--ids", "P1", "--json"],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0
-        _assert_one_json_stdout(result)
 
     def test_json_warnings_contiene_deprecacion(self, tmp_path: Path) -> None:
         """b2g reject --json: envelope['warnings'] contiene el aviso."""
@@ -343,19 +286,6 @@ class TestRejectDeprecado:
         assert envelope["warnings"]
         assert any("curate reject" in w.lower() for w in envelope["warnings"])
 
-    def test_schema_1_intacto(self, tmp_path: Path) -> None:
-        """b2g reject --json: schema == '1'."""
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1")])
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "reject", "--ids", "P1", "--json"],
-            catch_exceptions=False,
-        )
-        assert _assert_one_json_stdout(result)["schema"] == "1"
-
 
 # ---------------------------------------------------------------------------
 # Tests b2g filter (alias deprecado → b2g curate filter)
@@ -363,20 +293,11 @@ class TestRejectDeprecado:
 
 
 class TestFilterDeprecado:
-    """b2g filter emite aviso de deprecación y delega en curate filter."""
+    """b2g filter emite aviso de deprecación y delega en curate filter.
 
-    def test_corre_y_delega(self, tmp_path: Path) -> None:
-        """b2g filter sigue funcionando: exit 0."""
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1", year=2020)])
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "filter", "--year-gte", "1900"],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0, result.output
+    Delegación funcional y contrato schema/stdout se cubren en los tests de
+    'b2g curate filter' (test_cli.py). Aquí solo se conserva el aviso (epic #184).
+    """
 
     def test_aviso_va_a_stderr(self, tmp_path: Path) -> None:
         """b2g filter emite aviso de deprecación a stderr."""
@@ -391,20 +312,6 @@ class TestFilterDeprecado:
         )
         assert "deprecad" in result.stderr.lower()
         assert "curate filter" in result.stderr.lower()
-
-    def test_json_stdout_puro_una_linea(self, tmp_path: Path) -> None:
-        """b2g filter --json: stdout es exactamente 1 línea JSON puro."""
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1", year=2020)])
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "filter", "--year-gte", "1900", "--json"],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0
-        _assert_one_json_stdout(result)
 
     def test_json_warnings_contiene_deprecacion(self, tmp_path: Path) -> None:
         """b2g filter --json: envelope['warnings'] contiene el aviso."""
@@ -421,19 +328,6 @@ class TestFilterDeprecado:
         assert envelope["warnings"]
         assert any("curate filter" in w.lower() for w in envelope["warnings"])
 
-    def test_schema_1_intacto(self, tmp_path: Path) -> None:
-        """b2g filter --json: schema == '1'."""
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1", year=2020)])
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "filter", "--year-gte", "1900", "--json"],
-            catch_exceptions=False,
-        )
-        assert _assert_one_json_stdout(result)["schema"] == "1"
-
 
 # ---------------------------------------------------------------------------
 # Tests b2g inspect (alias deprecado → b2g read show / b2g status)
@@ -441,7 +335,12 @@ class TestFilterDeprecado:
 
 
 class TestInspectDeprecado:
-    """b2g inspect emite aviso de deprecación y delega en read show / status."""
+    """b2g inspect emite aviso de deprecación y delega en read show / status.
+
+    Delegación funcional y contrato schema/stdout se cubren en los tests de
+    'b2g read show' y 'b2g status' (test_cli.py). Aquí solo se conserva el aviso
+    (epic #184).
+    """
 
     def test_aviso_va_a_stderr_sin_id(self, tmp_path: Path) -> None:
         """b2g inspect sin --id avisa 'b2g status' en stderr."""
@@ -473,20 +372,6 @@ class TestInspectDeprecado:
         assert "deprecad" in result.stderr.lower()
         assert "read show" in result.stderr.lower()
 
-    def test_json_stdout_puro_una_linea(self, tmp_path: Path) -> None:
-        """b2g inspect --json: stdout es exactamente 1 línea JSON puro."""
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1")])
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "inspect", "--json"],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0
-        _assert_one_json_stdout(result)
-
     def test_json_warnings_contiene_deprecacion(self, tmp_path: Path) -> None:
         """b2g inspect --json: envelope['warnings'] contiene el aviso."""
         ws = _init_workspace(tmp_path)
@@ -502,19 +387,6 @@ class TestInspectDeprecado:
         assert envelope["warnings"]
         assert any("deprecad" in w.lower() for w in envelope["warnings"])
 
-    def test_schema_1_intacto(self, tmp_path: Path) -> None:
-        """b2g inspect --json: schema == '1'."""
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1")])
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "inspect", "--json"],
-            catch_exceptions=False,
-        )
-        assert _assert_one_json_stdout(result)["schema"] == "1"
-
 
 # ---------------------------------------------------------------------------
 # Tests b2g restore (alias deprecado → b2g snapshot restore)
@@ -522,26 +394,11 @@ class TestInspectDeprecado:
 
 
 class TestRestoreDeprecado:
-    """b2g restore emite aviso de deprecación y delega en snapshot restore."""
+    """b2g restore emite aviso de deprecación y delega en snapshot restore.
 
-    def test_corre_y_delega(self, tmp_path: Path) -> None:
-        """b2g restore sigue funcionando: exit 0 y papers_loaded correcto."""
-        ws = _init_workspace(tmp_path)
-        parquet_path = _make_parquet(tmp_path / "corpus.parquet")
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            [
-                "--workspace",
-                str(ws.root),
-                "restore",
-                "--from-corpus",
-                str(parquet_path),
-            ],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0, result.output
+    Delegación funcional y contrato schema/stdout se cubren en los tests de
+    'b2g snapshot restore' (test_cli.py). Aquí solo se conserva el aviso (epic #184).
+    """
 
     def test_aviso_va_a_stderr(self, tmp_path: Path) -> None:
         """b2g restore emite aviso de deprecación a stderr."""
@@ -562,27 +419,6 @@ class TestRestoreDeprecado:
         )
         assert "deprecad" in result.stderr.lower()
         assert "snapshot restore" in result.stderr.lower()
-
-    def test_json_stdout_puro_una_linea(self, tmp_path: Path) -> None:
-        """b2g restore --json: stdout es exactamente 1 línea JSON puro."""
-        ws = _init_workspace(tmp_path)
-        parquet_path = _make_parquet(tmp_path / "corpus.parquet")
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            [
-                "--workspace",
-                str(ws.root),
-                "restore",
-                "--from-corpus",
-                str(parquet_path),
-                "--json",
-            ],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0
-        _assert_one_json_stdout(result)
 
     def test_json_warnings_contiene_deprecacion(self, tmp_path: Path) -> None:
         """b2g restore --json: envelope['warnings'] contiene el aviso."""
@@ -605,26 +441,6 @@ class TestRestoreDeprecado:
         envelope = _assert_one_json_stdout(result)
         assert envelope["warnings"]
         assert any("snapshot restore" in w.lower() for w in envelope["warnings"])
-
-    def test_schema_1_intacto(self, tmp_path: Path) -> None:
-        """b2g restore --json: schema == '1'."""
-        ws = _init_workspace(tmp_path)
-        parquet_path = _make_parquet(tmp_path / "corpus.parquet")
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            [
-                "--workspace",
-                str(ws.root),
-                "restore",
-                "--from-corpus",
-                str(parquet_path),
-                "--json",
-            ],
-            catch_exceptions=False,
-        )
-        assert _assert_one_json_stdout(result)["schema"] == "1"
 
 
 # ---------------------------------------------------------------------------
@@ -814,19 +630,11 @@ def _write_spec(tmp_path: Path) -> Path:
 
 
 class TestNetworksDeprecado:
-    """b2g networks emite aviso de deprecacion y delega en build --spec."""
+    """b2g networks emite aviso de deprecacion y delega en build --spec.
 
-    def test_corre_y_delega(self, tmp_path: Path) -> None:
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1", year=2020)])
-        spec = _write_spec(tmp_path)
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "networks", "--spec", str(spec)],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0, result.output
+    Delegación funcional y contrato schema/stdout se cubren en los tests de
+    'b2g build --spec' (test_cli.py). Aquí solo se conserva el aviso (epic #184).
+    """
 
     def test_aviso_va_a_stderr(self, tmp_path: Path) -> None:
         ws = _init_workspace(tmp_path)
@@ -840,19 +648,6 @@ class TestNetworksDeprecado:
         )
         assert "deprecad" in result.stderr.lower()
         assert "build --spec" in result.stderr.lower()
-
-    def test_json_stdout_puro_una_linea(self, tmp_path: Path) -> None:
-        ws = _init_workspace(tmp_path)
-        _seed_store(ws, [_row(id="P1", year=2020)])
-        spec = _write_spec(tmp_path)
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            ["--workspace", str(ws.root), "networks", "--spec", str(spec), "--json"],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0
-        _assert_one_json_stdout(result)
 
     def test_json_warnings_contiene_deprecacion(self, tmp_path: Path) -> None:
         ws = _init_workspace(tmp_path)
