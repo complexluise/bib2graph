@@ -91,33 +91,12 @@
   (helper compartido `_build_from_spec_file`) y **sí** transiciona a `BUILT` + sella `.corpus_hash`
   (decisión D1); `build` suma `--scope all|accepted|seeds` (default `all`) y `--min-weight` (solo modo
   quick). `networks` y `--corpus-scope` quedan como **alias en deprecación** (cierran 0.11.0).
-- **MVP GUI — Hitos G1–G5 · ⛔ RETIRADO (GUI fuera de la librería, ADR
-  [0040](docs/decisiones/0040-retiro-gui-local.md), [#190](https://github.com/complexluise/bib2graph/issues/190)):**
-  la GUI local se **eliminó de la librería** (supersede 0027/0028; el core es CLI/agente-native). Ya
-  **no existen** `b2g gui`, la API local FastAPI (`api/`), la SPA `frontend/`, el extra `[gui]` ni el
-  vendoreo del frontend en el wheel. **La capa de servicios neutral `service/` (incl. `reads.py`) se
-  conserva** (la usa el CLI: `read`/`curate`/`snapshot`/…). Lo de abajo (G4/G5) queda como **historia**
-  del AS-BUILT retirado; la limpieza profunda es [#191](https://github.com/complexluise/bib2graph/issues/191).
-  Detalle histórico por hito en `docs/ROADMAP/05-gui.md` (deprecado).
-  - **G4 — SPA `frontend/`** (paquete JS del monorepo, **`pnpm` —nunca npm**): React 18 + Vite + TS
-    estricto + Cytoscape/fcose + Zustand + Tailwind + TanStack Query, dirección visual **D-2
-    "Observatorio"** (oscuro, grafo-céntrico, design tokens propios en `tailwind.config.js`). Consume los
-    **7 endpoints reales** de la API G3 (`src/{client,types,store,components,lib,styles}`): 3 columnas
-    (rondas/grafo/candidato) + curar (refetch, sin Louvain client-side) + diff de rondas; cliente tipado
-    que des-envuelve `schema="1"` (`error.code` **string**, header `Bearer`) y tipos que espejan los DTO
-    reales. **Wiring del token (B-G4-3):** `b2g gui` **inyecta el token en el `index.html` servido**
-    (`cli/commands/gui.py::_make_index_response` reemplaza el placeholder `__B2G_TOKEN__`; ruta `GET /`
-    sirve el HTML con token sin exigir Bearer, `StaticFiles` —`html=False`— sirve los assets); el frontend
-    lo lee de `window.__B2G_TOKEN__`. El **build** sale a `src/bib2graph/gui/static/` (`outDir`,
-    `base: "./"`) y **NO se commitea** (gitignoreado). **Tests vitest (14).**
-  - **G5 — empaquetado:** el wheel **vendorea el build del frontend** vía
-    `[tool.hatch.build.targets.wheel.force-include]` de hatchling (`src/bib2graph/gui/static` →
-    `bib2graph/gui/static`) → `b2g gui` funciona **sin Node** desde el wheel; clone fresco sin `pnpm
-    build` previo → `uv build` **falla ruidosamente** (no wheel mudo). `ci.yml` suma el job **`frontend`**
-    (setup-node 20 + pnpm `install`/`lint`/`test:run`/`build`, corre siempre); `publish-testpypi.yml`
-    hace `pnpm build` **antes** del `uv build` (Trusted Publishing intacto, `release-please.yml` no se
-    tocó). `tests/unit/test_packaging_config.py` (**2 tests**) guarda la config `force-include`. Ver
-    §`frontend/` abajo, `docs/API.md` §0.2 y `docs/ROADMAP/05-gui.md` §G5.
+- **GUI local — ⛔ FUERA de la librería** (ADR [0040](docs/decisiones/0040-retiro-gui-local.md),
+  [#190](https://github.com/complexluise/bib2graph/issues/190)): el core es **CLI/agente-native**. No
+  existen `b2g gui`, la API local FastAPI (`api/`), la SPA `frontend/`, el extra `[gui]` ni el vendoreo
+  del frontend en el wheel; el repo es 100% Python con uv. **La capa de servicios neutral `service/`
+  (incl. `reads.py`) se conserva** (la usa el CLI: `read`/`curate`/`snapshot`/…). La experiencia visual
+  library-centric vive en un **producto separado**. El historial de la SPA vive en `git log`.
 - **#88 — preprocesamiento automático en la ingesta (AS-BUILT 2026-06-18, ADR
   [0031](docs/decisiones/0031-preprocesamiento-automatico-en-ingesta.md)):** `normalize` + dedup
   fuzzy corren **automáticamente** en `seed`/`seed_from_bib`/`chain`/`restore` (helper
@@ -131,7 +110,7 @@
   reintroduzca variantes). `build`/`networks` siguen puros. Deuda conocida: dedup O(n²) por ingesta
   (optimización futura) y skip #93 (`test_run_seed_from_bib_reseed_incrementa_ronda`, crash
   `BibDataString`/`pyparsing` en reseed mismo-proceso; no afecta el CLI real). La **revisión asistida
-  de clusters ambiguos** se difiere a la epic GUI #34. Ver `docs/API.md` §6/§11/§4.1.
+  de clusters ambiguos** queda diferida (requiere superficie interactiva). Ver `docs/API.md` §6/§11/§4.1.
 - **Ciclo B — `examples/valoraciones/` rehecho 100% por CLI (AS-BUILT 2026-06-17, ADR
   [0030](docs/decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md) §Ciclo B):** materializa el
   principio **CLI-puro** del PO. `build_corpus.py` **eliminado**; el ejemplo se arma y reproduce
@@ -171,8 +150,7 @@
   7 tests) corre `restore --from-corpus` → `build` → `networks` **sin red** sobre el corpus real y
   asserta `corpus_hash` estable + composición de comunidades Louvain estable entre corridas (cierra el
   agujero R2 de la [Nota 09](docs/Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)). Con esto **#33
-  queda cerrado** (caso real reproducible = gate de la epic GUI #34); `seed --from-bib` y
-  `examples/bibtex/` siguen diferidos (issue #50). Ver `docs/API.md` §2.1.
+  queda cerrado** (caso real reproducible sin red). Ver `docs/API.md` §2.1.
 - **Hito 8 COMPLETO** (Ciclos 8a + 8b, ADR
   [0025](docs/decisiones/0025-enricher-cocitacion-openalex.md)): el `OpenAlexEnricher` (opt-in,
   núcleo) hace 2 pasadas — **refs→DOI** (8a) **+ co-citación end-to-end** (8b): pobla `cited_by_id`
@@ -229,9 +207,8 @@
   [0026](docs/decisiones/0026-dedup-fuzzy-determinista.md) — **automático en la ingesta y `rapidfuzz`
   al núcleo desde #88, ADR [0031](docs/decisiones/0031-preprocesamiento-automatico-en-ingesta.md)**),
   el **Hito 9 ✅** (`NetworkSpec`
-  YAML) y el **Ciclo #33 ✅** (ecuación declarativa + `restore` + corpus de ejemplo, 9a+9b). Con #33
-  cerrado, **todo el terreno pre-GUI está completo**; lo que sigue es la epic GUI #34. El entorno se
-  levanta con `uv sync`.
+  YAML) y el **Ciclo #33 ✅** (ecuación declarativa + `restore` + corpus de ejemplo, 9a+9b). El entorno
+  se levanta con `uv sync`.
 - **Fundación workspace COMPLETA** (ADR
   [0029](docs/decisiones/0029-workspace-por-investigacion.md), AS-BUILT 2026-06-16; issues
   [#32](https://github.com/complexluise/bib2graph/issues/32)/
@@ -291,6 +268,22 @@
 - **El CLI es la API para LLM/agentes** (Hito 6). Subprocess + JSON stdout, exit codes
   claros, sin estado entre invocaciones (el estado vive en DuckDB).
 
+## Documentación viva (docs vivos)
+
+- **Los docs vivos describen el PRESENTE, no el camino.** `docs/ARCHITECTURE.md`, `docs/API.md` y
+  `docs/PRD.md` describen lo que el sistema **ES**. Cuando una decisión cuaja, el doc vivo se
+  **reescribe** para reflejar el presente; **el debate y el "porqué" viven en el ADR**
+  (`docs/decisiones/`, historia inmutable), no en el doc vivo. **El changelog lo gestiona
+  release-please** — no se narra la evolución en los docs vivos. Sacá la dualidad
+  descripción/realidad: nada de marcadores `AS-BUILT`/`TARGET`/`SUPERADO`/`HISTÓRICO` ni banners de
+  "antes era X, ahora Y" en el cuerpo.
+- **Regla de prosa.** Preferí **la idea en una línea y al punto**. Sin banners redundantes, sin
+  repetir lo que ya dice el código o un ADR (linkealo). Gastá palabras en el drift real, no en
+  re-narrar lo construido. Si está bien, decilo corto.
+- **Sincronía tras un cambio de código:** actualizá `docs/API.md`/`ARCHITECTURE.md`/`PRD.md` al nuevo
+  presente y, si se tomó una decisión, redactá el ADR. El índice (README/AGENTS) tiene que seguir
+  siendo verdad.
+
 ## Flujo de trabajo (ramas dev/main) — LEER ANTES DE TOCAR GIT
 
 Modelo **GitFlow-lite** con dos ramas protegidas (PR + CI verde obligatorios; nunca
@@ -325,6 +318,13 @@ abre su PR de release → mergearlo crea el tag + GitHub Release.
 **Reglas para agentes:** ramear desde `dev`; nunca commitear directo a `dev`/`main`; un PR =
 una idea; el commit/PR sigue Conventional Commits (abajo); no bumpear versión ni editar
 `CHANGELOG.md` a mano (lo hace release-please).
+
+**Milestones de GitHub = la versión que un issue va a liberar.** Un milestone de GitHub representa
+**la versión que un issue va a cortar** (p. ej. `0.10.0`, `0.11.0`). Al **encuadrar** un issue se lo
+**asigna a su milestone destino** (la versión donde debe entrar). Un **release = cerrar su milestone**:
+el milestone es el **espejo de lo que falta** para liberar esa versión. Si un issue no tiene milestone,
+todavía no está encuadrado; si un milestone tiene issues abiertos, esa versión no está lista para
+cortarse.
 
 ## Tooling de agentes Claude Code (`.claude/`)
 
@@ -524,11 +524,9 @@ src/bib2graph/
                        # retirar la GUI (ADR 0040): el grupo CLI read la usa (list_papers/corpus_stats/get_paper/
                        # get_top). Las ex-API-only (get_workspace/list_rounds/get_scent/get_network/compare_rounds)
                        # quedan inertes, poda opcional → #191. Sin red/mutación/transición; API.md §0.1.
-                       # curate.py (G3 ✅) = orquestación de curación SUBIDA desde cli/: accept_papers/
-                       # reject_papers/curate_paper (toma store_path; decided_at inyectado en la frontera);
-                       # run_accept/run_reject del CLI son shims que delegan (firma intacta). API.md §0.2.
-                       # cli/ re-exporta el contrato (subido desde cli/_envelope.py·_errors.py) y conserva
-                       # solo el I/O del adaptador. La migración del resto de la orquestación run_<cmd> sigue TARGET.
+                       # curate.py = orquestación de curación (fuente única CLI): accept_papers/
+                       # reject_papers/curate_paper/filter_corpus (toma store_path; decided_at inyectado en la
+                       # frontera); los verbos del CLI delegan. cli/ re-exporta el contrato (envelope·errores).
   # api/  ⛔ RETIRADO (ADR 0040, #190): la API local FastAPI, la SPA frontend/ y el extra [gui] se
   #       eliminaron de la librería (GUI fuera del foco; el core es CLI/agente-native). La capa
   #       service/ que la alimentaba se conserva (la usa el CLI). Limpieza profunda: #191.

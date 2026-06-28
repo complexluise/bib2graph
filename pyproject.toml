@@ -6,7 +6,8 @@
 # LOCAL estándar (ruff, mypy, pytest, pre-commit, commitizen) configurado desde
 # el día uno (ADR 0006/0010). CI (.github/workflows/ci.yml) y release-please
 # (.github/workflows/release-please.yml) YA están conectados; la publicación a
-# PyPI queda fuera por ahora (solo GitHub Releases). Ver VERSIONING.md.
+# PyPI está conectada desde 0.10.0 vía Trusted Publishing/OIDC
+# (.github/workflows/publish-pypi.yml, invocado por release-please). Ver VERSIONING.md.
 #
 # Ver:
 #   - docs/ARCHITECTURE.md
