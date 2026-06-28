@@ -33,17 +33,18 @@
   explícito), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `sources/equation.py` (capa declarativa de la
   ecuación, 9a), `exporters/` (GraphML, CSV) y `cli/`.
-  El **CLI `b2g` es real** —paquete `cli/`, no un placeholder—. **Superficie 0.10.0 (ADR 0037/0038/0039,
+  El **CLI `b2g` es real** —paquete `cli/`, no un placeholder—. **Superficie 0.10.0 (ADR 0037/0038/0039/0040,
   AS-BUILT):** **10 verbos del ciclo** (`init`, `seed`, `chain`, `curate`, `build`, `read`, `export`,
   `snapshot`, `status`, `validate`) **+ 3 grupos noun-verb** (`read {list,stats,show,top}`,
-  `curate {dump,apply,accept,reject,filter}`, `snapshot {create,restore}`) **+ 2 comandos meta**
-  fuera de los 10 (`gui`, ADR 0027/0028; **`skill add`**, ADR 0039 — instala la skill de Claude Code
+  `curate {dump,apply,accept,reject,filter}`, `snapshot {create,restore}`) **+ 1 comando meta**
+  fuera de los 10 (**`skill add`**, ADR 0039 — instala la skill de Claude Code
   end-user que materializa el mensaje *"la mejor forma de usar bib2graph es pedirle a Claude que lo
   use"* [`pip install bib2graph` → `b2g skill add`]; vendoreada en el wheel con version-lock
   skill==cli) **+ 9 aliases deprecados**
   (`accept`/`reject`/`filter`/`inspect`/`monitor`/`networks`/`enrich`/`restore`/`resolve`, retiro
   0.11.0). **`thesaurus` se retiró como verbo** (#164): su capacidad es **`b2g build --thesaurus`**.
-  Conteo verificable contra `b2g --help` (10 del ciclo + `gui` + `skill`); detalle en
+  **El verbo `gui` se retiró con la GUI local** (ADR 0040, #190 — ver abajo).
+  Conteo verificable contra `b2g --help` (10 del ciclo + `skill`); detalle en
   `docs/API.md` §Convenciones CLI.
   **Grupo noun-verb `read {list,stats,show,top}` (#156/#157, ADR 0037 §b):** primer grupo del CLI (lectura pura
   del corpus, no transiciona); `read list` filtra por `--query`/`--status`/`--seeds|--candidates`/`--year`,
@@ -90,14 +91,14 @@
   (helper compartido `_build_from_spec_file`) y **sí** transiciona a `BUILT` + sella `.corpus_hash`
   (decisión D1); `build` suma `--scope all|accepted|seeds` (default `all`) y `--min-weight` (solo modo
   quick). `networks` y `--corpus-scope` quedan como **alias en deprecación** (cierran 0.11.0).
-- **MVP GUI — Hitos G1–G5 COMPLETOS · build entero del MVP (AS-BUILT 2026-06-18, ADR
-  [0028](docs/decisiones/0028-arquitectura-gui-api-capa-servicios.md)):** los 5 hitos de construcción
-  están **AS-BUILT** en `feat/gui-g1-capa-servicios` — G1 (capa de servicios neutral + contrato subido),
-  G2 (6 lecturas read-only en `service/reads.py`), G3 (API local FastAPI + extra `[gui]` + 19º
-  subcomando `b2g gui`), G4 (SPA `frontend/`), G5 (empaquetado). Lo único pendiente es el **gate #34**
-  (un tercero usa la GUI sin ayuda para reproducir/curar `examples/valoraciones/`), que **NO es
-  construcción**: es el criterio de aceptación/descarte de producto de la epic, al final (ADR 0027
-  §Gate). Detalle por hito en `docs/ROADMAP/05-gui.md`.
+- **MVP GUI — Hitos G1–G5 · ⛔ RETIRADO (GUI fuera de la librería, ADR
+  [0040](docs/decisiones/0040-retiro-gui-local.md), [#190](https://github.com/complexluise/bib2graph/issues/190)):**
+  la GUI local se **eliminó de la librería** (supersede 0027/0028; el core es CLI/agente-native). Ya
+  **no existen** `b2g gui`, la API local FastAPI (`api/`), la SPA `frontend/`, el extra `[gui]` ni el
+  vendoreo del frontend en el wheel. **La capa de servicios neutral `service/` (incl. `reads.py`) se
+  conserva** (la usa el CLI: `read`/`curate`/`snapshot`/…). Lo de abajo (G4/G5) queda como **historia**
+  del AS-BUILT retirado; la limpieza profunda es [#191](https://github.com/complexluise/bib2graph/issues/191).
+  Detalle histórico por hito en `docs/ROADMAP/05-gui.md` (deprecado).
   - **G4 — SPA `frontend/`** (paquete JS del monorepo, **`pnpm` —nunca npm**): React 18 + Vite + TS
     estricto + Cytoscape/fcose + Zustand + Tailwind + TanStack Query, dirección visual **D-2
     "Observatorio"** (oscuro, grafo-céntrico, design tokens propios en `tailwind.config.js`). Consume los
@@ -392,11 +393,11 @@ El proyecto se gestiona con **uv** (entorno + lockfile + versión de Python). **
 
 - **Setup dev completo:** `uv sync` (crea `.venv`, instala núcleo + dev-deps desde `uv.lock`)
   y `uv run pre-commit install`.
-- **Con una capacidad opcional:** `uv sync --extra bibtex` (siembra BibTeX) o `uv sync --extra gui`
-  (`fastapi` + `uvicorn` para `b2g gui` / la API local, AS-BUILT G3, ADR 0028) — los dos extras poblados
-  hoy. Sin dev-deps: `uv sync --no-dev`. *(No hay extra `[llm]`: **se eliminó** en la remediación
-  R4 — el producto no usa IA generativa, ADR 0022. Tampoco hay extra `[dedup]`: `rapidfuzz` pasó al
-  núcleo en #88 porque el dedup es automático en la ingesta, ADR 0031.)*
+- **Con una capacidad opcional:** `uv sync --extra bibtex` (siembra BibTeX) — el **único extra poblado
+  hoy**. Sin dev-deps: `uv sync --no-dev`. *(No hay extra `[gui]`: **se eliminó** al retirar la GUI
+  local —`fastapi`/`uvicorn`/`b2g gui`/API— ADR 0040, #190. Tampoco hay extra `[llm]`: **se eliminó** en
+  la remediación R4 — el producto no usa IA generativa, ADR 0022. Tampoco hay extra `[dedup]`:
+  `rapidfuzz` pasó al núcleo en #88 porque el dedup es automático en la ingesta, ADR 0031.)*
 - **Agregar dependencias:** `uv add <pkg>` (núcleo) · `uv add --dev <pkg>` (desarrollo) ·
   `uv add --optional <extra> <pkg>` (capacidad opcional).
 - **Tests (toda la suite):** `uv run pytest`
@@ -519,35 +520,30 @@ src/bib2graph/
                        # compartido por CLI/API, agnóstico de transporte (sin print/sys.exit/Click/
                        # FastAPI). envelope.py = build_envelope + ENVELOPE_SCHEMA_VERSION; errors.py =
                        # jerarquía B2GError (+ Usage/Data/Dependency/Network/StoreError) + code_for
-                       # (mapeo puro error→exit code 0–5). reads.py (G2 ✅) = 6 lecturas read-only de la SPA
-                       # sobre un Workspace resuelto: get_workspace/list_rounds/get_paper/get_scent/
-                       # get_network/compare_rounds (ronda=snapshot; sin red/mutación/transición; API.md §0.1).
+                       # (mapeo puro error→exit code 0–5). reads.py (G2 ✅) = lecturas read-only del corpus. SE CONSERVA tras
+                       # retirar la GUI (ADR 0040): el grupo CLI read la usa (list_papers/corpus_stats/get_paper/
+                       # get_top). Las ex-API-only (get_workspace/list_rounds/get_scent/get_network/compare_rounds)
+                       # quedan inertes, poda opcional → #191. Sin red/mutación/transición; API.md §0.1.
                        # curate.py (G3 ✅) = orquestación de curación SUBIDA desde cli/: accept_papers/
                        # reject_papers/curate_paper (toma store_path; decided_at inyectado en la frontera);
                        # run_accept/run_reject del CLI son shims que delegan (firma intacta). API.md §0.2.
                        # cli/ re-exporta el contrato (subido desde cli/_envelope.py·_errors.py) y conserva
                        # solo el I/O del adaptador. La migración del resto de la orquestación run_<cmd> sigue TARGET.
-  api/                 # API LOCAL FastAPI (ADR 0028, AS-BUILT G3 del MVP GUI): adaptador DELGADO sobre
-                       # service/ (NO importa de cli/; el núcleo NO importa fastapi —import perezoso, extra
-                       # [gui]). app.py = create_app(ws, *, token, cors_origins); routers/reads.py (6 GET)
-                       # + routers/curate.py (POST); security.py = token Bearer efímero; deps.py = workspace
-                       # singleton + require_token (401) + WriteLock global; envelopes.py = mapeo código→HTTP
-                       # (0→200,1→400,2→422,3→501,4→502,5→409; inesperado→500 INTERNAL_ERROR), reusa
-                       # service.build_envelope/code_for. La SPA (frontend/, G4) y el empaquetado del wheel
-                       # (G5: force-include) están AS-BUILT; solo queda el gate #34 (validación, no build). API.md §0.2.
+  # api/  ⛔ RETIRADO (ADR 0040, #190): la API local FastAPI, la SPA frontend/ y el extra [gui] se
+  #       eliminaron de la librería (GUI fuera del foco; el core es CLI/agente-native). La capa
+  #       service/ que la alimentaba se conserva (la usa el CLI). Limpieza profunda: #191.
   stores/              # DuckDBStore (núcleo, por defecto: biblioteca viva);
                        # ParquetStore (export); ZoteroStore ([zotero], V1.1);
                        # Neo4jStore ([neo4j], post-V1)
   cli/                 # paquete de 3 capas (Click → run_<cmd>() núcleo → envelope/errores);
                        # _ingest.py = helper normalize_and_dedup (auto-preproc en la ingesta, ADR 0031);
-                       # cli/commands/ = superficie 0.10.0 (ADR 0037/0038/0039): 10 verbos del ciclo + 3 grupos
-                       # noun-verb (read/curate/snapshot) + 2 comandos meta (gui; skill add —ADR 0039) + 9 aliases deprecados
+                       # cli/commands/ = superficie 0.10.0 (ADR 0037/0038/0039/0040): 10 verbos del ciclo + 3 grupos
+                       # noun-verb (read/curate/snapshot) + 1 comando meta (skill add —ADR 0039) + 9 aliases deprecados
                        # (accept/reject/filter/inspect/monitor/networks/enrich/restore/resolve, retiro 0.11.0).
                        # chain --since absorbe monitor →MONITORED (#158); enrich absorbido en chain (refs→DOI)
                        # + build (co-citación) (#162); thesaurus retirado → build --thesaurus (#164);
                        # _deprecation.py emite avisos a stderr + warnings[] (#165). init scaffold —ADR 0029;
-                       # build --spec absorbe networks —#159; gui levanta la API local FastAPI —Hito G3/ADR 0028, extra [gui];
-                       # G4: _make_index_response inyecta el token en el index.html servido vía ruta GET /).
+                       # build --spec absorbe networks —#159. El verbo gui SE RETIRÓ con la GUI local (ADR 0040, #190).
                        # CLI = API
                        # para LLM y agentes (Hito 6, ARCHITECTURE.md §6.3). No es un cli.py plano.
   workspace.py         # Workspace (init/open/resolve; snapshots_dir/exports_dir/networks_dir;
@@ -563,31 +559,14 @@ La estructura es orientativa (ADR 0006): un módulo plano (`corpus.py`) o un paq
 (`sources/`) es decisión del implementador según crezca. Lo fijo son los **nombres del
 dominio** y los **contratos de `docs/API.md`**.
 
-### `frontend/` — la SPA (paquete JS, NO Python; AS-BUILT G4, ADR 0028)
+### `frontend/` — ⛔ RETIRADO (la SPA se eliminó con la GUI local, ADR 0040, #190)
 
-El **único subárbol JS** del repo. El resto del monorepo es Python con **uv**; `frontend/` es
-JavaScript con **`pnpm` (SIEMPRE pnpm, nunca npm** — preferencia firme del PO). Es la SPA "tool for
-thought" del MVP GUI (React 18 + Vite + TS estricto + Cytoscape/fcose + Zustand + Tailwind + TanStack
-Query), dirección visual **D-2 "Observatorio"** (oscuro, grafo-céntrico; design tokens propios en
-`tailwind.config.js`).
-
-```
-frontend/                       # NO va al wheel; su build (gui/static/) sí (vendoreado vía force-include, G5)
-  package.json                  # packageManager: pnpm@…; scripts dev/build/test:run/lint
-  pnpm-lock.yaml                # lockfile reproducible
-  vite.config.ts                # outDir → ../src/bib2graph/gui/static ; base "./" ; alias @ → frontend/src
-  index.html                    # placeholder del token (<meta b2g-token> + window.__B2G_TOKEN__)
-  src/{client,types,store,components,lib,styles}/   # cliente tipado, DTO espejo, estado, UI
-  src/__tests__/                # vitest (14)
-```
-
-Comandos (desde `frontend/`): **`pnpm lint`** (`tsc --noEmit`) · **`pnpm test:run`** (vitest, 14) ·
-**`pnpm build`** (`tsc --noEmit && vite build` → escribe `src/bib2graph/gui/static/`). El **alias `@`**
-resuelve a `frontend/src/`. El **build output** (`src/bib2graph/gui/static/`) está **gitignoreado**
-(no se commitea; lo vendorea el wheel vía `force-include`, G5 AS-BUILT). El cliente consume los 7 endpoints reales de la API G3
-(`docs/API.md` §0.2): des-envuelve el envelope `schema="1"`, ramea por `error.code` (**string**) y
-manda `Authorization: Bearer <token>` (token leído de `window.__B2G_TOKEN__`, inyectado por `b2g gui`
-en el `index.html` servido).
+El subárbol JS `frontend/` (SPA "Observatorio") y el prototipo `app/` **se retiraron de la librería**
+junto con la GUI local (ADR [0040](docs/decisiones/0040-retiro-gui-local.md),
+[#190](https://github.com/complexluise/bib2graph/issues/190); supersede 0027/0028). El repo vuelve a
+ser **100% Python con uv**, sin Node/`pnpm`. El wheel es **Python puro** (sin `force-include` del
+frontend, sin job `frontend` en CI ni build de Node en los workflows de publish). El historial de la
+SPA vive en `git log` y en `docs/ROADMAP/05-gui.md` (deprecado).
 
 ### Manejo de errores
 

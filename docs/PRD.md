@@ -148,6 +148,14 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
 > **ESTADO 0.8 — GUI rota a propósito ([#117](https://github.com/complexluise/bib2graph/issues/117)).**
 > El rename de columna a **`source_id`** (ADR 0036) **rompió la GUI** de forma deliberada: **no está
 > disponible hoy** hasta que se actualice (#117). Ningún lector debe asumir que la GUI funciona en 0.8.
+>
+> **ENMIENDA (2026-06-28) — ADR [0040](decisiones/0040-retiro-gui-local.md) (Aceptada): GUI fuera de
+> alcance.** Supersede la enmienda de 2026-06-18 (ADR 0027) de arriba: la **GUI local se retira de la
+> librería** (issue [#190](https://github.com/complexluise/bib2graph/issues/190)). Se eliminan
+> `b2g gui`, la API local FastAPI, la SPA `frontend/` y el extra `[gui]`. **Vuelve a regir el texto
+> original del §3: no hay GUI ni servicio web** — el core es **CLI/agente-native** sobre la biblioteca
+> viva (ADR 0010/0021/0037), y el camino de adopción es la **skill** de Claude Code (ADR 0039), no una
+> SPA local. La experiencia visual library-centric pasa al **producto separado**, fuera de bib2graph.
 
 ## 4. Propuesta de valor
 
@@ -268,6 +276,11 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   > CLI sigue siendo la columna (ADR 0010/0021). Arquitectura: ADR [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md).
   > **En 0.8 la GUI quedó rota a propósito** por el rename a `source_id` (ADR 0036): **no funciona
   > hoy** hasta que se actualice ([#117](https://github.com/complexluise/bib2graph/issues/117)).
+  >
+  > **ENMIENDA (2026-06-28) — ADR [0040](decisiones/0040-retiro-gui-local.md) (Aceptada).** **Vuelve a
+  > regir el texto original "GUI / web / servicio gestionado → fuera":** la GUI local se **retira de la
+  > librería** (supersede 0027/0028, issue [#190](https://github.com/complexluise/bib2graph/issues/190)).
+  > La experiencia visual library-centric vive en el **producto separado**, no en bib2graph.
 - **WoS / Scopus / RIS / CSV como backbone** → el resto, `Source` futura. **BibTeX NO es
   secundaria:** la **ingesta desde archivo `.bib`** es una **puerta primaria** de sembrado (ingesta
   de doble puerta: ecuación **o** archivo; ADR [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)),

@@ -51,27 +51,3 @@ jobs:
         run: uv sync --all-extras --dev
       - name: Pytest
         run: uv run pytest -q
-
-  frontend:
-    name: frontend
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Enable corepack (pnpm pinneado en package.json)
-        run: corepack enable
-      - name: Install dependencies
-        working-directory: frontend
-        run: pnpm install --frozen-lockfile
-      - name: Lint (tsc --noEmit)
-        working-directory: frontend
-        run: pnpm lint
-      - name: Test (vitest)
-        working-directory: frontend
-        run: pnpm test:run
-      - name: Build
-        working-directory: frontend
-        run: pnpm build
