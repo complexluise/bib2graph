@@ -145,6 +145,14 @@ legible para un agente.
 - **Mantener la skill al día con el ciclo.** Si el ciclo del 0037 cambia (futuro ADR), la skill
   —que lo enseña— debe actualizarse en el mismo cambio. El version-lock lo hace **detectable** (van
   juntas) pero no **automático**: editar el ciclo sin editar la skill es drift a vigilar.
+- **Atado a Claude Code — limitación DELIBERADA de 0.10.0.** `skill add` instala solo en
+  `~/.claude/skills/` (ruta/formato de Claude Code). Atar la distribución a un proveedor **restringe
+  el acceso** y repite la lógica de gatekeeping que el producto quiere evitar (que solo quien tiene
+  Claude pueda pedirle a su agente que use bib2graph). La **distribución agnóstica al proveedor** —el
+  usuario/agente declara su cliente (Claude Code, OpenCode, …) y `skill add` instala en su formato— es
+  **prioridad de 0.11.0** ([#193](https://github.com/complexluise/bib2graph/issues/193)), probable
+  enmienda a este ADR (`skill add` ganaría `--provider`). El version-lock skill==cli se preserva en
+  todos los proveedores.
 
 ## Alternativas
 
