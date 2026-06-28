@@ -1,4 +1,4 @@
-"""cli.commands.enrich — Subcomando ``b2g enrich``.
+"""cli.commands.enrich — Subcomando ``b2g enrich`` (alias deprecado, #165).
 
 Enriquece el corpus en dos pasadas usando OpenAlex:
 - **Pasada 1 (Hito 8a):** resuelve ``references_id`` → ``references_doi``.
@@ -9,6 +9,9 @@ Nota: ``enrich`` NO transiciona el ``CycleState`` del store —el enriquecimient
 es una operación ortogonal al FSM del lazo bibliométrico.  Si en el futuro
 se decide transicionar (p. ej. a un estado ENRICHED), se agrega la llamada
 a ``apply_transition`` aquí, sin tocar el FSM en el núcleo.
+
+DEPRECADO (ADR 0038, #165): absorbido en ``b2g chain`` / ``b2g build``.
+Se retira en 0.11.0.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from typing import Any
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
@@ -134,6 +138,7 @@ def enrich_cmd(
 
     Si no hay referencias ni semillas aceptadas, termina sin error.
     """
+    dep_msg = emit_deprecation("b2g enrich", "b2g chain")
     store_path = resolve_library_path(ctx.obj)
     data = run_enrich(
         store_path,
@@ -148,6 +153,7 @@ def enrich_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=[dep_msg],
         )
         emit(envelope)
     else:

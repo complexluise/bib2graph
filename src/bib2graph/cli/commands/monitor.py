@@ -1,4 +1,4 @@
-"""cli.commands.monitor — Subcomando ``b2g monitor``.
+"""cli.commands.monitor — Subcomando ``b2g monitor`` (alias deprecado, #165).
 
 Re-chequea OpenAlex por nuevos citantes del corpus (forward chaining),
 mergea los candidatos nuevos a la biblioteca viva y transiciona el
@@ -12,6 +12,8 @@ hay corpus ni estado previo, falla con un error accionable.
 ``run_chain`` (con ``_fsm_action="monitor"``), garantizando fuente única
 de la lógica de forrajeo (ADR 0037 §c).  La retirada formal de este
 subcomando es el issue #165.
+
+DEPRECADO (ADR 0038, #165): usar ``b2g chain --since``.  Se retira en 0.11.0.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from typing import Any
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
@@ -101,6 +104,7 @@ def monitor_cmd(
     Requiere un corpus previo (ejecutar 'b2g seed' primero).
     Requiere --email para el polite pool de OpenAlex.
     """
+    dep_msg = emit_deprecation("b2g monitor", "b2g chain --since")
     store_path = resolve_library_path(ctx.obj)
     data = run_monitor(store_path, email=email)
 
@@ -110,6 +114,7 @@ def monitor_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=[dep_msg],
         )
         emit(envelope)
     else:

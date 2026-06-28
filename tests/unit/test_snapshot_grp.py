@@ -306,7 +306,9 @@ def test_restore_shim_funciona(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0, f"Salida inesperada:\n{result.output}"
-    lines = [ln for ln in result.output.splitlines() if ln.strip()]
+    # Usar result.stdout porque b2g restore (shim deprecado, #165) emite aviso
+    # a stderr; result.output mezcla ambas streams en Click 8.4.1.
+    lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
     assert len(lines) == 1
     envelope = json.loads(lines[0])
     assert envelope["ok"] is True

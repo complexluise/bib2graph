@@ -3,8 +3,9 @@
 Arma el grupo Click principal, registra los subcomandos planos y los grupos
 noun-verb, y expone ``main()`` como entry point del paquete.
 
-Entry point en ``pyproject.toml``:
-    b2g = "bib2graph.cli:main"
+Entry points en ``pyproject.toml``:
+    b2g      = "bib2graph.cli:main"
+    bib2graph = "bib2graph.cli:main_bib2graph_alias"  # deprecado, #165
 
 Subcomandos planos (18):
     init, seed, chain, filter, build, enrich, monitor, export,
@@ -48,6 +49,7 @@ import sys
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli.commands.accept import accept_cmd
 from bib2graph.cli.commands.build import build_cmd
 from bib2graph.cli.commands.chain import chain_cmd
@@ -178,3 +180,23 @@ def main() -> int:
         return 1
     except SystemExit as exc:
         return int(exc.code) if exc.code is not None else 0
+
+
+def main_bib2graph_alias() -> int:
+    """Entry point del ejecutable legado ``bib2graph`` (alias deprecado, #165).
+
+    Emite el aviso de deprecación a stderr y delega en ``main()``.
+
+    DEPRECADO: el ejecutable canónico es ``b2g``.  Este alias se retira en 0.11.0
+    (ADR 0038, #165).
+
+    Returns:
+        Exit code del proceso (0 éxito, 1-5 error según ADR 0010).
+    """
+    _force_utf8()
+    emit_deprecation(
+        "bib2graph",
+        "b2g",
+        removed_in="0.11.0",
+    )
+    return main()
