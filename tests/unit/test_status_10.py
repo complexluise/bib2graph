@@ -396,18 +396,9 @@ class TestRunStatusCamposAditivos:
         assert "total_papers" in data
         assert "referenced_not_fetched" in data
 
-    def test_next_best_action_sin_estado_es_seed(self, tmp_path: Path) -> None:
-        """Sin estado previo (store vacío), next_best_action='seed'."""
-        from bib2graph.cli.commands.status import run_status
-        from bib2graph.stores.duckdb import DuckDBStore
-
-        store_path = tmp_path / "empty.duckdb"
-        DuckDBStore(store_path)  # solo inicializa tablas
-
-        data = run_status(store_path)
-
-        assert data["next_best_action"] == "seed"
-
+    # Semántica del FSM (None→seed, FORAGED→build, BUILT→read) eliminada aquí (epic #184):
+    # las invariantes viven en TestNextBestAction; este smoke verifica que run_status
+    # expone el campo con el valor correcto para un estado representativo.
     def test_next_best_action_seeded_es_chain(self, tmp_path: Path) -> None:
         """Tras seed (SEEDED), next_best_action='chain'."""
         from bib2graph.cli.commands.status import run_status
@@ -418,28 +409,6 @@ class TestRunStatusCamposAditivos:
         data = run_status(store_path)
 
         assert data["next_best_action"] == "chain"
-
-    def test_next_best_action_foraged_es_build(self, tmp_path: Path) -> None:
-        """Tras chain (FORAGED), next_best_action='build'."""
-        from bib2graph.cli.commands.status import run_status
-
-        store_path = tmp_path / "foraged.duckdb"
-        _seed_store_with_state(store_path, [_row("P1")], CycleState.FORAGED)
-
-        data = run_status(store_path)
-
-        assert data["next_best_action"] == "build"
-
-    def test_next_best_action_built_es_read(self, tmp_path: Path) -> None:
-        """Tras build (BUILT), next_best_action='read'."""
-        from bib2graph.cli.commands.status import run_status
-
-        store_path = tmp_path / "built.duckdb"
-        _seed_store_with_state(store_path, [_row("P1")], CycleState.BUILT)
-
-        data = run_status(store_path)
-
-        assert data["next_best_action"] == "read"
 
     def test_build_preview_tiene_cinco_entradas(self, tmp_path: Path) -> None:
         """build_preview incluye siempre las 5 redes posibles."""
