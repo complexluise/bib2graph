@@ -177,6 +177,9 @@ cambio):
   si es la única forma de hacer el feature, pero decirlo explícito.
 - **Checklist:** `ruff check` + `mypy` + `pytest` corriendo limpio. CI lo
   valida igual; el checklist es cortesía para el revisor.
+- **¿Si el PR cambia un ADR firmado, reescribiste los docs vivos para reflejarlo?**
+  (`docs/ARCHITECTURE.md`/`API.md`/`PRD.md` describen el **presente**: si la decisión cambió, el doc
+  vivo se reescribe al nuevo presente y el debate queda en el ADR — ver AGENTS.md §Documentación viva).
 
 ## Antes de mergear
 
