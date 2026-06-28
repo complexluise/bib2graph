@@ -46,6 +46,14 @@
   reason/fix_command). `read` sin subcomando → ayuda + exit 0 (`invoke_without_command=True`, workaround Click 8.4); el
   `command` del envelope usa la ruta completa (`"read list"`). `inspect` queda **en deprecación** (#165,
   lo absorben `read show` + `status`) pero **sigue vivo**. Ver `docs/API.md` §Convenciones CLI.
+  **Grupo noun-verb `curate {dump,apply,accept,reject,filter}` (#155, ADR 0037 §b):** SEGUNDO grupo del
+  CLI. **BREAKING:** la forma-flag `curate --dump`/`--from-csv` y `--all` fueron **eliminadas sin alias**
+  (`dump --scope all` reemplaza a `--all`; `apply <csv>` reemplaza a `--from-csv`). A diferencia de `read`
+  (transversal entero), **la transición la define el VERBO** (precedente D1 de #159): solo
+  **`curate filter`→`FILTERED`**; `dump`/`apply`/`accept`/`reject` son transversales. Lógica fuente única
+  en `service/curate.py` (`run_curate_dump`/`run_curate_from_csv`/`filter_corpus` con `decided_at`
+  inyectado). Los verbos sueltos `accept`/`reject`/`filter` siguen vivos como **alias deprecados**
+  (retiro 0.11.0, ADR 0038 P1 + enmienda #155). Ver `docs/API.md` §`curate`.
   **645 tests verdes** (mypy/ruff limpios; el núcleo importa sin `duckdb`). Entre las
   redes, la **composición de comunidades es exportable**: `networks/cluster_table` (función pura)
   resume cada comunidad de una red de paper en una fila y `b2g build` la escribe como `clusters.csv`

@@ -2,6 +2,13 @@
 
 Aplica filtros PRISMA deterministas al corpus: marca rejected (no borra).
 Transiciona el CycleState a FILTERED tras persistir con éxito.
+
+Shim delgado (#155): la orquestación vive en ``service.curate.filter_corpus``;
+este módulo es un shim que delega.  ``curate filter`` comparte la misma fuente
+de lógica para garantizar comportamiento idéntico.
+
+``run_filter`` se mantiene aquí como función importable para tests existentes;
+internamente llama a ``service.curate.filter_corpus``.
 """
 
 from __future__ import annotations
@@ -13,12 +20,12 @@ from typing import Any
 import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
-from bib2graph.cli._errors import DataError, handle_errors
+from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import open_store, resolve_library_path
+from bib2graph.cli._store import resolve_library_path
 
 # ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click)
+# Función núcleo (testeable, sin Click) — shim que delega en service.curate
 # ---------------------------------------------------------------------------
 
 
@@ -30,19 +37,25 @@ def run_filter(
     language: list[str] | None = None,
     type_in: list[str] | None = None,
     min_citations: int | None = None,
+    decided_at: datetime | None = None,
 ) -> dict[str, Any]:
-    """Aplica filtros PRISMA al corpus marcando rejected los excluidos.
+    """Shim CLI: delega en ``service.curate.filter_corpus``.
 
-    Los filtros se aplican en orden; cada uno ve el resultado del anterior.
-    El CycleState transiciona a FILTERED tras persistir con éxito.
+    Mantiene la firma original de ``run_filter`` para que los tests existentes
+    no cambien.  Toda la lógica vive en ``service.curate.filter_corpus``.
+
+    R2 (ADR 0017 enmendado): ``decided_at`` es inyectado por el llamador.
+    ``filter_cmd`` pasa ``datetime.now(UTC)``; los tests pueden pasar un
+    timestamp fijo para determinismo.
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
         year_gte: Filtrar años >= este valor.
         year_lte: Filtrar años <= este valor.
-        language: Lista de códigos ISO 639-1 a incluir (ej. ``["en", "es"]``).
+        language: Lista de códigos ISO 639-1 a incluir.
         type_in: Lista de áreas de investigación a incluir.
-        min_citations: Mínimo de citantes (``len(cited_by_id) >= min_citations``).
+        min_citations: Mínimo de citantes en cited_by_id.
+        decided_at: Timestamp inyectado por el llamador (R2/ADR 0017).
 
     Returns:
         Dict con ``steps`` (conteos PRISMA por paso) y ``total_papers``.
@@ -51,74 +64,17 @@ def run_filter(
         DataError: Si ningún criterio es válido.
         StoreError: Si el store está bloqueado.
     """
-    from bib2graph.cycle import apply_transition
-    from bib2graph.filters.prisma import FilterCriterion, apply_filters
+    from bib2graph.service.curate import filter_corpus
 
-    criteria: list[FilterCriterion] = []
-
-    if year_gte is not None:
-        criteria.append(FilterCriterion(field="year", op="gte", value=year_gte))
-    if year_lte is not None:
-        criteria.append(FilterCriterion(field="year", op="lte", value=year_lte))
-    if language:
-        criteria.append(FilterCriterion(field="language", op="in", value=language))
-    if type_in:
-        criteria.append(FilterCriterion(field="type", op="in", value=type_in))
-    if min_citations is not None:
-        criteria.append(
-            FilterCriterion(field="min_citations", op="gte", value=min_citations)
-        )
-
-    if not criteria:
-        raise DataError(
-            "Debés especificar al menos un criterio de filtro: "
-            "--year-gte, --year-lte, --language, --type, o --min-citations."
-        )
-
-    filtered_backend_close = None
-    store = open_store(store_path)
-    try:
-        corpus = store.load()
-
-        # R3 — fuente única de verdad: el destino de la transición lo dicta cycle.py,
-        # no un literal en el comando (ADR 0016 enmendado §1).
-        current_state = store.backend.loop_state()
-        current_round = store.backend.loop_round()
-        new_state, new_round = apply_transition(current_state, "filter", current_round)
-
-        # R2: el reloj se inyecta en la frontera (ADR 0017 enmendado); el núcleo
-        # no llama datetime.now(). Un único timestamp para todos los pasos de
-        # filtrado de esta invocación.
-        now = datetime.now(UTC)
-        filtered_corpus, steps = apply_filters(corpus, criteria, decided_at=now)
-        total_papers = len(filtered_corpus)
-        filtered_backend_close = getattr(filtered_corpus._backend, "close", None)
-        store.persist(filtered_corpus)
-        # #126 — trazabilidad PRISMA: persistir los pasos de filtro en filter_log
-        # para que manifest.filters sobreviva entre cargas del store.
-        store.backend.persist_filter_steps(steps)
-        store.backend.set_loop_state(new_state, cycle_round=new_round)
-    finally:
-        if filtered_backend_close is not None:
-            filtered_backend_close()
-        store.close()
-
-    steps_data = [
-        {
-            "name": s.name,
-            "criteria": s.criteria,
-            "count_before": s.count_before,
-            "count_after": s.count_after,
-            "excluded": s.count_before - s.count_after,
-        }
-        for s in steps
-    ]
-
-    return {
-        "steps": steps_data,
-        "total_papers": total_papers,
-        "criteria_applied": len(criteria),
-    }
+    return filter_corpus(
+        store_path,
+        year_gte=year_gte,
+        year_lte=year_lte,
+        language=language,
+        type_in=type_in,
+        min_citations=min_citations,
+        decided_at=decided_at,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +119,8 @@ def filter_cmd(
     Tras el filtro, el estado del lazo transiciona a FILTERED.
     """
     store_path = resolve_library_path(ctx.obj)
+    # R2: el reloj se inyecta en la frontera CLI (ADR 0017 enmendado).
+    now = datetime.now(UTC)
     data = run_filter(
         store_path,
         year_gte=year_gte,
@@ -170,6 +128,7 @@ def filter_cmd(
         language=list(language) if language else None,
         type_in=list(type_in) if type_in else None,
         min_citations=min_citations,
+        decided_at=now,
     )
 
     if json_mode(json_output):
