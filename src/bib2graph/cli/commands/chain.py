@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 import click
 
+from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, UsageError, handle_errors
 from bib2graph.cli._ingest import normalize_and_dedup
@@ -179,6 +180,14 @@ def run_chain(
         ingest_at = datetime.now(UTC)
         merged = corpus.merge(ranked.corpus)
         merged_deduped = normalize_and_dedup(merged, applied_at=ingest_at)
+
+        # Pasada refs→DOI: enriquecer el corpus mergeado+dedup con el mismo source
+        # ya instanciado (forrajeo puro, ADR 0038 §enrich). Automático, sin flag.
+        # El source reutiliza la misma conexión HTTP → sin overhead extra.
+        merged_deduped, enrich_metrics = enrich_corpus(
+            merged_deduped, source, pass_name="refs_doi"
+        )
+
         total_papers = len(merged_deduped)
         merged_backend_close = getattr(merged_deduped._backend, "close", None)
         store.persist_replace(merged_deduped)
@@ -209,6 +218,7 @@ def run_chain(
         "observed_refs_count": len(ranked.observed_refs),
         "loop_state": new_state.value,
         "round": new_round,
+        "enrichment": enrich_metrics,
     }
 
 

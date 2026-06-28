@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
+from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
@@ -248,6 +249,9 @@ def run_build(
     spec_path: str | Path | None = None,
     min_weight: int = 1,
     scope_cli_token: str | None = None,
+    email: str | None = None,
+    transport: Any = None,
+    max_citing: int | None = None,
 ) -> dict[str, Any]:
     """Computa redes bibliométricas y escribe artefactos a disco.
 
@@ -263,6 +267,9 @@ def run_build(
       del corpus **filtrado** (D1 — ADR 0038).
     - Se diagnostican redes vacías usando ``predict_build_preview`` como fuente
       única (ADR 0037 §(e) — no-divergencia con ``status``).
+    - Si hay seeds aceptadas, corre la pasada cited_by ANTES de proyectar las
+      redes (ADR 0038 §enrich), de modo que la co-citación salga poblada.
+      Si no hay seeds aceptadas, la pasada es no-op graceful (→ 4 redes).
 
     Para redes de paper con comunidades detectadas escribe también clusters.csv
     (tabla de resumen de comunidades, issue #31).
@@ -282,11 +289,16 @@ def run_build(
             expone este token en lugar del vocab interno. Permite que #160
             (maturity) y la CLI sean consistentes. Si se omite (llamadas directas
             sin CLI), ``data["scope"]`` queda igual a ``corpus_scope``.
+        email: Email para el polite pool de OpenAlex (pasada cited_by).
+        transport: Transport inyectable para tests (``httpx.MockTransport``).
+        max_citing: Tope de citantes por seed en la pasada cited_by.
+            ``None`` = sin tope.
 
     Returns:
         Dict con ``networks_built``, ``artifacts_dir``, ``corpus_hash``,
         ``corpus_scope`` (vocab interno), ``scope`` (token CLI o vocab interno),
-        lista de redes, ``warnings`` y ``empty_networks``.
+        lista de redes, ``warnings``, ``empty_networks``, ``maturity``
+        y ``enrichment`` (bloque aditivo con métricas de la pasada cited_by).
 
     Raises:
         DataError: Si ``spec_path`` está malformado (modo spec).
@@ -313,6 +325,27 @@ def run_build(
             artifacts_dir = store_path_obj.parent / "networks"
         else:
             artifacts_dir = Path(out_dir)
+
+        # Pasada cited_by: enriquecer con citantes ANTES de proyectar redes
+        # (ADR 0038 §enrich).  Solo si hay seeds aceptadas; si no, no-op graceful
+        # (→ 4 redes en vez de 5, sin error).  Persiste el corpus enriquecido para
+        # que la co-citación quede disponible en runs posteriores (idempotente).
+        from bib2graph.constants import Col, CurationStatus
+        from bib2graph.sources.openalex import OpenAlexSource
+
+        _rows = corpus_full.to_arrow().to_pylist()
+        _has_accepted_seeds = any(
+            row.get(Col.IS_SEED)
+            and row.get(Col.CURATION_STATUS) == CurationStatus.ACCEPTED
+            for row in _rows
+        )
+        enrich_metrics: dict[str, Any] = {}
+        if _has_accepted_seeds:
+            _source = OpenAlexSource(email=email, transport=transport)
+            corpus_full, enrich_metrics = enrich_corpus(
+                corpus_full, _source, max_citing=max_citing, pass_name="cited_by"
+            )
+            store.persist_replace(corpus_full)
 
         # Filtrar el corpus según el scope ANTES de construir redes (#56).
         # El corpus filtrado también es el que se pasa a _write_artifacts para que
@@ -353,6 +386,7 @@ def run_build(
                 "warnings": build_warnings,
                 "empty_networks": [],
                 "maturity": _maturity_empty,
+                "enrichment": enrich_metrics,
             }
 
         # Diagnóstico pre-build (ADR 0037 §(e), fuente única con status-time).
@@ -468,6 +502,7 @@ def run_build(
         "warnings": build_warnings,
         "empty_networks": empty_networks,
         "maturity": maturity,
+        "enrichment": enrich_metrics,
     }
 
 
@@ -533,6 +568,21 @@ def run_build(
         "Solo aplica al modo quick (sin --spec); en modo spec el YAML lleva su propio min_weight."
     ),
 )
+@click.option(
+    "--max-citing",
+    "max_citing",
+    default=None,
+    type=int,
+    help=(
+        "Tope de citantes por seed en la pasada cited_by automática. "
+        "Default: sin tope. Solo aplica cuando hay seeds aceptadas."
+    ),
+)
+@click.option(
+    "--email",
+    default=None,
+    help="Email para el polite pool de OpenAlex (pasada cited_by).",
+)
 @json_option
 @click.pass_context
 @handle_errors("build")
@@ -543,6 +593,8 @@ def build_cmd(
     corpus_scope_deprecated: str | None,
     spec_path: str | None,
     min_weight: int,
+    max_citing: int | None,
+    email: str | None,
     json_output: bool,
 ) -> None:
     """Computa redes bibliométricas y escribe artefactos.
@@ -590,6 +642,8 @@ def build_cmd(
         spec_path=spec_path,
         min_weight=min_weight,
         scope_cli_token=cli_token,
+        email=email,
+        max_citing=max_citing,
     )
 
     if json_mode(json_output):
