@@ -132,6 +132,13 @@ dev = [
     "types-pyyaml>=6.0.12.20260518",
 ]
 
+# Sitio de documentación (MkDocs Material). Solo para construir docs en local y
+# en CI (.github/workflows/docs.yml); no se publica a PyPI. `uv sync --group docs`.
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocs-include-markdown-plugin>=6",
+]
+
 # ----- Tooling ------------------------------------------------------------
 
 [tool.ruff]

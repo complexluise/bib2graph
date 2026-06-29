@@ -1,0 +1,59 @@
+name: docs
+
+# Construye el sitio MkDocs Material y lo publica en GitHub Pages.
+# Publica desde `main` (docs estables, alineadas con el último release). Se puede
+# disparar a mano con "Run workflow" (workflow_dispatch) para previsualizar antes
+# de un release. Requiere: Settings → Pages → Source = "GitHub Actions" (una vez).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "*.md"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+# Permisos mínimos para el deploy a Pages vía OIDC.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un solo deploy a la vez; no cancela uno en curso.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - name: Sync (grupo docs)
+        run: uv sync --group docs
+      - name: Build (mkdocs)
+        run: uv run mkdocs build --clean
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
