@@ -8,18 +8,29 @@ De una ecuación de búsqueda a un GraphML, sin escribir código.
 
 ## Desde el CLI
 
-```bash
-b2g init mi-investigacion
-cd mi-investigacion
+<!-- termynal -->
 
-b2g seed --equation '"unequal ecological exchange"' --max-results 50   # corpus desde OpenAlex
-b2g build                                                              # construye las redes
-b2g export --format graphml                                           # → redes en GraphML
 ```
+$ b2g init mi-investigacion
+Workspace creado en ./mi-investigacion
+$ cd mi-investigacion
+$ b2g seed --equation '"unequal ecological exchange"' --max-results 50
+Sembrando desde OpenAlex...
+---> 100%
+52 papers en el corpus
+$ b2g build
+Construyendo las redes...
+---> 100%
+Listas: acoplamiento · co-citación · co-autoría · instituciones · co-keywords
+$ b2g export --format graphml
+Exportadas a ./redes/*.graphml
+```
+
+En tres pasos pasaste de una ecuación a redes en GraphML, sin escribir código.
 
 Cada comando acepta `--json` para orquestarlo desde scripts o agentes. Para la
 lista completa de comandos y opciones, corré `b2g --help` o mirá la
-[referencia de la API](../API.md).
+[referencia del CLI `b2g`](../reference/cli.md).
 
 !!! tip "Workspace por investigación"
     `b2g init` crea una carpeta autocontenida (`workspace.json` + base de datos +

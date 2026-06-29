@@ -1,24 +1,17 @@
 ---
-title: Guías
+title: Guías (how-to)
 ---
 
-# Guías
+# Guías (how-to)
 
-Esta sección reúne **tutoriales** (aprender paso a paso) y **how-tos** (resolver
-una tarea concreta) para investigadores que usan bib2graph en una revisión real.
+Las **guías** son recetas orientadas a una tarea concreta: ya sabés qué querés
+hacer y buscás los pasos para lograrlo. Si en cambio querés *aprender* desde
+cero, empezá por los [Tutoriales](../tutoriales/index.md).
 
 !!! note "En construcción"
-    Hoy el material de uso end-to-end vive sobre todo en el
-    [Quickstart](../getting-started/quickstart.md) y en la
-    [referencia de la API](../API.md). Estamos escribiendo las guías orientadas a
-    tareas. Lo planificado:
-
-    **Tutorial (un caso de punta a punta)**
-
-    - De una pregunta de investigación a un mapa de citación: sembrar →
-      encadenar → curar → construir → leer → exportar, con un corpus real.
-
-    **How-tos (recetas cortas)**
+    Estamos escribiendo las guías. Seguimiento en el
+    [issue #208](https://github.com/complexluise/bib2graph/issues/208).
+    Planificado:
 
     - Cómo elaborar y refinar una ecuación de búsqueda.
     - Cómo expandir el corpus por citaciones (forrajeo) sin perder el foco.
@@ -26,13 +19,10 @@ una tarea concreta) para investigadores que usan bib2graph en una revisión real
     - Cómo interpretar las 5 redes y exportarlas a Gephi / Cytoscape.
     - Cómo hacer reproducible un análisis (snapshots e historia del corpus).
 
-    El seguimiento de este trabajo está en el
-    [issue #208](https://github.com/complexluise/bib2graph/issues/208).
-
 ## Mientras tanto
 
 - [Quickstart](../getting-started/quickstart.md) — el camino más corto a un
   GraphML.
-- [Referencia de la API](../API.md) — todos los comandos del CLI `b2g` y la
-  librería.
+- [Referencia del CLI `b2g`](../reference/cli.md) — todos los comandos y opciones.
+- [API de Python](../reference/python-api.md) — para uso como librería.
 - [Arquitectura](../ARCHITECTURE.md) — el modelo mental del ciclo y las redes.

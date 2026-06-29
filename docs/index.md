@@ -37,9 +37,9 @@ mismo input, mismas redes.
 
     Tutoriales y recetas para tareas concretas de investigación.
 
--   :material-api: **[Referencia de la API](API.md)**
+-   :material-api: **[Referencia](reference/cli.md)**
 
-    Contratos públicos de la librería y del CLI `b2g`.
+    El CLI `b2g` y la API de Python, autogeneradas desde el código.
 
 </div>
 
