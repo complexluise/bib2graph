@@ -75,6 +75,13 @@ frontend/dist/
 src/bib2graph/gui/static/*
 !src/bib2graph/gui/static/.gitkeep
 
+# Docs (MkDocs) — output de build local; el sitio se publica vía CI (docs.yml),
+# nunca se commitea.
+site/
+
+# Borradores y exploración local (no va al repo)
+scratch/
+
 # Logs
 logs
 *.log
