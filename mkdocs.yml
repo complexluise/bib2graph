@@ -23,6 +23,19 @@ edit_uri: edit/dev/docs/
 
 docs_dir: docs
 
+# Validación de enlaces. Muchos .md fuente —los ADRs (inmutables) y los archivos
+# de raíz como CONTRIBUTING/VERSIONING/AGENTS— enlazan entre sí con rutas
+# relativas que son correctas en GitHub (su render principal) pero caen fuera de
+# docs/ en el sitio. Los degradamos a `info` para no ahogar el build con ruido
+# intencional, PERO mantenemos `anchors: warn` para seguir cazando anclas rotas
+# reales en las páginas que sí escribimos.
+validation:
+  links:
+    not_found: info
+    anchors: warn
+    absolute_links: ignore
+    unrecognized_links: ignore
+
 theme:
   name: material
   language: es

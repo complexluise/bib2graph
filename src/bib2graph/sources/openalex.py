@@ -1070,12 +1070,13 @@ class OpenAlexSource:
                 ``None`` = sin tope.
 
         Returns:
-            Tupla ``(attribution, works_map)`` donde:
-            - ``attribution``: ``{seed_id: [citer_id, ...]}``, orden alfabético,
-              idéntico al retorno de ``fetch_citing_batch`` con los mismos args.
-            - ``works_map``: ``{citer_id: work_json}`` con el objeto JSON completo
-              (campos ``_FIELDS``: título, año, autores, referencias, etc.) de
-              cada citante distinto traído en las páginas de la atribución.
+            Tupla ``(attribution, works_map)``. ``attribution`` es
+            ``{seed_id: [citer_id, ...]}`` en orden alfabético, idéntico al
+            retorno de ``fetch_citing_batch`` con los mismos argumentos.
+            ``works_map`` es ``{citer_id: work_json}`` con el objeto JSON
+            completo (campos ``_FIELDS``: título, año, autores, referencias,
+            etc.) de cada citante distinto traído en las páginas de la
+            atribución.
         """
         if not ids:
             return {}, {}
