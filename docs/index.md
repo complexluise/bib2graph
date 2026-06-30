@@ -5,13 +5,12 @@ title: Inicio
 # bib2graph
 
 > De una búsqueda bibliográfica a **redes de citación reproducibles** — una
-> biblioteca de literatura que curás vos, sin servidores ni planillas.
+> biblioteca de literatura que curas tú, sin servidores ni planillas.
 
-**bib2graph** toma una ecuación de búsqueda (o un archivo `.bib`), arma un corpus
-de papers desde [OpenAlex](https://openalex.org), te deja **curarlo** y lo
-proyecta a **redes bibliométricas** listas para analizar en Gephi, Cytoscape,
-networkx o donde quieras: acoplamiento bibliográfico, co-citación, co-autoría,
-colaboración institucional y co-ocurrencia de keywords.
+**bib2graph** toma una ecuación de búsqueda (o un archivo `.bib`), trae papers
+desde [OpenAlex](https://openalex.org), te deja **curarlo** y lo proyecta a
+**redes bibliométricas** listas para analizar en Gephi, Cytoscape, networkx o donde quieras:
+acoplamiento bibliográfico, co-citación, co-autoría, colaboración institucional y co-ocurrencia de keywords.
 
 El corpus **persiste y crece** entre sesiones, y el resultado es **reproducible**:
 mismo input, mismas redes.
@@ -21,25 +20,54 @@ mismo input, mismas redes.
     Úsalo para explorar y validar, no como dependencia estable de producción
     todavía.
 
-## Empezá acá
+---
+
+## Elige tu camino
+
+¿Cómo quieres usar bib2graph? Cada flujo es válido.
+
+<div class="grid cards" markdown>
+
+-   :material-robot: **Sin instalar nada (5 min)**
+
+    Cuéntale a Claude, ChatGPT o MiniMax tu tema de investigación.
+    El agente trae papers, construye redes, tú descargas resultados.
+    
+    👉 [Tutorial: Usuario no técnico](tutoriales/claude-code.md)
+
+-   :material-code-braces: **Aprendiendo paso a paso (3–4 horas)**
+
+    Instala bib2graph. Sigue 10 pasos: desde pregunta hasta reporte.
+    Ejecutas cada comando, entiendes cómo funciona todo.
+    
+    👉 [Tutorial completo: De la pregunta al reporte](tutoriales/sota-completo.md)
+
+-   :material-hammer-wrench: **Hibrido: CLI + agente (1–2 horas)**
+
+    Instala bib2graph. El agente te ayuda con las partes difíciles.
+    Tú ejecutas comandos. Usa guías rápidas para decisiones.
+    
+    👉 [Guías prácticas](guias/index.md)
+
+</div>
+
+---
+
+## Primeros pasos
 
 <div class="grid cards" markdown>
 
 -   :material-download: **[Instalación](getting-started/installation.md)**
 
-    Instalá `bib2graph` con `uv` o `pip` en un minuto.
+    Instala `bib2graph` con `uv` o `pip` en un minuto.
 
 -   :material-rocket-launch: **[Quickstart](getting-started/quickstart.md)**
 
-    De una ecuación a un GraphML, sin escribir código.
-
--   :material-book-open-variant: **[Guías](guias/index.md)**
-
-    Tutoriales y recetas para tareas concretas de investigación.
+    El ciclo mínimo en 2 minutos — desde ecuación a GraphML.
 
 -   :material-api: **[Referencia](reference/cli.md)**
 
-    El CLI `b2g` y la API de Python, autogeneradas desde el código.
+    El CLI `b2g`, API de Python, y glosario de términos.
 
 </div>
 
@@ -48,7 +76,7 @@ mismo input, mismas redes.
 - **Siembra** desde una ecuación de búsqueda (OpenAlex) o un archivo BibTeX.
 - **Expande** el corpus siguiendo citaciones, rankeando candidatos por
   estructura — sin IA.
-- **Curás vos:** aceptar/rechazar papers, filtros PRISMA, todo versionable en CSV.
+- **Curas tú:** acepta/rechaza papers, filtros PRISMA, todo versionable en CSV.
 - **5 redes bibliométricas:** acoplamiento, co-citación, co-autoría,
   instituciones, co-keywords.
 - **Sub-redes temáticas** filtrando por keyword.

@@ -4,25 +4,71 @@ title: Guías (how-to)
 
 # Guías (how-to)
 
-Las **guías** son recetas orientadas a una tarea concreta: ya sabés qué querés
-hacer y buscás los pasos para lograrlo. Si en cambio querés *aprender* desde
-cero, empezá por los [Tutoriales](../tutoriales/index.md).
+Las **guías** son recetas para decisiones puntuales: ya sabes qué quieres hacer,
+buscas cómo hacerlo bien. Si en cambio quieres *aprender* desde cero, comienza por los [Tutoriales](../tutoriales/index.md).
 
-!!! note "En construcción"
-    Estamos escribiendo las guías. Seguimiento en el
-    [issue #208](https://github.com/complexluise/bib2graph/issues/208).
-    Planificado:
+Las guías están organizadas por **paso del flujo.** Úsalas como referencia mientras
+trabajas.
 
-    - Cómo elaborar y refinar una ecuación de búsqueda.
-    - Cómo expandir el corpus por citaciones (forrajeo) sin perder el foco.
-    - Cómo aplicar filtros PRISMA y curar (aceptar/rechazar) de forma versionable.
-    - Cómo interpretar las 5 redes y exportarlas a Gephi / Cytoscape.
-    - Cómo hacer reproducible un análisis (snapshots e historia del corpus).
+## Guía 1: Ecuación de búsqueda
 
-## Mientras tanto
+<div class="grid cards" markdown>
 
-- [Quickstart](../getting-started/quickstart.md) — el camino más corto a un
-  GraphML.
-- [Referencia del CLI `b2g`](../reference/cli.md) — todos los comandos y opciones.
-- [API de Python](../reference/python-api.md) — para uso como librería.
-- [Arquitectura](../ARCHITECTURE.md) — el modelo mental del ciclo y las redes.
+-   :material-magnify: **[Cómo armar una ecuación que NO trae basura](ecuacion-busqueda.md)**
+
+    Estructura booleana, sinónimos, testeo de 50 papers, ajustes.
+    30 minutos para una ecuación acotada y limpia.
+
+</div>
+
+## Guía 2: Forrajeo (expansión del corpus)
+
+<div class="grid cards" markdown>
+
+-   :material-sitemap-branch: **[¿Expando el corpus? — Cuándo y cómo forrajear](forrajeo.md)**
+
+    Decides si vale la pena forrajeo (backward chaining). Cuándo hacerlo, cuándo no.
+    15 minutos de decisión + 30 minutos de ejecución.
+
+</div>
+
+## Guía 3: Curación
+
+<div class="grid cards" markdown>
+
+-   :material-checkbox-marked-outline: **[Curación PRISMA paso a paso](curacion-prisma.md)**
+
+    Las 4 fases de PRISMA: Identificación → Cribado → Elegibilidad → Inclusión.
+    Documentá criterios, cura en CSV, aplica en bib2graph.
+    2–3 horas de trabajo manual, pero riguroso.
+
+</div>
+
+## Guía 4: Interpretación de redes
+
+<div class="grid cards" markdown>
+
+-   :material-network: **[Leer las 5 redes — Qué significan](leer-redes.md)**
+
+    Acoplamiento (sub-temas), co-citación (influentes), co-autoría (equipos),
+    keywords, instituciones. Qué mirar en cada red, qué documentar.
+
+</div>
+
+## Guía 5: Redacción del reporte
+
+<div class="grid cards" markdown>
+
+-   :material-file-document: **[Del corpus al reporte — Estructura y redacción](reporte.md)**
+
+    Template de 7 secciones (resumen → conclusiones). Cómo convertir datos en prosa.
+    3–4 horas de redacción, documentada paso a paso.
+
+</div>
+
+## Complementario
+
+- [Tutoriales](../tutoriales/index.md) — aprende desde cero (quick start o completo)
+- [Quickstart](../getting-started/quickstart.md) — ciclo mínimo en 2 minutos
+- [Referencia CLI](../reference/cli.md) — todos los comandos
+- [API Python](../reference/python-api.md) — como librería
