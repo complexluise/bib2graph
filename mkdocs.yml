@@ -1,0 +1,152 @@
+# mkdocs.yml — sitio de documentación de bib2graph
+#
+# Fuente: docs/ (mismo árbol que ya mantenemos). El sitio NO duplica contenido:
+# reusa API.md, ARCHITECTURE.md, los ADRs (docs/decisiones/) y, vía
+# include-markdown, los .md de la raíz (CONTRIBUTING, CHANGELOG, AI_DISCLOSURE).
+# Lo interno (Notas/, _archivo/, features/, ROADMAP/, borradores) queda fuera del
+# sitio público — ver `exclude_docs` más abajo.
+#
+# Build local:   uv sync --group docs && uv run mkdocs serve
+# Deploy:        .github/workflows/docs.yml → GitHub Pages (push a main)
+
+site_name: bib2graph
+site_description: >-
+  De una búsqueda bibliográfica a redes de citación reproducibles — una
+  biblioteca de literatura que curás vos, sin servidores ni planillas.
+site_author: Equipo bib2graph
+site_url: https://complexluise.github.io/bib2graph/
+copyright: Copyright &copy; 2026 Equipo bib2graph (complexluise) — GPL-3.0-or-later
+
+repo_url: https://github.com/complexluise/bib2graph
+repo_name: complexluise/bib2graph
+edit_uri: edit/dev/docs/
+
+docs_dir: docs
+
+# Validación de enlaces. Muchos .md fuente —los ADRs (inmutables) y los archivos
+# de raíz como CONTRIBUTING/VERSIONING/AGENTS— enlazan entre sí con rutas
+# relativas que son correctas en GitHub (su render principal) pero caen fuera de
+# docs/ en el sitio. Los degradamos a `info` para no ahogar el build con ruido
+# intencional, PERO mantenemos `anchors: warn` para seguir cazando anclas rotas
+# reales en las páginas que sí escribimos.
+validation:
+  links:
+    not_found: info
+    anchors: warn
+    absolute_links: ignore
+    unrecognized_links: ignore
+
+theme:
+  name: material
+  language: es
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: Cambiar a modo oscuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Cambiar a modo claro
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - navigation.tracking
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+plugins:
+  - search:
+      lang: es
+  - include-markdown
+  # Anima sesiones de terminal: bloques precedidos por <!-- termynal -->.
+  - termynal
+  # Referencia de la librería autogenerada desde los docstrings (src layout).
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_root_full_path: false
+            show_source: false
+            show_signature_annotations: true
+            separate_signature: true
+            members_order: source
+            heading_level: 2
+            filters: ["!^_"]
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  # Referencia del CLI b2g autogenerada desde el grupo Click.
+  - mkdocs-click
+
+# Páginas que se construyen y son enlazables por URL, pero NO aparecen en el
+# sidebar (los 38 ADRs viven en su índice docs/decisiones/README.md).
+not_in_nav: |
+  /decisiones/0*.md
+  /decisiones/registro-ia.md
+
+# Contenido interno: no se publica en el sitio. Si algo de acá hay que mostrar,
+# se promueve explícitamente a una página del nav.
+exclude_docs: |
+  Notas/
+  _archivo/
+  features/
+  ROADMAP/
+  RELEASE_TEMPLATE.md
+
+# Estructura Diátaxis (https://diataxis.fr): Empezar/Tutoriales (aprender),
+# Guías (resolver una tarea), Referencia (consultar), Explicación (entender).
+nav:
+  - Inicio: index.md
+  - Empezar:
+      - Instalación: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+  - Tutoriales:
+      - tutoriales/index.md
+  - Guías (how-to):
+      - guias/index.md
+  - Referencia:
+      - API de Python: reference/python-api.md
+      - CLI b2g: reference/cli.md
+      - Contratos detallados: API.md
+  - Explicación:
+      - Arquitectura: ARCHITECTURE.md
+      - Decisiones de diseño (ADRs): decisiones/README.md
+      - Requisitos del producto (PRD): PRD.md
+  - Proyecto:
+      - Contribuir: contributing.md
+      - Versionado: versioning.md
+      - IA en el desarrollo: ai-disclosure.md
+      - Changelog: changelog.md
