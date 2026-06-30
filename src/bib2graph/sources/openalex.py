@@ -35,6 +35,7 @@ import pyarrow as pa
 from bib2graph.constants import Col, CurationStatus
 from bib2graph.corpus import Corpus, EquationRef, _rows_with_ids
 from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
+from bib2graph.service.errors import NetworkError
 
 from .base import SeedResult
 
@@ -69,6 +70,18 @@ _RE_WOS_TAG = re.compile(r"\b(TS|AB|TI|AU|SO|LA|DT|WC|SU)=", re.IGNORECASE)
 _RETRY_STATUS_CODES: frozenset[int] = frozenset({429, 500, 502, 503, 504})
 _RETRY_MAX_ATTEMPTS: int = 3
 _RETRY_BACKOFF_BASE: float = 1.0  # segundos; duplica por cada intento
+
+# Mensaje accionable para 429 (pool anónimo → polite pool).
+# ADR 0012: el email mueve al polite pool (límite más generoso);
+# la api_key mejora aún más (opcional).
+_MSG_RATE_LIMIT_429 = (
+    "OpenAlex respondió 429 (Too Many Requests): límite de tasa del pool anónimo"
+    " alcanzado. Remedio primario — declarar tu email mueve la petición al polite"
+    " pool, que tiene un límite más generoso. En el CLI: b2g seed --email"
+    " tu@email.com … En código: OpenAlexSource(email='tu@email.com')."
+    " Opcional: una api_key mejora el límite aún más"
+    " (variable de entorno OPENALEX_API_KEY). Ver ADR 0012."
+)
 
 
 # Traducción de ecuación (función pura, sin I/O)
@@ -523,7 +536,12 @@ class OpenAlexSource:
         equation_id = f"eq-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}"
         fetched_at = datetime.now(UTC).isoformat()
 
-        works, openalex_version = self._fetch_all(executed_query)
+        try:
+            works, openalex_version = self._fetch_all(executed_query)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429:
+                raise NetworkError(_MSG_RATE_LIMIT_429) from exc
+            raise
 
         # R5: bulk-load — construir tabla Arrow de una vez en vez de N add_paper/clone.
         rows = [
@@ -582,9 +600,10 @@ class OpenAlexSource:
             Tupla ``(works, openalex_version)`` con retry/backoff.
 
         Raises:
-            httpx.HTTPStatusError: Si se agotan los reintentos.
+            NetworkError: Si se agotan los reintentos con 429 (con mensaje accionable).
+            httpx.HTTPStatusError: Si se agotan los reintentos con otro código retryable.
         """
-        last_exc: Exception | None = None
+        last_exc: httpx.HTTPStatusError | None = None
         for attempt in range(_RETRY_MAX_ATTEMPTS):
             try:
                 return self._fetch_all(filter_str)
@@ -597,6 +616,8 @@ class OpenAlexSource:
                     raise  # error no retryable: propagar inmediatamente
         # Se agotaron los reintentos
         assert last_exc is not None
+        if last_exc.response.status_code == 429:
+            raise NetworkError(_MSG_RATE_LIMIT_429) from last_exc
         raise last_exc
 
     def fetch_citing(self, openalex_id: str) -> list[dict[str, Any]]:

@@ -40,13 +40,16 @@ from bib2graph.backends.memory import (
     _apply_curation_to_rows,
     _merge_curation_status,
     _merge_provenance,
+    _merge_rows,
     compute_corpus_hash,
 )
 from bib2graph.constants import LIST_COLUMNS, CurationStatus
 from bib2graph.cycle import CycleState
 from bib2graph.schemas import CORPUS_SCHEMA, validate_table
 
+# ---------------------------------------------------------------------------
 # Error de bloqueo de archivo (ADR 0019)
+# ---------------------------------------------------------------------------
 
 
 class StoreLockedError(OSError):
@@ -56,7 +59,9 @@ class StoreLockedError(OSError):
     """
 
 
+# ---------------------------------------------------------------------------
 # SQL DDL
+# ---------------------------------------------------------------------------
 
 # ADR 0024: ``_seq BIGINT`` es una columna interna (no parte de CORPUS_SCHEMA)
 # que fija el orden de primera aparición para garantizar D3 sin DELETE+reinsert.
@@ -99,7 +104,10 @@ CREATE TABLE IF NOT EXISTS loop_state_log (
 )
 """
 
-# DuckDB no soporta ADD COLUMN con NOT NULL; se agrega nullable con DEFAULT 0.
+# R3: si la tabla ya existía sin la columna ``round`` (bases creadas antes de R3),
+# agregamos la columna en modo migración liviana (pre-1.0, sin datos reales en uso).
+# DuckDB no soporta ADD COLUMN con NOT NULL constraint; se agrega como nullable
+# con default 0 y se trata como entero en loop_round().
 _DDL_LOOP_STATE_MIGRATE = """
 ALTER TABLE loop_state_log ADD COLUMN round INTEGER DEFAULT 0
 """
@@ -148,6 +156,10 @@ CREATE TABLE IF NOT EXISTS filter_log (
 )
 """
 
+# #141 — tabla de EnricherRef para trazabilidad del manifest.
+# Cada ejecución de enriquecimiento appendea/reemplaza sus refs de enriquecedor.
+# ``params_json`` almacena el dict ``params`` de ``EnricherRef`` serializado como JSON.
+# ``recorded_at`` usa ``now()`` de DuckDB (mismo patrón que ``filter_log``).
 _DDL_ENRICHER_LOG = """
 CREATE TABLE IF NOT EXISTS enricher_log (
     name        VARCHAR NOT NULL,
@@ -156,6 +168,7 @@ CREATE TABLE IF NOT EXISTS enricher_log (
 )
 """
 
+# ADR 0024: migración liviana para bases pre-existentes sin columna ``_seq``.
 # Se suprime el error si la columna ya existe (CatalogException o BinderException).
 # El backfill usa ``rowid`` como proxy de orden de inserción original; es inocuo
 # cuando no hay NULLs (UPDATE … WHERE _seq IS NULL no toca nada).
@@ -167,6 +180,7 @@ _DDL_CORPUS_BACKFILL_SEQ = """
 UPDATE corpus SET _seq = rowid WHERE _seq IS NULL
 """
 
+# ---------------------------------------------------------------------------
 # SQL de UPSERT
 # El merge campo a campo (D3) se expresa en SQL:
 #   - Escalares: COALESCE(excluded.col, corpus.col)
@@ -174,6 +188,7 @@ UPDATE corpus SET _seq = rowid WHERE _seq IS NULL
 #   - provenance / curation_status: delegados a UDFs Python
 # ADR 0024: ``_seq`` se incluye en el INSERT pero NO en el DO UPDATE SET,
 # de modo que filas existentes conservan su ``_seq`` original (primera aparición).
+# ---------------------------------------------------------------------------
 
 
 def _build_upsert_sql() -> str:
@@ -212,6 +227,7 @@ def _build_upsert_sql() -> str:
         for c in list_cols
     ]
 
+    # UDFs para los campos especiales
     special_updates = [
         "    curation_status = _merge_curation_status_udf(\n"
         "        corpus.curation_status, corpus.provenance,\n"
@@ -226,6 +242,7 @@ def _build_upsert_sql() -> str:
     # ADR 0024: columnas del INSERT = CORPUS_SCHEMA + _seq (columna interna de orden)
     schema_cols = ", ".join(f.name for f in CORPUS_SCHEMA)
     insert_cols = f"{schema_cols}, _seq"
+    # Un placeholder extra para _seq al final
     placeholders = ", ".join(f"${i + 1}" for i in range(len(CORPUS_SCHEMA) + 1))
 
     return (
@@ -238,7 +255,121 @@ def _build_upsert_sql() -> str:
 
 _UPSERT_SQL = _build_upsert_sql()
 
+
+def _build_bulk_update_existing_sql() -> str:
+    """SQL para actualizar filas que ya existen en ``corpus`` (conflictos reales).
+
+    Lee el lote desde la vista registrada ``_incoming_upsert`` y actualiza solo
+    las filas cuyo ``id`` ya existe en ``corpus``.  Las UDFs Python
+    ``_merge_curation_status_udf`` y ``_merge_provenance_udf`` se invocan
+    únicamente para las filas que efectivamente están en conflicto (no para
+    inserciones nuevas), eliminando el overhead de UDF para el caso de primer
+    persist sin conflictos.
+
+    La columna ``_seq`` NO se actualiza: las filas existentes conservan su
+    orden de primera aparición (ADR 0024, D3).
+    """
+    scalar_cols = [
+        "source_id",
+        "doi",
+        "title",
+        "year",
+        "abstract",
+        "source",
+        "language",
+        "publisher",
+        "is_seed",
+    ]
+    list_cols = list(LIST_COLUMNS)
+
+    scalar_sets = [f"    {c} = COALESCE(src.{c}, corpus.{c})" for c in scalar_cols]
+
+    # D3 para listas: unión ordenada deduplicada; NULL si ambos son NULL
+    list_sets = [
+        f"    {c} = CASE\n"
+        f"        WHEN corpus.{c} IS NULL AND src.{c} IS NULL THEN NULL\n"
+        f"        ELSE list_sort(list_distinct(list_concat(\n"
+        f"            COALESCE(corpus.{c}, []),\n"
+        f"            COALESCE(src.{c}, [])\n"
+        f"        )))\n"
+        f"    END"
+        for c in list_cols
+    ]
+
+    # UDFs para los campos especiales de merge
+    special_sets = [
+        "    curation_status = _merge_curation_status_udf(\n"
+        "        corpus.curation_status, corpus.provenance,\n"
+        "        src.curation_status, src.provenance\n"
+        "    )",
+        "    provenance = _merge_provenance_udf(corpus.provenance, src.provenance)",
+    ]
+
+    all_sets = scalar_sets + list_sets + special_sets
+    sets_sql = ",\n".join(all_sets)
+
+    return (
+        f"UPDATE corpus SET\n"
+        f"{sets_sql}\n"
+        f"FROM _incoming_upsert AS src\n"
+        f"WHERE corpus.id = src.id"
+    )
+
+
+def _build_bulk_insert_new_sql() -> str:
+    """SQL para insertar filas nuevas (sin conflicto con ``corpus``).
+
+    Lee el lote desde la vista registrada ``_incoming_upsert`` y hace INSERT
+    solo de las filas cuyo ``id`` NO existe todavía en ``corpus``.  No invoca
+    ninguna UDF Python (las filas son nuevas, no hay merge que hacer).
+
+    ADR 0024: ``_seq = CAST($1 AS BIGINT) + ROW_NUMBER() OVER (ORDER BY _row_idx)``
+    asigna valores únicos y crecientes en el orden de aparición del lote Arrow.
+    ``_row_idx`` es una columna auxiliar (índice 0-based) agregada al registrar
+    la vista, que garantiza que el ROW_NUMBER() respete el orden de la tabla
+    Arrow entrante sin depender del scan de DuckDB (no garantizado por SQL estándar
+    sin ORDER BY).  ``$1`` es el ``MAX(_seq)`` calculado antes de la llamada.
+    """
+    schema_cols = ", ".join(f.name for f in CORPUS_SCHEMA)
+    insert_cols = f"{schema_cols}, _seq"
+    return (
+        f"INSERT INTO corpus ({insert_cols})\n"
+        f"SELECT {schema_cols},\n"
+        f"    CAST($1 AS BIGINT) + ROW_NUMBER() OVER (ORDER BY _row_idx) AS _seq\n"
+        f"FROM _incoming_upsert\n"
+        f"WHERE id NOT IN (SELECT id FROM corpus)"
+    )
+
+
+def _build_simple_insert_sql() -> str:
+    """SQL de INSERT directo sin filtro de conflicto (usado tras DELETE en overwrite).
+
+    Después de un ``DELETE FROM corpus`` la tabla está vacía y cualquier
+    fila de ``_incoming_upsert`` es nueva: el filtro ``NOT IN`` sería un
+    no-op costoso.  Este SQL hace el INSERT sin ninguna condición.
+
+    ADR 0024: ``_seq`` empieza en 1.  ``ROW_NUMBER() OVER (ORDER BY _row_idx)``
+    garantiza que el orden de filas en la tabla Arrow se preserve fielmente en
+    ``_seq`` (la columna ``_row_idx`` es el índice 0-based agregado al registrar
+    la vista; sin ORDER BY el scan de DuckDB no tiene orden garantizado por SQL).
+    """
+    schema_cols = ", ".join(f.name for f in CORPUS_SCHEMA)
+    insert_cols = f"{schema_cols}, _seq"
+    return (
+        f"INSERT INTO corpus ({insert_cols})\n"
+        f"SELECT {schema_cols},\n"
+        f"    ROW_NUMBER() OVER (ORDER BY _row_idx) AS _seq\n"
+        f"FROM _incoming_upsert"
+    )
+
+
+_BULK_UPDATE_EXISTING_SQL = _build_bulk_update_existing_sql()
+_BULK_INSERT_NEW_SQL = _build_bulk_insert_new_sql()
+_SIMPLE_INSERT_SQL = _build_simple_insert_sql()
+
+# ---------------------------------------------------------------------------
 # Helpers de conversión Python ↔ DuckDB
+# ---------------------------------------------------------------------------
 
 
 def _row_to_params(row: dict[str, object]) -> list[object]:
@@ -269,7 +400,48 @@ def _arrow_table_from_con(con: duckdb.DuckDBPyConnection) -> pa.Table:
     return result.cast(CORPUS_SCHEMA)
 
 
+def _dedup_merge_table(table: pa.Table) -> pa.Table:
+    """Deduplica las filas de ``table`` por ``id``, mergeando duplicados con semántica D3.
+
+    Si el lote entrante contiene múltiples filas con el mismo ``id``, las fusiona
+    progresivamente usando la misma lógica que ``_merge_rows`` de ``backends.memory``
+    (la misma semántica que las UDFs ``_merge_curation_status_udf`` y
+    ``_merge_provenance_udf``).  El orden de primera aparición se preserva.
+
+    Garantiza que el lote no viole el PRIMARY KEY de ``corpus`` (``id UNIQUE``),
+    que antes causaba ``ConstraintException`` en el upsert bulk cuando el batch
+    entrante ya contenía ids repetidos.
+
+    Args:
+        table: Tabla Arrow de entrada (puede tener ``id`` duplicados).
+
+    Returns:
+        Tabla Arrow sin ids duplicados, con el mismo schema canónico.
+        Si la tabla no tiene duplicados, la devuelve intacta.
+    """
+    if len(table) == 0:
+        return table
+    rows = table.to_pylist()
+    seen: dict[str, dict[str, object]] = {}
+    order: list[str] = []
+    for row in rows:
+        id_ = str(row["id"])
+        if id_ not in seen:
+            seen[id_] = row
+            order.append(id_)
+        else:
+            # Merge progresivo: preserva provenance acumulada y curación más reciente
+            seen[id_] = _merge_rows(seen[id_], row)
+    if len(seen) == len(rows):
+        # Sin duplicados: devolver la tabla original sin coste de reconstrucción
+        return table
+    deduped = [seen[id_] for id_ in order]
+    return pa.Table.from_pylist(deduped, schema=CORPUS_SCHEMA)
+
+
+# ---------------------------------------------------------------------------
 # DuckDBBackend
+# ---------------------------------------------------------------------------
 
 
 class DuckDBBackend:
@@ -319,25 +491,37 @@ class DuckDBBackend:
         if table is not None:
             self._upsert_table(table)
 
+    # ------------------------------------------------------------------
     # Inicialización interna
+    # ------------------------------------------------------------------
 
     def _setup(self) -> None:
         """Crea las tablas DDL, aplica migraciones y registra las UDFs Python."""
         self._con.execute(_DDL_CORPUS)
         self._con.execute(_DDL_LOOP_STATE)
+        # R3: migración liviana — agrega columna round si falta (bases pre-R3).
         with contextlib.suppress(duckdb.CatalogException):
             self._con.execute(_DDL_LOOP_STATE_MIGRATE)
+        # ADR 0024: migración liviana — agrega columna _seq si falta (bases pre-ADR 0024).
         # CatalogException: columna ya existe. BinderException: variante alternativa DuckDB.
         with contextlib.suppress(duckdb.CatalogException, duckdb.BinderException):
             self._con.execute(_DDL_CORPUS_MIGRATE_SEQ)
+        # Backfill: asigna _seq = rowid a filas legacy sin _seq asignado.
+        # Es inocuo cuando no hay NULLs (WHERE _seq IS NULL no toca nada).
         self._con.execute(_DDL_CORPUS_BACKFILL_SEQ)
+        # ADR 0036: migración liviana — renombra openalex_id → source_id si falta.
+        # Bases pre-ADR 0036 tienen la columna como openalex_id; se renombra.
         with contextlib.suppress(duckdb.CatalogException, duckdb.BinderException):
             self._con.execute(
                 "ALTER TABLE corpus RENAME COLUMN openalex_id TO source_id"
             )
+        # #54: tabla auxiliar para IDs backward observados pero no materializados.
         self._con.execute(_DDL_REFERENCED_BUT_NOT_FETCHED)
+        # ADR 0036 (opción C): tabla lateral de IDs externos por motor.
         self._con.execute(_DDL_EXTERNAL_IDS)
+        # #126: tabla de pasos de filtro PRISMA para trazabilidad del manifest.
         self._con.execute(_DDL_FILTER_LOG)
+        # #141: tabla de EnricherRef para trazabilidad del manifest.
         self._con.execute(_DDL_ENRICHER_LOG)
         self._register_udfs()
 
@@ -389,22 +573,53 @@ class DuckDBBackend:
     def _upsert_table(self, table: pa.Table) -> None:
         """Hace upsert de todas las filas de ``table`` en la base de datos.
 
-        ADR 0024: calcula ``start = COALESCE(MAX(_seq), 0)`` una sola vez y
-        asigna ``_seq = start + 1 + i`` (0-based) a cada fila. Filas ya
-        existentes (ON CONFLICT) ignoran el ``_seq`` provisto porque el
-        DO UPDATE no lo actualiza, preservando así el orden de primera
-        aparición (D3).
+        Ingesta vectorizada de dos pasos — registra la tabla Arrow en DuckDB
+        (zero-copy) y ejecuta exactamente 2 + 1 sentencias SQL por lote:
+
+        1. **UPDATE** filas ya existentes (las UDFs Python se invocan solo para
+           los conflictos reales; para un primer persist sin conflictos = 0 UDFs).
+        2. **INSERT** filas nuevas con ``WHERE id NOT IN (SELECT id FROM corpus)``
+           (vectorizado, cero UDFs).
+
+        Elimina el round-trip por fila previo (O(n) → O(1) viajes al motor SQL)
+        y evita además llamar a las UDFs Python para filas sin conflicto,
+        logrando la mayor ganancia de velocidad en el caso de primer persist
+        (corpus vacío → todas las filas son nuevas → 0 UDFs).
+
+        Pre-procesamiento del lote:
+        - **Dedup-MERGE** (``_dedup_merge_table``): si el lote contiene ids
+          duplicados, los fusiona con la misma semántica D3 que las UDFs
+          (provenance append-only, curación más reciente gana) antes de registrar
+          la vista, evitando violaciones de PRIMARY KEY.
+        - **Columna ``_row_idx``**: se agrega al registrar la vista para que
+          ``ROW_NUMBER() OVER (ORDER BY _row_idx)`` en ``_BULK_INSERT_NEW_SQL``
+          produzca un ``_seq`` determinista y estable que respeta el orden de
+          aparición de la tabla Arrow entrante (ADR 0024, D3).
+
+        Las filas existentes conservan su ``_seq`` original (D3).
         """
-        rows = table.to_pylist()
-        if not rows:
+        if len(table) == 0:
             return
+        # Dedup-MERGE: fusiona ids duplicados en el lote ANTES del upsert SQL
+        table = _dedup_merge_table(table)
+        # ADR 0024: base para el _seq monótono de las filas nuevas en este lote
         result = self._con.execute(
             "SELECT COALESCE(MAX(_seq), 0) FROM corpus"
         ).fetchone()
         start: int = int(result[0]) if result else 0
-        for i, row in enumerate(rows):
-            params = [*_row_to_params(row), start + 1 + i]
-            self._con.execute(_UPSERT_SQL, params)
+        # _row_idx: columna auxiliar de orden para ROW_NUMBER() OVER (ORDER BY _row_idx)
+        table_with_idx = table.append_column(
+            "_row_idx",
+            pa.array(range(len(table)), type=pa.int64()),
+        )
+        self._con.register("_incoming_upsert", table_with_idx)
+        try:
+            # Paso 1: actualizar filas existentes (UDFs solo para conflictos reales)
+            self._con.execute(_BULK_UPDATE_EXISTING_SQL)
+            # Paso 2: insertar filas nuevas (vectorizado, sin UDF)
+            self._con.execute(_BULK_INSERT_NEW_SQL, [start])
+        finally:
+            self._con.unregister("_incoming_upsert")
 
     def _clone(self) -> DuckDBBackend:
         """Crea una nueva instancia apuntando al mismo archivo (path compartido).
@@ -424,6 +639,7 @@ class DuckDBBackend:
             new_backend._setup()
             if len(current_table) > 0:
                 new_backend._upsert_table(current_table)
+            # Copiar el loop_state_log (incluyendo round — R3)
             log_rows = self._con.execute(
                 "SELECT state, round, recorded_at FROM loop_state_log ORDER BY recorded_at"
             ).fetchall()
@@ -432,6 +648,7 @@ class DuckDBBackend:
                     "INSERT INTO loop_state_log (state, round, recorded_at) VALUES (?, ?, ?)",
                     [state_val, round_val, at_val],
                 )
+            # #54: copiar la tabla referenced_but_not_fetched (hermana de loop_state_log)
             ref_rows = self._con.execute(
                 "SELECT ref_id, cycle_round, observed_at "
                 "FROM referenced_but_not_fetched ORDER BY observed_at"
@@ -442,6 +659,7 @@ class DuckDBBackend:
                     "(ref_id, cycle_round, observed_at) VALUES (?, ?, ?)",
                     [ref_id_val, cycle_round_val, observed_at_val],
                 )
+            # ADR 0036: copiar la tabla lateral external_ids
             ext_rows = self._con.execute(
                 "SELECT paper_id, engine, id FROM external_ids"
             ).fetchall()
@@ -451,6 +669,7 @@ class DuckDBBackend:
                     "VALUES (?, ?, ?)",
                     [paper_id_val, engine_val, id_val],
                 )
+            # #126: copiar la tabla de pasos de filtro PRISMA
             filter_rows = self._con.execute(
                 "SELECT name, criteria, count_before, count_after, recorded_at "
                 "FROM filter_log ORDER BY recorded_at"
@@ -462,6 +681,7 @@ class DuckDBBackend:
                     "VALUES (?, ?, ?, ?, ?)",
                     [name_val, criteria_val, cb_val, ca_val, at_val],
                 )
+            # #141: copiar la tabla de EnricherRef
             enricher_rows = self._con.execute(
                 "SELECT name, params_json, recorded_at "
                 "FROM enricher_log ORDER BY recorded_at"
@@ -474,13 +694,16 @@ class DuckDBBackend:
                 )
             return new_backend
         else:
+            # Para archivo en disco: compartimos la ruta; nueva instancia abre nueva conexión
             new_backend = DuckDBBackend.__new__(DuckDBBackend)
             new_backend._path = self._path
             new_backend._con = duckdb.connect(self._path)
             new_backend._setup()
             return new_backend
 
+    # ------------------------------------------------------------------
     # TabularBackend protocol
+    # ------------------------------------------------------------------
 
     def to_arrow(self) -> pa.Table:
         """Exporta el contenido completo como tabla Arrow canónica.
@@ -508,6 +731,7 @@ class DuckDBBackend:
             Nueva instancia con el paper agregado.
         """
         new_backend = self._clone()
+        # ADR 0024: _seq para la fila nueva = MAX actual + 1
         result = new_backend._con.execute(
             "SELECT COALESCE(MAX(_seq), 0) FROM corpus"
         ).fetchone()
@@ -523,9 +747,12 @@ class DuckDBBackend:
         luego las nuevas filas de ``other_table`` en su orden de aparición) se
         garantiza por la columna interna ``_seq``:
         - Filas de ``self`` ya tienen ``_seq`` asignado (se preservan en el
-          ON CONFLICT DO UPDATE, que no actualiza ``_seq``).
-        - Filas nuevas de ``other_table`` reciben ``_seq`` mayor (calculado
-          como ``MAX(_seq) + 1 + i`` en ``_upsert_table``).
+          UPDATE, que no actualiza ``_seq``).
+        - Filas nuevas de ``other_table`` reciben ``_seq`` mayor, calculado
+          con ``ROW_NUMBER() OVER (ORDER BY _row_idx)`` desde ``MAX(_seq)``
+          en ``_upsert_table``; la columna auxiliar ``_row_idx`` (índice
+          0-based del lote Arrow) garantiza que el orden de primera aparición
+          se preserve de forma determinista, sin depender del scan de DuckDB.
         - ``_arrow_table_from_con`` lee con ``ORDER BY _seq``.
         No se requiere DELETE+reinsert.
 
@@ -568,6 +795,8 @@ class DuckDBBackend:
         Returns:
             Nueva instancia con la curación aplicada.
         """
+        # Leer solo las filas afectadas, aplicar la lógica Python verificada,
+        # y hacer upsert de vuelta
         current_table = _arrow_table_from_con(self._con)
         current_rows = current_table.to_pylist()
         updated_rows = _apply_curation_to_rows(
@@ -575,6 +804,7 @@ class DuckDBBackend:
         )
 
         new_backend = self._clone()
+        # Sólo actualizar las filas que cambiaron
         id_set = set(ids)
         for row in updated_rows:
             if str(row.get("id")) in id_set:
@@ -646,7 +876,9 @@ class DuckDBBackend:
             return False
         return self.corpus_hash() == other.corpus_hash()
 
+    # ------------------------------------------------------------------
     # Extensiones propias: CycleState (ADR 0016, R3)
+    # ------------------------------------------------------------------
 
     def loop_state(self) -> CycleState | None:
         """Estado actual del lazo de investigación.
@@ -706,7 +938,9 @@ class DuckDBBackend:
             [state.value, current_round],
         )
 
+    # ------------------------------------------------------------------
     # Extensiones propias: referenced_but_not_fetched (#54)
+    # ------------------------------------------------------------------
 
     def add_referenced_refs(self, ref_ids: list[str], *, cycle_round: int) -> int:
         """Appendea IDs backward observados a ``referenced_but_not_fetched``.
@@ -760,7 +994,9 @@ class DuckDBBackend:
         ).fetchall()
         return [r[0] for r in rows]
 
+    # ------------------------------------------------------------------
     # Extensiones propias: external_ids (ADR 0036 opción C)
+    # ------------------------------------------------------------------
 
     def add_external_id(self, paper_id: str, engine: str, id: str) -> None:
         """Registra un ID externo para un paper dado un motor.
@@ -810,7 +1046,9 @@ class DuckDBBackend:
         ).fetchall()
         return [(r[0], r[1], r[2]) for r in rows]
 
+    # ------------------------------------------------------------------
     # Extensiones propias: filter_log (#126)
+    # ------------------------------------------------------------------
 
     def persist_filter_steps(
         self,
@@ -873,7 +1111,9 @@ class DuckDBBackend:
             for r in rows
         ]
 
+    # ------------------------------------------------------------------
     # Extensiones propias: enricher_log (#141)
+    # ------------------------------------------------------------------
 
     def persist_enricher_refs(
         self,
@@ -929,7 +1169,9 @@ class DuckDBBackend:
             for r in rows
         ]
 
+    # ------------------------------------------------------------------
     # Extensión: query SQL libre
+    # ------------------------------------------------------------------
 
     def close(self) -> None:
         """Cierra la conexión DuckDB subyacente y libera el lock de archivo.
@@ -947,9 +1189,10 @@ class DuckDBBackend:
     def overwrite_corpus(self, table: pa.Table) -> None:
         """Reemplaza TODA la tabla ``corpus`` con el contenido de ``table``.
 
-        Hace TRUNCATE + INSERT (no upsert) para que el estado en disco sea
-        exactamente ``table``, sin residuos de filas previas.  Preserva las
-        tablas hermanas (``loop_state_log``, ``referenced_but_not_fetched``).
+        Hace TRUNCATE + INSERT masivo (no upsert fila-a-fila) para que el estado
+        en disco sea exactamente ``table``, sin residuos de filas previas.
+        Preserva las tablas hermanas (``loop_state_log``,
+        ``referenced_but_not_fetched``).
 
         Úsalo solo en la ruta de ingesta (``seed``, ``restore``, ``chain``,
         ``thesaurus``) donde ya tenés el corpus completo y correcto en
@@ -966,10 +1209,22 @@ class DuckDBBackend:
                 Debe cumplir ``CORPUS_SCHEMA``.
         """
         self._con.execute("DELETE FROM corpus")
-        rows = table.to_pylist()
-        for i, row in enumerate(rows):
-            params = [*_row_to_params(row), i + 1]
-            self._con.execute(_UPSERT_SQL, params)
+        if len(table) == 0:
+            return
+        # Dedup-MERGE: fusiona ids duplicados en el lote ANTES del INSERT masivo
+        table = _dedup_merge_table(table)
+        # Tras DELETE la tabla está vacía: INSERT directo sin filtro NOT IN
+        # (más eficiente que _BULK_INSERT_NEW_SQL para el caso de tabla limpia)
+        # _row_idx: columna auxiliar de orden para ROW_NUMBER() OVER (ORDER BY _row_idx)
+        table_with_idx = table.append_column(
+            "_row_idx",
+            pa.array(range(len(table)), type=pa.int64()),
+        )
+        self._con.register("_incoming_upsert", table_with_idx)
+        try:
+            self._con.execute(_SIMPLE_INSERT_SQL)
+        finally:
+            self._con.unregister("_incoming_upsert")
 
     def query(self, sql: str) -> pa.Table:
         """Ejecuta una consulta SQL sobre el backend y devuelve tabla Arrow.

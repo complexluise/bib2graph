@@ -375,10 +375,13 @@ def test_fetch_citing_retry_ante_429_luego_200() -> None:
 
 @pytest.mark.unit
 def test_fetch_citing_retry_agotado_lanza_error() -> None:
-    """fetch_citing lanza HTTPStatusError si se agotan los reintentos.
+    """fetch_citing lanza NetworkError si se agotan los reintentos con 429.
 
-    R5: con 3 intentos de 429 consecutivos, la excepción se propaga.
+    R5 / #210: con 3 intentos de 429 consecutivos, la excepción se convierte
+    a NetworkError accionable (no HTTPStatusError pelado).
     """
+    from bib2graph.service.errors import NetworkError
+
     calls: list[int] = [0]
 
     def handler_siempre_429(request: httpx.Request) -> httpx.Response:
@@ -390,11 +393,13 @@ def test_fetch_citing_retry_agotado_lanza_error() -> None:
 
     with (
         patch("bib2graph.sources.openalex.time.sleep"),
-        pytest.raises(httpx.HTTPStatusError) as exc_info,
+        pytest.raises(NetworkError) as exc_info,
     ):
         source.fetch_citing("W12345")
 
-    assert exc_info.value.response.status_code == 429
+    msg = str(exc_info.value)
+    assert "429" in msg
+    assert "polite" in msg.lower()
     # Se intentó _RETRY_MAX_ATTEMPTS veces (cada intento = al menos 1 HTTP)
     assert calls[0] >= 1
 
@@ -423,6 +428,35 @@ def test_fetch_citing_no_retry_ante_404() -> None:
     # No reintentó — solo 1 llamada
     assert calls[0] == 1
     assert not mock_sleep.called
+
+
+@pytest.mark.unit
+def test_fetch_citing_429_levanta_network_error_accionable() -> None:
+    """fetch_citing con 429 agotado lanza NetworkError con mensaje completo.
+
+    #210: el path de chaining (_fetch_all_with_retry) convierte 429
+    agotado en NetworkError con mensaje que menciona email, polite-pool,
+    ADR 0012 y api_key como opcional. Sin red real (MockTransport).
+    """
+    from bib2graph.service.errors import NetworkError
+
+    def handler_siempre_429(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, text="Rate limit exceeded")
+
+    transport = httpx.MockTransport(handler_siempre_429)
+    source = OpenAlexSource(transport=transport)
+
+    with (
+        patch("bib2graph.sources.openalex.time.sleep"),
+        pytest.raises(NetworkError) as exc_info,
+    ):
+        source.fetch_citing("W99999")
+
+    msg = str(exc_info.value)
+    assert "email" in msg.lower()
+    assert "polite" in msg.lower()
+    assert "ADR 0012" in msg
+    assert "api_key" in msg  # la api_key se nombra como opcional en el mensaje
 
 
 # ===========================================================================
