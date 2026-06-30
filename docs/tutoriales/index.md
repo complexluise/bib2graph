@@ -5,27 +5,26 @@ title: Tutoriales
 # Tutoriales
 
 Los **tutoriales** enseñan a usar bib2graph paso a paso, partiendo de cero y
-llegando a un resultado concreto. Son para *aprender* (a diferencia de las
-[Guías](../guias/index.md), que son para *resolver una tarea puntual*).
+llegando a un resultado concreto. Son para *aprender*.
 
-## Tutoriales disponibles
+## Para empezar (5 minutos)
 
-<div class="grid cards" markdown>
+-   :material-robot: **[Tu primer mapa en Claude (5 min)](claude-code.md)**
 
--   :material-robot: **[Tu primera red bibliométrica con Claude](claude-code.md)**
+    Cómo armar, sin instalar nada, una red visual de papers sobre un tema.
+    Conversación con Claude — todo automatizado. Ideal para explorar rápido.
 
-    Cómo dirigir bib2graph conversacionalmente desde Claude web sin instalar nada.
-    15 minutos para armarte tu primer mapa de citaciones.
+## Tutorial completo (3–4 horas)
 
--   :material-rocket: **[Quickstart](../getting-started/quickstart.md)**
+-   :material-book: **[De la pregunta al reporte de SOTA](sota-completo.md)**
 
-    El ciclo mínimo de bib2graph en 2 minutos — desde la ecuación de búsqueda
-    a una red en GraphML, usando el CLI `b2g` en tu máquina.
+    Recorrido completo paso a paso: pregunta → ecuación → corpus → curación PRISMA
+    → 3 redes → análisis de comunidades → tendencias → redacción del reporte.
+    Para alguien que quiere hacer un SOTA riguroso.
 
-</div>
+## También útil
 
-## Complementario
-
-- [Guías (how-to)](../guias/index.md) — recetas para tareas concretas, como elaborar un reporte de SOTA.
+- [Quickstart](../getting-started/quickstart.md) — el ciclo mínimo con CLI `b2g` en tu máquina (2 min).
+- [Guías (how-to)](../guias/index.md) — recetas para tareas concretas.
 - [Referencia del CLI `b2g`](../reference/cli.md) — todos los comandos.
-- [Referencia de API Python](../reference/python-api.md) — cómo usar bib2graph como librería.
+- [API Python](../reference/python-api.md) — bib2graph como librería.
