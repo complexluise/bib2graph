@@ -107,9 +107,7 @@ class OpenAlexEnricher:
 
         return corpus
 
-    # ------------------------------------------------------------------
     # Pasada 1: references_id → references_doi (pública para absorción en chain)
-    # ------------------------------------------------------------------
 
     def enrich_references_doi(self, corpus: Corpus) -> Corpus:
         """Rellena ``references_doi`` alineado a ``references_id``.
@@ -141,7 +139,6 @@ class OpenAlexEnricher:
         table = corpus.to_arrow()
         rows = table.to_pylist()
 
-        # Recolectar todos los references_id únicos
         all_ref_ids: set[str] = set()
         for row in rows:
             refs = row.get(Col.REFERENCES_ID) or []
@@ -150,10 +147,8 @@ class OpenAlexEnricher:
         if not all_ref_ids:
             return self._with_refs_doi_ref(corpus, resolved=0, total=0)
 
-        # Resolver IDs a DOIs
         doi_map = self._source.fetch_dois_for(list(all_ref_ids))
 
-        # Rellenar references_doi alineado a references_id
         enriched_rows: list[dict[str, Any]] = []
         for row in rows:
             row_copy = dict(row)
@@ -174,9 +169,7 @@ class OpenAlexEnricher:
             new_corpus, resolved=resolved, total=len(all_ref_ids)
         )
 
-    # ------------------------------------------------------------------
     # Pasada 2: cited_by_id para semillas aceptadas (Hito 8b, pública para build)
-    # ------------------------------------------------------------------
 
     def enrich_cited_by(self, corpus: Corpus) -> Corpus:
         """Puebla ``cited_by_id`` de las semillas aceptadas.
@@ -226,7 +219,6 @@ class OpenAlexEnricher:
         table = corpus.to_arrow()
         rows = table.to_pylist()
 
-        # 1. Identificar semillas aceptadas con source_id (motor OpenAlex).
         # Bug #111: normalizar URL→corto para que el lookup no falle en silencio
         # si el id viene como URL completa (https://openalex.org/W...).
         from bib2graph.sources.openalex import _oa_id_short
@@ -248,13 +240,10 @@ class OpenAlexEnricher:
 
         target_set: set[str] = set(target_ids)
 
-        # 2. Batching: fetch_citing_batch loteó en ≤50, paginó con presupuesto
-        # por semilla y devuelve ya atribuido y acotado: {seed_id: [citer_id]}
         citing_dict = self._source.fetch_citing_batch(
             target_ids, max_per_paper=self._max_citing_per_paper
         )
 
-        # 3. Reconstruir filas con cited_by_id actualizado (unión con existentes).
         # total_new cuenta citantes efectivamente agregados post-tope.
         enriched_rows: list[dict[str, Any]] = []
         total_new = 0
@@ -265,7 +254,6 @@ class OpenAlexEnricher:
             if oa_id and oa_id in target_set:
                 existing: list[str] = list(row_copy.get(Col.CITED_BY_ID) or [])
                 existing_set = set(existing)
-                # Citantes devueltos por el source (ya acotados por max_per_paper)
                 source_citers: list[str] = citing_dict.get(str(oa_id)) or []
                 # Unión determinista; re-aplicar tope para idempotencia robusta
                 merged = sorted(existing_set | set(source_citers))
@@ -287,9 +275,7 @@ class OpenAlexEnricher:
             total=len(target_ids),
         )
 
-    # ------------------------------------------------------------------
     # Helper: registrar EnricherRef en el Manifest (idempotente por nombre)
-    # ------------------------------------------------------------------
 
     def _with_refs_doi_ref(
         self, corpus: Corpus, *, resolved: int, total: int
@@ -351,9 +337,7 @@ class OpenAlexEnricher:
         new_manifest = corpus.manifest.model_copy(update={"enrichers": updated})
         return corpus.with_manifest(new_manifest)
 
-    # ------------------------------------------------------------------
     # Alias de compatibilidad: _with_enricher_ref (Hito 8a)
-    # ------------------------------------------------------------------
 
     def _with_enricher_ref(
         self, corpus: Corpus, *, resolved: int, total: int
