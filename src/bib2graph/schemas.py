@@ -21,10 +21,6 @@ from bib2graph.constants import Col, CurationStatus
 
 SCHEMA_VERSION = "1"
 
-# ---------------------------------------------------------------------------
-# ProvenanceEvent — fuente única del evento de procedencia (R1, ADR 0023)
-# ---------------------------------------------------------------------------
-
 
 class ProvenanceEvent(BaseModel):
     """Evento de procedencia de un paper en el Corpus.
@@ -129,10 +125,6 @@ class ProvenanceEvent(BaseModel):
         return json.dumps([e.to_dict() for e in events], ensure_ascii=False)
 
 
-# ---------------------------------------------------------------------------
-# Schema Arrow canónico — 23 columnas según API.md §1.1
-# ---------------------------------------------------------------------------
-
 _LIST_STR = pa.list_(pa.string())
 
 CORPUS_SCHEMA: pa.Schema = pa.schema(
@@ -170,15 +162,9 @@ CORPUS_SCHEMA: pa.Schema = pa.schema(
     ]
 )
 
-# Columnas obligatoriamente no-nulas (nullable=False en el schema)
 _NON_NULLABLE_COLS: frozenset[str] = frozenset(
     {Col.ID, Col.TITLE, Col.IS_SEED, Col.CURATION_STATUS}
 )
-
-
-# ---------------------------------------------------------------------------
-# Excepción de contrato
-# ---------------------------------------------------------------------------
 
 
 class SchemaError(Exception):
@@ -187,11 +173,6 @@ class SchemaError(Exception):
     Se lanza con el nombre de la columna y la descripción del problema para
     que el mensaje sea accionable (lección 7 de v0: fallar fuerte y ruidoso).
     """
-
-
-# ---------------------------------------------------------------------------
-# Validación de tabla Arrow
-# ---------------------------------------------------------------------------
 
 
 def validate_table(table: pa.Table) -> None:
@@ -210,7 +191,6 @@ def validate_table(table: pa.Table) -> None:
     expected_fields = {f.name: f for f in CORPUS_SCHEMA}
     actual_fields = {f.name: f for f in table.schema}
 
-    # 1. Columnas presentes
     missing = set(expected_fields) - set(actual_fields)
     if missing:
         # Ordenar para mensajes deterministas
@@ -220,7 +200,6 @@ def validate_table(table: pa.Table) -> None:
             f"El schema canónico exige {sorted(missing)}."
         )
 
-    # 2. Tipos Arrow
     for name, expected_field in expected_fields.items():
         actual_field = actual_fields[name]
         if not actual_field.type.equals(expected_field.type):
@@ -230,7 +209,6 @@ def validate_table(table: pa.Table) -> None:
                 f"se recibió {actual_field.type!s}."
             )
 
-    # 3. No-nulos en columnas obligatorias
     for col_name in _NON_NULLABLE_COLS:
         if col_name in actual_fields:
             chunk = table.column(col_name)
@@ -241,10 +219,6 @@ def validate_table(table: pa.Table) -> None:
                     f"{null_count} valor(es) nulo(s)."
                 )
 
-
-# ---------------------------------------------------------------------------
-# Modelo Pydantic v2 para validación de fila individual (add_paper)
-# ---------------------------------------------------------------------------
 
 _VALID_CURATION: frozenset[str] = frozenset(
     {CurationStatus.CANDIDATE, CurationStatus.ACCEPTED, CurationStatus.REJECTED}
@@ -262,7 +236,6 @@ class PaperRow(BaseModel):
     ``tests/unit/test_schemas.py``).
     """
 
-    # Obligatorios (no-nullable en Arrow) — mismo orden que CORPUS_SCHEMA
     id: str
     source_id: str | None = None
     doi: str | None = None
@@ -296,11 +269,6 @@ class PaperRow(BaseModel):
                 f"se recibió '{v}'."
             )
         return v
-
-
-# ---------------------------------------------------------------------------
-# Paridad PaperRow ⇄ CORPUS_SCHEMA (verificada por test; R1 ADR 0023)
-# ---------------------------------------------------------------------------
 
 
 def assert_schema_parity() -> None:

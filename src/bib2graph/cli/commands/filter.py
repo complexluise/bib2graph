@@ -27,10 +27,6 @@ from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import resolve_library_path
 
-# ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click) — shim que delega en service.curate
-# ---------------------------------------------------------------------------
-
 
 def run_filter(
     store_path: str | Path,
@@ -78,11 +74,6 @@ def run_filter(
         min_citations=min_citations,
         decided_at=decided_at,
     )
-
-
-# ---------------------------------------------------------------------------
-# Comando Click
-# ---------------------------------------------------------------------------
 
 
 @click.command("filter")

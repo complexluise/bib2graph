@@ -34,10 +34,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-# ---------------------------------------------------------------------------
-# Manifest mínimo (marcador del workspace)
-# ---------------------------------------------------------------------------
-
 WORKSPACE_MANIFEST_FILE = "workspace.json"
 WORKSPACE_SCHEMA_VERSION = "1"
 LIBRARY_FILENAME = "library.duckdb"
@@ -69,11 +65,6 @@ class WorkspaceManifest(BaseModel):
     schema_version: str = WORKSPACE_SCHEMA_VERSION
 
 
-# ---------------------------------------------------------------------------
-# Excepción propia del seam workspace
-# ---------------------------------------------------------------------------
-
-
 class WorkspaceNotFoundError(Exception):
     """No se pudo resolver ningún workspace desde el contexto actual.
 
@@ -94,10 +85,6 @@ class WorkspaceNotFoundError(Exception):
 class WorkspaceExistsError(Exception):
     """Ya existe un workspace.json en el directorio destino."""
 
-
-# ---------------------------------------------------------------------------
-# Workspace
-# ---------------------------------------------------------------------------
 
 _DIRS = ("networks", "snapshots", "exports")
 
@@ -130,10 +117,6 @@ class Workspace:
         self._library_path = library_path
         self._manifest = manifest
         self._source = source
-
-    # ------------------------------------------------------------------
-    # Propiedades públicas
-    # ------------------------------------------------------------------
 
     @property
     def root(self) -> Path:
@@ -172,10 +155,6 @@ class Workspace:
         Valores posibles: ``"flag"``, ``"env"``, ``"cwd"``, ``"init"``.
         """
         return self._source
-
-    # ------------------------------------------------------------------
-    # Factory: init (scaffolding)
-    # ------------------------------------------------------------------
 
     @classmethod
     def init(cls, path: Path, name: str) -> Workspace:
@@ -225,10 +204,6 @@ class Workspace:
             source="init",
         )
 
-    # ------------------------------------------------------------------
-    # Factory: open (desde carpeta ya existente)
-    # ------------------------------------------------------------------
-
     @classmethod
     def open(cls, path: Path, *, source: str = "flag") -> Workspace:
         """Abre un workspace existente desde su carpeta raíz.
@@ -259,10 +234,6 @@ class Workspace:
             manifest=manifest,
             source=source,
         )
-
-    # ------------------------------------------------------------------
-    # Factory: resolve (resolución ambiente completa)
-    # ------------------------------------------------------------------
 
     @classmethod
     def resolve(
@@ -301,26 +272,18 @@ class Workspace:
         if cwd is None:
             cwd = Path.cwd()
 
-        # 1. --workspace explícito
         if workspace is not None:
             return cls.open(Path(workspace), source="flag")
 
-        # 2. Variable de entorno B2G_WORKSPACE
         env_ws = env.get("B2G_WORKSPACE")
         if env_ws:
             return cls.open(Path(env_ws), source="env")
 
-        # 3. Caminar hacia arriba desde cwd
         found = _walk_up(cwd)
         if found is not None:
             return cls.open(found, source="cwd")
 
-        # 4. Sin workspace → error accionable
         raise WorkspaceNotFoundError()
-
-    # ------------------------------------------------------------------
-    # Representación
-    # ------------------------------------------------------------------
 
     def __repr__(self) -> str:
         return (
@@ -434,11 +397,7 @@ class Workspace:
         }
 
 
-# ---------------------------------------------------------------------------
 # Helpers internos
-# ---------------------------------------------------------------------------
-
-
 def _walk_up(start: Path) -> Path | None:
     """Camina hacia arriba desde ``start`` buscando un directorio con workspace.json.
 

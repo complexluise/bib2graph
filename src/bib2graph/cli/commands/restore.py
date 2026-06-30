@@ -38,16 +38,10 @@ from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import resolve_library_path
 
-# Fuente única: service.snapshot.run_restore (ADR 0038).
 # Re-exportado para backward compat con tests que importan desde este módulo.
 from bib2graph.service.snapshot import run_restore
 
 __all__ = ["restore_cmd", "run_restore"]
-
-
-# ---------------------------------------------------------------------------
-# Comando Click (shim delgado — no se testea directamente)
-# ---------------------------------------------------------------------------
 
 
 @click.command("restore")

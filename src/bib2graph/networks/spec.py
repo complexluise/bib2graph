@@ -142,7 +142,6 @@ def load_specs(path: str | Path) -> list[NetworkSpec]:
         try:
             specs.append(NetworkSpec(**entry))
         except ValidationError as exc:
-            # Extraer el primer error para dar un mensaje accionable
             first_error = exc.errors()[0]
             field = ".".join(str(loc) for loc in first_error["loc"]) or "<root>"
             msg = first_error["msg"]

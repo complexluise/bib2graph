@@ -105,7 +105,6 @@ class Preprocessor:
         new_table = pa.Table.from_pylist(processed, schema=CORPUS_SCHEMA)
         new_corpus = Corpus.from_arrow(new_table)
 
-        # Params del registro: fuente del thesaurus y nº de aliases
         params: dict[str, str] = {
             "n_aliases": str(len(lookup)),
             "applied_at": ts.isoformat(),

@@ -27,10 +27,6 @@ from bib2graph.preprocessors.pipeline import normalize_and_dedup
 from bib2graph.service.errors import DataError
 from bib2graph.service.store import open_store as _open_store
 
-# ---------------------------------------------------------------------------
-# run_snapshot
-# ---------------------------------------------------------------------------
-
 
 def run_snapshot(
     store_path: str | Path,
@@ -66,11 +62,6 @@ def run_snapshot(
         "schema_version": snap.manifest.schema_version,
         "maturity": maturity,
     }
-
-
-# ---------------------------------------------------------------------------
-# run_restore
-# ---------------------------------------------------------------------------
 
 
 def run_restore(

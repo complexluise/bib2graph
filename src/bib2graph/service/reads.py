@@ -50,9 +50,7 @@ if TYPE_CHECKING:
     from bib2graph.workspace import Workspace
 
 
-# ---------------------------------------------------------------------------
 # Helpers internos
-# ---------------------------------------------------------------------------
 
 
 def _open_readonly(path: Path) -> Any:
@@ -84,11 +82,6 @@ def _open_readonly(path: Path) -> Any:
             f"No se puede abrir el store '{path}': {exc}. "
             "Verificá que el archivo no esté bloqueado por otro proceso."
         ) from exc
-
-
-# ---------------------------------------------------------------------------
-# 1. get_workspace
-# ---------------------------------------------------------------------------
 
 
 def get_workspace(ws: Workspace) -> dict[str, Any]:
@@ -131,7 +124,6 @@ def get_workspace(ws: Workspace) -> dict[str, Any]:
 
     total = sum(counts.values())
 
-    # Staleness de la cache de redes
     corpus = store.load()
     live_hash = compute_corpus_hash(corpus.to_arrow())
     networks_cache_stale = ws.is_networks_cache_stale(live_hash)
@@ -156,11 +148,6 @@ def get_workspace(ws: Workspace) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
-# 2. list_rounds
-# ---------------------------------------------------------------------------
-
-
 def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
     """Lista los snapshots sellados del workspace más la entrada "live".
 
@@ -183,7 +170,6 @@ def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
     # Snapshots sellados (helper read-only del Workspace; ronda = snapshot, B-G2-1)
     rounds: list[dict[str, Any]] = ws.list_snapshots()
 
-    # Entrada sintética para el corpus vivo
     store = _open_readonly(ws.library_path)
     loop_state = store.backend.loop_state()
     current_round = store.backend.loop_round()
@@ -199,11 +185,6 @@ def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
     )
 
     return rounds
-
-
-# ---------------------------------------------------------------------------
-# 3. get_paper
-# ---------------------------------------------------------------------------
 
 
 def get_paper(ws: Workspace, ident: str) -> dict[str, Any]:
@@ -264,7 +245,6 @@ def get_paper(ws: Workspace, ident: str) -> dict[str, Any]:
 
     row = matching[0]
 
-    # Parsear provenance
     provenance_raw = row.get(Col.PROVENANCE)
     provenance: list[Any] = []
     if provenance_raw:
@@ -289,11 +269,6 @@ def get_paper(ws: Workspace, ident: str) -> dict[str, Any]:
         "cited_by_id": row.get(Col.CITED_BY_ID),
         "provenance": provenance,
     }
-
-
-# ---------------------------------------------------------------------------
-# 4. get_scent
-# ---------------------------------------------------------------------------
 
 
 def get_scent(ws: Workspace, paper_id: str) -> dict[str, Any]:
@@ -330,7 +305,6 @@ def get_scent(ws: Workspace, paper_id: str) -> dict[str, Any]:
     table = corpus.to_arrow()
     rows = table.to_pylist()
 
-    # Verificar que el paper exista
     matching = [r for r in rows if str(r.get(Col.ID)) == paper_id]
     if not matching:
         raise DataError(
@@ -340,18 +314,14 @@ def get_scent(ws: Workspace, paper_id: str) -> dict[str, Any]:
 
     paper_row = matching[0]
 
-    # Índice inverso: referencia → [papers del corpus que la citan]
     ref_to_papers = collect_item_to_papers(rows, Col.ID, Col.REFERENCES_ID)
 
-    # Índice título por id para resolución legible
     id_to_title: dict[str, str | None] = {
         str(r.get(Col.ID)): str(r.get(Col.TITLE)) if r.get(Col.TITLE) else None
         for r in rows
         if r.get(Col.ID)
     }
 
-    # Coupling: papers del corpus que comparten al menos una referencia con paper_id.
-    # Construimos un mapa {paper_id_vecino → peso (refs compartidas)}.
     paper_refs: list[str] = list(paper_row.get(Col.REFERENCES_ID) or [])
     coupling_weights: dict[str, int] = {}
     for ref in paper_refs:
@@ -372,10 +342,8 @@ def get_scent(ws: Workspace, paper_id: str) -> dict[str, Any]:
         for pid, w in sorted(coupling_weights.items(), key=lambda kv: (-kv[1], kv[0]))
     ]
 
-    # Score = nº de corpus-papers con los que comparte al menos 1 referencia
     score = len(coupling_weights)
 
-    # References resueltas: references_id del paper que están en el corpus
     corpus_ids: set[str] = set(id_to_title.keys())
     references = [
         {"paper_id": ref_id, "title": id_to_title.get(ref_id)}
@@ -383,7 +351,6 @@ def get_scent(ws: Workspace, paper_id: str) -> dict[str, Any]:
         if ref_id is not None and str(ref_id) in corpus_ids
     ]
 
-    # Cited_by resueltos: cited_by_id del paper que están en el corpus
     paper_cited_by: list[str] = list(paper_row.get(Col.CITED_BY_ID) or [])
     cited_by = [
         {"paper_id": cid, "title": id_to_title.get(cid)}
@@ -399,10 +366,6 @@ def get_scent(ws: Workspace, paper_id: str) -> dict[str, Any]:
         "cited_by": cited_by,
     }
 
-
-# ---------------------------------------------------------------------------
-# 5. get_network
-# ---------------------------------------------------------------------------
 
 _VALID_KINDS: frozenset[str] = frozenset(
     {
@@ -476,22 +439,18 @@ def get_network(ws: Workspace, kind: str) -> dict[str, Any]:
             "label": attrs.get("label", str(node)),
             "degree_centrality": attrs.get("degree_centrality", 0.0),
         }
-        # Atributos opcionales de paper (solo para redes de paper)
         for optional_attr in ("community", "year", "is_seed", "curation_status"):
             if optional_attr in attrs:
                 node_dict[optional_attr] = attrs[optional_attr]
         nodes.append(node_dict)
 
-    # Aristas
     edges = [
         {"source": str(u), "target": str(v), "weight": data.get("weight", 1)}
         for u, v, data in graph.edges(data=True)
     ]
 
-    # Métricas
     base_metrics = network_metrics(graph)
 
-    # Número de comunidades distintas
     n_communities: int = 0
     if artifact.communities:
         n_communities = len(set(artifact.communities.values()))
@@ -510,11 +469,6 @@ def get_network(ws: Workspace, kind: str) -> dict[str, Any]:
         "edges": edges,
         "metrics": metrics,
     }
-
-
-# ---------------------------------------------------------------------------
-# 6. compare_rounds
-# ---------------------------------------------------------------------------
 
 
 def compare_rounds(ws: Workspace, round_a: str, round_b: str) -> dict[str, Any]:
@@ -594,8 +548,6 @@ def compare_rounds(ws: Workspace, round_a: str, round_b: str) -> dict[str, Any]:
         }
     ]
 
-    # Métricas de redes por kind si ambos snapshots tienen metrics.json
-    # (solo para snapshots reales, no para "live")
     def _read_network_metrics(snapshot_id: str, kind: str) -> dict[str, Any] | None:
         # DIFERIDO (B-G2-3): hoy los snapshots NO materializan redes por kind
         # (corpus.snapshot() solo escribe corpus.parquet + manifest.json), así
@@ -645,11 +597,6 @@ def compare_rounds(ws: Workspace, round_a: str, round_b: str) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
-# 7. list_papers  (sub-issue #156 — grupo read)
-# ---------------------------------------------------------------------------
-
-
 def list_papers(
     ws: Workspace,
     *,
@@ -691,21 +638,17 @@ def list_papers(
 
     result: list[dict[str, Any]] = []
     for row in rows:
-        # Filtro por query: substring CI sobre el título
         if query is not None:
             title_val = str(row.get(Col.TITLE) or "")
             if query.lower() not in title_val.lower():
                 continue
 
-        # Filtro por status (curation_status exacto)
         if status is not None and str(row.get(Col.CURATION_STATUS)) != status:
             continue
 
-        # Filtro por is_seed
         if is_seed is not None and bool(row.get(Col.IS_SEED)) != is_seed:
             continue
 
-        # Filtro por año exacto
         if year is not None:
             row_year = row.get(Col.YEAR)
             if row_year is None or int(row_year) != year:
@@ -724,13 +667,8 @@ def list_papers(
     return {"papers": result, "count": len(result)}
 
 
-# ---------------------------------------------------------------------------
-# 8. corpus_stats  (sub-issue #156 — grupo read)
-# ---------------------------------------------------------------------------
-
 _VALID_GROUP_BY: frozenset[str] = frozenset({"status", "year", "is_seed"})
 
-# Mapeo de alias CLI → nombre de columna SQL
 _GROUP_BY_COL: dict[str, str] = {
     "status": Col.CURATION_STATUS.value,
     "year": Col.YEAR.value,
@@ -791,11 +729,6 @@ def corpus_stats(
     }
 
 
-# ---------------------------------------------------------------------------
-# 9. get_top  (sub-issue #157 — read top)
-# ---------------------------------------------------------------------------
-
-
 def get_top(
     ws: Workspace,
     *,
@@ -854,7 +787,6 @@ def get_top(
     if n <= 0:
         raise DataError(f"top N debe ser un entero positivo; se recibió {n}.")
 
-    # Cargar corpus una vez para el índice id→título y para predict_build_preview
     store = _open_readonly(ws.library_path)
     corpus = store.load()
     table = corpus.to_arrow()
@@ -864,9 +796,7 @@ def get_top(
         if r.get(Col.ID)
     }
 
-    # -------------------------------------------------------------------
     # Bloque "central": top N nodos por degree_centrality en --kind
-    # -------------------------------------------------------------------
     central_net = get_network(ws, kind)
     sorted_nodes = sorted(
         central_net["nodes"],
@@ -889,9 +819,7 @@ def get_top(
             entry["community"] = node["community"]
         central.append(entry)
 
-    # -------------------------------------------------------------------
     # Bloque "cocitation": top N pares por peso (SIEMPRE red cocitation)
-    # -------------------------------------------------------------------
     coc_net = (
         central_net
         if kind == NetworkKind.COCITATION

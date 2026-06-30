@@ -42,10 +42,6 @@ from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_workspace
 from bib2graph.cli.commands.build import _build_from_spec_file, _write_artifacts
 
-# ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click)
-# ---------------------------------------------------------------------------
-
 
 def run_networks(
     store_path: str | Path,
@@ -86,8 +82,6 @@ def run_networks(
     else:
         artifacts_dir = Path(out_dir)
 
-    # Delegar carga YAML + proyección al helper compartido con build --spec.
-    # Levanta DataError (YAML inválido) o DependencyError (louvain faltante).
     artifacts = _build_from_spec_file(corpus, spec_path)
 
     networks_info = _write_artifacts(artifacts, corpus, artifacts_dir)
@@ -97,11 +91,6 @@ def run_networks(
         "artifacts_dir": str(artifacts_dir),
         "networks": networks_info,
     }
-
-
-# ---------------------------------------------------------------------------
-# Comando Click
-# ---------------------------------------------------------------------------
 
 
 @click.command("networks")

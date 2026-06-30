@@ -22,10 +22,6 @@ from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 from bib2graph.constants import Col
 
-# ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click)
-# ---------------------------------------------------------------------------
-
 
 def run_inspect(
     store_path: str | Path,
@@ -53,7 +49,6 @@ def run_inspect(
     corpus = store.load()
 
     if paper_id is not None:
-        # Buscar el paper
         table = corpus.to_arrow()
         rows = table.to_pylist()
         matching = [r for r in rows if str(r.get(Col.ID)) == paper_id]
@@ -80,7 +75,6 @@ def run_inspect(
             "provenance": provenance,
         }
 
-    # Inspección del manifest
     manifest = corpus.manifest
     equations = [
         {
@@ -112,11 +106,6 @@ def run_inspect(
     }
 
 
-# ---------------------------------------------------------------------------
-# Comando Click
-# ---------------------------------------------------------------------------
-
-
 @click.command("inspect")
 @click.option(
     "--id",
@@ -137,7 +126,6 @@ def inspect_cmd(
     Sin --id: muestra el manifest y conteos.
     Con --id: muestra datos + provenance de ese paper.
     """
-    # Forma canónica depende de si se pasa --id o no.
     new_cmd = "b2g read show" if paper_id else "b2g status"
     dep_msg = emit_deprecation("b2g inspect", new_cmd)
     store_path = resolve_library_path(ctx.obj)

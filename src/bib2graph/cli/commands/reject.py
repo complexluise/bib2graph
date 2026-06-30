@@ -28,10 +28,6 @@ from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import resolve_library_path
 
-# ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click) — shim que inyecta now y delega
-# ---------------------------------------------------------------------------
-
 
 def run_reject(
     store_path: str | Path,
@@ -60,11 +56,6 @@ def run_reject(
     # R2: el reloj se inyecta en la frontera CLI (ADR 0017 enmendado).
     now = datetime.now(UTC)
     return reject_papers(store_path, ids, by=by, decided_at=now)
-
-
-# ---------------------------------------------------------------------------
-# Comando Click
-# ---------------------------------------------------------------------------
 
 
 @click.command("reject")
