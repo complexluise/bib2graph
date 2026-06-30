@@ -28,7 +28,6 @@ from pydantic import BaseModel
 from bib2graph.constants import Col, CurationStatus
 from bib2graph.corpus import Corpus, FilterStep
 
-# Campos soportados y operadores válidos por campo
 _FIELD_OPS: dict[str, set[str]] = {
     "year": {"gte", "lte"},
     "type": {"in", "not_in"},
@@ -69,14 +68,13 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
     if field == "year":
         year_raw = row.get(Col.YEAR)
         if year_raw is None:
-            return False  # sin año → no pasa
+            return False
         y = int(str(year_raw))
         int_value = int(str(value))
         if op == "gte":
             return y >= int_value
         if op == "lte":
             return y <= int_value
-        # R5: operador no válido para este campo → error accionable.
         raise ValueError(
             f"Operador '{op}' no soportado para el campo 'year'. "
             f"Operadores válidos: {_FIELD_OPS['year']}."
@@ -94,7 +92,6 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
             return any(v in area_list for v in vals)
         if op == "not_in":
             return not any(v in area_list for v in vals)
-        # R5: operador no válido para este campo → error accionable.
         raise ValueError(
             f"Operador '{op}' no soportado para el campo 'type'. "
             f"Operadores válidos: {_FIELD_OPS['type']}."
@@ -114,7 +111,6 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
             return lang_str in vals_lang
         if op == "not_in":
             return lang_str not in vals_lang
-        # R5: operador no válido para este campo → error accionable.
         raise ValueError(
             f"Operador '{op}' no soportado para el campo 'language'. "
             f"Operadores válidos: {_FIELD_OPS['language']}."
@@ -126,13 +122,11 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
         min_val = int(str(value))
         if op == "gte":
             return n >= min_val
-        # R5: operador desconocido para el campo → error accionable.
         raise ValueError(
             f"Operador '{op}' no soportado para el campo 'min_citations'. "
             f"Operadores válidos: {_FIELD_OPS.get(field, set())}."
         )
 
-    # R5: campo desconocido → error accionable (antes era no-op silencioso).
     raise ValueError(
         f"Campo de filtro desconocido: '{field}'. "
         f"Campos soportados: {list(_FIELD_OPS.keys())}."
@@ -244,7 +238,6 @@ def apply_filters(
         current, step = apply_filter(current, criterion, decided_at=decided_at)
         steps.append(step)
 
-    # Sellar el Manifest.filters con todos los pasos
     new_manifest = current.manifest.model_copy(update={"filters": steps})
     final_corpus = current.with_manifest(new_manifest)
     return final_corpus, steps

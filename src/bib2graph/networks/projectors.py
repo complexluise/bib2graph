@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 else:
     _Graph = nx.Graph
 
-# Constante pública (UPPER_SNAKE, lección AGENTS.md)
 MIN_WEIGHT_DEFAULT: int = 1
 
 
@@ -91,7 +90,6 @@ def _build_cooccurrence_graph(
     Returns:
         Grafo no dirigido con atributo ``weight``.
     """
-    # Conteo de co-ocurrencias: par (ordenado) → conteo
     pair_count: dict[tuple[str, str], int] = defaultdict(int)
 
     for row in rows:
@@ -104,7 +102,7 @@ def _build_cooccurrence_graph(
             pair_count[(a, b)] += 1
 
     g: _Graph = nx.Graph()
-    for (a, b), weight in sorted(pair_count.items()):  # orden determinista
+    for (a, b), weight in sorted(pair_count.items()):
         if weight >= min_weight:
             g.add_edge(a, b, weight=weight)
 
@@ -167,18 +165,16 @@ def _build_shared_refs_graph(
     Returns:
         Grafo no dirigido con atributo ``weight``.
     """
-    # Reusar el primitivo público: ítem → lista de paper_ids que lo contienen.
     item_to_papers = collect_item_to_papers(rows, id_col, list_col)
 
     pair_count: dict[tuple[str, str], int] = defaultdict(int)
     for papers in item_to_papers.values():
-        # Ordenar para determinismo
         sorted_papers = sorted(set(papers))
         for a, b in combinations(sorted_papers, 2):
             pair_count[(a, b)] += 1
 
     g: _Graph = nx.Graph()
-    for (a, b), weight in sorted(pair_count.items()):  # orden determinista
+    for (a, b), weight in sorted(pair_count.items()):
         if weight >= min_weight:
             g.add_edge(a, b, weight=weight)
 

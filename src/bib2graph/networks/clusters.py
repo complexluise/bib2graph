@@ -32,7 +32,6 @@ _PAPER_KINDS: frozenset[str] = frozenset(
     {NetworkKind.BIBLIOGRAPHIC_COUPLING, NetworkKind.COCITATION}
 )
 
-# Cuántos autores/keywords mostrar en top_authors / top_keywords
 _TOP_N: int = 5
 
 
@@ -73,21 +72,17 @@ def cluster_table(
     Returns:
         Lista de dicts ordenada por ``cluster``. Vacía si no aplica.
     """
-    # Sólo aplica a redes de paper
     if artifact.spec.kind not in _PAPER_KINDS:
         return []
 
-    # Sin comunidades → sin tabla
     if artifact.communities is None:
         return []
 
     communities: dict[Any, int] = artifact.communities
 
-    # --- Construir índice Col.ID → metadatos ---
     # Lección B6: index por Col.ID, no por Col.SOURCE_ID
     paper_index = _build_paper_index(table)
 
-    # --- Agrupar nodos por comunidad ---
     by_cluster: dict[int, list[Any]] = {}
     for node, comm_id in communities.items():
         cid = int(comm_id)
@@ -95,7 +90,6 @@ def cluster_table(
             by_cluster[cid] = []
         by_cluster[cid].append(node)
 
-    # --- Construir fila de resumen por cluster ---
     rows: list[dict[str, Any]] = []
     for comm_id in sorted(by_cluster):
         nodes = by_cluster[comm_id]
@@ -112,7 +106,6 @@ def cluster_table(
             key = str(node)
             info = paper_index.get(key)
             if info is None:
-                # Nodo sin match en el corpus: suma al size, no aporta datos
                 continue
 
             if info.get("is_seed"):

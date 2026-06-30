@@ -47,8 +47,6 @@ else:
 
 logger = logging.getLogger(__name__)
 
-# Tipos de red base en Networks.quick (sin co-citación; esta se añade condicionalmente)
-# Derivado de NetworkKind — fuente única (R1, ADR 0023)
 _QUICK_KINDS: list[str] = [
     NetworkKind.BIBLIOGRAPHIC_COUPLING,
     NetworkKind.AUTHOR_COLLAB,
@@ -188,7 +186,6 @@ def _inject_scalar_attribute(
     if attribute not in table.schema.names:
         return False
 
-    # Construir índice rápido: paper_id → valor del atributo
     ids = table.column(Col.ID).to_pylist()
     values = table.column(attribute).to_pylist()
 
@@ -249,10 +246,6 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
 
     communities: dict[Any, int] | None = None
     if spec.clustering is not None and g.number_of_nodes() > 0:
-        # R5: el ``except Exception`` que enmascaraba fallos reales fue eliminado.
-        # Solo se captura ``ImportError`` (dependencia faltante → fallar fuerte,
-        # lección 7, AGENTS.md).  Cualquier otro error se propaga limpio.
-        # ``ValueError`` (método desconocido) y errores de graph también se propagan.
         try:
             # R2: derivar random_state del content-hash para Louvain reproducible
             random_state: int | None = None
@@ -283,8 +276,6 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
     # sin necesitar conocer el corpus.
     decorate(artifact, table)
 
-    # D3 — asortatividad/composición: solo cuando spec.assortativity_attribute
-    # está configurado y el grafo tiene nodos.
     if spec.assortativity_attribute is not None and g.number_of_nodes() > 0:
         attr = spec.assortativity_attribute
 
@@ -310,7 +301,6 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
         else:
             assort_result = assortativity(g, attribute=attr, by_degree=True)
 
-            # Si hay comunidades, agregar composición por comunidad.
             if communities is not None:
                 assort_result["community_composition"] = community_composition(
                     g, communities, attr
@@ -321,10 +311,7 @@ def _build_artifact(corpus: Corpus, spec: NetworkSpec) -> NetworkArtifact:
     return artifact
 
 
-# ---------------------------------------------------------------------------
-# Helpers de predicados para predict_build_preview (misma lógica que los
-# proyectores — fuente única preview ↔ build, ADR 0037 §(e))
-# ---------------------------------------------------------------------------
+# Helpers de predicados para predict_build_preview (fuente única preview ↔ build, ADR 0037 §(e))
 
 
 def _count_rows_with_col(
@@ -464,7 +451,7 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
 
     preview: list[dict[str, object]] = []
 
-    # --- bibliographic_coupling: references_id, scope=full ---
+    # bibliographic_coupling: references_id, scope=full
     # No-vacía sii algún references_id aparece en ≥2 papers distintos.
     # (dos papers con refs disjuntas producen 0 aristas → caso trampa Nota 20)
     n_refs_any = _count_rows_with_col(rows, Col.REFERENCES_ID)
@@ -488,7 +475,7 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
         }
     )
 
-    # --- author_collab: authors_id, scope=full ---
+    # author_collab: authors_id, scope=full
     # No-vacía sii algún paper tiene ≥2 autores DISTINTOS no-None.
     # ([A1, A1] → tras dedup 1 único → 0 aristas, aunque len=2)
     n_authors_any = _count_rows_with_col(rows, Col.AUTHORS_ID)
@@ -512,7 +499,7 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
         }
     )
 
-    # --- institution_collab: institutions_id, scope=full ---
+    # institution_collab: institutions_id, scope=full
     # No-vacía sii algún paper tiene ≥2 instituciones DISTINTAS no-None.
     n_inst_any = _count_rows_with_col(rows, Col.INSTITUTIONS_ID)
     ic_empty = not _has_paper_with_multi_distinct(rows, Col.INSTITUTIONS_ID)
@@ -535,7 +522,7 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
         }
     )
 
-    # --- keyword_cooccurrence: keywords_id, scope=full ---
+    # keyword_cooccurrence: keywords_id, scope=full
     # No-vacía sii algún paper tiene ≥2 keywords DISTINTAS no-None.
     # Fix preferencial: si hay keywords_raw pero no keywords_id, thesaurus puede
     # generar keywords_id sin red; si no hay keywords_raw, se necesita seed --resolve.
@@ -568,7 +555,7 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
         }
     )
 
-    # --- cocitation: cited_by_id, scope=seeds_only ---
+    # cocitation: cited_by_id, scope=seeds_only
     # No-vacía sii algún cited_by_id aparece en ≥2 seeds distintas.
     # (dos seeds con citantes disjuntos producen 0 aristas)
     n_cited_any = _count_rows_with_col(rows, Col.CITED_BY_ID, seeds_only=True)
