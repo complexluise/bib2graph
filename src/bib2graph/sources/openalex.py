@@ -168,7 +168,6 @@ def _translate(
             + ". Cláusulas AND NOT añadidas al filtro de OpenAlex."
         )
 
-    # Envolver UNA sola vez en el campo de OpenAlex (PASSTHROUGH)
     executed = f"title_and_abstract.search:{body}"
 
     year_clauses: list[str] = []
@@ -652,7 +651,6 @@ class OpenAlexSource:
         works, _ = self._fetch_all_with_retry(filter_str)
         rows: list[dict[str, Any]] = []
         for work in works:
-            # is_seed=False: los citantes son candidatos, no semillas.
             # La provenance se sobreescribe para agregar chaining_hop=1 (no
             # soportado como parámetro de _work_to_row: es específico de fetch_citing).
             row = _work_to_row(
@@ -707,7 +705,6 @@ class OpenAlexSource:
         if not ids:
             return {}
 
-        # Normalizar IDs a la forma corta (W...) por si vienen como URL
         normalized = [_oa_id_short(i) or i for i in ids]
 
         resultado: dict[str, str] = {}
@@ -715,7 +712,6 @@ class OpenAlexSource:
 
         for start in range(0, len(normalized), batch_size):
             lote = normalized[start : start + batch_size]
-            # Filtro OR de OpenAlex: openalex_id:W1|W2|...
             filter_str = "openalex_id:" + "|".join(lote)
 
             # Usamos el cliente directamente con select acotado (id + doi)
@@ -761,7 +757,6 @@ class OpenAlexSource:
         if not dois:
             return {}
 
-        # Normalizar DOIs de entrada (minúsculas, sin prefijo URL)
         normalized_dois = [_normalize_doi(d) for d in dois]
         valid_dois = [d for d in normalized_dois if d]
 
@@ -773,7 +768,6 @@ class OpenAlexSource:
 
         for start in range(0, len(valid_dois), batch_size):
             lote = valid_dois[start : start + batch_size]
-            # Filtro OR de OpenAlex: doi:d1|d2|...
             filter_str = "doi:" + "|".join(lote)
 
             # Usamos el cliente directamente con select acotado (id + doi)
@@ -825,7 +819,6 @@ class OpenAlexSource:
             )
             return Corpus.from_arrow(table)
 
-        # Normalizar IDs a la forma corta (W...) por si vienen como URL
         normalized = [_oa_id_short(i) or i for i in ids]
 
         fetched_at = datetime.now(UTC).isoformat()
