@@ -1,4 +1,4 @@
-"""cli.commands.accept — Subcomando ``b2g accept``.
+"""cli.commands.accept — Subcomando ``b2g accept`` (alias deprecado, #165).
 
 Marca papers como accepted en el corpus.
 
@@ -10,6 +10,8 @@ de ``transitions_available``.
 
 Shim delgado (ADR 0028 G3): la orquestación vive en ``service.curate``; este
 módulo inyecta el reloj (frontera CLI, R2/ADR 0017) y delega.
+
+DEPRECADO (ADR 0038, #165): usar ``b2g curate accept``.  Se retira en 0.11.0.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from typing import Any
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
@@ -91,6 +94,7 @@ def accept_cmd(
     Curación TRANSVERSAL: no transiciona el CycleState.  Disponible en
     cualquier estado del lazo (Nota 05 §4, ADR 0016 enmendado R3).
     """
+    dep_msg = emit_deprecation("b2g accept", "b2g curate accept")
     store_path = resolve_library_path(ctx.obj)
     data = run_accept(store_path, list(ids), by=by)
 
@@ -100,6 +104,7 @@ def accept_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=[dep_msg],
         )
         emit(envelope)
     else:

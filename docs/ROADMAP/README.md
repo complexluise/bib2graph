@@ -210,13 +210,13 @@ limpio y actual; el cuerpo de cada hito vive en su archivo:
 - **[04 · Lo que viene (Hitos 7–11 + costuras futuras)](04-lo-que-viene.md)** — dedup fuzzy,
   `Enricher` de co-citación, `NetworkSpec` YAML; viz (Hito 10 diferido a la GUI #34) y Zotero/Neo4j
   (Hito 11 descartado, PO 2026-06-17). **Lo que viene (hacia v1.0).**
-- **[05 · GUI local (Hitos G1–G5)](05-gui.md)** — **MVP AS-BUILT (G1–G5), gate #34 pendiente** (ADR
-  [0027](../decisiones/0027-pivote-posicionamiento-gui-local.md)/[0028](../decisiones/0028-arquitectura-gui-api-capa-servicios.md),
-  Aceptados 2026-06-18): capa de servicios neutral + CLI/API adaptadores (G1), lecturas de servicio
-  (G2), API local FastAPI + extra `[gui]` + `b2g gui` (G3), frontend nuevo SPA (G4), empaquetado +
-  CI JS (G5) — **los 5 hitos de build están AS-BUILT**. Lo único pendiente es el **gate del tercero
-  (#34)**, que **no es construcción** (criterio de aceptación de producto, al final). La GUI **es** la
-  capa de lectura visual (épica D; Hito 10 viz absorbido aquí).
+- **[05 · GUI local (Hitos G1–G5)](05-gui.md)** — ⛔ **DEPRECADO: GUI retirada de la librería** (ADR
+  [0040](../decisiones/0040-retiro-gui-local.md), issue
+  [#190](https://github.com/complexluise/bib2graph/issues/190); supersede
+  [0027](../decisiones/0027-pivote-posicionamiento-gui-local.md)/[0028](../decisiones/0028-arquitectura-gui-api-capa-servicios.md)).
+  Se eliminan `b2g gui`, la API local FastAPI, la SPA `frontend/` y el extra `[gui]`; el core es
+  CLI/agente-native sobre la biblioteca viva. El documento queda como **historia** del AS-BUILT G1–G5;
+  la capa de servicios `service/` se conserva (la usa el CLI).
 
 
 ## Trazabilidad historias ↔ hitos (resumen)

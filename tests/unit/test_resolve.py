@@ -374,7 +374,8 @@ def test_cli_resolve_json_envelope(tmp_path: Path) -> None:
 
     result = runner.invoke(b2g, ["--workspace", str(ws_path), "resolve", "--json"])
     assert result.exit_code == 0, result.output
-    data = json.loads(result.output)
+    # Usar result.stdout porque b2g resolve emite aviso de deprecación a stderr (#165).
+    data = json.loads(result.stdout)
     assert data["ok"] is True
     assert data["command"] == "resolve"
     assert "resolved" in data["data"]
@@ -475,7 +476,8 @@ def test_cli_seed_from_bib_resolve_envelope(tmp_path: Path) -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    data = json.loads(result.output)
+    # Usar result.stdout porque b2g resolve emite aviso de deprecación a stderr (#165).
+    data = json.loads(result.stdout)
     assert data["ok"] is True
     assert data["command"] == "resolve"
     assert "resolved" in data["data"]

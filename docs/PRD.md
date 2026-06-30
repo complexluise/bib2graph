@@ -1,77 +1,37 @@
 # PRD — bib2graph
 
-> Documento de Requisitos de Producto de la **V1** de `bib2graph`. Reescribe el PRD anterior
-> (que describía una librería BibTeX→redes con Semantic Scholar como enricher estructural y
-> Neo4j como preocupación central) tras el **giro** documentado en `Notas/04`–`07` y la
-> demolición de [`critica-base.md`](Notas/critica-base.md). Fecha: 2026-06-15 (reconciliado con el 2º
-> giro).
->
-> Documentos hermanos: la dirección "IA in the loop" en
-> [`Notas/04-direccion-ia-in-the-loop.md`](Notas/04-direccion-ia-in-the-loop.md), el ciclo de
-> investigación humano en [`Notas/05-ciclo-investigacion-humano.md`](Notas/05-ciclo-investigacion-humano.md),
-> el método bibliométrico en [`metodología.md`](Notas/metodología.md), y las decisiones en
-> [`decisiones/`](decisiones/) — en particular [ADR 0007](decisiones/0007-openalex-backbone.md)
-> (OpenAlex backbone).
->
-> ✅ **Reconciliación hecha:** `ARCHITECTURE.md`, `API.md` y `ROADMAP.md` ya están alineados con
-> este PRD y los ADR 0007–0011 (OpenAlex backbone, biblioteca viva en DuckDB, forrajeo,
-> agente-native, thesaurus). El `ROADMAP.md` ata cada hito a las historias del §7 con criterios
-> de aceptación. Los ADR 0001–0006 son **registro histórico** (inmutables): los puntos superados
-> quedan marcados como tales por los ADR 0007–0011, no se reescriben.
->
-> ⚠️ **Reconciliación pendiente con el modelo nuevo (2026-06-15, ADR
-> [0022](decisiones/0022-producto-sin-ia-generativa.md)/[0023](decisiones/0023-capa-constants-modelos-schema.md)):**
-> tras el red-team del AS-BUILT ([Nota 06](Notas/06-critica-as-built-v0.2.md)) el PO bloqueó que el
-> **producto NO usa IA generativa**: el *information scent* es **bibliométrico determinista vía
-> proyectores** (sin LLM/embeddings); la **"máquina de tensiones" se RETIRA** (no se difiere a v2: se
-> borra); `explain_candidate`/`[llm]` se **eliminan**; el sensemaking de tensiones es **humano**
-> (asistido por las redes). Donde abajo este PRD aún dice "inserción de IA", "paso opcional de IA",
-> "máquina de tensiones a v2" o "fallback fuzzy `[llm]`", **leerlo bajo esta corrección** (las §2/§5/§6/§7
-> marcan los puntos afectados). El principio "IA in the loop, NOT human in the loop" se reencuadra a
-> **"asistencia algorítmica determinista, no IA; el juicio humano no se automatiza"**.
->
-> ✅ **Reconciliado con el 2º giro (2026-06-15):** este PRD incorpora los ADR
-> [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md)
-> (breaking change). En síntesis: la persistencia por defecto es el **`DuckDBBackend` del `Corpus`**
-> (no un `Store` aparte), con `DuckDBStore` como **fachada de costura** (0015); el lazo es una
-> **máquina de estados explícita** (`LoopState`, 0016); **reproducir = re-leer el snapshot, no
-> re-correr la ecuación** (0017); el contrato `Source` es **agnóstico** (mínimo universal vs
-> enriquecimiento opcional, habilita fuentes regionales, 0018); y la **concurrencia single-writer**
-> es límite conocido (0019). El §8 ("modelo de datos") deja de ser una reconciliación *pendiente* y
-> pasa a registrar la decisión adoptada.
+> Documento de Requisitos de Producto de `bib2graph`: una **librería de Python** + **CLI delgada
+> agente-native** que convierte una **ecuación de búsqueda** en una **biblioteca viva y curada** de
+> literatura y la proyecta a **redes bibliométricas**. El **producto NO usa IA generativa** (ADR
+> [0022](decisiones/0022-producto-sin-ia-generativa.md)): la asistencia del forrajeo es estructura
+> bibliométrica determinista (*information scent*); el desarrollo sí es asistido por IA. Diseño en
+> [`ARCHITECTURE.md`](ARCHITECTURE.md); contratos en [`API.md`](API.md); método en
+> [`Notas/metodología.md`](Notas/metodología.md).
 
 ## 1. Qué es
 
-`bib2graph` V1 es una **librería de Python instalable** y una **CLI delgada agente-native**
-construida sobre ella, que convierte una **ecuación de búsqueda** —el artefacto estándar y
-reproducible de la ciencia— en una **biblioteca viva y curada** de literatura, y la proyecta a
-**redes bibliométricas** listas para analizar (co-citación, acoplamiento bibliográfico,
-co-autoría, co-ocurrencia de palabras clave, instituciones).
+`bib2graph` es una **librería de Python instalable** y una **CLI delgada agente-native** construida
+sobre ella, que convierte una **ecuación de búsqueda** —el artefacto estándar y reproducible de la
+ciencia— en una **biblioteca viva y curada** de literatura, y la proyecta a **redes bibliométricas**
+listas para analizar (co-citación, acoplamiento bibliográfico, co-autoría, co-ocurrencia de palabras
+clave, instituciones).
 
 El **motor de extracción de referencia** es **OpenAlex** ([ADR 0007](decisiones/0007-openalex-backbone.md)),
-pero es **intercambiable**: la identidad **no** se ancla en OpenAlex sino en el **DOI** (la columna
-es **`source_id`** —id del motor, agnóstica— y el `id` interno se deriva del DOI; ADR
+pero es **intercambiable**: la identidad **no** se ancla en OpenAlex sino en el **DOI** (la columna es
+**`source_id`** —id del motor, agnóstica— y el `id` interno se deriva del DOI; ADR
 [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)), con apertura a **otros motores**
-(p. ej. Semantic Scholar). El
-camino **no es un pipeline lineal** sino un **ciclo iterativo** (Bates / Ellis / Kuhlthau, ver
-§2): se siembra desde la ecuación, se hace chaining rankeado por estructura, se diferencia y
-cura, y **la ecuación y la idea mutan** — se vuelve a sembrar con otra pregunta. Asumir un flujo
-lineal "query → resultados → fin" contradice a Bates/Ellis/Kuhlthau a la vez
-([`Notas/05`](Notas/05-ciclo-investigacion-humano.md) §3). El corpus **vive y persiste** entre
-esas iteraciones en **DuckDB** desde la V1.0 (no es el export de una sola corrida): es el
-**sustrato que hace posible el lazo** — se acepta/rechaza, crece y se cultiva en el tiempo. Tras
-el 2º giro, ese sustrato es el **`DuckDBBackend` del `Corpus`** (el backend por defecto, no un
-`Store` aparte; ADR [0015](decisiones/0015-corpus-tabular-backend.md)), y el lazo es una **máquina
-de estados explícita** (`LoopState`: `SEEDED → FORAGED → FILTERED → BUILT`, ADR
-[0016](decisiones/0016-maquina-estados-lazo.md)): **una investigación = un archivo `.duckdb`**, su
-estado se consulta con `b2g status`.
-
-> **AS-BUILT — ADR [0029](decisiones/0029-workspace-por-investigacion.md) (2026-06-16; enmienda
-> BREAKING #75, 2026-06-17):** "una investigación = un archivo" evolucionó a "una investigación = un
-> **workspace** (carpeta `workspace.json` + db + redes/snapshots/exports)", con `b2g init` + resolución
-> ambiente (`--workspace` opcional > `B2G_WORKSPACE` > walk-up del cwd). La carpeta con
-> `workspace.json` es la **única** unidad canónica: `--store` y el modo degenerado del `.duckdb` suelto
-> fueron **eliminados** (#75); un `.duckdb` legacy se adopta con `b2g init .`.
+(p. ej. Semantic Scholar). El camino **no es un pipeline lineal** sino un **ciclo iterativo** (Bates /
+Ellis / Kuhlthau, ver §2): se siembra desde la ecuación, se hace chaining rankeado por estructura, se
+diferencia y cura, y **la ecuación y la idea mutan** — se vuelve a sembrar con otra pregunta. El corpus
+**vive y persiste** entre esas iteraciones en **DuckDB** (no es el export de una sola corrida): es el
+**sustrato que hace posible el lazo** — se acepta/rechaza, crece y se cultiva en el tiempo. Ese
+sustrato es el **`DuckDBBackend` del `Corpus`** (el backend por defecto, no un `Store` aparte; ADR
+[0015](decisiones/0015-corpus-tabular-backend.md)), y el lazo es una **máquina de estados explícita**
+(`CycleState`: `SEEDED → FORAGED → FILTERED → BUILT → MONITORED`, ADR
+[0016](decisiones/0016-maquina-estados-lazo.md)). **Una investigación = un workspace** (carpeta
+`workspace.json` + `library.duckdb` + `networks/`/`snapshots/`/`exports/`; ADR
+[0029](decisiones/0029-workspace-por-investigacion.md)), arrancado con `b2g init` y resuelto por
+ambiente; su estado se consulta con `b2g status`.
 
 *El final siguen siendo las redes; lo nuevo es **cómo se llega a ellas** (forrajeo asistido) y
 que **la colección vive** (berry growing).*
@@ -100,54 +60,45 @@ y conserve una **biblioteca viva reproducible**.
 La contribución (y la tesis del paper, [`Notas/05`](Notas/05-ciclo-investigacion-humano.md) §5)
 es **re-instrumentar el ciclo humano clásico** con un método donde la **estructura bibliométrica
 funciona como *information scent*** (forrajeo asistido, **determinista y reproducible, sin IA
-generativa**), **sin desplazar el juicio humano**.
-Mapeo del ciclo de 9 pasos (05 §3–4) sobre la V1:
+generativa**), **sin desplazar el juicio humano**. Mapeo del ciclo de 9 pasos (05 §3–4) sobre el
+producto:
 
-| Paso del ciclo | En la V1 |
+| Paso del ciclo | En bib2graph |
 |---|---|
 | **0** · Idea / pregunta difusa | **Humano** — no se automatiza |
-| **1–3** · Semillas → chaining/forrajeo → browsing/diferenciar | **Núcleo de V1** (asistencia algorítmica nº1: bibliometría = *information scent*, **determinista, sin IA**) |
+| **1–3** · Semillas → chaining/forrajeo → browsing/diferenciar | **Núcleo** (asistencia algorítmica: bibliometría = *information scent*, **determinista, sin IA**) |
 | **4** · La query y la idea **mutan** | **Humano**; la herramienta lo soporta (re-sembrar, ecuaciones que evolucionan) |
-| **5** · Organizar en evidencia | **Parcial** — las redes/métricas son la organización estructural; la matriz concepto×paper (Webster & Watson) no está en V1 |
-| **6** · Sensemaking / tensiones | **Humano**, asistido por las redes (comunidades/centralidad/acoplamiento). La "máquina de tensiones" asistida por IA se **retiró** del producto (ADR 0008/0022), no es v2 |
-| **7** · Curar la biblioteca | **V1** — biblioteca viva en DuckDB (berry growing); el *juicio* de qué curar es humano |
-| **8** · Monitoreo / alertas de lo nuevo | **Futuro** (encaja sobre la biblioteca viva) |
+| **5** · Organizar en evidencia | **Parcial** — las redes/métricas son la organización estructural; la matriz concepto×paper (Webster & Watson) no está |
+| **6** · Sensemaking / tensiones | **Humano**, asistido por las redes (comunidades/centralidad/acoplamiento). La "máquina de tensiones" asistida por IA quedó **fuera del producto** (ADR 0008/0022) |
+| **7** · Curar la biblioteca | **Sí** — biblioteca viva en DuckDB (berry growing); el *juicio* de qué curar es humano |
+| **8** · Monitoreo / alertas de lo nuevo | **`chain --since`** (forrajeo incremental → `MONITORED`); alertas más ricas son futuro |
 
-La **no-linealidad** (el lazo 2→3→4→1) es propiedad de primera clase, no un detalle: la
-biblioteca viva existe precisamente para que la idea pueda mutar y volver a sembrarse sin perder
-lo acumulado. Tras el 2º giro esa no-linealidad **deja de ser solo prosa** y se modela como una
-**máquina de estados explícita** (`LoopState`: `SEEDED → FORAGED → FILTERED → BUILT`, con
-**transiciones permisivas** —se puede re-sembrar desde casi cualquier estado; ADR
-[0016](decisiones/0016-maquina-estados-lazo.md)). El `LoopState` vive en el archivo `.duckdb` (no
-en el `Corpus` efímero) y se expone con `b2g status`: humanos e IAs comparten el mismo mapa del
-lazo en vez de inferir el punto del ciclo a partir del contenido.
+La **no-linealidad** (el lazo chain→curar→mutar→seed) es propiedad de primera clase: la biblioteca
+viva existe precisamente para que la idea pueda mutar y volver a sembrarse sin perder lo acumulado. Se
+modela como **máquina de estados explícita** (`CycleState`, con transiciones permisivas; ADR
+[0016](decisiones/0016-maquina-estados-lazo.md)), que vive en el `library.duckdb` y se expone con
+`b2g status`: humanos e IAs comparten el mismo mapa del lazo.
 
 ## 3. Para quién
 
-- **Investigadoras/es y analistas** que hacen revisión de literatura o estudian la estructura
-  intelectual de un campo y quieren redes reproducibles para Gephi/VOSviewer (GraphML) o pandas
-  (CSV), **sin montar infraestructura**.
-- **Fácil PERO consciente** (crítica #3): cómodo con la línea de comandos, pero **el primer
-  flujo de 10 minutos (ecuación → redes) es contrato de diseño**, no un tutorial posterior. La
-  superficie por defecto es diminuta.
-- **Agentes / automatizaciones** que orquestan `bib2graph` por CLI (`--json`, exit codes), sin
-  GUI.
+bib2graph es **CLI / agente-native, sin GUI ni servicio web**. Su forma de uso por defecto es a través
+de un agente (Claude Code u otro) que corre el ciclo; la skill de Claude Code (`b2g skill add`, ADR
+[0039](decisiones/0039-skill-comando-meta-distribucion.md)) materializa el mensaje *"la mejor forma de
+usar bib2graph es pedirle a Claude que lo use"*. Dos perfiles, en este orden:
 
-No es una herramienta para usuario final no técnico: no hay GUI ni servicio web en V1.
+- **Investigador/a no-técnico vía IA (primero).** Hace revisión de literatura o estudia la estructura
+  intelectual de un campo, pero **no programa**: le pide a un agente que corra bib2graph por él. La
+  superficie agéntica (10 verbos que mapean el ciclo, `--json`, exit codes, mensajes accionables) está
+  diseñada para que el agente conduzca el ciclo end-to-end y entregue redes reproducibles para
+  Gephi/VOSviewer (GraphML) o pandas (CSV), **sin montar infraestructura**.
+- **Técnico que hurga (segundo).** Cómodo con la línea de comandos y con leer/extender la librería:
+  corre `b2g` a mano, scriptea el ciclo, o importa el paquete Python. **Fácil PERO consciente:** la
+  ecuación de búsqueda es ciudadana de primera clase y queda registrada; la superficie por defecto es
+  diminuta.
 
-> **ENMIENDA (2026-06-18) — ADR [0027](decisiones/0027-pivote-posicionamiento-gui-local.md)
-> (Aceptada).** El texto de arriba se conserva como historia, pero el alcance **cambia**: entra una
-> **GUI local opt-in para el investigador semi-técnico** (tesista/docente), instalable por **pip/uv**
-> (extra `[gui]`), **local-first** (corre en `127.0.0.1` sobre el workspace local, ADR 0029). El **CLI
-> sigue siendo la columna agente-native** (ADR 0010/0021): la GUI es un frontend **adicional y par**,
-> no un sucesor. **Hosting, servidor MCP y Claude-Web quedan FUERA** (descartados, no diferidos);
-> binario/Tauri diferido a v2. La GUI sigue **gateada por la epic [#34](https://github.com/complexluise/bib2graph/issues/34)**:
-> no se implementa hasta validar un **caso real reproducido por un tercero** (TARGET, no AS-BUILT). La
-> arquitectura está en ADR [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md) y `ARCHITECTURE.md`.
->
-> **ESTADO 0.8 — GUI rota a propósito ([#117](https://github.com/complexluise/bib2graph/issues/117)).**
-> El rename de columna a **`source_id`** (ADR 0036) **rompió la GUI** de forma deliberada: **no está
-> disponible hoy** hasta que se actualice (#117). Ningún lector debe asumir que la GUI funciona en 0.8.
+No es una herramienta con GUI ni servicio gestionado: el core es CLI/agente-native sobre la biblioteca
+viva. La experiencia visual library-centric vive en un **producto separado**, fuera de bib2graph (ADR
+[0040](decisiones/0040-retiro-gui-local.md)).
 
 ## 4. Propuesta de valor
 
@@ -155,9 +106,8 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   traduce a una query OpenAlex, se **muestra la query exacta ejecutada** y un **reporte de
   traducción** (qué mapeó limpio, qué se aproximó, qué se descartó). Eso *es* el ejercicio
   bibliotecario y lo que hace el resultado reportable (PRISMA / vom Brocke). Las **exclusiones
-  quirúrgicas** (`b2g seed --exclude`, negaciones `AND NOT …` por término) son parte de ese
-  ejercicio consciente: quedan en el reporte de traducción, no se aplican en silencio. Para
-  exploración con muestras chicas, `--max-results` acota el fetch.
+  quirúrgicas** (`b2g seed --exclude`, negaciones `AND NOT …`) quedan en el reporte, no se aplican en
+  silencio. `--max-results` acota el fetch para exploración con muestras chicas.
 - **Biblioteca viva, no mapa one-shot.** El corpus se cura y crece en el tiempo (berry growing),
   persistido en DuckDB. El investigador **posee** su colección.
 - **Forrajeo asistido.** Chaining backward/forward sobre OpenAlex, con candidatos **rankeados
@@ -167,302 +117,214 @@ No es una herramienta para usuario final no técnico: no hay GUI ni servicio web
   filtros, conteos y hash; se puede **exportar un snapshot** (foto reproducible) desde el estado
   vivo. Reproducibilidad por **historia auditable + snapshot sellado**, no por inmutabilidad ni por
   recómputo: **reproducir = re-leer/re-sellar el snapshot, NO re-correr la ecuación** (ADR
-  [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)). OpenAlex **cambia en el tiempo**,
-  así que la misma ecuación corrida en otra fecha devuelve otro corpus (eso es *re-investigar*, no
-  reproducir); el `openalex_version` del Manifest **ancla la foto** a la versión/fecha de OpenAlex
-  usada.
-- **Agente-native como columna** (no adorno): doble salida (`--json`), exit codes claros,
-  errores accionables, sin estado entre invocaciones.
+  [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)). OpenAlex **cambia en el tiempo**, así
+  que la misma ecuación en otra fecha devuelve otro corpus (eso es *re-investigar*); el
+  `openalex_version` del Manifest **ancla la foto** a la versión/fecha usada.
+- **Agente-native como columna** (no adorno): doble salida (`--json`, también vía `B2G_JSON=1`), exit
+  codes claros, errores accionables, sin estado entre invocaciones.
 - **Sin infraestructura pesada.** DuckDB embebido, sin servidores; OpenAlex **funciona sin clave**
   (pool cortés con email en config) **pero con límite** (tier gratis, ~100 créditos/día); una **API
-  key opcional sube el límite** para uso intensivo, como muchos servicios (#124).
+  key opcional sube el límite** para uso intensivo (#124).
 
 ## 5. Alcance
 
-### 5.1 Dentro de alcance (V1)
+### 5.1 Dentro de alcance
 
 - **Sembrado de doble puerta** (ADR [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)):
   por **ecuación de búsqueda** (términos, campos, años, idioma, tipo) **o** por **ingesta de archivo
   `.bib`** (puerta primaria, no secundaria) y/o **papers semilla** (DOIs / IDs). La ingesta desde
-  `.bib` resuelve **DOI→`source_id`** contra el motor de extracción (`b2g resolve` /
-  `seed --from-bib --resolve`) para reconciliar las *pearls* con el corpus.
+  `.bib` resuelve **DOI→`source_id`** contra el motor de extracción (`seed --from-bib --resolve`) para
+  reconciliar las *pearls* con el corpus.
 - **Contrato `Source` agnóstico** (ADR [0018](decisiones/0018-source-agnostico-calidad.md)):
-  separa el **mínimo universal** que todo corpus necesita para existir (`id`, título, año, autores,
-  keywords — ya habilita co-autoría y co-ocurrencia de keywords) del **enriquecimiento opcional**
-  (referencias, citantes, afiliaciones per-autor, instituciones — habilita acoplamiento,
-  co-citación, instituciones y asortatividad). Una `Source` que solo da el mínimo es **ciudadana
-  legítima**: esto **habilita fuentes regionales** (SciELO / Redalyc / La Referencia) sin
-  obligarlas a entregar lo que no tienen; los proyectores de enriquecimiento producen redes
-  parciales y lo **reportan** (no fallan). El **reporte de cobertura/calidad** por seed/source se
-  **declara** como contrato en V1 y se concreta en **v0.2+**.
+  separa el **mínimo universal** que todo corpus necesita (`id`, título, año, autores, keywords — ya
+  habilita co-autoría y co-word) del **enriquecimiento opcional** (referencias, citantes, afiliaciones
+  per-autor, instituciones — habilita acoplamiento, co-citación, instituciones y asortatividad). Una
+  `Source` de solo-mínimo es **legítima**: **habilita fuentes regionales** (SciELO / Redalyc / La
+  Referencia) sin obligarlas a entregar lo que no tienen; los proyectores de enriquecimiento producen
+  redes parciales y lo **reportan** (no fallan).
 - **Traducción** de la ecuación a query OpenAlex con **query ejecutada visible + reporte de
-  traducción**, ambas **registradas** con la corrida. Incluye **negaciones quirúrgicas**
-  (`b2g seed --exclude`, repetible: cada `AND NOT "…"` va **dentro** de la única expresión
-  `title_and_abstract.search:((query) AND NOT "…")`, campo no repetido) que se
-  **reportan en el reporte de traducción** (ejercicio consciente, no silencioso), y
-  **`--max-results`** para acotar el fetch en exploración con muestras chicas.
-- **Chaining asistido** backward/forward sobre OpenAlex; **profundidad 1 por defecto**, opt-in a
-  2, con **preview de crecimiento** ("esta expansión sumaría ~N papers") y **tope** configurable.
+  traducción**, ambas **registradas**. Incluye **negaciones quirúrgicas** (`b2g seed --exclude`,
+  repetible) reportadas en el reporte de traducción, y **`--max-results`** para acotar el fetch.
+- **Chaining asistido** backward/forward sobre OpenAlex; **profundidad 1 por defecto**, con **preview
+  de crecimiento** y **tope** configurable; **`chain --since`** para forrajeo incremental (paso de
+  monitoreo).
 - **Ranking por estructura** (acoplamiento/co-citación, centralidad) de los candidatos —
   *information scent* **bibliométrico determinista, sin IA** (ADR
   [0020](decisiones/0020-metodo-forrajeo-scent-filtros-reject.md)/[0022](decisiones/0022-producto-sin-ia-generativa.md)).
-- *(RETIRADO, ADR 0022:)* el "paso opcional de IA que explica por qué un candidato es relevante"
-  (`explain_candidate`/`[llm]`) **se elimina** del producto. El "porqué" de un candidato lo explica la
-  **estructura visible** (con qué del corpus se acopla/co-cita), no un LLM.
+  El "porqué" de un candidato lo explica la **estructura visible** (con qué del corpus se acopla/co-cita),
+  no un LLM.
 - **Ejercicio bibliotecario**: dedup/normalización de autores/instituciones apoyada en IDs de
-  OpenAlex (DOI/ORCID/ROR); **normalización de keywords vía thesaurus multilingüe** (en/es/pt,
-  curado y auditable, formato JSON portable); **filtros de inclusión/exclusión** (año, tipo,
-  idioma, mínimo de citas) con **conteo en cada filtro** (estilo flujo PRISMA).
-- **Biblioteca viva en DuckDB**: aceptar/rechazar candidatos; el corpus **persiste entre
-  corridas**, crece y se cura, con **log de procedencia** (qué ecuación, qué chaining, qué
-  decisión humana, cuándo).
-- **Redes**: co-citación, acoplamiento bibliográfico (sobre el **corpus completo**, no solo
-  semillas), co-autoría, co-ocurrencia de keywords, instituciones → **métricas y comunidades**
-  (densidad, centralidades, Louvain/propagación/voraz; **asortatividad** por un atributo
-  categórico configurable y por grado; **composición de comunidades** por ese atributo) →
-  **export GraphML/CSV**. Las métricas que dependen de un **proxy** (p. ej. afiliación por-paper
-  vs per-autor) se reportan **con el disclaimer del proxy** (fácil pero consciente).
-- **Nota de costo (honestidad):** la **co-citación** es la red más cara — requiere traer los
-  citantes de las semillas *con sus propias listas de citas* (un segundo nivel de fetch en
-  OpenAlex). El **acoplamiento bibliográfico** usa las referencias que las semillas ya traen, es
-  más barato y mira hacia adelante; por eso es ciudadano de primera (crítica #2). Validado con
-  datos reales en [`exploracion/informe_ied_lectura_2.md`](../exploracion/informe_ied_lectura_2.md)
-  (coupling sobre corpus completo = 646 aristas; co-citación aún requiere ese segundo nivel).
-- **Snapshot exportable**: foto reproducible (ecuación, query, filtros, conteos, hash,
-  fecha/versión de OpenAlex) derivada del estado vivo, para reportar y reproducir.
-- **CLI agente-native**: cada subcomando con `--json` y exit codes.
+  OpenAlex (DOI/ORCID/ROR); **normalización de keywords vía thesaurus multilingüe** (en/es/pt, curado y
+  auditable, JSON portable — `build --thesaurus`); **filtros de inclusión/exclusión** (año, tipo,
+  idioma, mínimo de citas) con **conteo en cada filtro** (estilo flujo PRISMA — `curate filter`).
+- **Biblioteca viva en DuckDB**: aceptar/rechazar candidatos (`curate accept/reject`, o en lote vía
+  CSV con `curate dump`/`curate apply`); el corpus **persiste entre corridas**, crece y se cura, con
+  **log de procedencia**.
+- **Redes**: co-citación, acoplamiento bibliográfico (sobre el **corpus completo**, no solo semillas),
+  co-autoría, co-ocurrencia de keywords, instituciones → **métricas y comunidades** (densidad,
+  centralidades, Louvain/propagación/voraz; **asortatividad** por un atributo categórico configurable y
+  por grado; **composición de comunidades**) → **export GraphML/CSV**. Las métricas que dependen de un
+  **proxy** se reportan **con el disclaimer del proxy** (fácil pero consciente).
+- **Nota de costo (honestidad):** la **co-citación** es la red más cara — requiere traer los citantes
+  de las semillas *con sus propias listas de citas* (segundo nivel de fetch en OpenAlex). El
+  **acoplamiento bibliográfico** usa las referencias que las semillas ya traen, es más barato y mira
+  hacia adelante; por eso es ciudadano de primera.
+- **Snapshot exportable**: foto reproducible (ecuación, query, filtros, conteos, hash, fecha/versión de
+  OpenAlex) derivada del estado vivo, para reportar y reproducir.
+- **CLI agente-native**: superficie de **10 verbos del ciclo** (`init, seed, chain, curate, build,
+  read, export, snapshot, status, validate`) + 3 grupos noun-verb (`read`/`curate`/`snapshot`) +
+  `skill add` (meta), cada subcomando con `--json` y exit codes (ADR
+  [0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md)/[0038](decisiones/0038-destino-verbos-huerfanos-0037.md);
+  detalle en [`API.md`](API.md) §Convenciones CLI).
 
-### 5.2 Fuera de alcance / futuro (marcado explícito, NO en V1)
+### 5.2 Fuera de alcance / futuro
 
-- **Máquina de tensiones** (intención de cita asistida por IA: apoya / refuta / escuelas en
-  conflicto) → **RETIRADA del producto** (ADR
-  [0022](decisiones/0022-producto-sin-ia-generativa.md), 2026-06-15): **no se difiere a v2, se
-  borra**. El producto no usa IA generativa; el sensemaking de tensiones lo hace el **humano leyendo
-  las redes** (comunidades/centralidad/acoplamiento). Era el candidato a *moat*
-  ([`Notas/04`](Notas/04-direccion-ia-in-the-loop.md) §5); el diferenciador pasa a ser la **biblioteca
-  viva curada + estructura bibliométrica de primera clase + flujo abierto**, no una capa de IA.
-- **Costura Zotero** (biblioteca viva externa) → **DESCARTADA (decisión del PO, 2026-06-17): no se
-  hace.** El **corazón de la persistencia en V1.0 es DuckDB nativo**, no Zotero; la GUI se construye
-  sobre el workspace local. No es backlog planificado: reabrible solo si aparece demanda real (p.ej.
-  round-trip con un Zotero existente), como hito nuevo con su propio encuadre.
-- **Monitoreo / alertas de literatura nueva** (paso 8 del ciclo, estilo Litmaps) → futuro;
-  encaja sobre la biblioteca viva, pero no en V1.
-- **Matriz concepto×paper** (Webster & Watson, paso 5) → futuro; en V1 la organización es vía
-  redes/métricas.
-- **Fallback fuzzy/semántico del thesaurus por LLM/embeddings** → **RETIRADO** (ADR
-  [0022](decisiones/0022-producto-sin-ia-generativa.md)/[0011](decisiones/0011-thesaurus-multilingue.md)
-  enmendado): el thesaurus es **curado y determinista**; lo que no matchea queda fuera, sin inventar
-  conceptos con un modelo. El **dedup fuzzy determinista** (`rapidfuzz`, **en el núcleo**, automático en
-  la ingesta — ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md), #88; el extra
-  `[dedup]` se eliminó) sí queda — no es semántico ni LLM.
-- **Resolución de `references_doi` a DOI canónico** (OpenAlex las entrega como URLs internas) y
-  fetch de **citantes-con-citas** para co-citación → trabajo del `Enricher`, fuera del primer
-  flujo de V1.
+- **Máquina de tensiones** (intención de cita asistida por IA: apoya / refuta / escuelas en conflicto)
+  → **fuera del producto** (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)): el producto no
+  usa IA generativa; el sensemaking de tensiones lo hace el **humano leyendo las redes**
+  (comunidades/centralidad/acoplamiento). El diferenciador es la **biblioteca viva curada + estructura
+  bibliométrica de primera clase + flujo abierto**, no una capa de IA.
+- **GUI / web / servicio gestionado** → **fuera** (ADR [0040](decisiones/0040-retiro-gui-local.md)): el
+  core es CLI/agente-native sobre la biblioteca viva; el camino de adopción es la **skill** de Claude
+  Code (ADR 0039). La experiencia visual library-centric vive en el **producto separado**, fuera de
+  bib2graph.
+- **Costura Zotero** → **descartada** (PO, 2026): el corazón de la persistencia es DuckDB nativo.
+  Reabrible solo si aparece demanda real, como hito nuevo con su propio encuadre.
+- **Neo4j** → **descartado** como adaptador planificado; ya no es sustrato. Reabrible solo con demanda
+  real.
+- **Matriz concepto×paper** (Webster & Watson, paso 5) → futuro; la organización es vía redes/métricas.
+- **Fallback fuzzy/semántico del thesaurus por LLM/embeddings** → **fuera** (ADR 0022/0011): el
+  thesaurus es **curado y determinista**; lo que no matchea queda fuera, sin inventar conceptos. El
+  **dedup fuzzy determinista** (`rapidfuzz`, **en el núcleo**, automático en la ingesta — ADR
+  [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)) sí queda — no es semántico ni LLM.
 - **Lectura de PDFs full-text** → futuro.
-- **GUI / web / servicio gestionado** → fuera.
-  > **ENMIENDA (2026-06-18) — ADR [0027](decisiones/0027-pivote-posicionamiento-gui-local.md)
-  > (Aceptada).** Se **supersede parcialmente** este punto: entra una **GUI local opt-in** (extra
-  > `[gui]`, `127.0.0.1`, semi-técnicos), gateada por [#34](https://github.com/complexluise/bib2graph/issues/34)
-  > (TARGET; código tras el caso real validado por un tercero). Lo que **sigue fuera**: **web/hosting,
-  > servicio gestionado, servidor MCP y Claude-Web** (descartados); binario/Tauri **diferido a v2**. El
-  > CLI sigue siendo la columna (ADR 0010/0021). Arquitectura: ADR [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md).
-  > **En 0.8 la GUI quedó rota a propósito** por el rename a `source_id` (ADR 0036): **no funciona
-  > hoy** hasta que se actualice ([#117](https://github.com/complexluise/bib2graph/issues/117)).
-- **WoS / Scopus / RIS / CSV como backbone** → el resto, `Source` futura. **BibTeX NO es
-  secundaria:** la **ingesta desde archivo `.bib`** es una **puerta primaria** de sembrado (ingesta
-  de doble puerta: ecuación **o** archivo; ADR [0035](decisiones/0035-ingesta-multipuerta-resolucion-doi.md)),
-  con **resolución DOI→`source_id`** (`b2g resolve` / `seed --from-bib --resolve`) que reconcilia
-  las *pearls* contra el motor de extracción.
-- **Neo4j** → **DESCARTADO (decisión del PO, 2026-06-17): no se hace.** **Ya no es sustrato** y
-  tampoco se planifica como adaptador `Store` post-V1. Reabrible solo si aparece demanda real, como
-  hito nuevo.
-- **Enricher Semantic Scholar como camino para co-citación** → innecesario: las referencias y
-  citantes vienen de OpenAlex ([ADR 0007](decisiones/0007-openalex-backbone.md)).
+- **WoS / Scopus / RIS / CSV como backbone** → `Source` futura. **BibTeX NO es secundaria:** la
+  ingesta `.bib` es **puerta primaria** (doble puerta, ADR 0035), con resolución DOI→`source_id`.
+- **Enricher Semantic Scholar para co-citación** → innecesario: refs y citantes vienen de OpenAlex.
 - **Concurrencia multi-escritor** → **limitación conocida, no defecto** (ADR
-  [0019](decisiones/0019-concurrencia-diferida.md)): DuckDB es single-writer, así que la V1 asume
-  **1 archivo `.duckdb` = 1 escritor** a la vez (lecturas concurrentes OK; varias investigaciones =
-  varios archivos). Abrir el mismo archivo para escribir desde dos procesos falla claro (exit code
-  `5`), no corrompe. Multi-escritor concurrente se resuelve post-v1.0 según demanda.
+  [0019](decisiones/0019-concurrencia-diferida.md)): DuckDB es single-writer (1 archivo = 1 escritor;
+  lecturas concurrentes OK; varias investigaciones = varios archivos). Abrir el mismo archivo para
+  escribir desde dos procesos falla claro (exit code `5`), no corrompe. Se resuelve post-1.0 según
+  demanda.
 
 ## 6. Principios de producto
 
 1. **Fácil PERO consciente.** La ecuación es ciudadana de primera clase, explícita y registrada.
 2. **Asistencia algorítmica determinista, NO IA en el producto** (ADR
-   [0022](decisiones/0022-producto-sin-ia-generativa.md)). El producto **no usa IA generativa**: la
-   única asistencia es el **scent bibliométrico** del forrajeo (acoplamiento/co-citación/centralidad,
-   determinista, reproducible). El **juicio humano** (formular la idea, dejarla mutar, decidir qué
-   curar, leer las tensiones) **no se automatiza**. "AI-in-the-loop" se refiere **solo** al
-   *desarrollo* asistido por IA (ver [`AI_DISCLOSURE.md`](../AI_DISCLOSURE.md)).
+   [0022](decisiones/0022-producto-sin-ia-generativa.md)). La única asistencia es el **scent
+   bibliométrico** del forrajeo (acoplamiento/co-citación/centralidad, determinista, reproducible). El
+   **juicio humano** (formular la idea, dejarla mutar, decidir qué curar, leer las tensiones) **no se
+   automatiza**. "AI-in-the-loop" se refiere **solo** al *desarrollo* asistido por IA (ver
+   [`AI_DISCLOSURE.md`](../AI_DISCLOSURE.md)).
 3. **Núcleo puro, costuras opcionales.** La lógica bibliométrica no depende de servidores ni red.
-4. **Configuración inyectada, nunca embebida.** Ningún secreto en el código, sin efectos de
-   import (lecciones 1 y 6 de v0).
+4. **Configuración inyectada, nunca embebida.** Ningún secreto en el código, sin efectos de import.
 5. **Contratos estables y tipados** entre costuras (sin *signature drift*).
-6. **Solo se promete lo que existe** (lección 5: nada de clientes que se inicializan y nunca se
-   consultan).
+6. **Solo se promete lo que existe** (nada de clientes que se inicializan y nunca se consultan).
 7. **Agente-native como columna**, diseñada desde el primer comando — no un extra futuro.
 8. **Reproducibilidad por historia auditable + snapshot exportable**, no por inmutabilidad.
 
 ## 7. Historias de usuario (épicas)
 
 > Definición de producto en historias, para extraer features y dejar claro **qué esperar**.
-> Adaptadas de [`_archivo/06`](_archivo/06-definicion-producto-v1.md) (archivada) tras cerrar el wedge (forrajeo)
-> y el modelo de datos (biblioteca viva en DuckDB).
 
 ### Épica A — Sembrar con ecuaciones de búsqueda (consciente y estándar)
-- **A1** · Como investigador, quiero definir mi corpus con una **ecuación de búsqueda**
-  (términos, campos, años, idioma), para partir del artefacto estándar y reproducible.
-- **A2** · Como investigador, quiero que la herramienta **traduzca mi ecuación a una consulta
-  OpenAlex y me muestre exactamente qué se ejecutó** (y sus límites), para ser consciente de qué
-  recupero.
-- **A3** · Como investigador, quiero alternativamente sembrar con **papers semilla** (DOIs / IDs
-  / un export BibTeX), para cuando parto de *pearls* conocidos.
-- **A4** · Como investigador, quiero que mi ecuación quede **registrada y versionada** con la
-  corrida, para reportarla (PRISMA / vom Brocke) y reproducirla.
-- **A5** · Como investigador, quiero que mis **ecuaciones evolucionen entre iteraciones**
-  (berrypicking: la idea muta y vuelvo a sembrar) y que la **biblioteca viva acumule** a través
-  de esas versiones, para que el lazo del ciclo sea de primera clase y no una corrida tirada.
+- **A1** · Definir el corpus con una **ecuación de búsqueda** (términos, campos, años, idioma), para
+  partir del artefacto estándar y reproducible.
+- **A2** · Que la herramienta **traduzca la ecuación a una consulta OpenAlex y muestre exactamente qué
+  se ejecutó** (y sus límites), para ser consciente de qué se recupera.
+- **A3** · Alternativamente sembrar con **papers semilla** (DOIs / IDs / un export BibTeX), para
+  cuando se parte de *pearls* conocidos.
+- **A4** · Que la ecuación quede **registrada y versionada** con la corrida, para reportarla
+  (PRISMA / vom Brocke) y reproducirla.
+- **A5** · Que las **ecuaciones evolucionen entre iteraciones** (berrypicking) y que la **biblioteca
+  viva acumule** a través de esas versiones, para que el lazo sea de primera clase.
 
 ### Épica B — Forrajear: chaining asistido por estructura bibliométrica (sin IA)
-- **B1** · Como investigador, quiero **backward chaining** (las referencias de mis semillas) y
-  **forward chaining** (lo que las cita) automáticos sobre OpenAlex, para no hacer snowballing a
-  mano (Wohlin).
-- **B2** · Como investigador, quiero **controlar la profundidad** del chaining (1 por defecto,
-  opt-in a 2) y ver un **preview de cuánto crece** el corpus antes de traer, para no hacerlo
-  explotar.
-- **B3** · Como investigador, quiero que los candidatos vengan **rankeados por estructura
-  bibliométrica** (*information scent*: acoplamiento/co-citación, centralidad — **determinista, sin
-  IA**), para revisar primero lo más relevante.
-- ~~**B4** · paso opcional de IA que explique por qué un candidato es relevante~~ → **RETIRADA**
-  (ADR [0022](decisiones/0022-producto-sin-ia-generativa.md)): el producto no usa IA generativa. El
-  "porqué" lo da la **estructura visible** (con qué del corpus se acopla/co-cita el candidato), no un
-  LLM. `explain_candidate`/`[llm]` se eliminan.
+- **B1** · **Backward chaining** (las referencias de las semillas) y **forward chaining** (lo que las
+  cita) automáticos sobre OpenAlex, para no hacer snowballing a mano (Wohlin).
+- **B2** · **Controlar la profundidad** (1 por defecto) y ver un **preview de cuánto crece** el corpus
+  antes de traer, para no hacerlo explotar.
+- **B3** · Candidatos **rankeados por estructura bibliométrica** (*information scent*:
+  acoplamiento/co-citación, centralidad — **determinista, sin IA**), para revisar primero lo más
+  relevante. El "porqué" lo da la **estructura visible**, no un LLM.
 
 ### Épica C — Ejercicio bibliotecario y biblioteca viva (curar y conservar)
-- **C1** · Como investigador, quiero **dedup y normalización** de autores/instituciones apoyada
-  en los IDs de OpenAlex (ORCID/ROR/DOI), para no pelear con variantes de nombres.
-- **C2** · Como investigador, quiero **normalizar mis keywords con un thesaurus multilingüe**
-  (en/es/pt) curado y auditable, para que conceptos equivalentes en distintos idiomas colapsen en
-  la red de co-ocurrencia (p. ej. *intercambio ecológico desigual* ≡ *unequal exchange*) y no
-  queden dispersos. *(Sin fallback semántico/LLM: el thesaurus es determinista — ADR 0022/0011. El
-  dedup fuzzy determinista de keywords fuera del thesaurus corre automático en la ingesta con
-  `rapidfuzz` en el núcleo — ADR 0031, #88; ya no es el extra `[dedup]`.)*
-- **C3** · Como investigador, quiero aplicar **criterios de inclusión/exclusión** (año, tipo,
-  idioma, mínimo de citas) y ver el **conteo en cada filtro**, para curar con trazabilidad
-  (estilo flujo PRISMA).
-- **C4** · Como investigador, quiero **aceptar/rechazar** candidatos y que lo aceptado quede en
-  mi **biblioteca viva persistida en DuckDB**, que **crece entre corridas** con su log de
-  procedencia, para cultivar la colección (berry growing). *(La biblioteca viva es DuckDB nativo; la
-  sincronización con Zotero está descartada —decisión del PO, 2026-06-17— y solo se reabriría si hay
-  demanda real.)*
+- **C1** · **Dedup y normalización** de autores/instituciones apoyada en los IDs de OpenAlex
+  (ORCID/ROR/DOI), para no pelear con variantes de nombres.
+- **C2** · **Normalizar keywords con un thesaurus multilingüe** (en/es/pt) curado y auditable, para
+  que conceptos equivalentes en distintos idiomas colapsen en la red de co-ocurrencia (p. ej.
+  *intercambio ecológico desigual* ≡ *unequal exchange*). *(Sin fallback semántico/LLM: el thesaurus es
+  determinista; el dedup fuzzy determinista corre automático en la ingesta con `rapidfuzz`.)*
+- **C3** · Aplicar **criterios de inclusión/exclusión** (año, tipo, idioma, mínimo de citas) y ver el
+  **conteo en cada filtro**, para curar con trazabilidad (estilo flujo PRISMA).
+- **C4** · **Aceptar/rechazar** candidatos y que lo aceptado quede en la **biblioteca viva persistida
+  en DuckDB**, que **crece entre corridas** con su log de procedencia, para cultivar la colección.
 
 ### Épica D — Proyectar a redes (el final sigue siendo las redes)
-- **D1** · Como investigador, quiero proyectar el corpus a **co-citación, acoplamiento
-  bibliográfico, co-autoría, co-ocurrencia de keywords e instituciones**, para analizar la
-  estructura intelectual del campo.
-- **D2** · Como investigador, quiero **métricas y comunidades** (densidad, centralidades,
-  Louvain/propagación/voraz) sobre cada red.
-- **D3** · Como investigador, quiero **asortatividad** (por un atributo categórico que yo defino
-  —p. ej. región geográfica— y por grado) y la **composición de cada comunidad** por ese
-  atributo, **con el disclaimer de si el atributo es un proxy** (p. ej. afiliación por-paper vs
-  per-autor), para leer asimetrías estructurales (Norte–Sur, escuelas en conflicto) sin tomar el
-  proxy por verdad.
-- **D4** · Como investigador, quiero **exportar GraphML/CSV** para Gephi/VOSviewer y pandas.
+- **D1** · Proyectar el corpus a **co-citación, acoplamiento bibliográfico, co-autoría, co-ocurrencia
+  de keywords e instituciones**, para analizar la estructura intelectual del campo.
+- **D2** · **Métricas y comunidades** (densidad, centralidades, Louvain/propagación/voraz) sobre cada
+  red.
+- **D3** · **Asortatividad** (por un atributo categórico definido por el usuario y por grado) y la
+  **composición de cada comunidad** por ese atributo, **con el disclaimer de si el atributo es un
+  proxy**, para leer asimetrías estructurales (Norte–Sur, escuelas) sin tomar el proxy por verdad.
+- **D4** · **Exportar GraphML/CSV** para Gephi/VOSviewer y pandas.
 
 ### Épica E — Reproducibilidad y agente-native
-- **E1** · Como investigador, quiero **exportar un snapshot reproducible** del estado vivo
-  (ecuación, query, fecha/versión de OpenAlex, profundidad, filtros, conteos, hash), para
-  auditar y reportar.
-- **E2** · Como **agente/automatización**, quiero invocar cada paso por **CLI con `--json`** y
-  exit codes claros, para orquestar bib2graph sin GUI.
+- **E1** · **Exportar un snapshot reproducible** del estado vivo (ecuación, query, fecha/versión de
+  OpenAlex, profundidad, filtros, conteos, hash), para auditar y reportar.
+- **E2** · Como **agente/automatización**, invocar cada paso por **CLI con `--json`** y exit codes
+  claros, para orquestar el ciclo completo (`init → seed → chain → curate → build → read → export`)
+  sin GUI.
 
-## 8. Modelo de datos (reconciliado)
+## 8. Modelo de datos
 
-La elección **biblioteca viva desde V1** (corpus stateful en DuckDB) era **incompatible con el
-snapshot inmutable** que consagraban `ARCHITECTURE.md` §6.2 y el ADR 0006, y con el `InMemoryStore`
-por defecto del ADR 0003. La reconciliación quedó cerrada por los ADR 0009 y, tras el 2º giro,
-precisada por el ADR [0015](decisiones/0015-corpus-tabular-backend.md):
+- El **`Corpus` se respalda en un `TabularBackend` (Protocol)** y **delega las mutaciones** (ADR
+  [0015](decisiones/0015-corpus-tabular-backend.md)). La persistencia por defecto **no es un `Store`
+  con estado aparte**, sino el **`DuckDBBackend` del propio `Corpus`** (archivo `.duckdb`, mutación por
+  SQL `UPDATE`/`MERGE` por `id`), que conserva el corpus entre corridas con su **log de procedencia**.
+  El **`InMemoryBackend`** puro es el backend de los tests y del working set efímero. El **`DuckDBStore`
+  es la fachada de costura** (`persist`/`load`) y el punto de extensión para destinos externos.
+- El **`CycleState`** (ADR [0016](decisiones/0016-maquina-estados-lazo.md)) vive en ese backend
+  persistente: **una investigación = un workspace** con su estado del lazo.
+- El **snapshot** es un **export sellado derivable del estado vivo** (foto reproducible para reportar).
+  **Reproducir = re-leer ese snapshot, no re-correr la ecuación** (ADR
+  [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)).
 
-- El **`Corpus` se respalda en un `TabularBackend` (Protocol)** y **delega las mutaciones**
-  (ADR [0015](decisiones/0015-corpus-tabular-backend.md)). La persistencia por defecto **no es un
-  `Store` con estado aparte**, sino el **`DuckDBBackend` del propio `Corpus`** (archivo `.duckdb`,
-  mutación por SQL `UPDATE`/`MERGE` por `id`), que conserva el corpus entre corridas con su **log de
-  procedencia**. El **`InMemoryBackend`** puro es el backend de los tests y del working set efímero
-  (el núcleo se testea sin DuckDB). El **`DuckDBStore` es la fachada de costura** (`persist`/`load`)
-  y el punto de extensión para destinos externos.
-- El **`LoopState`** (ADR [0016](decisiones/0016-maquina-estados-lazo.md)) vive en ese backend
-  persistente: **una investigación = un archivo `.duckdb`**, con su estado del lazo.
-- El **snapshot deja de ser el modelo de datos** y es un **export sellado derivable del estado
-  vivo** (foto reproducible para reportar). **Reproducir = re-leer ese snapshot, no re-correr la
-  ecuación** (ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)).
-- **Zotero** queda **DESCARTADO (decisión del PO, 2026-06-17): no se hace**; nunca fue la
-  persistencia de 1.0 (DuckDB nativo lo es). Reabrible solo si aparece demanda real, como hito nuevo.
+Detalle del schema de columnas + la API del wrapper en [`API.md`](API.md) §1.
 
-Esta reconciliación ya está reflejada en `ARCHITECTURE.md` (§3.1, §4.3, §6.2), `API.md` (§1, §4) y
-`ROADMAP.md` (Hitos 1.5/3). El estado de construcción —**Hitos 0–9 + 1.5 terminados** y la **tanda de
-remediación R1–R5 completa** (2026-06-16)— vive en el `ROADMAP.md`: el terreno **pre-GUI está completo**
-(Hito 10 viz absorbido en la epic GUI #34; Hito 11 Zotero/Neo4j descartado, PO 2026-06-17).
-
-## 9. Criterios de "V1 hecha"
+## 9. Criterios de madurez
 
 - De una **ecuación de búsqueda** a un **GraphML** de al menos una red, **sin escribir código** y
   **sin servidores**.
-- El **chaining** rankea candidatos por estructura, no por lista plana, con preview de
-  crecimiento.
+- El **chaining** rankea candidatos por estructura, no por lista plana, con preview de crecimiento.
 - El corpus **persiste y crece entre corridas** en DuckDB, con log de procedencia.
-- La corrida es **reportable**: se exporta un snapshot **sellado** (con la query OpenAlex visible y
-  el `openalex_version` que ancla la foto) que **otro investigador reproduce releyéndolo**, sin
-  volver a llamar a OpenAlex (ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)).
+- La corrida es **reportable**: se exporta un snapshot **sellado** (con la query OpenAlex visible y el
+  `openalex_version` que ancla la foto) que **otro investigador reproduce releyéndolo**, sin volver a
+  llamar a OpenAlex (ADR [0017](decisiones/0017-reproducibilidad-historia-snapshot.md)).
 - Dedup/normalización funciona apoyada en OpenAlex **sin configuración manual de nombres**.
-- Cada subcomando tiene `--json`.
+- Cada subcomando tiene `--json`; el ciclo completo lo puede conducir un agente.
 
-## 10. Métricas de éxito
+## 10. Caso de uso de referencia: la herramienta usándose a sí misma
 
-- El **primer flujo de 10 minutos** (ecuación → redes → export) corre **sin claves ni
-  infraestructura** —dentro del **tier gratis de OpenAlex** (~100 créditos/día, alcanza para una
-  prueba/uso liviano); para **corpus grandes** conviene una **API key opcional** que sube el límite (#124).
-- El núcleo tiene **cobertura de tests unitarios** real sobre proyección, métricas, comunidades y
-  dedup (la testabilidad que v0 nunca tuvo).
-- Un caso real se **reproduce** desde la ecuación, cumpliendo criterios de calidad
-  **configurables** por el usuario (no umbrales hardcodeados — crítica #5). Ya hay **evidencia
-  con datos reales**: el sandbox de **intercambio ecológico desigual (IED)** corrió el pipeline
-  end-to-end sobre 103 papers de OpenAlex, con 3/4 redes con estructura, thesaurus multilingüe y
-  asimetría Norte–Sur medible (ver
-  [`exploracion/informe_ied_lectura_2.md`](../exploracion/informe_ied_lectura_2.md)). El estudio
-  de semiconductores sigue como caso documentado en [`metodología.md`](Notas/metodología.md).
-- Agregar una nueva `Source` o `Store` no requiere modificar el núcleo.
+El caso de referencia de bib2graph es **el ciclo de investigación aplicado a la teoría que mejora
+bib2graph**: la herramienta **se usa a sí misma como objeto de estudio** para iterar su propio diseño.
+La literatura sobre **forrajeo de información, ciclo de investigación humano y bibliometría** (Bates,
+Ellis, Kuhlthau, Pirolli, Wohlin, vom Brocke; ver [`Notas/05`](Notas/05-ciclo-investigacion-humano.md)
+y [`metodología.md`](Notas/metodología.md)) es a la vez **el corpus que bib2graph procesa** y **la
+fuente de los requisitos** del producto: sembrar la ecuación de esa teoría, forrajear sus referencias y
+citantes, curar la biblioteca viva, proyectar las redes y leer las tensiones es **lo que valida que el
+método sirve** — y cada vuelta del ciclo retroalimenta el diseño (qué falta en el forrajeo, qué red
+falla, qué fricción tiene el flujo agéntico). El producto es honesto consigo mismo cuando su propio
+desarrollo corre por el ciclo que predica.
 
-## 11. Próximos pasos
+Esto tiene una consecuencia de proceso: las decisiones de producto y los hallazgos teóricos que surgen
+de usar la herramienta entran por el flujo de siempre (nota → Discussion → ADR/issue), y los **docs
+vivos** reflejan el resultado, no el debate.
 
-> ⚠️ **Corrección 2026-06-17:** el punto 1 es **planning histórico ya saldado** (los ADR 0007–0021
-> están escritos). Donde dice "tensiones a v2", leer **"tensiones RETIRADAS del producto"** (ADR
-> 0022); el thesaurus es **determinista sin fallback fuzzy/LLM** (ADR 0011 enmendado). La **tanda de
-> remediación R1–R5 ya está completa** (2026-06-16) y, sobre ella, los **Hitos 1–9 están construidos**
-> (ver punto 3, actualizado). El **terreno pre-GUI está completo**: el próximo trabajo real es la
-> **epic GUI #34** (la capa de lectura visual), no más backend. Estado vivo en el
-> [`ROADMAP.md`](ROADMAP/README.md).
-
-1. **Nuevos ADRs** (architect), además del [0007](decisiones/0007-openalex-backbone.md) ya
-   redactado: wedge = forrajeo (~~tensiones a v2~~ → **retiradas**, ADR 0022); **biblioteca viva en
-   DuckDB** (supersede la premisa de 0003 y 0006); agente-native como columna; **thesaurus
-   multilingüe** (T6/T10 del sandbox; formato JSON portable, **determinista sin fallback LLM**).
-2. ✅ `ARCHITECTURE.md`, `API.md` y `ROADMAP.md` **reconciliados** con este PRD (§8) y con los
-   ADR 0007–0011, y luego con el **2º giro** (ADR
-   [0015](decisiones/0015-corpus-tabular-backend.md)–[0019](decisiones/0019-concurrencia-diferida.md)).
-3. ✅ Implementación por hitos en curso (coder): **Hitos 0–6 + 1.5 terminados** (núcleo del corpus
-   stateful sobre `TabularBackend`, proyectores/analizadores/export, biblioteca viva en DuckDB,
-   fuentes OpenAlex/BibTeX, forrajeo + `Preprocessor` + filtros PRISMA, y el **CLI agente-native
-   `b2g`** — 19 subcomandos (incl. `thesaurus`, ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md), y `gui`, ADR [0028](decisiones/0028-arquitectura-gui-api-capa-servicios.md), Hito G3), ADR [0021](decisiones/0021-cli-agente-native-contrato.md) +
-   [0025](decisiones/0025-enricher-cocitacion-openalex.md) (`enrich`, Ciclo 8a) +
-   [0029](decisiones/0029-workspace-por-investigacion.md) (`init` + workspace)). Con ello
-   v0.2 alcanza las capacidades del **flujo** `seed → … → export`. **El red-team de la
-   [Nota 06](Notas/06-critica-as-built-v0.2.md) corrige el claim "capacidades completas":** falta la
-   **tanda de remediación R1–R5** (modelo sin IA, identidad-vs-procedencia reproducible, FSM cíclico,
-   scent bibliométrico, robustez) **antes** de los Hitos 7–11. Tras R1–R5 se construyeron el **Hito 7 ✅**
-   (dedup fuzzy `rapidfuzz`), el **Hito 8 ✅** (`Enricher` OpenAlex: refs→DOI + co-citación end-to-end,
-   `enrich --max-citing`) y el **Hito 9 ✅** (`NetworkSpec` YAML + `b2g networks --spec` + `resolution`
-   Louvain, 2026-06-17): **Hitos 1–9 construidos**. Los **Hitos 10 (viz) y 11 (Zotero/Neo4j) fueron
-   reevaluados (2026-06-17, encuadre pre-GUI):** 10 se **difiere/absorbe en la epic GUI #34** (la GUI es
-   la capa de lectura visual; el export visual pre-GUI ya lo cubren `decorate`/`clusters.csv`) y 11 queda
-   **DESCARTADO (decisión del PO, 2026-06-17): Zotero/Neo4j no se hacen** —no son backlog planificado—,
-   reabrible como hito nuevo solo si aparece demanda real; no bloquea la GUI. Estado vivo
-   en el [`ROADMAP.md`](ROADMAP/README.md).
+El caso **intercambio ecológico desigual (IED)** —el pipeline corrido end-to-end sobre papers reales de
+OpenAlex, con redes con estructura, thesaurus multilingüe y asimetría Norte–Sur medible (ver
+[`exploracion/informe_ied_lectura_2.md`](../exploracion/informe_ied_lectura_2.md))— queda como **caso
+de validación interna histórico**: evidencia de que el método produce resultados con datos reales, **no
+un criterio de release**. El estudio de semiconductores sigue como caso documentado en
+[`metodología.md`](Notas/metodología.md).

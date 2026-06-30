@@ -321,32 +321,9 @@ equation:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
-def test_seed_sin_modo_lanza_usage_error(tmp_path: Path) -> None:
-    """b2g seed sin ningún modo → UsageError accionable (exit 1)."""
-    from click.testing import CliRunner
-
-    from bib2graph.cli import b2g
-    from bib2graph.workspace import Workspace
-
-    ws_dir = tmp_path / "ws"
-    Workspace.init(ws_dir, "test")
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        [
-            "--workspace",
-            str(ws_dir),
-            "seed",
-            "--json",
-        ],
-    )
-
-    assert result.exit_code == 1, f"Se esperaba exit 1, salida: {result.output}"
-    envelope = json.loads(result.output)
-    assert envelope["ok"] is False
-    assert envelope["error"]["code"] == "USAGE_ERROR"
+# "seed sin ningún modo → UsageError" es idéntico a
+# test_seed_from_bib.py::test_seed_sin_modo_usage_error (mismo invocar, mismo assert);
+# se conserva allí. Epic #184, sub-tarea 7.
 
 
 @pytest.mark.unit

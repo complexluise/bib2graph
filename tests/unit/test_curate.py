@@ -591,45 +591,6 @@ def test_run_curate_from_csv_devuelve_claves_esperadas(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 12. Exclusividad de modos: --dump y --from-csv juntos → UsageError
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_dump_y_from_csv_simultaneos_lanzan_usage_error(tmp_path: Path) -> None:
-    """--dump y --from-csv juntos son mutuamente excluyentes → UsageError."""
-    from bib2graph.cli._errors import UsageError
-
-    # No hay una función combinada; el enforcement es en el Click command.
-    # Lo verificamos directamente a través de la lógica del command.
-    # Para testear sin Click, reproducimos la lógica de exclusividad.
-    do_dump = True
-    from_csv = "algo.csv"
-
-    if do_dump and from_csv:
-        with pytest.raises(UsageError):
-            raise UsageError("--dump y --from-csv son mutuamente excluyentes.")
-
-
-# ---------------------------------------------------------------------------
-# 13. Ningún modo → UsageError
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_ningún_modo_lanza_usage_error() -> None:
-    """Sin --dump ni --from-csv, la lógica del comando lanza UsageError."""
-    from bib2graph.cli._errors import UsageError
-
-    do_dump = False
-    from_csv = None
-
-    if not do_dump and from_csv is None:
-        with pytest.raises(UsageError):
-            raise UsageError("Debés especificar un modo: --dump o --from-csv.")
-
-
-# ---------------------------------------------------------------------------
 # 14. dump --all incluye accepted y rejected además de candidate
 # ---------------------------------------------------------------------------
 

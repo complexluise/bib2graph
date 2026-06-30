@@ -100,19 +100,37 @@ class OpenAlexEnricher:
             y dos ``EnricherRef`` registrados en el Manifest.
         """
         # Pasada 1: references_id → references_doi
-        corpus = self._enrich_references_doi(corpus)
+        corpus = self.enrich_references_doi(corpus)
 
         # Pasada 2: cited_by_id para semillas aceptadas
-        corpus = self._enrich_cited_by(corpus)
+        corpus = self.enrich_cited_by(corpus)
 
         return corpus
 
     # ------------------------------------------------------------------
-    # Pasada 1: references_id → references_doi
+    # Pasada 1: references_id → references_doi (pública para absorción en chain)
     # ------------------------------------------------------------------
 
-    def _enrich_references_doi(self, corpus: Corpus) -> Corpus:
+    def enrich_references_doi(self, corpus: Corpus) -> Corpus:
         """Rellena ``references_doi`` alineado a ``references_id``.
+
+        Pasada 1 del enriquecimiento (Hito 8a). Expuesta como método público
+        para que ``chain`` pueda ejecutarla de forma aislada (sin la pasada
+        de co-citación), usando el mismo helper ``enrich_corpus`` que ``enrich``
+        standalone y ``build``.
+
+        Args:
+            corpus: Corpus de entrada.
+
+        Returns:
+            Corpus con ``references_doi`` rellenado y ``EnricherRef`` registrado.
+        """
+        return self._enrich_references_doi(corpus)
+
+    def _enrich_references_doi(self, corpus: Corpus) -> Corpus:
+        """Implementación interna de la pasada refs→DOI.
+
+        Ver ``enrich_references_doi`` para la documentación pública.
 
         Args:
             corpus: Corpus de entrada.
@@ -157,11 +175,29 @@ class OpenAlexEnricher:
         )
 
     # ------------------------------------------------------------------
-    # Pasada 2: cited_by_id para semillas aceptadas (Hito 8b)
+    # Pasada 2: cited_by_id para semillas aceptadas (Hito 8b, pública para build)
     # ------------------------------------------------------------------
 
-    def _enrich_cited_by(self, corpus: Corpus) -> Corpus:
+    def enrich_cited_by(self, corpus: Corpus) -> Corpus:
         """Puebla ``cited_by_id`` de las semillas aceptadas.
+
+        Pasada 2 del enriquecimiento (Hito 8b). Expuesta como método público
+        para que ``build`` pueda ejecutarla de forma aislada (sin la pasada
+        de refs→DOI), usando el mismo helper ``enrich_corpus`` que ``enrich``
+        standalone y ``chain``.
+
+        Args:
+            corpus: Corpus de entrada.
+
+        Returns:
+            Corpus con ``cited_by_id`` rellenado y ``EnricherRef`` registrado.
+        """
+        return self._enrich_cited_by(corpus)
+
+    def _enrich_cited_by(self, corpus: Corpus) -> Corpus:
+        """Implementación interna de la pasada cited_by.
+
+        Ver ``enrich_cited_by`` para la documentación pública.
 
         Algoritmo:
         1. Filtra las semillas con ``curation_status=accepted`` y ``source_id``

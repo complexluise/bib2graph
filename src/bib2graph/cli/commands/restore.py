@@ -1,11 +1,16 @@
-"""cli.commands.restore — Subcomando ``b2g restore``.
+"""cli.commands.restore — Shim ``b2g restore`` (ADR 0038, #163, alias deprecado #165).
 
-Rehidrata el corpus desde un parquet curado (snapshot) sin tocar la red.
-Semánticamente: ``restore`` es a ``snapshot`` lo que ``load`` es a ``dump``.
-El parquet es corpus *curado*, no semilla.
+El subcomando ``restore`` suelto se mantiene intacto como shim para
+compatibilidad con scripts y flujos existentes.  Su retiro está planificado
+en el sub-issue #165.
 
-Modo único requerido:
-  --from-corpus <parquet>   carga el corpus desde un parquet con schema canónico.
+DEPRECADO (ADR 0038, #165): usar ``b2g snapshot restore``.  Se retira en 0.11.0.
+
+La lógica vive en ``service.snapshot.run_restore`` (fuente única).  Este
+módulo es un adaptador delgado que:
+  - Inyecta el reloj en la frontera CLI (``decided_at``, R2/ADR 0017).
+  - Emite el envelope JSON con ``command="restore"`` (compatibilidad).
+  - Re-exporta ``run_restore`` para tests que importan desde este módulo.
 
 Decisión de CycleState tras restore:
   El corpus restaurado viene de un snapshot curado — ya pasó el lazo completo
@@ -24,130 +29,24 @@ Decisión de CycleState tras restore:
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
-from bib2graph.cli._errors import DataError, handle_errors
-from bib2graph.cli._ingest import normalize_and_dedup
+from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import open_store, resolve_library_path
+from bib2graph.cli._store import resolve_library_path
 
-# ---------------------------------------------------------------------------
-# Función núcleo: rehidratación desde parquet (testeable, sin Click)
-# ---------------------------------------------------------------------------
+# Fuente única: service.snapshot.run_restore (ADR 0038).
+# Re-exportado para backward compat con tests que importan desde este módulo.
+from bib2graph.service.snapshot import run_restore
 
-
-def run_restore(
-    store_path: str | Path,
-    corpus_path: str | Path,
-) -> dict[str, Any]:
-    """Carga un corpus curado desde un parquet y lo persiste en el store sin red.
-
-    Lee el parquet con el schema canónico (``CORPUS_SCHEMA``), lo hidrata con
-    ``Corpus.from_arrow``, hace merge con el corpus existente y persiste.
-    Transiciona el ``CycleState`` a ``FILTERED`` (el corpus ya fue curado;
-    ver docstring del módulo para la justificación).
-
-    Preserva las columnas de curación del parquet
-    (``decision`` / ``curation_status`` / ``is_seed``): el merge de ``Corpus``
-    respeta el ``curation_status`` más reciente (D3 del merge).
-
-    No instancia ``OpenAlexSource``, no hace requests. Es el camino offline
-    para rehidratar un corpus curado exportado con ``b2g snapshot``.
-
-    Args:
-        store_path: Ruta al archivo ``.duckdb``.
-        corpus_path: Ruta al archivo ``.parquet`` con el corpus curado.
-
-    Returns:
-        Dict con ``papers_loaded``, ``total_papers``, ``state``, ``round``.
-
-    Raises:
-        DataError: Si el parquet no existe o no tiene el schema canónico.
-        StoreError: Si el store está bloqueado.
-    """
-    import pyarrow.parquet as pq
-
-    from bib2graph.corpus import Corpus
-    from bib2graph.cycle import CycleState, apply_transition
-    from bib2graph.schemas import CORPUS_SCHEMA
-
-    resolved = Path(corpus_path)
-    if not resolved.exists():
-        raise DataError(
-            f"El parquet '{resolved}' no existe. Verificá la ruta al corpus curado."
-        )
-
-    try:
-        table = pq.read_table(str(resolved), schema=CORPUS_SCHEMA)  # type: ignore[no-untyped-call]
-    except Exception as exc:
-        raise DataError(
-            f"No se pudo leer el parquet '{resolved}': {exc}. "
-            "Verificá que el archivo tenga el schema canónico de bib2graph."
-        ) from exc
-
-    try:
-        incoming = Corpus.from_arrow(table)
-    except Exception as exc:
-        raise DataError(
-            f"El parquet '{resolved}' no cumple el schema canónico: {exc}."
-        ) from exc
-
-    merged_backend_close = None
-    store = open_store(store_path)
-    try:
-        existing = store.load()
-
-        # Transición a FILTERED: el corpus restaurado ya pasó curación.
-        # apply_transition es permisiva — acepta "filter" desde cualquier estado
-        # actual del store (incluyendo None para un store vacío nuevo).
-        current_state = store.backend.loop_state()
-        # La ronda nunca debe ser < 1: loop_round() devuelve 0 para bases legacy
-        # (round=NULL, pre-R3) y para stores vacíos. max(..., 1) la normaliza en
-        # ambos branches para no persistir un estado con ronda 0 incoherente.
-        current_round = max(store.backend.loop_round(), 1)
-        # "filter" lleva a FILTERED; la ronda no cambia (no es reseed).
-        # Para un store vacío (current_state=None), arrancamos desde SEEDED ficticio.
-        if current_state is None:
-            new_state, new_round = apply_transition(
-                CycleState.SEEDED, "filter", current_round
-            )
-        else:
-            new_state, new_round = apply_transition(
-                current_state, "filter", current_round
-            )
-
-        # Merge primero, dedup después sobre el corpus COMPLETO (fix bug cross-biblioteca).
-        # Orden: existing + incoming → merged completo → normalize_and_dedup → persist_replace.
-        # El reloj se fija UNA vez por invocación (R2).
-        ingest_at = datetime.now(UTC)
-        merged = existing.merge(incoming)
-        merged_deduped = normalize_and_dedup(merged, applied_at=ingest_at)
-        papers_loaded = len(incoming)
-        total_papers = len(merged_deduped)
-        merged_backend_close = getattr(merged_deduped._backend, "close", None)
-        store.persist_replace(merged_deduped)
-        store.backend.set_loop_state(new_state, cycle_round=new_round)
-    finally:
-        # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
-        # para evitar segfault en Linux ante llamadas consecutivas al mismo archivo.
-        if merged_backend_close is not None:
-            merged_backend_close()
-        store.close()
-
-    return {
-        "papers_loaded": papers_loaded,
-        "total_papers": total_papers,
-        "state": str(new_state),
-        "round": new_round,
-    }
+__all__ = ["restore_cmd", "run_restore"]
 
 
 # ---------------------------------------------------------------------------
-# Comando Click (no se testea directamente)
+# Comando Click (shim delgado — no se testea directamente)
 # ---------------------------------------------------------------------------
 
 
@@ -159,7 +58,7 @@ def run_restore(
     type=click.Path(),
     help=(
         "Ruta al parquet con el corpus curado a importar sin red "
-        "(producido por b2g snapshot)."
+        "(producido por b2g snapshot create)."
     ),
 )
 @json_option
@@ -184,9 +83,15 @@ def restore_cmd(
     Ejemplos:
       b2g restore --from-corpus snapshots/corpus.parquet
       b2g restore --from-corpus corpus_curado.parquet --json
+
+    \b
+    Alternativa canónica (ADR 0038): b2g snapshot restore --from-corpus ...
     """
+    dep_msg = emit_deprecation("b2g restore", "b2g snapshot restore")
     store_path = resolve_library_path(ctx.obj)
-    data = run_restore(store_path, corpus_path)
+    # R2/ADR 0017: el reloj se inyecta en la frontera CLI.
+    decided_at = datetime.now(UTC)
+    data = run_restore(store_path, corpus_path, decided_at=decided_at)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -194,6 +99,7 @@ def restore_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=[dep_msg],
         )
         emit(envelope)
     else:

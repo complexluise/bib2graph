@@ -1,6 +1,16 @@
-# ROADMAP · GUI local (Hitos G1–G5) — **MVP AS-BUILT (G1–G5), gate #34 pendiente**
+# ROADMAP · GUI local (Hitos G1–G5) — **DEPRECADO: GUI retirada de la librería (ADR 0040, #190)**
 
 > ← Volver al [índice del ROADMAP](README.md)
+
+---
+
+> ⛔ **DEPRECADO (2026-06-28) — la GUI local se RETIRÓ de la librería** (ADR
+> [0040](../decisiones/0040-retiro-gui-local.md), issue
+> [#190](https://github.com/complexluise/bib2graph/issues/190); supersede 0027/0028). Se eliminan
+> `b2g gui`, la API local FastAPI (`api/`), la SPA `frontend/` y el extra `[gui]`; el core es
+> CLI/agente-native sobre la biblioteca viva. **Este documento queda como HISTORIA** (el porqué de
+> haber construido G1–G5): describe un AS-BUILT que ya no existe. La **capa de servicios `service/`**
+> que introdujo el G1/G2 **se conserva** (la usa el CLI). No tomar nada de abajo como estado actual.
 
 ---
 

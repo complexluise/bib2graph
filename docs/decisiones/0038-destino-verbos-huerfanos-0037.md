@@ -173,3 +173,97 @@ contra `--help`**.
 - **Cerrar la ventana de deprecación por fecha calendario en vez de por versión.** Rechazada (P1):
   el criterio por **versión (0.11.0)** es verificable, reproducible y no depende del calendario de
   release; es coherente con cómo el proyecto versiona (release-please).
+
+## Enmienda 2026-06-27 (append-only) — corrige el gap de P1: `filter` también entra a la ventana (#155)
+
+> Anotación append-only (no revierte nada de arriba). Surge de la implementación del grupo `curate`
+> noun-verb (sub-issue [#155](https://github.com/complexluise/bib2graph/issues/155)): al absorber
+> `filter` en `curate filter` se constató que **P1 omitió `filter`** de la lista de aliases en
+> deprecación.
+
+El parámetro **(P1)** enumeró los aliases que cierran en `0.11.0` como *"`networks`, `accept`,
+`reject`, `inspect`, `monitor` —más `resolve` y el entry-point `bib2graph`"*. Pero el ADR
+[0037](0037-superficie-cli-10-verbos-ciclo.md) (decisión (b)) absorbió **`accept`/`reject`/`filter`**
+en el grupo `curate`: los tres verbos planos quedan como alias deprecados. P1 listó `accept` y
+`reject` pero **omitió `filter`** —un gap, no una decisión—.
+
+**Corrección:** el verbo suelto **`filter` se suma a la ventana de deprecación**, con el mismo
+criterio que `accept`/`reject`: sigue funcionando **con aviso** durante 0.10.x y **se elimina en
+0.11.0**, como alias deprecado del nuevo **`curate filter`**. (`filter` y `curate filter` comparten la
+lógica de servicio `filter_corpus`, fuente única; el suelto es un shim que delega.) El resto de P1 no
+cambia. AS-BUILT del grupo `curate` en [`../API.md`](../API.md) §`curate`.
+
+## Enmienda 2026-06-27 (append-only) — fija el detalle de `restore`→`snapshot restore`: `snapshot` se vuelve grupo noun-verb y el plano → `snapshot create` [BREAKING] (#163)
+
+> Anotación append-only (gemela de las enmiendas D1 (#159) / #155; no revierte nada de arriba). Surge
+> de la implementación del sub-issue [#163](https://github.com/complexluise/bib2graph/issues/163). La
+> **Decisión** de arriba ya fijó que `restore` pasa a **`snapshot restore`** (tabla de huérfanos +
+> Consecuencias §`restore` vs 0030, líneas ~85/154-157), pero **no explicitó** qué pasa con el verbo
+> `snapshot` mismo. La implementación lo resuelve: para alojar `snapshot restore`, **`snapshot` deja
+> de ser verbo plano y se vuelve grupo noun-verb** —y eso obliga a renombrar el `snapshot` plano—.
+
+El ADR decidió el **destino** de `restore` (→ `snapshot restore`) pero no el **detalle del grupo**.
+Concretamente, al volverse `snapshot` un grupo:
+
+- **(a) `snapshot` es ahora grupo noun-verb `{create, restore}`** —el **3er grupo del CLI**, mismo
+  patrón que `read` (1°, #156/#157) y `curate` (2°, #155): `snapshot` **sin subcomando** imprime la
+  ayuda y sale **exit 0**; el `command` del envelope usa la **ruta completa** (`"snapshot create"` /
+  `"snapshot restore"`).
+- **(b) El `snapshot` plano → `snapshot create`** —**BREAKING, sin alias**, mismo criterio que el
+  BREAKING de `curate` (decisión (b) del 0037, forma-flag eliminada sin alias). `snapshot create` es
+  el ex `snapshot` plano sin cambios de semántica: sella la foto reproducible (parquet +
+  `manifest.json`, ADR 0017), **NO transiciona** el `CycleState` y **lleva el bloque `maturity`** del
+  one-shot (AS-BUILT #160, coherente con `build`/`read top`).
+- **(c) `snapshot restore` es el ex `restore`** (mergea+dedup, preserva la curación, **transiciona a
+  `FILTERED`** reusando la transición permisiva `filter`, ADR 0016/0030). El **verbo suelto `restore`
+  queda INTACTO como alias deprecado** (shim que delega; su envelope lleva `command="restore"` por
+  backward-compat). Su **retiro se agenda en #165** (junto con `inspect`), no en este hito.
+- **(d) Fuente única en `service/snapshot.py`** (`run_snapshot`/`run_restore`, servicio neutral con
+  reloj `decided_at` inyectado en la frontera, ADR 0017): `snapshot create`, `snapshot restore` y el
+  shim `restore` suelto **delegan** en ella. `run_snapshot` lleva el bloque `maturity` (de #160).
+
+**Invariantes intactos:** envelope `schema="1"`, exit codes y la forma del FSM no cambian; `create`
+**NO** transiciona, `restore`→`FILTERED` (igual que antes). Esta enmienda solo fija el detalle del
+grupo y el BREAKING que la Decisión no explicitó. AS-BUILT en [`../API.md`](../API.md) §`snapshot`.
+
+> **Follow-up (BAJO, #175):** la implementación dejó `normalize_and_dedup` duplicado en
+> `service/snapshot.py` respecto del helper de `cli/_ingest.py`. Es deuda de DRY, **no** afecta el
+> contrato; se trata en su propio issue, no aquí.
+
+## Enmienda 2026-06-28 (append-only) — corrige el gap de P1: `enrich` también entra a la ventana, y consolida los 9 aliases (#162/#165)
+
+> Anotación append-only (gemela de la enmienda `filter` de 2026-06-27; no revierte nada de arriba).
+> Surge de absorber `enrich` en `chain`/`build` ([#162](https://github.com/complexluise/bib2graph/issues/162))
+> y de la implementación de la capa de deprecación ([#165](https://github.com/complexluise/bib2graph/issues/165)).
+
+El parámetro **(P1)** enumeró los aliases que cierran en `0.11.0` como *"`networks`, `accept`,
+`reject`, `inspect`, `monitor` —más `resolve` y el entry-point `bib2graph`"*. Pero la tabla de
+huérfanos de la **Decisión** de arriba absorbe **`enrich`** en `chain`/`build`: el verbo plano queda
+como alias deprecado. P1 **omitió `enrich`** —el **mismo gap** que ya se corrigió para `filter` (#155)
+y que aplica también a `restore` (→ `snapshot restore`, #163)—; no es una decisión, es una omisión.
+
+**Corrección:** el verbo suelto **`enrich` se suma a la ventana de deprecación**, con el mismo criterio
+que `accept`/`reject`/`filter`/`restore`: sigue funcionando **con aviso** durante 0.10.x y **se elimina
+en 0.11.0**, como alias que delega en la misma lógica (`cli/_enrich.py::enrich_corpus`, fuente única;
+ver nota append-only del ADR [0025](0025-enricher-cocitacion-openalex.md)).
+
+**Lista completa de los 9 aliases deprecados** (alias vivo con aviso a stderr hasta 0.11.0), tal como
+los registra `cli/_deprecation.py` (#165):
+
+| Alias deprecado | Forma canónica |
+|---|---|
+| `b2g accept` | `b2g curate accept` |
+| `b2g reject` | `b2g curate reject` |
+| `b2g filter` | `b2g curate filter` |
+| `b2g inspect` | `b2g read show` / `b2g status` |
+| `b2g monitor` | `b2g chain --since` |
+| `b2g networks` | `b2g build --spec` |
+| `b2g enrich` | `b2g chain` (+ `b2g build`) |
+| `b2g restore` | `b2g snapshot restore` |
+| `b2g resolve` | `b2g seed --resolve` |
+
+**Más** el entry-point `bib2graph` → `b2g` y la opción **`build --corpus-scope` → `build --scope`**
+(mismo corte 0.11.0). `thesaurus` **no** está en esta lista: se **retira por completo** (sin alias);
+su capacidad vive como `build --thesaurus` (#164; nota append-only del ADR
+[0031](0031-preprocesamiento-automatico-en-ingesta.md)). AS-BUILT de la capa de avisos en
+[`../API.md`](../API.md) §Avisos de deprecación.

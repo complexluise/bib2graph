@@ -20,9 +20,8 @@ cross-biblioteca:
    - ``Preprocessor().normalize(corpus, applied_at=<fijo>)`` registra el
      timestamp inyectado, no ``now()``.
 
-6. Comando b2g thesaurus:
-   - Contrato JSON (envelope versionado).
-   - NO transiciona el CycleState.
+6. Verbo b2g thesaurus RETIRADO (#164): la capacidad se mueve a build --thesaurus.
+   Ver test_build_thesaurus_flag.py para tests del nuevo flag.
 
 7. Dedup CROSS-BIBLIOTECA (el bug que faltaba):
    - seed → seed con variante del mismo autor en paper DISTINTO → colapsado.
@@ -475,132 +474,9 @@ def test_preprocessor_apply_thesaurus_usa_applied_at_inyectado(
 
 
 # ---------------------------------------------------------------------------
-# 6. b2g thesaurus: contrato JSON + NO transiciona CycleState
+# 6. Verbo b2g thesaurus RETIRADO (#164)
+#    La capacidad se movio a build --thesaurus. Ver test_build_thesaurus_flag.py
 # ---------------------------------------------------------------------------
-
-
-def test_thesaurus_cmd_json_envelope(tmp_path: Path) -> None:
-    """b2g thesaurus --json produce envelope versionado con las claves correctas."""
-    import json as _json
-
-    from click.testing import CliRunner
-
-    from bib2graph.cli import b2g
-    from bib2graph.cli.commands.seed import run_seed
-    from bib2graph.workspace import Workspace
-
-    # Preparar workspace con corpus
-    ws_dir = tmp_path / "ws"
-    ws = Workspace.init(ws_dir, "test")
-    run_seed(ws.library_path, "ecology", transport=_make_mock_transport())
-
-    # Thesaurus mínimo
-    thesaurus = {"concepts": {"ecology": {"aliases_en": ["ecology"]}}}
-    thesaurus_path = tmp_path / "thesaurus.json"
-    thesaurus_path.write_text(_json.dumps(thesaurus), encoding="utf-8")
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        [
-            "--workspace",
-            str(ws_dir),
-            "thesaurus",
-            "--from",
-            str(thesaurus_path),
-            "--json",
-        ],
-        catch_exceptions=False,
-    )
-
-    assert result.exit_code == 0, f"exit != 0: {result.output}"
-    envelope = _json.loads(result.output)
-
-    assert envelope["schema"] == "1"
-    assert envelope["ok"] is True
-    assert envelope["command"] == "thesaurus"
-    # Claves del data
-    assert "keywords_mapped" in envelope["data"]
-    assert "keywords_total" in envelope["data"]
-    assert "aliases_loaded" in envelope["data"]
-    assert "applied_at" in envelope["data"]
-    assert envelope["data"]["aliases_loaded"] == 1
-
-
-def test_thesaurus_cmd_no_transiciona_cycle_state(tmp_path: Path) -> None:
-    """b2g thesaurus NO transiciona el CycleState (transversal al lazo).
-
-    Tras aplicar el thesaurus, el estado del lazo debe ser el mismo que antes.
-    """
-    import json as _json
-
-    from click.testing import CliRunner
-
-    from bib2graph.cli import b2g
-    from bib2graph.cli.commands.seed import run_seed
-    from bib2graph.cycle import CycleState
-    from bib2graph.stores.duckdb import DuckDBStore
-    from bib2graph.workspace import Workspace
-
-    ws_dir = tmp_path / "ws"
-    ws = Workspace.init(ws_dir, "test")
-    run_seed(ws.library_path, "ecology", transport=_make_mock_transport())
-
-    # Estado inicial: SEEDED
-    state_before = DuckDBStore(ws.library_path).backend.loop_state()
-    assert state_before == CycleState.SEEDED
-
-    thesaurus = {"concepts": {"ecology": {"aliases_en": ["ecology"]}}}
-    thesaurus_path = tmp_path / "thesaurus.json"
-    thesaurus_path.write_text(_json.dumps(thesaurus), encoding="utf-8")
-
-    runner = CliRunner()
-    runner.invoke(
-        b2g,
-        [
-            "--workspace",
-            str(ws_dir),
-            "thesaurus",
-            "--from",
-            str(thesaurus_path),
-        ],
-        catch_exceptions=False,
-    )
-
-    # Estado tras thesaurus: SEEDED (sin cambio)
-    state_after = DuckDBStore(ws.library_path).backend.loop_state()
-    assert state_after == CycleState.SEEDED, (
-        f"thesaurus no debería transicionar el CycleState: "
-        f"antes={state_before}, después={state_after}"
-    )
-
-
-def test_thesaurus_cmd_ruta_inexistente_emite_error(tmp_path: Path) -> None:
-    """b2g thesaurus con ruta inexistente → error con exit code != 0."""
-    from click.testing import CliRunner
-
-    from bib2graph.cli import b2g
-    from bib2graph.cli.commands.seed import run_seed
-    from bib2graph.workspace import Workspace
-
-    ws_dir = tmp_path / "ws"
-    ws = Workspace.init(ws_dir, "test")
-    run_seed(ws.library_path, "ecology", transport=_make_mock_transport())
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        [
-            "--workspace",
-            str(ws_dir),
-            "thesaurus",
-            "--from",
-            str(tmp_path / "no_existe.json"),
-            "--json",
-        ],
-    )
-
-    assert result.exit_code != 0
 
 
 # ---------------------------------------------------------------------------
@@ -822,7 +698,7 @@ def test_seed_openalex_cross_biblioteca_colapsa_autores(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 9. Thesaurus re-mapeo: persist_replace evita acumulación de canónicos
+# 9. build --thesaurus re-mapeo: persist_replace evita acumulacion de canonicos
 # ---------------------------------------------------------------------------
 
 
@@ -835,8 +711,8 @@ def test_thesaurus_remapeo_no_acumula_canonicos(tmp_path: Path) -> None:
     """
     import json as _json
 
+    from bib2graph.cli.commands.build import run_build
     from bib2graph.cli.commands.restore import run_restore
-    from bib2graph.cli.commands.thesaurus import run_thesaurus
     from bib2graph.constants import Col
     from bib2graph.stores.duckdb import DuckDBStore
 
@@ -865,7 +741,7 @@ def test_thesaurus_remapeo_no_acumula_canonicos(tmp_path: Path) -> None:
     }
     th_v1_path = tmp_path / "thesaurus_v1.json"
     th_v1_path.write_text(_json.dumps(thesaurus_v1), encoding="utf-8")
-    run_thesaurus(store_path, th_v1_path)
+    run_build(store_path, thesaurus_path=th_v1_path)
 
     # Verificar estado tras v1
     corpus_v1 = DuckDBStore(store_path).load()
@@ -885,7 +761,7 @@ def test_thesaurus_remapeo_no_acumula_canonicos(tmp_path: Path) -> None:
     }
     th_v2_path = tmp_path / "thesaurus_v2.json"
     th_v2_path.write_text(_json.dumps(thesaurus_v2), encoding="utf-8")
-    run_thesaurus(store_path, th_v2_path)
+    run_build(store_path, thesaurus_path=th_v2_path)
 
     # Reload: solo debe haber el canónico v2, no acumulación de v1 + v2
     corpus_v2 = DuckDBStore(store_path).load()

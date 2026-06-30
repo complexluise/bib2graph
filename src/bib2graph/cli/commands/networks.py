@@ -1,4 +1,4 @@
-"""cli.commands.networks — Subcomando ``b2g networks``.
+"""cli.commands.networks — Subcomando ``b2g networks`` (alias deprecado, #165).
 
 Carga una especificación declarativa de redes desde un archivo YAML y
 construye cada red, escribiendo artefactos a disco.
@@ -18,6 +18,14 @@ Los artefactos se escriben en ``<out_dir>/<kind>/``:
 
 Envelope ``--json`` (schema="1"): lista de redes en el mismo formato que
 ``b2g build``.
+
+DEPRECADO (ADR 0038, #165): usar ``b2g build --spec``.  Se retira en 0.11.0.
+
+#159 — helper compartido:
+  ``run_networks`` delega la carga YAML y proyección a ``_build_from_spec_file``
+  (definido en ``build.py``).  Esto garantiza que ``build --spec`` y
+  ``networks --spec`` nunca diverjan, y que #165 pueda retirar ``networks``
+  sin reconciliar dos implementaciones.
 """
 
 from __future__ import annotations
@@ -27,11 +35,12 @@ from typing import Any
 
 import click
 
+from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
-from bib2graph.cli._errors import DataError, DependencyError, handle_errors
+from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_workspace
-from bib2graph.cli.commands.build import _write_artifacts
+from bib2graph.cli.commands.build import _build_from_spec_file, _write_artifacts
 
 # ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
@@ -46,9 +55,9 @@ def run_networks(
 ) -> dict[str, Any]:
     """Construye redes bibliométricas desde una especificación YAML.
 
-    Carga ``spec_path`` con ``load_specs``, construye cada red con
-    ``Networks.build`` y escribe artefactos con el helper ``_write_artifacts``
-    (compartido con ``run_build``).
+    Carga ``spec_path`` con ``load_specs`` (vía ``_build_from_spec_file``),
+    construye cada red con ``Networks.build`` y escribe artefactos con el
+    helper ``_write_artifacts`` (compartido con ``run_build``).
 
     NO transiciona el ``CycleState`` ni sella ``.corpus_hash``:
     esta operación es transversal al lazo bibliométrico (igual que ``enrich``
@@ -68,9 +77,6 @@ def run_networks(
         DependencyError: Si falta ``python-louvain``.
         StoreError: Si el store está bloqueado.
     """
-    from bib2graph.networks.facade import Networks
-    from bib2graph.networks.spec import load_specs
-
     store = open_store(store_path)
     corpus = store.load()
 
@@ -80,18 +86,9 @@ def run_networks(
     else:
         artifacts_dir = Path(out_dir)
 
-    try:
-        specs = load_specs(spec_path)
-    except (ValueError, FileNotFoundError) as exc:
-        raise DataError(str(exc)) from exc
-
-    try:
-        artifacts = [Networks.build(corpus, spec) for spec in specs]
-    except ImportError as exc:
-        raise DependencyError(
-            f"Dependencia faltante para detectar comunidades: {exc}. "
-            "Instalá python-louvain: uv add python-louvain."
-        ) from exc
+    # Delegar carga YAML + proyección al helper compartido con build --spec.
+    # Levanta DataError (YAML inválido) o DependencyError (louvain faltante).
+    artifacts = _build_from_spec_file(corpus, spec_path)
 
     networks_info = _write_artifacts(artifacts, corpus, artifacts_dir)
 
@@ -139,6 +136,7 @@ def networks_cmd(
 
     No transiciona el estado del lazo bibliométrico.
     """
+    dep_msg = emit_deprecation("b2g networks", "b2g build --spec")
     ws = resolve_workspace(ctx.obj)
     effective_out_dir: str | Path | None = out_dir
     if effective_out_dir is None:
@@ -152,6 +150,7 @@ def networks_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=[dep_msg],
         )
         emit(envelope)
     else:

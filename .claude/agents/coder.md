@@ -34,10 +34,23 @@ todo verificable: otro agente (`verifier`) va a auditar tu diff.
 - Lee `docs/API.md` (contrato), `docs/ARCHITECTURE.md` y el `docs/ROADMAP/` del hito antes de
   escribir lógica nueva.
 
-## El gate (corrélo, reportá la salida real)
-```
-uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest
-```
+## Testing: iterá con el subconjunto, dejá el suite completo para el cierre
+El suite completo (`uv run pytest`) tarda **~4-8 min en esta máquina** — NO lo uses como bucle de
+feedback. (Lección del epic #167: correr el suite entero para triagear un fallo de UN archivo fue
+**~la mitad** del tiempo perdido de los coders.)
+
+- **En el loop:** corré SOLO los tests pertinentes a lo que tocás —
+  `uv run pytest tests/unit/test_X.py::TestY --tb=short` (7-60 s). Si un test falla, re-corré **ese
+  node id**, no el suite entero con flags distintos.
+- **Antes de chequear formato/lint:** auto-formateá primero —
+  `uv run ruff format . && uv run ruff check --fix .` — y recién después `ruff check`/`format --check`.
+  Evita el gate/CI rojo **solo por formato**.
+- **Cierre (una sola vez):** `uv run ruff check . && uv run ruff format --check . && uv run mypy src`
+  + `uv run pytest` acotado a los archivos/áreas que tocaste. El **suite completo lo corren el
+  `verifier` y el CI** — no necesitás repetirlo en loop; reportá qué subconjunto corriste.
+- **Timeout:** poné `timeout` ≥ 600000 ms en cualquier corrida larga de pytest (el default de 2 min
+  mata el suite completo).
+
 Markers: `unit` (default, sin red), `integration` (DuckDB/red, en el gate), `network` (API real
 de OpenAlex, **fuera** del gate — `-m "not network"`). TDD selectivo: test antes del código en
 el núcleo; no testees wrappers finos ni plumbing de Click.

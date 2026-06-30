@@ -230,3 +230,57 @@ diagnostica antes** —el agente no se queda con una "cara de éxito" vacía.
 - **Un comando "doctor" nuevo para el diagnóstico.** Rechazada: agrega superficie para decir lo que
   `status` —el mapa— debe decir. El diagnóstico entra como **campos aditivos** del envelope de
   `status` (mismo patrón que R3 del 0021), respetando el invariante de subcomandos.
+
+## Enmienda 2026-06-27 (append-only) — D1: `build --spec` es un paso BUILD pleno (#159)
+
+> Anotación append-only (no revierte nada de arriba; mismo patrón que la enmienda 2026-06-27 al
+> [0021](0021-cli-agente-native-contrato.md) §C). Decidida por el **PO** durante la implementación de
+> la absorción `networks`→`build --spec` (decisión (a)/(d) + ADR
+> [0038](0038-destino-verbos-huerfanos-0037.md)).
+
+La decisión (a) absorbió la capa declarativa de `networks` en **`build --spec`**, pero dejó implícito
+un matiz que la implementación tuvo que resolver: **¿`build --spec` transiciona el FSM y sella el
+hash, o se comporta como `networks` (ad-hoc, sin transición)?** El verbo `networks` —histórico— **no**
+transicionaba ni sellaba `.corpus_hash` (transversal al lazo, como `enrich`/`curate`).
+
+**D1 (PO):** **`build --spec` SÍ transiciona a `BUILT` y sella `networks/.corpus_hash`** —es un paso
+BUILD pleno, idéntico al `build` quick en lo que respecta al FSM—. El alias `networks` (en
+deprecación, cierra 0.11.0 por 0038 P1) **conserva** su comportamiento histórico (no transiciona, no
+sella). Es decir: lo que define la transición es **el verbo `build`**, no el modo (quick/spec).
+
+- **Por qué:** `build` *es* el paso BUILD del ciclo; correrlo con `--spec` sigue siendo materializar
+  redes en ese paso, así que debe avanzar el FSM y sellar la cache (coherente con la tabla de verbos
+  del 0037: `build → BUILT`). Mantener `--spec` sin transición reintroduciría la ambigüedad que la
+  absorción quería cerrar.
+- **Frontera con #165:** el helper compartido `_build_from_spec_file` es la **fuente única** de carga
+  YAML + proyección para `build --spec` y `networks`; cuando `networks` se retire (0.11.0), no habrá
+  reconciliación pendiente.
+- **Invariante:** envelope `schema="1"`, exit codes y la forma del FSM **no cambian**; D1 solo fija
+  *cuándo* se dispara la transición ya existente. Contrato AS-BUILT en
+  [`../API.md`](../API.md) §`build`.
+
+## Enmienda 2026-06-27 (append-only) — D2: en el grupo `curate` la transición la define el VERBO (#155)
+
+> Anotación append-only (gemela de la D1 de arriba; no revierte nada). Decidida por el **PO** durante
+> la implementación del grupo noun-verb `curate` (decisión (b)), sub-issue
+> [#155](https://github.com/complexluise/bib2graph/issues/155).
+
+La decisión (b) agrupó `dump`/`apply`/`accept`/`reject`/`filter` bajo `curate`. El cuerpo de arriba
+trata la curación como **transversal** (ver tabla de verbos: "`accept`/`reject`/`filter`→`curate …`"),
+y eso era cierto **como bloque** cuando eran verbos planos. Pero al volverse grupo surgió el mismo
+matiz que la D1 resolvió para `build`: **¿el grupo `curate` es transversal entero, o la transición la
+define cada verbo?** El verbo suelto `filter` —histórico— transicionaba a `FILTERED`.
+
+**D2 (PO):** **dentro del grupo `curate`, la transición del FSM la define el VERBO, no el grupo**
+—mismo principio que la D1 (el verbo `build`, no el modo, define la transición)—. Concretamente:
+
+- **`curate filter` transiciona a `FILTERED`** (idéntico al verbo suelto `filter`; reusa
+  `apply_transition`, fuente única).
+- **`curate dump` / `curate apply` / `curate accept` / `curate reject` son transversales** (NO
+  transicionan, disponibles en cualquier estado del lazo).
+
+Esto **matiza** —no revierte— la regla "curate es transversal" del cuerpo: era verdadera como bloque
+de verbos planos; ahora es por-verbo. **Invariante:** envelope `schema="1"`, exit codes y la forma del
+FSM **no cambian**; D2 solo fija *qué verbo del grupo* dispara la transición ya existente. La lógica es
+fuente única en `service/curate.py` (`filter_corpus` con `decided_at` inyectado, neutralidad de
+servicio ADR 0017). Contrato AS-BUILT en [`../API.md`](../API.md) §`curate`.

@@ -148,7 +148,7 @@ _CMDS_NO_WORKSPACE: list[list[str]] = [
     ["inspect", "--json"],
     ["build", "--json"],
     ["export", "--json"],
-    ["snapshot", "--json"],
+    ["snapshot", "create", "--json"],
     ["chain", "--json"],
     ["filter", "--json"],
     ["enrich", "--json"],
@@ -156,10 +156,9 @@ _CMDS_NO_WORKSPACE: list[list[str]] = [
     ["resolve", "--json"],
     ["accept", "--ids", "DUMMY_ID", "--json"],
     ["reject", "--ids", "DUMMY_ID", "--json"],
-    ["curate", "--dump", "--json"],
+    ["curate", "dump", "--json"],
     ["restore", "--from-corpus", "nonexistent.parquet", "--json"],
     ["seed", "--equation", "test query", "--json"],
-    ["thesaurus", "--from", "nonexistent.json", "--json"],
 ]
 
 

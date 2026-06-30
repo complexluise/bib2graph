@@ -121,7 +121,7 @@ def test_snapshot_cmd_sin_outdir_resuelve_snapshots_dir(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(
         snapshot_cmd,
-        ["--json"],
+        ["create", "--json"],
         obj={"workspace": str(ws_dir)},
     )
 
@@ -151,7 +151,7 @@ def test_snapshot_cmd_con_outdir_explicito_usa_ese(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(
         snapshot_cmd,
-        ["--out-dir", str(custom_out), "--json"],
+        ["create", "--out-dir", str(custom_out), "--json"],
         obj={"workspace": str(ws_dir)},
     )
 
