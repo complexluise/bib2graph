@@ -90,7 +90,6 @@ def _build_clusters(
             if score >= threshold_100:
                 union(va, vb)
 
-    # Agrupar por raíz
     groups: dict[str, set[str]] = {}
     for v in variants:
         root = find(v)
@@ -209,19 +208,17 @@ def _deduplicate_col(
 
     rows = corpus.to_arrow().to_pylist()
 
-    # 1. Frecuencia de cada variante en el corpus
     freq = _compute_freq(rows, col)
     if not freq:
         # Sin variantes: corpus sin cambios
         return corpus, 0
 
-    # 2. Variantes ordenadas (determinismo)
+    # ordenadas para determinismo byte a byte
     variants_sorted = sorted(freq.keys())
 
-    # 3. Clusters por componentes conexos
     clusters = _build_clusters(variants_sorted, threshold)
 
-    # 4. Mapa variante → canónico + conteo de clusters no triviales
+    # solo los clusters con > 1 variante incrementan n_collapsed
     n_collapsed = 0
     remap: dict[str, str] = {}
     for cluster in clusters:
@@ -231,14 +228,11 @@ def _deduplicate_col(
         for v in cluster:
             remap[v] = canonical
 
-    # 5. Remapeo de filas
     remapped_rows = _remap_rows(rows, col, remap)
 
-    # 6. Construir Corpus nuevo
     new_table = pa.Table.from_pylist(remapped_rows, schema=CORPUS_SCHEMA)
     new_corpus = _Corpus.from_arrow(new_table)
 
-    # 7. Registrar PreprocRef en el Manifest
     rf_version = _rapidfuzz_version()
     preproc_ref = PreprocRef(
         name=preproc_name,

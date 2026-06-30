@@ -39,17 +39,13 @@ import pyarrow.compute as pc
 from bib2graph.constants import LIST_COLUMNS, Col, CurationStatus
 from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
 
-# ---------------------------------------------------------------------------
 # Re-exportar LIST_COLUMNS con el alias histórico (_LIST_COLS) para que
 # backends/duckdb.py y cualquier otro importador de la constante antigua
 # no rompa en la transición (se puede retirar en R2).
-# ---------------------------------------------------------------------------
 
 _LIST_COLS: frozenset[str] = LIST_COLUMNS
 
-# ---------------------------------------------------------------------------
 # Constantes internas (D3)
-# ---------------------------------------------------------------------------
 
 _CURATION_PRIORITY: dict[str, int] = {
     CurationStatus.ACCEPTED: 2,
@@ -57,9 +53,7 @@ _CURATION_PRIORITY: dict[str, int] = {
     CurationStatus.CANDIDATE: 0,
 }
 
-# ---------------------------------------------------------------------------
 # Helpers internos — lógica pura movida desde corpus.py
-# ---------------------------------------------------------------------------
 
 
 def compute_corpus_hash(table: pa.Table) -> str:
@@ -342,9 +336,7 @@ def _apply_curation_to_rows(
     return updated
 
 
-# ---------------------------------------------------------------------------
 # InMemoryBackend
-# ---------------------------------------------------------------------------
 
 
 class InMemoryBackend:
@@ -536,9 +528,7 @@ class InMemoryBackend:
             return False
         return self.corpus_hash() == other.corpus_hash()
 
-    # ------------------------------------------------------------------
     # Extensiones: referenced_but_not_fetched (#54)
-    # ------------------------------------------------------------------
 
     def add_referenced_refs(self, ref_ids: list[str], *, cycle_round: int) -> int:
         """Appendea IDs backward observados a la tabla auxiliar en memoria.
@@ -575,9 +565,7 @@ class InMemoryBackend:
         """
         return list(self._referenced_refs)
 
-    # ------------------------------------------------------------------
     # Extensiones: external_ids (ADR 0036 opción C)
-    # ------------------------------------------------------------------
 
     def add_external_id(self, paper_id: str, engine: str, id: str) -> None:
         """Registra un ID externo para un paper dado un motor.

@@ -74,7 +74,6 @@ def compute_maturity(
 
     table = corpus.to_arrow()
 
-    # Derivar curated: ≥1 paper con curation_status ∈ {accepted, rejected}
     curation_col = table.column(Col.CURATION_STATUS)
     accepted_mask = pc.equal(curation_col, CurationStatus.ACCEPTED)  # type: ignore[attr-defined]
     rejected_mask = pc.equal(curation_col, CurationStatus.REJECTED)  # type: ignore[attr-defined]

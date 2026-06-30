@@ -54,18 +54,11 @@ if TYPE_CHECKING:
 else:
     _Graph = nx.Graph
 
-# Límite de caracteres para el label de paper (título largo truncado)
 LABEL_MAX_CHARS: int = 60
 
-# Kinds de red cuyo nodo es un paper (Col.ID)
 _PAPER_KINDS: frozenset[str] = frozenset(
     {NetworkKind.BIBLIOGRAPHIC_COUPLING, NetworkKind.COCITATION}
 )
-
-
-# ---------------------------------------------------------------------------
-# Índices internos: construidos una sola vez por llamada a decorate_graph
-# ---------------------------------------------------------------------------
 
 
 def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
@@ -94,7 +87,6 @@ def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
         if pid is None:
             continue
         key = str(pid)
-        # Construir label
         if title:
             label = str(title)
             if year is not None:
@@ -102,7 +94,7 @@ def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
             if len(label) > LABEL_MAX_CHARS:
                 label = label[:LABEL_MAX_CHARS] + "..."
         else:
-            label = key  # fallback al id crudo si no hay título
+            label = key
 
         index[key] = {
             "label": label,
@@ -139,7 +131,6 @@ def _build_author_index(table: pa.Table) -> dict[str, str]:
                 continue
             key = str(author_id)
             if key not in index:
-                # Usar el nombre raw correlativo si existe
                 name = raw_list[i] if i < len(raw_list) and raw_list[i] else key
                 index[key] = str(name)
     return index
@@ -174,9 +165,7 @@ def _build_institution_index(table: pa.Table) -> dict[str, str]:
     return index
 
 
-# ---------------------------------------------------------------------------
 # API pública
-# ---------------------------------------------------------------------------
 
 
 def decorate_graph(
@@ -218,7 +207,6 @@ def decorate_graph(
     # Centralidad de grado (una sola llamada, determinista)
     deg_centrality: dict[Any, float] = nx.degree_centrality(graph)
 
-    # Construir índices según kind
     if kind in _PAPER_KINDS:
         paper_index = _build_paper_index(table)
         for node in graph.nodes():
@@ -226,7 +214,6 @@ def decorate_graph(
             info = paper_index.get(key, {})
             graph.nodes[node]["label"] = str(info.get("label", key))
             graph.nodes[node]["degree_centrality"] = deg_centrality.get(node, 0.0)
-            # Atributos extra de paper: solo si están disponibles
             year = info.get("year")
             if isinstance(year, int):
                 graph.nodes[node]["year"] = year
@@ -236,8 +223,6 @@ def decorate_graph(
             curation = info.get("curation_status")
             if curation is not None:
                 graph.nodes[node]["curation_status"] = str(curation)
-            # doi y url: solo si hay DOI (no None, no cadena vacía).
-            # Criterio de derivación en doi_to_url (constants.py) — fuente única.
             doi_val = info.get("doi")
             doi_str = doi_val if isinstance(doi_val, str) else None
             url = doi_to_url(doi_str)
@@ -271,7 +256,6 @@ def decorate_graph(
             graph.nodes[node]["label"] = str(node)
             graph.nodes[node]["degree_centrality"] = deg_centrality.get(node, 0.0)
 
-    # Comunidades (opcional, todos los kinds)
     if communities is not None:
         for node, comm_id in communities.items():
             if graph.has_node(node):

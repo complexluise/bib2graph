@@ -41,9 +41,7 @@ from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import resolve_workspace
 from bib2graph.constants import NetworkKind
 
-# ---------------------------------------------------------------------------
 # Grupo raíz
-# ---------------------------------------------------------------------------
 
 
 @click.group("read", invoke_without_command=True)
@@ -69,9 +67,7 @@ def read_grp(ctx: click.Context) -> None:
         click.echo(ctx.get_help())
 
 
-# ---------------------------------------------------------------------------
 # read list
-# ---------------------------------------------------------------------------
 
 
 @read_grp.command("list")
@@ -157,9 +153,7 @@ def list_cmd(
             )
 
 
-# ---------------------------------------------------------------------------
 # read stats
-# ---------------------------------------------------------------------------
 
 
 @read_grp.command("stats")
@@ -203,9 +197,7 @@ def stats_cmd(
             emit_human(f"  {group['key']}: {group['count']}")
 
 
-# ---------------------------------------------------------------------------
 # read show
-# ---------------------------------------------------------------------------
 
 
 @read_grp.command("show")
@@ -260,9 +252,7 @@ def show_cmd(
         )
 
 
-# ---------------------------------------------------------------------------
 # read top
-# ---------------------------------------------------------------------------
 
 _NETWORK_KIND_CHOICES: list[str] = [nk.value for nk in NetworkKind]
 

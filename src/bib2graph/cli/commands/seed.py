@@ -40,9 +40,7 @@ from bib2graph.cli._ingest import normalize_and_dedup
 from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 
-# ---------------------------------------------------------------------------
 # Función núcleo: siembra desde OpenAlex (testeable, sin Click)
-# ---------------------------------------------------------------------------
 
 
 def run_seed(
@@ -98,7 +96,6 @@ def run_seed(
         existing = store.load()
 
         # R3 — reseed: si ya había un estado previo, es un re-sembrado.
-        # apply_transition lleva la ronda al valor correcto.
         current_state = store.backend.loop_state()
         current_round = store.backend.loop_round()
         if current_state is not None:
@@ -107,10 +104,8 @@ def run_seed(
                 current_state, "reseed", current_round
             )
         else:
-            # Primera siembra
             new_state, new_round = apply_transition(None, "seed", current_round)
 
-        # Construir kwargs opcionales para OpenAlexSource
         source_kwargs: dict[str, Any] = {"email": email, "transport": transport}
         if max_results is not None:
             source_kwargs["max_results"] = max_results
@@ -133,7 +128,6 @@ def run_seed(
         # decorador @handle_errors las captura por tipo y emite exit 4.
 
         # Merge primero, dedup después sobre el corpus COMPLETO (fix bug cross-biblioteca).
-        # Orden: existing + incoming → merged completo → normalize_and_dedup → persist_replace.
         # El reloj se fija UNA vez por invocación (R2).
         ingest_at = datetime.now(UTC)
         merged = existing.merge(result.corpus)
@@ -163,9 +157,7 @@ def run_seed(
     }
 
 
-# ---------------------------------------------------------------------------
 # Función núcleo: siembra desde BibTeX (testeable, sin Click)
-# ---------------------------------------------------------------------------
 
 
 def run_seed_from_bib(
@@ -256,7 +248,6 @@ def run_seed_from_bib(
             raise DataError(str(exc)) from exc
 
         # Merge primero, dedup después sobre el corpus COMPLETO (fix bug cross-biblioteca).
-        # Orden: existing + incoming → merged completo → normalize_and_dedup → persist_replace.
         # El reloj se fija UNA vez por invocación (R2).
         ingest_at = datetime.now(UTC)
         merged = existing.merge(corpus)
@@ -307,9 +298,7 @@ def run_seed_from_bib(
     return seed_result
 
 
-# ---------------------------------------------------------------------------
-# Comando Click (no se testea directamente)
-# ---------------------------------------------------------------------------
+# Comando Click
 
 
 @click.command("seed")
@@ -433,7 +422,6 @@ def seed_cmd(
       b2g seed --spec equation.yaml
       b2g seed --from-bib semillas.bib
     """
-    # --- Validar exclusividad de modos ---
     modes_given = sum(
         [equation is not None, spec_path is not None, bib_path is not None]
     )
@@ -455,9 +443,7 @@ def seed_cmd(
             "Usá exactamente uno por invocación."
         )
 
-    # --- Validar: --from-bib no acepta flags de OpenAlex (excepto --email y --resolve) ---
     # --email se permite con --from-bib cuando se usa junto a --resolve (cierra GAP-2 / #112).
-    # --resolve solo aplica a --from-bib.
     if bib_path is not None:
         openalex_flags_usados: list[str] = []
         if native:
@@ -482,7 +468,6 @@ def seed_cmd(
                 "Usá: b2g seed --from-bib <archivo> --resolve --email <tu@email.com>"
             )
     else:
-        # --resolve solo aplica al modo --from-bib
         if do_resolve:
             raise UsageError(
                 "--resolve solo es válido con --from-bib. "
@@ -491,7 +476,6 @@ def seed_cmd(
 
     store_path = resolve_library_path(ctx.obj)
 
-    # --- Modo --from-bib (BibTeX local, sin red) ---
     if bib_path is not None:
         data = run_seed_from_bib(store_path, bib_path, resolve=do_resolve, email=email)
         if json_mode(json_output):
@@ -513,7 +497,6 @@ def seed_cmd(
                 )
         return
 
-    # --- Modo --spec (YAML declarativo) ---
     if spec_path is not None:
         from bib2graph.sources.equation import load_equation_spec
 
@@ -551,7 +534,6 @@ def seed_cmd(
             emit_human(f"Total en corpus: {data['total_papers']}")
         return
 
-    # --- Modo --equation (directo, comportamiento original) ---
     data = run_seed(
         store_path,
         equation,  # type: ignore[arg-type]  # equation is not None here

@@ -30,11 +30,6 @@ else:
     _Graph = nx.Graph
 
 
-# ---------------------------------------------------------------------------
-# QualityThresholds (D6)
-# ---------------------------------------------------------------------------
-
-
 class QualityThresholds(BaseModel):
     """Umbrales configurables para el informe de calidad de co-citación.
 
@@ -54,11 +49,6 @@ class QualityThresholds(BaseModel):
     min_recurrent_authors: int = 10
 
 
-# ---------------------------------------------------------------------------
-# network_metrics
-# ---------------------------------------------------------------------------
-
-
 def network_metrics(g: _Graph) -> dict[str, object]:
     """Densidad, nº de componentes y clustering promedio del grafo.
 
@@ -76,11 +66,6 @@ def network_metrics(g: _Graph) -> dict[str, object]:
     }
 
 
-# ---------------------------------------------------------------------------
-# centrality
-# ---------------------------------------------------------------------------
-
-
 def centrality(g: _Graph) -> dict[str, dict[Any, float]]:
     """Centralidad de grado e intermediación por nodo.
 
@@ -95,11 +80,6 @@ def centrality(g: _Graph) -> dict[str, dict[Any, float]]:
         "degree": nx.degree_centrality(g),
         "betweenness": nx.betweenness_centrality(g),
     }
-
-
-# ---------------------------------------------------------------------------
-# detect_communities
-# ---------------------------------------------------------------------------
 
 
 def detect_communities(
@@ -175,11 +155,6 @@ def detect_communities(
         )
 
 
-# ---------------------------------------------------------------------------
-# assortativity
-# ---------------------------------------------------------------------------
-
-
 def assortativity(
     g: _Graph,
     *,
@@ -228,11 +203,6 @@ def assortativity(
     return result
 
 
-# ---------------------------------------------------------------------------
-# community_composition
-# ---------------------------------------------------------------------------
-
-
 def community_composition(
     g: _Graph,
     communities: dict[Any, int],
@@ -249,7 +219,6 @@ def community_composition(
         Dict comunidad → Dict categoría → fracción (0.0 a 1.0). La suma de
         fracciones por comunidad es 1.0 si todos los nodos tienen el atributo.
     """
-    # Agrupar nodos por comunidad → lista de valores del atributo
     community_values: dict[int, list[str]] = {}
     for node, comm_id in communities.items():
         val = g.nodes[node].get(attribute)
@@ -259,14 +228,13 @@ def community_composition(
             community_values[comm_id] = []
         community_values[comm_id].append(str(val))
 
-    # Recoger todas las categorías presentes
     all_categories: set[str] = set()
     for vals in community_values.values():
         all_categories.update(vals)
-    sorted_categories = sorted(all_categories)  # orden determinista
+    sorted_categories = sorted(all_categories)
 
     result: dict[int, dict[str, float]] = {}
-    for comm_id in sorted(community_values):  # orden determinista
+    for comm_id in sorted(community_values):
         vals = community_values[comm_id]
         total = len(vals)
         composition: dict[str, float] = {}
@@ -275,11 +243,6 @@ def community_composition(
         result[comm_id] = composition
 
     return result
-
-
-# ---------------------------------------------------------------------------
-# cocitation_quality_report
-# ---------------------------------------------------------------------------
 
 
 def cocitation_quality_report(
@@ -312,17 +275,12 @@ def cocitation_quality_report(
     rows = table.to_pylist()
     total = len(rows)
 
-    # Criterio 1: volumen documental
     vol_pasa = total >= thresholds.min_volume
 
-    # Criterio 2: fracción con DOI
     con_doi = sum(1 for r in rows if r.get(Col.DOI))
     doi_pct = con_doi / total if total > 0 else 0.0
     doi_pasa = doi_pct >= thresholds.min_doi_refs_pct
 
-    # Criterio 3: diversidad geográfica (countries vía institutions_id)
-    # Se usa el prefijo de cada id de institución como proxy de país
-    # (ej. "ROR:AR..." → AR). En la práctica, institutions_id son ROR ids.
     # Para el report usamos el conjunto de valores únicos en institutions_id
     # que sean distintos entre sí (la diversidad real requiere un lookup externo;
     # aquí contamos cuántos ids distintos hay, bajo el supuesto de que cada inst
@@ -343,7 +301,6 @@ def cocitation_quality_report(
                     unique_insts.add(str(inst))
     geo_pasa = len(unique_insts) >= thresholds.min_countries
 
-    # Criterio 4: autores recurrentes (aparecen en ≥2 papers)
     author_count: dict[str, int] = {}
     for r in rows:
         authors = r.get(Col.AUTHORS_ID)

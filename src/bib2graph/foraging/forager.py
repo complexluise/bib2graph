@@ -106,7 +106,6 @@ def _estimate_forward_from_cited_by_detail(
         donde ``total_uncapped`` es el conteo antes de aplicar cualquier cap.
         (El cap lo aplica el llamador; aquí siempre devuelve el total completo.)
     """
-    # ids ya presentes en el corpus
     corpus_ids: set[str] = set()
     for row in corpus_rows:
         id_val = row.get(Col.ID)
@@ -116,7 +115,6 @@ def _estimate_forward_from_cited_by_detail(
         if source_id_val:
             corpus_ids.add(str(source_id_val))
 
-    # Recolectar IDs únicos de cited_by_id que no estén ya en el corpus
     candidate_ids: set[str] = set()
     has_cited_by_data = False
     for row in corpus_rows:
@@ -324,7 +322,6 @@ class Forager:
                 if cand_id not in fwd_candidate_rows:
                     fwd_candidate_rows[cand_id] = fwd_rows[cand_id]
 
-        # Ranking estable (desc scent, asc id) — incluye backward + forward
         ranking = rank_candidates(combined_scent, max_candidates=self._max_candidates)
 
         # observed_refs: IDs backward presentes en el ranking (respeta el cap),
@@ -335,7 +332,6 @@ class Forager:
             for cand_id, _ in ranking
             if cand_id in bwd_observed
             and cand_id in ranked_ids_set
-            # excluir IDs que también aparecen como forward (ya en corpus)
             and cand_id not in fwd_candidate_rows
         ]
 
@@ -353,7 +349,6 @@ class Forager:
         else:
             candidates_corpus = _make_empty_corpus()
 
-        # Poblar el manifest con chaining params
         from bib2graph.corpus import ChainingParams
 
         new_manifest = candidates_corpus.manifest.model_copy(
@@ -373,9 +368,7 @@ class Forager:
             observed_refs=observed_refs,
         )
 
-    # ------------------------------------------------------------------
     # Helpers internos
-    # ------------------------------------------------------------------
 
     def _fetch_forward(
         self,
@@ -429,8 +422,6 @@ class Forager:
         if not seed_ids:
             return {}, {}
 
-        # corpus_ids: ids y source_ids de todos los papers del corpus
-        # (para excluir candidatos ya presentes y calcular el score).
         # Se incluye source_id porque los IDs de motor (W… de OpenAlex) aparecen
         # en references_id y deben cruzar contra source_id W… del corpus.
         corpus_ids: set[str] = set()
@@ -484,7 +475,7 @@ class Forager:
         citer_to_seeds: dict[str, list[str]] = {}
         for seed_id, citer_ids in citing_dict.items():
             for citer_id in citer_ids:
-                if citer_id not in corpus_ids:  # excluir ya presentes
+                if citer_id not in corpus_ids:
                     citer_to_seeds.setdefault(citer_id, []).append(seed_id)
 
         if not citer_to_seeds:
@@ -500,7 +491,6 @@ class Forager:
                 scent_map[citer_id] = score
                 work = works_map.get(citer_id)
                 if work is not None:
-                    # Metadata real disponible: construir fila canónica completa.
                     row = _work_to_row(
                         work,
                         equation_id="chaining:forward",

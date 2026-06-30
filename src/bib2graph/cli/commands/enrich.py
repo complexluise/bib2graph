@@ -28,10 +28,6 @@ from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 
-# ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click)
-# ---------------------------------------------------------------------------
-
 
 def run_enrich(
     store_path: str | Path,
@@ -94,11 +90,6 @@ def run_enrich(
         "citing_targets": metrics.get("citing_targets", 0),
         "total_papers": total_papers,
     }
-
-
-# ---------------------------------------------------------------------------
-# Comando Click
-# ---------------------------------------------------------------------------
 
 
 @click.command("enrich")

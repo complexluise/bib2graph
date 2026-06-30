@@ -55,9 +55,7 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
 # Grupo raíz
-# ---------------------------------------------------------------------------
 
 
 @click.group("snapshot", invoke_without_command=True)
@@ -79,9 +77,7 @@ def snapshot_grp(ctx: click.Context) -> None:
         click.echo(ctx.get_help())
 
 
-# ---------------------------------------------------------------------------
 # snapshot create
-# ---------------------------------------------------------------------------
 
 
 @snapshot_grp.command("create")
@@ -128,9 +124,7 @@ def create_cmd(
         emit_human(f"Total papers: {data['total_papers']}")
 
 
-# ---------------------------------------------------------------------------
 # snapshot restore
-# ---------------------------------------------------------------------------
 
 
 @snapshot_grp.command("restore")
@@ -186,8 +180,5 @@ def restore_sub_cmd(
         emit_human(f"Estado del lazo: {data['state']}")
 
 
-# ---------------------------------------------------------------------------
 # Alias snapshot_cmd → snapshot_grp (compat con registros y tests existentes)
-# ---------------------------------------------------------------------------
-
 snapshot_cmd = snapshot_grp

@@ -39,10 +39,6 @@ class DuckDBStore:
         # Abrir (o crear) el backend en disco; propaga StoreLockedError si bloqueado
         self._backend: DuckDBBackend = DuckDBBackend(path=self._path)
 
-    # ------------------------------------------------------------------
-    # Store Protocol
-    # ------------------------------------------------------------------
-
     def persist(self, corpus: Corpus) -> None:
         """Persiste el corpus en la biblioteca viva (idempotente).
 
@@ -98,10 +94,8 @@ class DuckDBStore:
                 {f.name: pa.array([], type=f.type) for f in CORPUS_SCHEMA},
                 schema=CORPUS_SCHEMA,
             )
-        # Devolver un Corpus respaldado por el DuckDBBackend
         corpus = Corpus.from_arrow(table, backend=self._backend)
 
-        # #126: reconstruir manifest.filters desde filter_log
         raw_steps = self._backend.load_filter_steps()
         if raw_steps:
             filter_steps = [
@@ -116,7 +110,6 @@ class DuckDBStore:
             new_manifest = corpus.manifest.model_copy(update={"filters": filter_steps})
             corpus = corpus.with_manifest(new_manifest)
 
-        # #141: reconstruir manifest.enrichers desde enricher_log
         raw_refs = self._backend.load_enricher_refs()
         if raw_refs:
             enricher_refs = [
@@ -132,10 +125,6 @@ class DuckDBStore:
             corpus = corpus.with_manifest(new_manifest)
 
         return corpus
-
-    # ------------------------------------------------------------------
-    # Acceso al backend subyacente (CycleState, query SQL)
-    # ------------------------------------------------------------------
 
     def close(self) -> None:
         """Cierra la conexión DuckDB y libera el lock de archivo.
