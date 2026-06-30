@@ -777,3 +777,42 @@ def test_thesaurus_remapeo_no_acumula_canonicos(tmp_path: Path) -> None:
         f"El canónico v2 ('artificial intelligence') no está en la biblioteca. "
         f"Keywords: {kws_v2}."
     )
+
+
+# ---------------------------------------------------------------------------
+# 10. Anti-drift: fuente única de umbrales y normalize_and_dedup (issue #175)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_umbrales_vienen_del_modulo_neutral() -> None:
+    """THRESHOLD_AUTHORS y THRESHOLD_KEYWORDS viven en preprocessors.pipeline.
+
+    Sella el invariante del issue #175: los umbrales tienen UN SOLO lugar
+    canónico (``preprocessors.pipeline``) para que ingest y snapshot restore
+    no puedan diverger silenciosamente.
+    """
+    from bib2graph.preprocessors.pipeline import THRESHOLD_AUTHORS, THRESHOLD_KEYWORDS
+
+    assert THRESHOLD_AUTHORS == 0.92, (
+        f"THRESHOLD_AUTHORS cambió su valor canónico: {THRESHOLD_AUTHORS}"
+    )
+    assert THRESHOLD_KEYWORDS == 0.90, (
+        f"THRESHOLD_KEYWORDS cambió su valor canónico: {THRESHOLD_KEYWORDS}"
+    )
+
+
+@pytest.mark.unit
+def test_cli_ingest_reexporta_misma_funcion_que_modulo_neutral() -> None:
+    """cli._ingest.normalize_and_dedup ES el mismo objeto que preprocessors.pipeline.
+
+    Si alguien re-introduce una copia local en cli/_ingest.py (en vez de
+    re-exportar), este test falla — protección contra regresión de drift.
+    """
+    from bib2graph.cli._ingest import normalize_and_dedup as nd_ingest
+    from bib2graph.preprocessors.pipeline import normalize_and_dedup as nd_pipeline
+
+    assert nd_ingest is nd_pipeline, (
+        "cli._ingest.normalize_and_dedup debe ser el mismo objeto que "
+        "preprocessors.pipeline.normalize_and_dedup — no una copia local."
+    )
