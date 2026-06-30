@@ -4,27 +4,71 @@ title: Guías (how-to)
 
 # Guías (how-to)
 
-Las **guías** son recetas orientadas a una tarea concreta: ya se sabe qué se quiere
-hacer y se buscan los pasos para lograrlo. Si en cambio se quiere *aprender* desde
-cero, comience por los [Tutoriales](../tutoriales/index.md).
+Las **guías** son recetas para decisiones puntuales: ya sabes qué quieres hacer,
+buscas cómo hacerlo bien. Si en cambio quieres *aprender* desde cero, comienza por los [Tutoriales](../tutoriales/index.md).
 
-## Guías disponibles
+Las guías están organizadas por **paso del flujo.** Úsalas como referencia mientras
+trabajas.
+
+## Guía 1: Ecuación de búsqueda
 
 <div class="grid cards" markdown>
 
--   :material-file-document: **[Cómo elaborar un reporte de estado del arte](reporte-estado-del-arte.md)**
+-   :material-magnify: **[Cómo armar una ecuación que NO trae basura](ecuacion-busqueda.md)**
 
-    Receta completa de 10 pasos: de la pregunta de investigación a un documento
-    estructurado con mapeo de comunidades, tensiones, actores clave e huecos
-    de investigación. Incluye curación PRISMA y análisis de tendencias.
+    Estructura booleana, sinónimos, testeo de 50 papers, ajustes.
+    30 minutos para una ecuación acotada y limpia.
 
 </div>
 
-## Otras referencias
+## Guía 2: Forrajeo (expansión del corpus)
 
-- [Quickstart](../getting-started/quickstart.md) — el camino más corto a un
-  GraphML.
-- [Referencia del CLI `b2g`](../reference/cli.md) — todos los comandos y opciones.
-- [API de Python](../reference/python-api.md) — para uso como librería.
-- [Arquitectura](../ARCHITECTURE.md) — el modelo mental del ciclo y las redes.
-- [Tutoriales](../tutoriales/index.md) — aprende desde cero.
+<div class="grid cards" markdown>
+
+-   :material-sitemap-branch: **[¿Expando el corpus? — Cuándo y cómo forrajear](forrajeo.md)**
+
+    Decides si vale la pena forrajeo (backward chaining). Cuándo hacerlo, cuándo no.
+    15 minutos de decisión + 30 minutos de ejecución.
+
+</div>
+
+## Guía 3: Curación
+
+<div class="grid cards" markdown>
+
+-   :material-checkbox-marked-outline: **[Curación PRISMA paso a paso](curacion-prisma.md)**
+
+    Las 4 fases de PRISMA: Identificación → Cribado → Elegibilidad → Inclusión.
+    Documentá criterios, cura en CSV, aplica en bib2graph.
+    2–3 horas de trabajo manual, pero riguroso.
+
+</div>
+
+## Guía 4: Interpretación de redes
+
+<div class="grid cards" markdown>
+
+-   :material-network: **[Leer las 5 redes — Qué significan](leer-redes.md)**
+
+    Acoplamiento (sub-temas), co-citación (influentes), co-autoría (equipos),
+    keywords, instituciones. Qué mirar en cada red, qué documentar.
+
+</div>
+
+## Guía 5: Redacción del reporte
+
+<div class="grid cards" markdown>
+
+-   :material-file-document: **[Del corpus al reporte — Estructura y redacción](reporte.md)**
+
+    Template de 7 secciones (resumen → conclusiones). Cómo convertir datos en prosa.
+    3–4 horas de redacción, documentada paso a paso.
+
+</div>
+
+## Complementario
+
+- [Tutoriales](../tutoriales/index.md) — aprende desde cero (quick start o completo)
+- [Quickstart](../getting-started/quickstart.md) — ciclo mínimo en 2 minutos
+- [Referencia CLI](../reference/cli.md) — todos los comandos
+- [API Python](../reference/python-api.md) — como librería
