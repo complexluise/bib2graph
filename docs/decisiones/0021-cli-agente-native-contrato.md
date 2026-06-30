@@ -14,6 +14,12 @@
 - **Toca:** [0009](0009-biblioteca-viva-duckdb.md) (el estado vive en el archivo `.duckdb`, no en
   la sesión), [0020](0020-metodo-forrajeo-scent-filtros-reject.md) (comando `filter` y los
   filtros que marcan `rejected`).
+- **Superficie consolidada (12→10 verbos) por [0037](0037-superficie-cli-10-verbos-ciclo.md) y
+  [0038](0038-destino-verbos-huerfanos-0037.md):** el cuerpo y sus enmiendas hablan de **11/12
+  subcomandos**; la superficie 0.10.0 se consolida a **10 verbos agents-first** (`monitor`/`inspect`/
+  `networks` absorbidos; `curate`/`read` noun-verb; aliases de retrocompat cierran en 0.11.0). El
+  **envelope `schema="1"`, los exit codes (§D) y la FSM (§F) quedan intactos**. El conteo de
+  subcomandos del cuerpo queda como historia.
 
 ## Contexto
 
