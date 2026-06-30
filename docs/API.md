@@ -125,7 +125,8 @@ VERBO:** solo **`curate filter`→`FILTERED`**; el resto transversal. **BREAKING
   `undecided`→no-op; case-insensitive). **Idempotente** (`decided_at` inyectado en la frontera CLI, R2).
   CSV sin `id`/`decision` o `decision` inválida → `DataError` exit 2. IDs huérfanos → `not_found_count` +
   aviso (no no-op silencioso). `data = {accepted_count, rejected_count, skipped_count, not_found_count,
-  total_rows}`. **`note` se ignora en apply** (advisory).
+  total_rows}`. **`note` se ignora en apply** (advisory). Lee el CSV con `utf-8-sig`: **tolera el
+  BOM UTF-8** que Excel-Windows agrega al guardar como UTF-8 (#238, política Excel-friendly de #214).
 - **`curate accept --ids ... [--by NOMBRE]`** / **`curate reject --ids ... [--by NOMBRE]`** — por ID
   (uno-a-uno o lote). Comparten `accept_papers`/`reject_papers` con los verbos sueltos `accept`/`reject`
   (alias deprecados).

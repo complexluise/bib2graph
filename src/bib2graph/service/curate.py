@@ -319,7 +319,7 @@ def run_curate_from_csv(
         )
 
     rows: list[dict[str, str]] = []
-    with open(csv_path, newline="", encoding="utf-8") as f:
+    with open(csv_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         fieldnames = set(reader.fieldnames or [])
 
