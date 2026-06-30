@@ -68,6 +68,13 @@ site/
 # Borradores y exploración local (no va al repo)
 scratch/
 
+# Notas personales / cognición tercerizada de Luis — NUNCA se trackean.
+# Norma: cualquier nota privada va acá y el agente no la puede subir por error.
+docs/Notas/NO-HACER-COMMIT-*
+docs/Notas/local/
+**/*.local.md
+.notas-locales/
+
 # Logs
 logs
 *.log
