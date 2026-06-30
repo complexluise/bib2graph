@@ -4,29 +4,28 @@ title: Tutoriales
 
 # Tutoriales
 
-Los **tutoriales** te enseñan a usar bib2graph paso a paso, partiendo de cero y
+Los **tutoriales** enseñan a usar bib2graph paso a paso, partiendo de cero y
 llegando a un resultado concreto. Son para *aprender* (a diferencia de las
 [Guías](../guias/index.md), que son para *resolver una tarea puntual*).
 
-!!! note "En construcción"
-    El tutorial end-to-end está en preparación. Hoy, el camino guiado más corto
-    es el [Quickstart](../getting-started/quickstart.md).
+## Tutoriales disponibles
 
-    Planificado (seguimiento en el
-    [issue #208](https://github.com/complexluise/bib2graph/issues/208)):
+<div class="grid cards" markdown>
 
-    **De una pregunta de investigación a un mapa de citación.** Un caso real,
-    de punta a punta, reusando el corpus de ejemplo `examples/valoraciones/`:
+-   :material-robot: **[Tu primera red bibliométrica con Claude](claude-code.md)**
 
-    1. Plantear la pregunta y la ecuación de búsqueda.
-    2. Sembrar el corpus (`seed`).
-    3. Expandir por citaciones (`chain`).
-    4. Curar: aceptar/rechazar, filtros PRISMA.
-    5. Construir las redes (`build`) y leerlas (`read`).
-    6. Exportar a GraphML y abrir en Gephi.
+    Cómo dirigir bib2graph conversacionalmente desde Claude web sin instalar nada.
+    15 minutos para armarte tu primer mapa de citaciones.
 
-## Mientras tanto
+-   :material-rocket: **[Quickstart](../getting-started/quickstart.md)**
 
-- [Quickstart](../getting-started/quickstart.md) — el ciclo mínimo en 2 minutos.
-- [Guías (how-to)](../guias/index.md) — recetas para tareas concretas.
+    El ciclo mínimo de bib2graph en 2 minutos — desde la ecuación de búsqueda
+    a una red en GraphML, usando el CLI `b2g` en tu máquina.
+
+</div>
+
+## Complementario
+
+- [Guías (how-to)](../guias/index.md) — recetas para tareas concretas, como elaborar un reporte de SOTA.
 - [Referencia del CLI `b2g`](../reference/cli.md) — todos los comandos.
+- [Referencia de API Python](../reference/python-api.md) — cómo usar bib2graph como librería.

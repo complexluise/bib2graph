@@ -4,25 +4,27 @@ title: Guías (how-to)
 
 # Guías (how-to)
 
-Las **guías** son recetas orientadas a una tarea concreta: ya sabés qué querés
-hacer y buscás los pasos para lograrlo. Si en cambio querés *aprender* desde
-cero, empezá por los [Tutoriales](../tutoriales/index.md).
+Las **guías** son recetas orientadas a una tarea concreta: ya se sabe qué se quiere
+hacer y se buscan los pasos para lograrlo. Si en cambio se quiere *aprender* desde
+cero, comience por los [Tutoriales](../tutoriales/index.md).
 
-!!! note "En construcción"
-    Estamos escribiendo las guías. Seguimiento en el
-    [issue #208](https://github.com/complexluise/bib2graph/issues/208).
-    Planificado:
+## Guías disponibles
 
-    - Cómo elaborar y refinar una ecuación de búsqueda.
-    - Cómo expandir el corpus por citaciones (forrajeo) sin perder el foco.
-    - Cómo aplicar filtros PRISMA y curar (aceptar/rechazar) de forma versionable.
-    - Cómo interpretar las 5 redes y exportarlas a Gephi / Cytoscape.
-    - Cómo hacer reproducible un análisis (snapshots e historia del corpus).
+<div class="grid cards" markdown>
 
-## Mientras tanto
+-   :material-file-document: **[Cómo elaborar un reporte de estado del arte](reporte-estado-del-arte.md)**
+
+    Receta completa de 10 pasos: de la pregunta de investigación a un documento
+    estructurado con mapeo de comunidades, tensiones, actores clave e huecos
+    de investigación. Incluye curación PRISMA y análisis de tendencias.
+
+</div>
+
+## Otras referencias
 
 - [Quickstart](../getting-started/quickstart.md) — el camino más corto a un
   GraphML.
 - [Referencia del CLI `b2g`](../reference/cli.md) — todos los comandos y opciones.
 - [API de Python](../reference/python-api.md) — para uso como librería.
 - [Arquitectura](../ARCHITECTURE.md) — el modelo mental del ciclo y las redes.
+- [Tutoriales](../tutoriales/index.md) — aprende desde cero.
