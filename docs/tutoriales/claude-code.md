@@ -1,87 +1,127 @@
 ---
-title: Tu primer mapa de investigación en Claude (5 min)
+title: Tu primer mapa de investigación (5 min)
 ---
 
-# Tu primer mapa de investigación en Claude
+# Tu primer mapa de investigación (5 minutos)
 
-Cómo armar, sin instalar nada, una **red visual de artículos científicos** sobre
-un tema que te interesa. Pura conversación — Claude hace el trabajo técnico por vos.
+Cómo armar una **red visual de artículos científicos** sobre un tema que te
+interesa, usando un agente de IA para dirigir bib2graph.
 
-!!! info "Qué necesitás"
-    - **Claude (web o app)** — con ejecución de código activada (la herramienta de
-      análisis/Code Execution).
+!!! info "Qué necesitas"
+    - **Un agente de IA** con ejecución de código: Claude, ChatGPT, MiniMax, o similar.
+    - **bib2graph instalado** en tu máquina (1 minuto: `pip install bib2graph`).
     - **5 minutos**.
-    - Nada más. Sin instalación, sin código, sin API keys.
+
+!!! warning "Paso previo: instala bib2graph"
+    Abre tu terminal y ejecuta:
+    ```bash
+    pip install bib2graph
+    ```
+    
+    Verifica que funciona:
+    ```bash
+    b2g --help
+    ```
+    
+    Si ves la ayuda de comandos, listo. Si no, ve a [Instalación](../getting-started/installation.md).
 
 ---
 
-## Paso 1 — Decile a Claude qué tema te interesa
+## Paso 1 — Elige un agente
 
-Abrí una conversación y escribí algo así:
+Abre **cualquiera** de estos (con ejecución de código activada):
+
+- **Claude** (web o app)
+- **ChatGPT** (Plus, con Code Interpreter)
+- **MiniMax** o similar
+
+Lo importante: que pueda ejecutar Python y crear archivos. Nosotros no hacemos vendor locking
+a un solo agente — bib2graph funciona igual en todos.
+
+---
+
+## Paso 2 — Plantea el tema al agente
+
+En una conversación nueva, escribe algo así:
 
 !!! example
     ```text
+    Tengo bib2graph instalado en mi máquina.
+    
     Quiero explorar el estado del arte sobre [TU TEMA].
     
-    Usá bib2graph para traerme artículos desde OpenAlex, 
-    armar una red de referencias compartidas y mostrarme 
-    qué comunidades de investigación existen.
+    Usa bib2graph para:
+    1. Buscar papers en OpenAlex
+    2. Construir una red de referencias compartidas
+    3. Mostrar qué comunidades de investigación existen
     
-    Mi tema: [ejemplo: "métodos de recuperación de información en contextos multilingües"]
+    Mi tema: [ejemplo: métodos de recuperación de información en contextos multilingües]
     ```
 
-Claude va a sugerirte una **ecuación de búsqueda** — básicamente, cómo pedirle
-a Google Scholar que busque exactamente lo que querés. La revisás, ajustás si
-hace falta, y listo.
+El agente va a sugerirte una **ecuación de búsqueda** — una forma de decirle a OpenAlex
+exactamente qué buscar. La revisas, ajustas si hace falta.
 
 ---
 
-## Paso 2 — Claude trae los papers y construye la red
+## Paso 3 — El agente construye la red
 
-Cuando la ecuación te cierre, decile:
+Cuando la ecuación te cierre, pide al agente:
 
 !!! example
     ```text
-    Dale, vamos. Traé hasta 150 papers desde 2015, construí 
-    la red y mostrá las comunidades.
+    Bien. Ahora ejecuta estos comandos en mi máquina:
+    
+    1. b2g init mi-sota
+    2. cd mi-sota
+    3. b2g seed "[TU ECUACION]" --min-year 2015
+    4. b2g build
+    5. b2g export --format graphml
+    
+    Muestra la red visualizada y un resumen de las comunidades.
     ```
 
-Claude hace todo por debajo — trae papers, identifica qué papers citan las
-mismas referencias, agrupa esos papers en comunidades (como si fueran "escuelas"
-o "enfoques" dentro del tema).
+El agente ejecuta esos comandos por ti — trae papers, identifica qué papers citan
+las mismas referencias, agrupa esos papers en comunidades.
 
-**Resultado:** Una imagen donde ves la red (puntos = papers, líneas = referencias
-compartidas, colores = comunidades).
+**Resultado:** Una imagen de la red (puntos = papers, líneas = referencias compartidas,
+colores = comunidades).
 
 ---
 
-## Paso 3 — Leé el mapa
+## Paso 4 — Lee el mapa
 
-Pedile a Claude:
+Pide al agente:
 
 !!! example
     ```text
-    Nombrá cada comunidad y listá los 3 papers más importantes 
-    de cada una (autor, año, qué hacen).
+    Para cada comunidad en la red:
+    - Nombre (síntesis del enfoque)
+    - Keywords principales
+    - Top 3 papers más centrales (autor, año)
+    
+    Muestra una tabla.
     ```
 
-Listo. **Ya tenés un primer mapa mental del campo** — qué tendencias existen,
-quiénes son los referentes, dónde están las divergencias.
+Ya tienes un **primer mapa mental del campo** — qué tendencias existen, quiénes
+son los referentes, dónde están las divergencias.
 
 ---
 
-## Paso 4 — Descargá tu trabajo
+## Paso 5 — Guarda tu trabajo
 
-Nada persiste cuando cerrás la conversación. Pedile a Claude:
+Tu corpus está en el archivo `.duckdb` dentro de la carpeta `mi-sota/`. Los archivos
+`.graphml` están en `exports/`.
 
-!!! example
-    ```text
-    Descargá todo: la red en formato GraphML, una lista de 
-    papers en CSV, una imagen de la red.
-    ```
+Para continuar después:
 
-Guardá esos archivos. Si querés seguir investigando después en otra conversación
-(o en tu máquina), tenés la semilla guardada.
+```bash
+cd mi-sota
+b2g read list  # Ver papers en el corpus
+b2g read top   # Ver papers más centrales
+```
+
+Si quieres explorar más tarde desde el agente, carga los archivos GraphML o Parquet en
+la conversación y sigue desde ahí.
 
 ---
 
@@ -89,13 +129,15 @@ Guardá esos archivos. Si querés seguir investigando después en otra conversac
 
 En 5 minutos:
 
-✅ Trajiste papers de un tema  
+✅ Instalaste bib2graph  
+✅ Trajiste papers de un tema (con ayuda del agente)  
 ✅ Viste cómo se relacionan (qué citan en común)  
 ✅ Identificaste sub-temas / enfoques  
-✅ Guardaste los archivos  
+✅ El corpus está guardado en tu máquina  
 
 ## Qué sigue
 
-- **Más detalles:** [Tutorial completo — De la pregunta al reporte de SOTA](sota-completo.md) — cómo refinar la búsqueda, curar papers y redactar un análisis serio.
-- **Tu máquina:** Si lo vas a hacer seguido, conviene instalar bib2graph localmente. Mira el [Quickstart](../getting-started/quickstart.md).
-- **Referencia:** [Todos los comandos de bib2graph](../reference/cli.md).
+- **Más detalles:** [Tutorial completo — De la pregunta al reporte de SOTA](sota-completo.md)
+  — cómo refinar, curar y redactar un análisis riguroso.
+- **Referencia completa:** [Todos los comandos de bib2graph](../reference/cli.md).
+- **Como librería Python:** [API Python](../reference/python-api.md).

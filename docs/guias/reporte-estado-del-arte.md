@@ -171,7 +171,7 @@ Mostrame los papers nuevos y el gráfico de crecimiento por año.
 
 ### Cuándo hacer esto
 
-- ✅ Si buscás sensibilidad alta (no querés perderte trabajos clave).
+- ✅ Si buscas sensibilidad alta (no quieres perderte trabajos clave).
 - ✅ Si el tema es muy específico (forrajeo agrega relevancia).
 - ❌ Si el corpus ya es grande (>500) — aumenta significativamente el tamaño.
 - ❌ Si es la primera vez: puedes hacer esto después de leer la red inicial.
@@ -418,7 +418,7 @@ Analizá tendencias en el corpus:
 - **Obsidian + Zotero:** flujo de investigación integrado.
 - **Google Docs:** colaboración y comentarios; convertís a .docx después.
 - **Markdown + Pandoc:** máxima control; exportás a PDF/DOCX con cite.
-- **Quarto/Jupyter:** si querés reproducibilidad y código integrado.
+- **Quarto/Jupyter:** si quieres reproducibilidad y código integrado.
 
 ### Checklist antes de publicar
 
@@ -484,7 +484,7 @@ Guardalos en una carpeta nominada `sota-[tema]-[fecha]` en tu repositorio de inv
   posicionamiento** para tu propio trabajo — ¿dónde caés? ¿dónde hay tensión
   que tu trabajo resuelve?
 
-- **Tutorial:** Si querés aprender el CLI o la librería de Python a fondo,
+- **Tutorial:** Si quieres aprender el CLI o la librería de Python a fondo,
   véase el [Quickstart](../getting-started/quickstart.md) y la [Referencia](../reference/cli.md).
 
 - **Comunidad:** Compartí tu SOTA en el repo (crea un issue); feedback de otros

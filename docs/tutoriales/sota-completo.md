@@ -9,11 +9,12 @@ la pregunta de investigación hasta redactar un análisis con tensiones,
 escuelas de pensamiento y huecos sin explorar.
 
 Este es el tutorial detallado (45 min de lectura + 2–3 horas de investigación).
-Si acabás de descubrir bib2graph, empezá por el [tutorial corto](claude-code.md).
+Si acaba de descubrir bib2graph, empiece por el [tutorial corto](claude-code.md).
 
 !!! info "Requisitos"
     - Una pregunta de investigación clara (no un tema genérico).
-    - Acceso a Claude con ejecución de código, o una máquina con bib2graph instalado.
+    - **bib2graph instalado** en tu máquina: `pip install bib2graph`
+    - Un agente de IA (Claude, ChatGPT, MiniMax, etc.) con ejecución de código, o disposición a usar el CLI directamente.
     - Tiempo: 3–4 horas para el ciclo completo.
     - Opcional: API key de OpenAlex (gratuita, para corpus > 100 papers).
 
@@ -38,7 +39,46 @@ Vamos paso a paso.
 
 ---
 
-## Paso 1 — Afiná tu pregunta de investigación
+## Paso 0 — Instala bib2graph
+
+**Entrada:** Tu máquina con Python 3.10+.  
+**Salida:** bib2graph funcionando y listo para usar.
+
+Abre tu terminal y ejecuta:
+
+```bash
+pip install bib2graph
+```
+
+Verifica que funciona:
+
+```bash
+b2g --help
+```
+
+Deberías ver la lista de comandos de bib2graph. Si no, consulta [Instalación](../getting-started/installation.md).
+
+### Entiende el flujo de comandos básicos
+
+bib2graph usa un flujo de **comandos secuenciales**:
+
+```bash
+b2g init ./mi-sota          # Crea una carpeta de proyecto
+cd mi-sota
+
+b2g seed "tu_ecuacion"      # Trae papers desde OpenAlex
+b2g chain                   # (Opcional) Expande por citaciones
+b2g curate                  # Acepta/rechaza papers (curación)
+b2g build                   # Construye redes
+b2g read list               # Visualiza papers
+b2g export --format graphml # Exporta redes
+```
+
+Cada comando transiciona el estado del corpus. Vamos a ver esto en detalle.
+
+---
+
+## Paso 1 — Afina tu pregunta de investigación
 
 **Entrada:** Un tema que te interesa.  
 **Salida:** Una pregunta clara, acotada, formulable.
@@ -68,7 +108,7 @@ y robustez ética entre 2020 y hoy?"*
 > eficiencia vs. precisión), y cuáles son los huecos sin explorar entre 2015
 > y 2024?
 
-Eso es búscable, acotado, y con una tensión clara.
+Eso es buscable, acotado, y con una tensión clara.
 
 ---
 
@@ -106,7 +146,7 @@ AND (method OR approach OR framework OR system OR architecture)
 
 - **Evita genéricos.** "machine learning" sola atrapa cientos de miles de papers.
 
-- **Testea:** Pide a Claude que busque 50 papers con tu ecuación y revisá los
+- **Testea:** Pídele a Claude que busque 50 papers con tu ecuación y revisa los
   títulos. ¿Ves ruido sistemático? Ajusta.
 
 - **Excluye si hace falta:** `AND NOT (machine translation)` si hay mucho ruido
@@ -119,36 +159,54 @@ AND (method OR approach OR framework OR system OR architecture)
 **Entrada:** Ecuación de búsqueda, rango de años.  
 **Salida:** Corpus inicial (~200–300 papers).
 
-### Con Claude
+### Opción 1: Con CLI directo
 
-Prompt:
+```bash
+cd mi-sota
+b2g seed "(information retrieval OR IR) AND (multilingual OR cross-lingual) AND (method OR approach)" --min-year 2015 --max-results 250
+```
+
+bib2graph descarga papers desde OpenAlex y los guarda en `.duckdb` dentro de la carpeta.
+
+### Opción 2: Con ayuda de un agente
+
+Puedes pedirle al agente (Claude, ChatGPT, etc.) que:
+
+1. Genere la ecuación de búsqueda a partir de tu pregunta.
+2. Execute el comando `b2g seed` en tu máquina.
+3. Verifique los resultados.
+
+**Prompt:**
 
 ```text
-Instalá bib2graph con pip.
+Tengo mi pregunta de investigación:
+[TU PREGUNTA]
 
-Usá esta ecuación de búsqueda en OpenAlex:
-(information retrieval OR IR OR search)
-AND (multilingual OR cross-lingual)
-AND (method OR approach OR framework)
+Propón una ecuación de búsqueda para bib2graph.
+Luego dame el comando exacto para ejecutar:
+b2g seed "[ecuacion]" --min-year 2015 --max-results 250
 
-Sembrá hasta 250 papers desde 2015.
-
-Mostrame:
-- Total de papers
-- Distribución por año (gráfico)
-- Top 10 autores por cantidad de papers
-- Años: mín y máx
+Muestra qué debería ver después de ejecutarlo.
 ```
+
+El agente genera la ecuación y tú ejecutas el comando en tu terminal. Luego:
+
+```bash
+b2g read stats --group-by year
+```
+
+Para ver la distribución temporal.
 
 ### Verificación
 
-Mirá el corpus trayéndote un resumen:
+Revisa el corpus:
 
-```text
-Listá 20 papers al azar del corpus con título y año.
-¿Todos tienen relación directa con mi tema?
-Si hay ruido, ajustemos la ecuación.
+```bash
+b2g read list --query "tus_palabras_clave" | head -20
 ```
+
+¿Todos tienen relación directa con tu tema? Si hay ruido sistemático, ajusta la
+ecuación y vuelve a ejecutar `b2g seed` en una carpeta nueva.
 
 ### Punto de decisión
 
@@ -183,7 +241,7 @@ Expandí el corpus usando forrajeo (backward chaining):
 seguí una capa de referencias de los papers ya en el corpus
 y agregá hasta 100 papers nuevos.
 
-Mostrame:
+Muestra:
 - Cuántos papers nuevos se agregaron
 - Si hay papers muy antiguos (pre-2000): ¿los mantengo o descarto?
 ```
@@ -219,7 +277,7 @@ INCLUSIÓN (decisión final)
 
 ### Con Claude
 
-Pedile a Claude:
+Pídele a Claude:
 
 ```text
 Hacé curación PRISMA del corpus. Revisá cada paper:
@@ -230,14 +288,14 @@ Hacé curación PRISMA del corpus. Revisá cada paper:
 5. En otro caso: ACEPTAR
 
 Mostrá un resumen: cuántos ACCEPTED, REJECTED, CANDIDATE.
-Listá 5 ejemplos de RECHAZADOS con razón.
+Lista 5 ejemplos de RECHAZADOS con razón.
 ```
 
 ### Checklist
 
 - [ ] ¿Documenté mis criterios explícitamente?
 - [ ] ¿El corpus ACCEPTED quedó entre 100–300 papers?
-- [ ] ¿Revisé una muestra de rechazados para asegurarme de que no falta algo obvio?
+- [ ] ¿Revisaste una muestra de rechazados para asegurarme de que no falta algo obvio?
 - [ ] ¿Hay equilibrio entre años (no es monocromático)?
 
 ---
@@ -266,9 +324,9 @@ Construí 3 redes del corpus ACCEPTED usando bib2graph:
 
 Para cada red:
 - Detectá comunidades usando Louvain (clustering)
-- Mostrame una visualización coloreada por comunidad
+- Muestra una visualización coloreada por comunidad
 - Reportá: # nodos, # aristas, # comunidades
-- Listá los 3 papers más centrales (mayor grado) de cada comunidad
+- Lista los 3 papers más centrales (mayor grado) de cada comunidad
 ```
 
 ### Qué esperar
@@ -329,7 +387,7 @@ Responde estas preguntas:
 ### 1. ¿Cómo evolucionó el campo?
 
 ```text
-Mostrame:
+Muestra:
 - Gráfico de # papers/año en el corpus
 - Cómo cambiaron las comunidades (% de papers) año a año
 - ¿Hay una comunidad que crecía y ahora decrece?
@@ -445,7 +503,7 @@ APÉNDICES
 
 ### Si usaste Claude web
 
-Descargá:
+Descarga:
 
 - `corpus.parquet` — tu semilla guardada (subirla a Claude luego para continuar).
 - `*.graphml` — networks para Gephi/Cytoscape.
@@ -487,7 +545,7 @@ git commit -m "SOTA: [Tu Tema] — corpus, redes, reporte"
 
 ## Siguientes pasos
 
-- **Análisis más profundo:** Elige una comunidad y hacé un sub-SOTA acotado.
+- **Análisis más profundo:** Elige una comunidad y haz un sub-SOTA acotado.
 - **Integración con tu investigación:** Posicioná tu trabajo en el mapa — ¿dónde
   caés? ¿Dónde resolvés una tensión?
 - **Publicación:** Convertí el SOTA en un paper, capítulo de tesis, o entrada de
