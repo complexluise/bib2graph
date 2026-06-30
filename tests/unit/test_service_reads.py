@@ -39,6 +39,7 @@ def _row(
     year: int = 2020,
     is_seed: bool = True,
     curation_status: str = "candidate",
+    doi: str | None = None,
     references_id: list[str] | None = None,
     cited_by_id: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -46,7 +47,7 @@ def _row(
     return {
         "id": id,
         "openalex_id": None,
-        "doi": None,
+        "doi": doi,
         "title": title,
         "year": year,
         "abstract": None,
@@ -545,3 +546,132 @@ def test_get_scent_paper_inexistente_lanza_dataerror(tmp_path: Path) -> None:
 
 # Neutralidad de transporte de service.reads: consolidada en
 # test_service.py::test_service_modulo_neutral_de_transporte (epic #184).
+
+
+# ---------------------------------------------------------------------------
+# 5. resolve_doi / resolve_url  (issue #212 — opción 1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_resolve_doi_con_doi(tmp_path: Path) -> None:
+    """resolve_doi devuelve el DOI desnudo cuando el paper existe y tiene DOI."""
+    from bib2graph.service.reads import resolve_doi
+
+    ws = _init_workspace(tmp_path)
+    _seed_store(ws, [_row(id="P1", doi="10.1234/test.001")])
+
+    result = resolve_doi(ws, "P1")
+
+    assert result == "10.1234/test.001"
+
+
+@pytest.mark.unit
+def test_resolve_doi_sin_doi(tmp_path: Path) -> None:
+    """resolve_doi devuelve None cuando el paper existe pero no tiene DOI."""
+    from bib2graph.service.reads import resolve_doi
+
+    ws = _init_workspace(tmp_path)
+    _seed_store(ws, [_row(id="P1", doi=None)])
+
+    result = resolve_doi(ws, "P1")
+
+    assert result is None
+
+
+@pytest.mark.unit
+def test_resolve_doi_doi_vacio_es_none(tmp_path: Path) -> None:
+    """resolve_doi trata un DOI cadena vacía ('') como ausente → None.
+
+    Coherente con networks/decorate.py (que solo emite doi/url cuando el
+    DOI es truthy) y con resolve_url. Sella el contrato 'None en los 3
+    casos' del issue #212.
+    """
+    from bib2graph.service.reads import resolve_doi, resolve_url
+
+    ws = _init_workspace(tmp_path)
+    _seed_store(ws, [_row(id="P1", doi="")])
+
+    assert resolve_doi(ws, "P1") is None
+    assert resolve_url(ws, "P1") is None
+
+
+@pytest.mark.unit
+def test_resolve_doi_id_inexistente(tmp_path: Path) -> None:
+    """resolve_doi devuelve None cuando el id no existe en el corpus (no lanza)."""
+    from bib2graph.service.reads import resolve_doi
+
+    ws = _init_workspace(tmp_path)
+    _seed_store(ws, [_row(id="P1")])
+
+    result = resolve_doi(ws, "id-que-no-existe")
+
+    assert result is None
+
+
+@pytest.mark.unit
+def test_resolve_url_con_doi(tmp_path: Path) -> None:
+    """resolve_url devuelve la URL bien formada cuando hay DOI."""
+    from bib2graph.service.reads import resolve_url
+
+    ws = _init_workspace(tmp_path)
+    _seed_store(ws, [_row(id="P1", doi="10.1234/test.001")])
+
+    result = resolve_url(ws, "P1")
+
+    assert result == "https://doi.org/10.1234/test.001"
+
+
+@pytest.mark.unit
+def test_resolve_url_sin_doi(tmp_path: Path) -> None:
+    """resolve_url devuelve None cuando el paper existe pero no tiene DOI."""
+    from bib2graph.service.reads import resolve_url
+
+    ws = _init_workspace(tmp_path)
+    _seed_store(ws, [_row(id="P1", doi=None)])
+
+    result = resolve_url(ws, "P1")
+
+    assert result is None
+
+
+@pytest.mark.unit
+def test_resolve_url_id_inexistente(tmp_path: Path) -> None:
+    """resolve_url devuelve None cuando el id no existe en el corpus (no lanza)."""
+    from bib2graph.service.reads import resolve_url
+
+    ws = _init_workspace(tmp_path)
+    _seed_store(ws, [_row(id="P1")])
+
+    result = resolve_url(ws, "id-que-no-existe")
+
+    assert result is None
+
+
+@pytest.mark.unit
+def test_resolve_url_criterio_consistente_con_decorate(tmp_path: Path) -> None:
+    """resolve_url usa el mismo criterio doi→url que networks/decorate.py.
+
+    Ambos consumen doi_to_url de constants.py como fuente única.
+    Este test fija el contrato: mismo DOI → misma URL.
+    """
+    from bib2graph.constants import doi_to_url
+    from bib2graph.service.reads import resolve_url
+
+    doi = "10.9999/consistencia"
+    ws = _init_workspace(tmp_path)
+    _seed_store(ws, [_row(id="P1", doi=doi)])
+
+    # resolve_url debe coincidir con la derivación de doi_to_url directa
+    assert resolve_url(ws, "P1") == doi_to_url(doi)
+
+
+@pytest.mark.unit
+def test_resolve_doi_y_url_expuestos_en_service(tmp_path: Path) -> None:
+    """resolve_doi y resolve_url son importables desde bib2graph.service."""
+    import bib2graph.service as svc
+
+    assert hasattr(svc, "resolve_doi")
+    assert hasattr(svc, "resolve_url")
+    assert callable(svc.resolve_doi)
+    assert callable(svc.resolve_url)

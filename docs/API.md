@@ -424,7 +424,9 @@ transición de ciclo**; determinismo R2 (mismo corpus → misma lectura).
 
 El módulo conserva además funciones de lectura más ricas (`get_workspace`, `list_rounds`, `get_scent`,
 `get_network`, `compare_rounds`) que hoy ningún comando consume (su poda opcional es trabajo de
-limpieza, [#191](https://github.com/complexluise/bib2graph/issues/191)). Decisiones de modelado:
+limpieza, [#191](https://github.com/complexluise/bib2graph/issues/191)), más la **resolución inversa
+id→DOI/URL** (`resolve_doi`, `resolve_url`; [#212](https://github.com/complexluise/bib2graph/issues/212),
+aditiva, devuelven `None` sin lanzar). Decisiones de modelado:
 **ronda = snapshot sellado** (no el contador `loop_round`), `get_scent` = **score de acoplamiento real
 + vecinos**, `get_network` = **red de la ronda viva recomputada**.
 
@@ -509,6 +511,23 @@ def get_top(ws: Workspace, *, n=10, kind="bibliographic_coupling") -> dict[str, 
     SIEMPRE presente, scope="all", empty_networks=["cocitation"] si la co-citación quedó vacía.
     Raises DataError si kind inválido, n <= 0, o la red
     falla genuinamente; StoreError si el store falla. (Detrás de `read top`.)"""
+
+
+# --- Resolución inversa id→DOI/URL (#212, opción 1; sin red, sobre el corpus cargado) ---
+
+def resolve_doi(ws: Workspace, paper_id: str) -> str | None:
+    """DOI desnudo del paper con `Col.ID == paper_id`, o `None`. Devuelve `None`
+    (NO lanza DataError) cuando el id no existe, el paper no tiene DOI, o el DOI es
+    cadena vacía `""` (mismo criterio de "vacío = ausente" que networks/decorate.py).
+    Sin red: opera sobre el corpus ya cargado. Raises StoreError si el store falla."""
+
+def resolve_url(ws: Workspace, paper_id: str) -> str | None:
+    """URL canónica `https://doi.org/<doi>` del paper, o `None` en los mismos casos
+    que resolve_doi (id inexistente / sin DOI / DOI vacío). Deriva vía
+    `doi_to_url(resolve_doi(...))`. Sin red. Raises StoreError si el store falla.
+    `doi_to_url(doi: str|None) -> str|None` (bib2graph.constants) es la FUENTE ÚNICA
+    de la derivación DOI→URL, compartida con la decoración del atributo `url` de redes
+    (#209, ver §8 nota) — sin drift."""
 ```
 
 **Nota de fidelidad al núcleo.** Las lecturas no inventan campos que el núcleo no sostiene:
@@ -1282,7 +1301,9 @@ def decorate(artifact: NetworkArtifact, table: pa.Table) -> None:
 `doi`/`url` aplican **solo a paper-kinds** (`bibliographic_coupling` y `cocitation`); los nodos de
 autor/institución/keyword **no los reciben**. `url` es **derivada** (`https://doi.org/<doi>`), no una
 columna del corpus: el DOI es la única identidad de primera clase (ADR 0036) y la URL es una expansión
-trivial determinista a la hora de decorar. Ausencia condicional como `year`: sin DOI truthy, el nodo no
+trivial determinista a la hora de decorar. La derivación vive en `doi_to_url(doi: str|None) -> str|None`
+(`bib2graph.constants`), **fuente única** compartida con `resolve_url` (§0.1, #212) — sin drift.
+Ausencia condicional como `year`: sin DOI truthy, el nodo no
 recibe ni `doi` ni `url`. Los exporters CSV/GraphML (§9) los propagan **automáticamente** cuando están
 presentes (son genéricos y omiten `None`) — sin cambios en exporters.
 
