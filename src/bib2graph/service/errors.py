@@ -21,10 +21,6 @@ from __future__ import annotations
 
 import httpx
 
-# ---------------------------------------------------------------------------
-# Jerarquía de excepciones tipadas
-# ---------------------------------------------------------------------------
-
 
 class B2GError(Exception):
     """Base de todos los errores accionables de bib2graph."""
@@ -70,11 +66,6 @@ class StoreError(B2GError):
 
     exit_code = 5
     code = "STORE_ERROR"
-
-
-# ---------------------------------------------------------------------------
-# Helper neutral de mapeo error→código (sin I/O)
-# ---------------------------------------------------------------------------
 
 
 def code_for(exc: BaseException) -> int:

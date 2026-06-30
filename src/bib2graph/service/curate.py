@@ -31,9 +31,7 @@ from typing import Any
 from bib2graph.constants import Col, CurationStatus
 from bib2graph.service.errors import DataError, StoreError
 
-# ---------------------------------------------------------------------------
 # Constantes CSV — fuente canónica (exportadas desde cli/ para compat)
-# ---------------------------------------------------------------------------
 
 CURATE_CSV_FILENAME = "curacion.csv"
 
@@ -71,11 +69,6 @@ _STATUS_TO_DECISION: dict[str, str] = {
 VALID_SCOPES: frozenset[str] = frozenset({"candidates", "seeds", "all"})
 
 
-# ---------------------------------------------------------------------------
-# Helper interno — abrir store para escritura
-# ---------------------------------------------------------------------------
-
-
 def _open_writable(path: Path) -> Any:
     """Abre el store para escritura; falla accionable si está bloqueado.
 
@@ -102,9 +95,7 @@ def _open_writable(path: Path) -> Any:
         ) from exc
 
 
-# ---------------------------------------------------------------------------
 # Helpers internos — transformación de filas para el CSV
-# ---------------------------------------------------------------------------
 
 
 def _authors_display(row: dict[str, Any]) -> str:
@@ -209,18 +200,12 @@ def _filter_table_by_scope(table: Any, scope: str) -> Any:
         mask = table.column(Col.IS_SEED)
         return table.filter(mask)
     else:
-        # candidates: status == candidate AND NOT is_seed
         status_col = table.column(Col.CURATION_STATUS)
         is_candidate = pc.equal(status_col, CurationStatus.CANDIDATE)  # type: ignore[attr-defined]
         is_seed_col = table.column(Col.IS_SEED)
         not_seed = pc.invert(is_seed_col)  # type: ignore[attr-defined]
         mask = pc.and_(is_candidate, not_seed)  # type: ignore[attr-defined]
         return table.filter(mask)
-
-
-# ---------------------------------------------------------------------------
-# run_curate_dump
-# ---------------------------------------------------------------------------
 
 
 def run_curate_dump(
@@ -287,11 +272,6 @@ def run_curate_dump(
         "papers_exported": len(rows),
         "columns": CSV_COLUMNS,
     }
-
-
-# ---------------------------------------------------------------------------
-# run_curate_from_csv
-# ---------------------------------------------------------------------------
 
 
 def run_curate_from_csv(
@@ -408,11 +388,6 @@ def run_curate_from_csv(
     }
 
 
-# ---------------------------------------------------------------------------
-# filter_corpus
-# ---------------------------------------------------------------------------
-
-
 def filter_corpus(
     store_path: str | Path,
     *,
@@ -515,11 +490,6 @@ def filter_corpus(
     }
 
 
-# ---------------------------------------------------------------------------
-# accept_papers
-# ---------------------------------------------------------------------------
-
-
 def accept_papers(
     store_path: str | Path,
     ids: list[str],
@@ -575,11 +545,6 @@ def accept_papers(
     }
 
 
-# ---------------------------------------------------------------------------
-# reject_papers
-# ---------------------------------------------------------------------------
-
-
 def reject_papers(
     store_path: str | Path,
     ids: list[str],
@@ -632,10 +597,6 @@ def reject_papers(
         "ids": ids,
     }
 
-
-# ---------------------------------------------------------------------------
-# curate_paper — wrapper de un solo paper
-# ---------------------------------------------------------------------------
 
 _VALID_DECISIONS_STRICT = frozenset({"accepted", "rejected"})
 

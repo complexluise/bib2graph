@@ -31,11 +31,6 @@ _THRESHOLD_AUTHORS: float = 0.92
 _THRESHOLD_KEYWORDS: float = 0.90
 
 
-# ---------------------------------------------------------------------------
-# Helper interno — abrir store para escritura
-# ---------------------------------------------------------------------------
-
-
 def _open_store(path: Path) -> Any:
     """Abre (o crea) el DuckDBStore en ``path`` para escritura.
 
@@ -62,11 +57,6 @@ def _open_store(path: Path) -> Any:
         ) from exc
 
 
-# ---------------------------------------------------------------------------
-# Helper interno — normalize + dedup (espejo neutral de cli._ingest)
-# ---------------------------------------------------------------------------
-
-
 def _normalize_and_dedup(corpus: Any, *, applied_at: datetime | None) -> Any:
     """Aplica normalize + dedup_authors + dedup_keywords al corpus.
 
@@ -91,11 +81,6 @@ def _normalize_and_dedup(corpus: Any, *, applied_at: datetime | None) -> Any:
     result = deduplicate_authors(result, threshold=_THRESHOLD_AUTHORS)
     result = deduplicate_keywords(result, threshold=_THRESHOLD_KEYWORDS)
     return result
-
-
-# ---------------------------------------------------------------------------
-# run_snapshot
-# ---------------------------------------------------------------------------
 
 
 def run_snapshot(
@@ -132,11 +117,6 @@ def run_snapshot(
         "schema_version": snap.manifest.schema_version,
         "maturity": maturity,
     }
-
-
-# ---------------------------------------------------------------------------
-# run_restore
-# ---------------------------------------------------------------------------
 
 
 def run_restore(

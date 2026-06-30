@@ -23,7 +23,6 @@ from __future__ import annotations
 
 from typing import Any
 
-# Versión del contrato del envelope JSON.
 ENVELOPE_SCHEMA_VERSION = "1"
 
 
