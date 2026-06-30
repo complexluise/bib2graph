@@ -67,7 +67,7 @@ mismo input, mismas redes.
 
 -   :material-api: **[Referencia](reference/cli.md)**
 
-    El CLI `b2g` y la API de Python, completos.
+    El CLI `b2g`, API de Python, y glosario de términos.
 
 </div>
 

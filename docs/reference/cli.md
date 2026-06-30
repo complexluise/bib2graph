@@ -14,6 +14,9 @@ sincronía con el código.
     codes 0–5. Los detalles del contrato (envelope, exit codes, FSM) están en
     [Contratos detallados](../API.md).
 
+!!! tip "Términos no claros"
+    Si un término en el CLI no te queda claro, revisa el [Glosario](glosario.md).
+
 ::: mkdocs-click
     :module: bib2graph.cli
     :command: b2g
