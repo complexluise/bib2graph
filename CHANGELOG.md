@@ -11,6 +11,20 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.10.2](https://github.com/complexluise/bib2graph/compare/v0.10.1...v0.10.2) (2026-06-30)
+
+
+### Bug Fixes
+
+* **sources:** error accionable ante 429 de OpenAlex en seed y chaining ([#210](https://github.com/complexluise/bib2graph/issues/210)) ([a2a8106](https://github.com/complexluise/bib2graph/commit/a2a810623702a2696e01ef6266144fdb66e168a4))
+* **sources:** error accionable ante 429 de OpenAlex en seed y chaining ([#210](https://github.com/complexluise/bib2graph/issues/210)) ([c05090f](https://github.com/complexluise/bib2graph/commit/c05090f1f8437e9e448dddf15c6ec6500be8fb6f))
+* **test:** idempotencia bit-a-bit pegaba a OpenAlex en vivo (flake en CI) ([#219](https://github.com/complexluise/bib2graph/issues/219)) ([de14401](https://github.com/complexluise/bib2graph/commit/de1440102378d10d6ec50568d6adbe6867fe09be))
+
+
+### Performance Improvements
+
+* **stores:** upsert masivo Arrow en DuckDBStore.persist ([#211](https://github.com/complexluise/bib2graph/issues/211)) ([#226](https://github.com/complexluise/bib2graph/issues/226)) ([08258ee](https://github.com/complexluise/bib2graph/commit/08258eec4dafd6e2469b14f68958303ee4fc7cad))
+
 ## [0.10.1](https://github.com/complexluise/bib2graph/compare/v0.10.0...v0.10.1) (2026-06-30)
 
 
