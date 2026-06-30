@@ -41,10 +41,6 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-# ---------------------------------------------------------------------------
-# CycleState
-# ---------------------------------------------------------------------------
-
 
 class CycleState(StrEnum):
     """Estados del lazo de investigación (ADR 0016 enmendado).
@@ -65,10 +61,6 @@ class CycleState(StrEnum):
     MONITORED = "MONITORED"
 
 
-# ---------------------------------------------------------------------------
-# Tabla de transiciones de la cadena principal
-# ---------------------------------------------------------------------------
-
 # Acción → estado destino en la cadena principal (permisiva: no bloquea saltos,
 # pero la acción nombrada lleva al estado que le corresponde en el ciclo).
 _CHAIN_TRANSITIONS: dict[str, CycleState] = {
@@ -79,10 +71,6 @@ _CHAIN_TRANSITIONS: dict[str, CycleState] = {
     # "seed" en una primera siembra también lleva a SEEDED
     "seed": CycleState.SEEDED,
 }
-
-# ---------------------------------------------------------------------------
-# Función de transición pura
-# ---------------------------------------------------------------------------
 
 
 def apply_transition(
@@ -138,10 +126,6 @@ def apply_transition(
         f"Acciones válidas: {[*sorted(_CHAIN_TRANSITIONS.keys()), 'reseed']}."
     )
 
-
-# ---------------------------------------------------------------------------
-# Helper: transiciones disponibles desde un estado dado
-# ---------------------------------------------------------------------------
 
 # Curación transversal: siempre disponible, nunca transiciona el lazo.
 # Se documenta aquí como constante de dominio y se expone en ``status``.
@@ -222,10 +206,6 @@ def available_transitions(state: CycleState | None) -> list[str]:
     """
     return list(_AVAILABLE_TRANSITIONS.get(state, ["seed"]))
 
-
-# ---------------------------------------------------------------------------
-# next_best_action — ADR 0037 §(e)
-# ---------------------------------------------------------------------------
 
 # Mapa determinista estado → único próximo comando recomendado.
 # Refleja el camino canónico del ciclo de investigación (Nota 05 §3):

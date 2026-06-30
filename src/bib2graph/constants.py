@@ -11,10 +11,6 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-# ---------------------------------------------------------------------------
-# Col — nombres canónicos de columna del Corpus (23 columnas según CORPUS_SCHEMA)
-# ---------------------------------------------------------------------------
-
 
 class Col(StrEnum):
     """Nombres canónicos de columna del schema Arrow del Corpus.
@@ -69,11 +65,6 @@ class Col(StrEnum):
     CITED_BY_ID = "cited_by_id"
 
 
-# ---------------------------------------------------------------------------
-# CurationStatus — valores canónicos de curation_status
-# ---------------------------------------------------------------------------
-
-
 class CurationStatus(StrEnum):
     """Valores canónicos del campo ``curation_status``.
 
@@ -84,11 +75,6 @@ class CurationStatus(StrEnum):
     CANDIDATE = "candidate"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
-
-
-# ---------------------------------------------------------------------------
-# NetworkKind — tipos de red bibliométrica
-# ---------------------------------------------------------------------------
 
 
 class NetworkKind(StrEnum):
@@ -104,10 +90,6 @@ class NetworkKind(StrEnum):
     INSTITUTION_COLLAB = "institution_collab"
     KEYWORD_COOCCURRENCE = "keyword_cooccurrence"
 
-
-# ---------------------------------------------------------------------------
-# LIST_COLUMNS — columnas de tipo list[string] (centraliza _LIST_COLS y _LIST_COL_NAMES)
-# ---------------------------------------------------------------------------
 
 LIST_COLUMNS: frozenset[str] = frozenset(
     {

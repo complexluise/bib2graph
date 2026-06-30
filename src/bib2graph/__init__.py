@@ -104,13 +104,8 @@ __all__ = [
     "network_metrics",
 ]
 
-# ---------------------------------------------------------------------------
-# Carga perezosa de símbolos que importan duckdb (PEP 562)
-#
-# ``import bib2graph`` NO arrastra duckdb.  Solo ``bib2graph.DuckDBBackend``
-# o ``bib2graph.DuckDBStore`` lo cargan bajo demanda.
-# ---------------------------------------------------------------------------
-
+# Carga perezosa (PEP 562): ``import bib2graph`` NO arrastra duckdb.
+# Solo ``bib2graph.DuckDBBackend`` / ``bib2graph.DuckDBStore`` lo cargan bajo demanda.
 _LAZY = {
     "DuckDBBackend": ("bib2graph.backends.duckdb", "DuckDBBackend"),
     "DuckDBStore": ("bib2graph.stores.duckdb", "DuckDBStore"),
