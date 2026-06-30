@@ -33,6 +33,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -83,6 +84,26 @@ def _communities_of_run(corpus: Any) -> dict[str, dict[str, int]]:
         a.spec.kind: dict(a.communities) if a.communities is not None else {}
         for a in artifacts
     }
+
+
+def _make_offline_transport() -> httpx.MockTransport:
+    """MockTransport vacío para mantener ``run_build`` SIN red.
+
+    Cuando el corpus tiene seeds aceptadas, ``run_build`` corre una pasada
+    ``cited_by`` contra OpenAlex (ADR 0038 §enrich) ANTES de proyectar las
+    redes.  El parquet del ejemplo tiene seeds aceptadas, así que sin inyectar
+    transport esa pasada pegaría a la red real → flake (httpx.ReadTimeout en CI).
+    Este transport devuelve 0 citantes: la pasada es no-op determinista y el
+    test queda hermético, como declara su módulo ("Sin red")."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"results": [], "meta": {"count": 0, "next_cursor": None}},
+            headers={"x-openalex-api-version": "2026-05-01"},
+        )
+
+    return httpx.MockTransport(handler)
 
 
 # ---------------------------------------------------------------------------
@@ -203,12 +224,16 @@ def test_comunidades_identicas_entre_dos_runs_pipeline(tmp_path: Path) -> None:
     from bib2graph.cli.commands.restore import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
-    # Run A: pipeline completo (incluye run_build para ejercer el camino de escritura)
+    # Run A: pipeline completo (incluye run_build para ejercer el camino de escritura).
+    # transport inyectado → la pasada cited_by (ADR 0038 §enrich) NO toca la red:
+    # devuelve 0 citantes, manteniendo el test hermético y determinista.
     store_a = tmp_path / "runA.duckdb"
     run_restore(store_a, slice_parquet)
     corpus_a = DuckDBStore(store_a).load()
     communities_a = _communities_of_run(corpus_a)
-    run_build(store_a, out_dir=tmp_path / "networks_a")
+    run_build(
+        store_a, out_dir=tmp_path / "networks_a", transport=_make_offline_transport()
+    )
 
     # Run B (store distinto, mismo parquet): solo restore + comunidades.
     # No se reconstruye run_build: su determinismo de output no se asevera acá
