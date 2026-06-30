@@ -30,6 +30,8 @@ Atributos adicionales de paper (coupling/cocitation):
   - ``year``: int o ausente si None.
   - ``is_seed``: bool.
   - ``curation_status``: string.
+  - ``doi``: string o ausente si no hay DOI en el corpus.
+  - ``url``: ``"https://doi.org/<doi>"`` o ausente si no hay DOI.
 
 Atributo de comunidad (si se provee ``communities``):
   - ``community``: int.
@@ -67,9 +69,10 @@ _PAPER_KINDS: frozenset[str] = frozenset(
 
 
 def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
-    """Construye un índice ``{paper_id → {label, year, is_seed, curation_status}}``.
+    """Construye un índice ``{paper_id → {label, year, is_seed, curation_status, doi}}``.
 
     El label de paper es ``"título (año)"`` truncado a ``LABEL_MAX_CHARS`` chars.
+    ``doi`` es el DOI del paper (string) o ``None`` si no está disponible.
 
     Args:
         table: Tabla Arrow canónica del Corpus.
@@ -82,10 +85,11 @@ def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
     years = table.column(Col.YEAR).to_pylist()
     is_seeds = table.column(Col.IS_SEED).to_pylist()
     statuses = table.column(Col.CURATION_STATUS).to_pylist()
+    dois = table.column(Col.DOI).to_pylist()
 
     index: dict[str, dict[str, object]] = {}
-    for pid, title, year, is_seed, status in zip(
-        ids, titles, years, is_seeds, statuses, strict=False
+    for pid, title, year, is_seed, status, doi in zip(
+        ids, titles, years, is_seeds, statuses, dois, strict=False
     ):
         if pid is None:
             continue
@@ -105,6 +109,7 @@ def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
             "year": int(year) if year is not None else None,
             "is_seed": bool(is_seed) if is_seed is not None else False,
             "curation_status": str(status) if status is not None else None,
+            "doi": str(doi) if doi is not None else None,
         }
     return index
 
@@ -194,6 +199,8 @@ def decorate_graph(
       - ``year``: int o ausente si None en el corpus.
       - ``is_seed``: bool.
       - ``curation_status``: string.
+      - ``doi``: string o ausente si el paper no tiene DOI en el corpus.
+      - ``url``: ``"https://doi.org/<doi>"`` o ausente si no hay DOI.
 
     Atributo de comunidad (si se provee ``communities``):
       - ``community``: int.
@@ -229,6 +236,11 @@ def decorate_graph(
             curation = info.get("curation_status")
             if curation is not None:
                 graph.nodes[node]["curation_status"] = str(curation)
+            # doi y url: solo si hay DOI (no None, no cadena vacía)
+            doi = info.get("doi")
+            if isinstance(doi, str) and doi:
+                graph.nodes[node]["doi"] = doi
+                graph.nodes[node]["url"] = f"https://doi.org/{doi}"
 
     elif kind == NetworkKind.AUTHOR_COLLAB:
         author_index = _build_author_index(table)
