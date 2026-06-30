@@ -43,7 +43,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from bib2graph.constants import Col, NetworkKind
+from bib2graph.constants import Col, NetworkKind, doi_to_url
 from bib2graph.service.errors import DataError, StoreError
 
 if TYPE_CHECKING:
@@ -951,3 +951,69 @@ def get_top(
     )
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# 10. resolve_doi / resolve_url  (issue #212 — opción 1)
+# ---------------------------------------------------------------------------
+
+
+def resolve_doi(ws: Workspace, paper_id: str) -> str | None:
+    """Devuelve el DOI del paper identificado por ``paper_id``, o ``None``.
+
+    Busca ``paper_id`` en ``Col.ID`` del corpus y devuelve el valor de
+    ``Col.DOI`` para esa fila.  Devuelve ``None`` tanto si el id no existe
+    como si el paper no tiene DOI; no lanza ``DataError``.
+
+    No toca la red: opera sobre el corpus ya cargado del workspace.
+    Criterio de derivación compartido con ``networks/decorate.py`` vía
+    ``doi_to_url`` en ``constants.py`` (fuente única, sin drift).
+
+    Args:
+        ws: Workspace resuelto (ADR 0029).
+        paper_id: Valor de ``Col.ID`` del paper a resolver.
+
+    Returns:
+        String DOI (sin prefijo URL) si el paper existe y tiene DOI;
+        ``None`` en cualquier otro caso.
+
+    Raises:
+        StoreError: Si el store no existe o está bloqueado.
+    """
+    store = _open_readonly(ws.library_path)
+    corpus = store.load()
+    table = corpus.to_arrow()
+
+    ids = table.column(Col.ID).to_pylist()
+    dois = table.column(Col.DOI).to_pylist()
+
+    for pid, doi in zip(ids, dois, strict=False):
+        if pid is not None and str(pid) == paper_id:
+            # DOI vacío ("") se trata como ausente → None, coherente con
+            # networks/decorate.py y con resolve_url (issue #212).
+            return str(doi) if doi else None
+    return None
+
+
+def resolve_url(ws: Workspace, paper_id: str) -> str | None:
+    """Devuelve la URL canónica del paper identificado por ``paper_id``, o ``None``.
+
+    Deriva ``https://doi.org/<doi>`` usando el mismo criterio que
+    ``networks/decorate.py``: solo cuando hay un DOI string no vacío.
+    Ambas funciones comparten ``doi_to_url`` de ``constants.py`` como
+    fuente única, sin drift.
+
+    No toca la red: opera sobre el corpus ya cargado del workspace.
+
+    Args:
+        ws: Workspace resuelto (ADR 0029).
+        paper_id: Valor de ``Col.ID`` del paper a resolver.
+
+    Returns:
+        ``"https://doi.org/<doi>"`` si el paper existe y tiene DOI;
+        ``None`` en cualquier otro caso.
+
+    Raises:
+        StoreError: Si el store no existe o está bloqueado.
+    """
+    return doi_to_url(resolve_doi(ws, paper_id))

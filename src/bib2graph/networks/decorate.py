@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 import pyarrow as pa
 
-from bib2graph.constants import Col, NetworkKind
+from bib2graph.constants import Col, NetworkKind, doi_to_url
 
 if TYPE_CHECKING:
     from bib2graph.networks.spec import NetworkArtifact
@@ -236,11 +236,14 @@ def decorate_graph(
             curation = info.get("curation_status")
             if curation is not None:
                 graph.nodes[node]["curation_status"] = str(curation)
-            # doi y url: solo si hay DOI (no None, no cadena vacía)
-            doi = info.get("doi")
-            if isinstance(doi, str) and doi:
-                graph.nodes[node]["doi"] = doi
-                graph.nodes[node]["url"] = f"https://doi.org/{doi}"
+            # doi y url: solo si hay DOI (no None, no cadena vacía).
+            # Criterio de derivación en doi_to_url (constants.py) — fuente única.
+            doi_val = info.get("doi")
+            doi_str = doi_val if isinstance(doi_val, str) else None
+            url = doi_to_url(doi_str)
+            if url is not None:
+                graph.nodes[node]["doi"] = doi_str
+                graph.nodes[node]["url"] = url
 
     elif kind == NetworkKind.AUTHOR_COLLAB:
         author_index = _build_author_index(table)

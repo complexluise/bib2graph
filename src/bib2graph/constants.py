@@ -106,6 +106,29 @@ class NetworkKind(StrEnum):
 
 
 # ---------------------------------------------------------------------------
+# doi_to_url — derivación canónica DOI → URL (fuente única, sin drift)
+# ---------------------------------------------------------------------------
+
+
+def doi_to_url(doi: str | None) -> str | None:
+    """Deriva la URL canónica ``https://doi.org/<doi>`` a partir de un DOI.
+
+    Criterio compartido por ``networks/decorate.py`` y ``service/reads.py``
+    para evitar drift en la regla de derivación.
+
+    Args:
+        doi: String del DOI (sin prefijo URL), o ``None``.
+
+    Returns:
+        ``"https://doi.org/<doi>"`` si ``doi`` es un string no vacío;
+        ``None`` en cualquier otro caso (None, vacío).
+    """
+    if isinstance(doi, str) and doi:
+        return f"https://doi.org/{doi}"
+    return None
+
+
+# ---------------------------------------------------------------------------
 # LIST_COLUMNS — columnas de tipo list[string] (centraliza _LIST_COLS y _LIST_COL_NAMES)
 # ---------------------------------------------------------------------------
 
