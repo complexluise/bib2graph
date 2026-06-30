@@ -23,10 +23,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from bib2graph.corpus import Corpus
 
-# ---------------------------------------------------------------------------
-# Umbrales fijos del auto-preproc (ADR 0031, fuente única — issue #175)
-# ---------------------------------------------------------------------------
-
 #: Umbral de similitud para deduplicar variantes de autores.
 #: ``rapidfuzz.fuzz.token_sort_ratio`` >= ``THRESHOLD_AUTHORS * 100`` → colapso.
 THRESHOLD_AUTHORS: float = 0.92
@@ -34,11 +30,6 @@ THRESHOLD_AUTHORS: float = 0.92
 #: Umbral de similitud para deduplicar variantes de keywords.
 #: ``rapidfuzz.fuzz.token_sort_ratio`` >= ``THRESHOLD_KEYWORDS * 100`` → colapso.
 THRESHOLD_KEYWORDS: float = 0.90
-
-
-# ---------------------------------------------------------------------------
-# Pipeline pública
-# ---------------------------------------------------------------------------
 
 
 def normalize_and_dedup(
