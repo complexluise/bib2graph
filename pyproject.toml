@@ -127,6 +127,19 @@ dev = [
     "types-pyyaml>=6.0.12.20260518",
 ]
 
+# Sitio de documentación (MkDocs Material). Solo para construir docs en local y
+# en CI (.github/workflows/docs.yml); no se publica a PyPI. `uv sync --group docs`.
+# La referencia de API/CLI se autogenera del código: mkdocstrings (librería,
+# desde docstrings) y mkdocs-click (CLI b2g, desde el grupo Click). termynal
+# anima las sesiones de terminal del quickstart.
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocs-include-markdown-plugin>=6",
+    "mkdocstrings[python]>=0.24",
+    "mkdocs-click>=0.8",
+    "termynal>=0.12",
+]
+
 # ----- Tooling ------------------------------------------------------------
 
 [tool.ruff]
