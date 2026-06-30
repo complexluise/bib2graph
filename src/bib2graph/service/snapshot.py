@@ -19,79 +19,13 @@ el shim ``b2g restore`` también delega acá (fuente única — ADR 0038 §163).
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from bib2graph.service.errors import DataError, StoreError
-
-# Umbrales fijos del auto-preproc (ADR 0031, espejo de cli/_ingest.py).
-# Fuente canónica: cli/_ingest.py. Si se cambian allí, actualizar acá también.
-_THRESHOLD_AUTHORS: float = 0.92
-_THRESHOLD_KEYWORDS: float = 0.90
-
-
-# ---------------------------------------------------------------------------
-# Helper interno — abrir store para escritura
-# ---------------------------------------------------------------------------
-
-
-def _open_store(path: Path) -> Any:
-    """Abre (o crea) el DuckDBStore en ``path`` para escritura.
-
-    Args:
-        path: Ruta al archivo ``.duckdb``.
-
-    Returns:
-        ``DuckDBStore`` abierto y listo para leer/escribir.
-
-    Raises:
-        StoreError: Si el store está bloqueado o no se puede abrir.
-    """
-    from bib2graph.backends.duckdb import StoreLockedError
-    from bib2graph.stores.duckdb import DuckDBStore
-
-    try:
-        return DuckDBStore(path)
-    except StoreLockedError as exc:
-        raise StoreError(str(exc)) from exc
-    except OSError as exc:
-        raise StoreError(
-            f"No se puede abrir el store '{path}': {exc}. "
-            "Verificá que el archivo no esté bloqueado por otro proceso."
-        ) from exc
-
-
-# ---------------------------------------------------------------------------
-# Helper interno — normalize + dedup (espejo neutral de cli._ingest)
-# ---------------------------------------------------------------------------
-
-
-def _normalize_and_dedup(corpus: Any, *, applied_at: datetime | None) -> Any:
-    """Aplica normalize + dedup_authors + dedup_keywords al corpus.
-
-    Espejo neutral de ``cli._ingest.normalize_and_dedup``.  No importa de
-    ``cli/`` para mantener la capa de servicios independiente del adaptador
-    Click.  Los umbrales son los mismos que en ``cli/_ingest.py`` (ADR 0031).
-
-    Args:
-        corpus: Corpus completo ya mergeado (existing + incoming).
-        applied_at: Timestamp de la operación (R2).  ``None`` usa
-            ``datetime.now(UTC)`` internamente (para uso como librería).
-
-    Returns:
-        Nuevo Corpus normalizado y deduplicado.
-    """
-    from bib2graph.preprocessors.dedup import deduplicate_authors, deduplicate_keywords
-    from bib2graph.preprocessors.preprocessor import Preprocessor
-
-    ts = applied_at if applied_at is not None else datetime.now(UTC)
-    preprocessor = Preprocessor()
-    result = preprocessor.normalize(corpus, applied_at=ts)
-    result = deduplicate_authors(result, threshold=_THRESHOLD_AUTHORS)
-    result = deduplicate_keywords(result, threshold=_THRESHOLD_KEYWORDS)
-    return result
-
+from bib2graph.preprocessors.pipeline import normalize_and_dedup
+from bib2graph.service.errors import DataError
+from bib2graph.service.store import open_store as _open_store
 
 # ---------------------------------------------------------------------------
 # run_snapshot
@@ -230,7 +164,7 @@ def run_restore(
         # Merge primero, dedup después sobre el corpus COMPLETO (fix bug cross-biblioteca).
         # El reloj se fija UNA vez por invocación (R2): pasado via decided_at.
         merged = existing.merge(incoming)
-        merged_deduped = _normalize_and_dedup(merged, applied_at=decided_at)
+        merged_deduped = normalize_and_dedup(merged, applied_at=decided_at)
         papers_loaded = len(incoming)
         total_papers = len(merged_deduped)
         merged_backend_close = getattr(merged_deduped._backend, "close", None)
