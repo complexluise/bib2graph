@@ -782,6 +782,39 @@ def test_translate_exclude_strip_comillas_internas() -> None:
     assert after_not.count('"') == 1  # solo la comilla de cierre
 
 
+# ---------------------------------------------------------------------------
+# #210 — 429 → NetworkError accionable (polite pool / email)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_seed_429_levanta_network_error_accionable() -> None:
+    """Un 429 de OpenAlex en seed() lanza NetworkError con mensaje accionable.
+
+    Sin email declarado → pool anónimo → 429. El error debe mencionar email
+    y polite pool como remedio primario (no un HTTPStatusError pelado).
+    Referencia: ADR 0012.
+    """
+    from bib2graph.service.errors import NetworkError
+
+    def handler_429(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, text="Too Many Requests")
+
+    transport = httpx.MockTransport(handler_429)
+    source = OpenAlexSource(transport=transport)
+
+    with pytest.raises(NetworkError) as exc_info:
+        source.seed("ecological exchange")
+
+    msg = str(exc_info.value)
+    assert "429" in msg
+    assert "email" in msg.lower()
+    assert "polite" in msg.lower()
+    assert "OPENALEX_API_KEY" in msg
+    assert "ADR 0012" in msg
+    assert "api_key" in msg  # la api_key se nombra como opcional en el mensaje
+
+
 @pytest.mark.unit
 def test_translate_exclude_con_anio_forma_completa() -> None:
     """Con exclude + year, los NOT van dentro de search y el año va fuera con coma.
