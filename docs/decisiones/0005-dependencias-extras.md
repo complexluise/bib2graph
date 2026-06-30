@@ -3,6 +3,10 @@
 - **Estado:** Aceptada
 - **Fecha:** 2026-06-14
 - **Relacionada con:** [0002](0002-modelo-agnostico-backend.md), [0003](0003-persistencia-opcional.md), [0004](0004-enriquecimiento-opcional.md)
+- **Núcleo reencuadrado (pandas→Arrow) por [0006](0006-tabla-canonica-y-networkspec.md):** el
+  cuerpo lista `pandas` en el «Núcleo (siempre)»; la tabla canónica pasó a **Arrow/`pyarrow`**
+  (0006), así que `pandas` ya no es la dependencia de núcleo que describe el cuerpo. Ese listado
+  queda como historia.
 
 ## Contexto
 
