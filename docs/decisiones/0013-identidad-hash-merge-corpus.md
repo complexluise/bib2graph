@@ -16,6 +16,13 @@
   `DuckDBBackend` en SQL `UPDATE`/`MERGE` por `id`). El `corpus_hash` (D2) se computa siempre
   sobre el contenido (`corpus.to_arrow()`), nunca sobre detalles del backend. D4 (`provenance`
   como log append-only), D5/D6 (Manifest) no cambian.
+- **Precedencia de D1 invertida (2026-06-22, AS-BUILT 0.8) por
+  [0036](0036-identidad-source-id-agnostica-doi-ancla.md):** la precedencia de la fuente del
+  `valor` del `id` (D1) deja de ser `openalex_id`-first y pasa a **`doi:` > `source_id` (`src:`) >
+  `tt:`**: el DOI es el ancla universal y `openalex_id` se renombra a `source_id` genérico (motor
+  de extracción intercambiable, tabla lateral `external_ids`). El cuerpo de D1 (más abajo) describe
+  la precedencia **original** (`oa:`/`openalex_id`-first) y **queda como historia**; el AS-BUILT es
+  `_compute_id` en `corpus.py` (`doi` > `source_id` > `title|year`). D2/D3/D4 no cambian.
 
 ## Contexto
 

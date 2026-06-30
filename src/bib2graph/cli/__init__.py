@@ -7,12 +7,18 @@ Entry points en ``pyproject.toml``:
     b2g      = "bib2graph.cli:main"
     bib2graph = "bib2graph.cli:main_bib2graph_alias"  # deprecado, #165
 
-Subcomandos planos (17):
-    init, seed, chain, filter, build, enrich, monitor, export,
-    status, validate, accept, reject, networks, restore (shim #163),
-    resolve.
+Superficie (ADR 0037/0038/0040): 10 verbos del ciclo + ``skill`` (meta) +
+9 aliases deprecados. En total se registran 16 subcomandos planos + 4 grupos.
 
-    inspect: absorbido por ``read show`` (#156); permanece como alias.
+Verbos del ciclo (10) — planos: init, seed, chain, build, export, status,
+    validate; grupos (abajo): read, curate, snapshot.
+Meta (1): skill — distribución de la skill de Claude Code (ADR 0039), fuera
+    de los 10 del ciclo.
+Aliases deprecados (9) — la ventana de retrocompat cierra en 0.11.0 (ADR 0037/0038):
+    accept→curate accept, reject→curate reject, filter→curate filter,
+    enrich→chain/build, inspect→read show (#156), monitor→chain --since,
+    networks→build --spec, resolve→seed --resolve, restore→snapshot restore.
+    (``gui`` fue RETIRADO de la librería por el ADR 0040; ya no se registra.)
 
 Grupos noun-verb (4):
     read     [list|stats|show|top] — lecturas read-only del corpus (#156/#157).
@@ -115,12 +121,11 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
     Si no hay ninguno, los comandos que necesitan la biblioteca emiten un
     error accionable (exit 1) que sugiere 'b2g init' o '--workspace'.
 
-    Subcomandos: init, seed, chain, filter, build, enrich, monitor, export,
-    status, validate, accept, reject, networks, restore (shim),
-    resolve,
-    read [list|stats|show|top], curate [dump|apply|accept|reject|filter],
-    snapshot [create|restore] (ADR 0038),
-    skill [add] (Epic #188).
+    Verbos del ciclo (ADR 0037): init, seed, chain, build, export, status,
+    validate, read [list|stats|show|top], curate [dump|apply|accept|reject|filter],
+    snapshot [create|restore]. Meta: skill [add] (Epic #188).
+    Aliases deprecados (cierran en 0.11.0, ADR 0038): accept, reject, filter,
+    enrich, monitor, inspect, networks, resolve, restore.
 
     Ejemplo:
         b2g init mi-investigacion

@@ -66,3 +66,15 @@ Se **mantiene** "`Paper`/`Author`/… = vistas derivadas, no tipos del modelo".
 > doble verdad: `kind: NetworkKind` (`spec.py`), y `facade._projector_for_kind` compara contra los
 > miembros del enum (`NetworkKind.BIBLIOGRAPHIC_COUPLING`, …) en vez de string-literals. **`NetworkKind`
 > es ahora la fuente única real** (no validada por test de paridad: validada por el type-checker).
+>
+> **AS-BUILT (enmienda, 2026-06-22) — la dirección de autoridad del schema (§3) es la INVERSA.** El
+> §3 de la Decisión declara **`PaperRow` (Pydantic) autoritativa** y dice que `CORPUS_SCHEMA` (Arrow)
+> se "**deriva/verifica**" de ella. El AS-BUILT invierte la autoridad: **`CORPUS_SCHEMA` (Arrow) es la
+> definición autoritativa** y **`PaperRow` se alinea campo a campo**. De las dos vías que el §3
+> mencionaba, el AS-BUILT conserva la **verificación** y descarta la **derivación**: el invariante "no
+> driftean" se sostiene por **paridad verificada por test** (`assert_schema_parity()` en `schemas.py`,
+> que falla si los nombres/orden de campo divergen — comentario explícito: "`CORPUS_SCHEMA` sigue
+> siendo la definición Arrow autoritativa; `PaperRow` se alinea"), no por generar uno desde el otro.
+> **El fin anti-drift del §3 se cumple** (una sola verdad, imposible de driftear sin que falle el
+> test/type-check); lo que cambia es la *dirección* de autoridad (`PaperRow` → `CORPUS_SCHEMA`). El
+> texto del §3 queda como historia.

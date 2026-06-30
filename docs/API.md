@@ -1273,9 +1273,18 @@ def decorate(artifact: NetworkArtifact, table: pa.Table) -> None:
 | `label` | todos | string legible (mapeo por kind, abajo) |
 | `degree_centrality` | todos | `float`, vía `nx.degree_centrality` |
 | `year` | paper (coupling/cocitation) | `int` (ausente si `None` en el corpus) |
+| `doi` | paper (coupling/cocitation) | `string` desde `Col.DOI` (DOI desnudo/normalizado, p. ej. `10.1234/abc`); **ausente si el paper no tiene DOI** (mismo criterio que `year`) |
+| `url` | paper (coupling/cocitation) | `string` derivada `https://doi.org/<doi>`; **solo presente si hay DOI** (no es columna del corpus, ver nota abajo) |
 | `is_seed` | paper | `bool` |
 | `curation_status` | paper | `string` |
 | `community` | todos | `int`, **solo** si se provee `artifact.communities` |
+
+`doi`/`url` aplican **solo a paper-kinds** (`bibliographic_coupling` y `cocitation`); los nodos de
+autor/institución/keyword **no los reciben**. `url` es **derivada** (`https://doi.org/<doi>`), no una
+columna del corpus: el DOI es la única identidad de primera clase (ADR 0036) y la URL es una expansión
+trivial determinista a la hora de decorar. Ausencia condicional como `year`: sin DOI truthy, el nodo no
+recibe ni `doi` ni `url`. Los exporters CSV/GraphML (§9) los propagan **automáticamente** cuando están
+presentes (son genéricos y omiten `None`) — sin cambios en exporters.
 
 **Mapeo de `label` por `NetworkKind`:**
 
@@ -1402,8 +1411,9 @@ class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
 
 - **`CsvExporter`** escribe `aristas.csv` (`source,target,weight`) y `nodos.csv` (`id,label` +
   atributos de nodo + métricas de `results` —degree/betweenness/community— unidas por id). Orden
-  de filas determinista. El `label` (y `year`/`is_seed`/`curation_status`/`community`) lo inyecta la
-  capa `decorate` (§7.1) antes del export, no el exporter.
+  de filas determinista. El `label` (y `year`/`doi`/`url`/`is_seed`/`curation_status`/`community`) lo
+  inyecta la capa `decorate` (§7.1) antes del export, no el exporter; `doi`/`url` salen solo en
+  paper-kinds y solo cuando el paper tiene DOI.
 - **`GraphMLExporter`** escribe esos atributos como node attributes, **omite** los atributos con
   valor `None` (Gephi / `nx.write_graphml` no los admiten) y **no muta** el grafo original (opera
   sobre una copia).
