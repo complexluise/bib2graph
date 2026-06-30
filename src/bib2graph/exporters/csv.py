@@ -50,7 +50,8 @@ class CsvExporter:
 
     def _write_aristas(self, g: _Graph, out_path: Path) -> None:
         """Escribe aristas.csv con columnas source,target,weight (D5)."""
-        with open(out_path / "aristas.csv", "w", newline="", encoding="utf-8") as f:
+        # utf-8-sig (BOM) para que Excel-Windows autodetecte UTF-8 y no rompa tildes (#214)
+        with open(out_path / "aristas.csv", "w", newline="", encoding="utf-8-sig") as f:
             writer = csv.writer(f)
             writer.writerow(["source", "target", "weight"])
             # Orden determinista: aristas ordenadas por (source, target)
@@ -85,7 +86,8 @@ class CsvExporter:
         metric_cols = sorted(metric_keys)
         header = ["id", "label", *attr_cols, *metric_cols]
 
-        with open(out_path / "nodos.csv", "w", newline="", encoding="utf-8") as f:
+        # utf-8-sig (BOM) para que Excel-Windows autodetecte UTF-8 y no rompa tildes (#214)
+        with open(out_path / "nodos.csv", "w", newline="", encoding="utf-8-sig") as f:
             writer = csv.writer(f)
             writer.writerow(header)
             # Orden determinista: nodos ordenados por id como string

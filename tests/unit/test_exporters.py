@@ -148,6 +148,30 @@ def test_csv_aristas_columnas_correctas(
     """aristas.csv tiene columnas source,target,weight (D5)."""
     CsvExporter().export(simple_graph, results_dict, tmp_path)
 
-    content = (tmp_path / "aristas.csv").read_text(encoding="utf-8")
+    content = (tmp_path / "aristas.csv").read_text(encoding="utf-8-sig")
     header = content.splitlines()[0]
     assert header == "source,target,weight"
+
+
+@pytest.mark.unit
+def test_csv_escribe_con_bom_utf8_para_excel(tmp_path: Path) -> None:
+    """Los CSV se escriben en utf-8-sig (BOM) para Excel-Windows (#214).
+
+    Sin BOM, Excel asume cp1252 y rompe las tildes (Valoración → ValoraciÃ³n).
+    Regresión: el export debe empezar con el BOM UTF-8 y las tildes deben
+    sobrevivir el round-trip.
+    """
+    g = nx.Graph()
+    g.add_node("doi:abc", label="Valoración estética (Müller, 1987)")
+    g.add_node("doi:def", label="Crítica de la razón")
+    g.add_edge("doi:abc", "doi:def", weight=3)
+
+    CsvExporter().export(g, {"grado": dict(g.degree())}, tmp_path)
+
+    for name in ("nodos.csv", "aristas.csv"):
+        raw = (tmp_path / name).read_bytes()
+        assert raw.startswith(b"\xef\xbb\xbf"), f"{name} debe empezar con BOM UTF-8"
+
+    # Las tildes sobreviven el round-trip leyendo utf-8-sig
+    nodos = (tmp_path / "nodos.csv").read_text(encoding="utf-8-sig")
+    assert "Valoración estética (Müller, 1987)" in nodos
