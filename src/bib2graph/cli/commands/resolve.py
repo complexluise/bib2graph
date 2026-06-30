@@ -30,10 +30,6 @@ from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import resolve_library_path
 
-# ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click)
-# ---------------------------------------------------------------------------
-
 
 def run_resolve(
     store_path: str | Path,
@@ -63,11 +59,6 @@ def run_resolve(
     from bib2graph.service.resolve import resolve_dois
 
     return resolve_dois(store_path, email=email, transport=transport)
-
-
-# ---------------------------------------------------------------------------
-# Comando Click
-# ---------------------------------------------------------------------------
 
 
 @click.command("resolve")

@@ -29,10 +29,6 @@ import click
 
 F = TypeVar("F", bound=Callable[..., Any])
 
-# ---------------------------------------------------------------------------
-# Helpers de modo JSON
-# ---------------------------------------------------------------------------
-
 
 def _env_truthy(name: str) -> bool:
     """Devuelve True si la variable de entorno ``name`` está seteada y es truthy.
@@ -95,10 +91,6 @@ def json_option(func: F) -> F:
     )(func)
 
 
-# ---------------------------------------------------------------------------
-# Helper de --since
-# ---------------------------------------------------------------------------
-
 _RELATIVE_RE = re.compile(r"^(\d+)(d|m|y)$", re.IGNORECASE)
 
 _DAYS_PER_UNIT: dict[str, int] = {
@@ -135,13 +127,11 @@ def parse_since(value: str, *, now: date | None = None) -> date:
 
     value = value.strip()
 
-    # Intento ISO primero
     try:
         return date.fromisoformat(value)
     except ValueError:
         pass
 
-    # Intento relativo
     m = _RELATIVE_RE.match(value)
     if m:
         n = int(m.group(1))

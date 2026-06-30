@@ -19,11 +19,8 @@ from bib2graph.cli._ingest import normalize_and_dedup
 from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store, resolve_library_path
 
-# ---------------------------------------------------------------------------
+
 # Función núcleo (testeable, sin Click)
-# ---------------------------------------------------------------------------
-
-
 def run_chain(
     store_path: str | Path,
     *,
@@ -76,7 +73,6 @@ def run_chain(
             max_candidates=max_candidates,
         )
 
-    # Validación de --since: backward + since no tiene sentido.
     if since is not None and direction == "backward":
         raise UsageError(
             "--since no es compatible con --direction backward.  "
@@ -195,8 +191,6 @@ def run_chain(
         store.backend.persist_enricher_refs(merged_deduped.manifest.enrichers)
 
         # #54: persistir IDs backward observados en la tabla auxiliar.
-        # El backend del store (DuckDBBackend) ya tiene add_referenced_refs;
-        # el InMemoryBackend lo implementa también para tests.
         if ranked.observed_refs:
             store.backend.add_referenced_refs(
                 ranked.observed_refs, cycle_round=new_round
@@ -249,9 +243,6 @@ def _run_chain_preview(
     """
     from bib2graph.foraging import Forager
 
-    # Para preview backward/both, el source nunca se usa (cero red).
-    # Para preview forward con cited_by_id, tampoco.
-    # Usamos None como source (el Forager solo llama al source en chain(), no en preview()).
     store = open_store(store_path)
     try:
         corpus = store.load()
@@ -272,7 +263,6 @@ def _run_chain_preview(
     finally:
         store.close()
 
-    # Mensaje accionable cuando el forward no es estimable localmente.
     warnings: list[str] = []
     if growth.forward_requires_fetch:
         warnings.append(
@@ -294,11 +284,7 @@ def _run_chain_preview(
     }
 
 
-# ---------------------------------------------------------------------------
 # Comando Click
-# ---------------------------------------------------------------------------
-
-
 @click.command("chain")
 @click.option(
     "--direction",

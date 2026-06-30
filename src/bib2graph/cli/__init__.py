@@ -132,8 +132,6 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
     ctx.obj["workspace"] = workspace
 
 
-# Registrar subcomandos planos + grupos noun-verb read (#156), curate (#155),
-# snapshot (#163, ADR 0038), skill (Epic #188)
 b2g.add_command(init_cmd)
 b2g.add_command(seed_cmd)
 b2g.add_command(chain_cmd)

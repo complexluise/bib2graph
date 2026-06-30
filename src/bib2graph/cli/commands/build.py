@@ -55,11 +55,6 @@ if TYPE_CHECKING:
     from bib2graph.networks.spec import NetworkArtifact
 
 
-# ---------------------------------------------------------------------------
-# Helper: mapeo del vocabulario CLI de --scope al vocabulario interno de corpus.scoped()
-# ---------------------------------------------------------------------------
-
-
 def _map_scope(scope: str) -> str:
     """Mapea el vocab de ``--scope`` (CLI) al vocab interno de ``corpus.scoped()``.
 
@@ -77,11 +72,7 @@ def _map_scope(scope: str) -> str:
     return scope
 
 
-# ---------------------------------------------------------------------------
 # Helper compartido: carga de specs YAML + construcción de artefactos
-# ---------------------------------------------------------------------------
-
-
 def _build_from_spec_file(
     corpus: Corpus,
     spec_path: str | Path,
@@ -120,11 +111,7 @@ def _build_from_spec_file(
         ) from exc
 
 
-# ---------------------------------------------------------------------------
 # Helper compartido: escritura de artefactos por red
-# ---------------------------------------------------------------------------
-
-
 def _write_artifacts(
     artifacts: list[NetworkArtifact],
     corpus: Corpus,
@@ -156,14 +143,11 @@ def _write_artifacts(
         kind_dir = artifacts_dir / kind
         kind_dir.mkdir(parents=True, exist_ok=True)
 
-        # Exportar GraphML: fusionar métricas + comunidades como atributo de nodo.
-        # art.communities es un dict {nodo: int} o None si no se calcularon.
         node_attrs: dict[str, object] = {**art.metrics}
         if art.communities:
             node_attrs["community"] = art.communities
         exporter.export(art.graph, node_attrs, kind_dir)
 
-        # Escribir metrics.json
         metrics_path = kind_dir / "metrics.json"
         # Serializar métricas (pueden tener tipos no-JSON como nx.Graph)
         safe_metrics = {
@@ -189,7 +173,6 @@ def _write_artifacts(
             encoding="utf-8",
         )
 
-        # Escribir clusters.csv para redes de paper con comunidades (issue #31).
         # cluster_table devuelve [] si el kind no es de paper o no hay comunidades.
         clusters_path: str | None = None
         clusters = cluster_table(corpus.to_arrow(), art)
@@ -213,7 +196,6 @@ def _write_artifacts(
                 )
                 _writer.writeheader()
                 for _row in clusters:
-                    # Serializar listas como cadena separada por "|"
                     _writer.writerow(
                         {
                             **_row,
@@ -238,11 +220,7 @@ def _write_artifacts(
     return networks_info
 
 
-# ---------------------------------------------------------------------------
 # Helper: aplicar thesaurus al corpus y persistir (ADR 0011, #164)
-# ---------------------------------------------------------------------------
-
-
 def _apply_thesaurus_and_persist(
     corpus: Corpus,
     thesaurus_path: str | Path,
@@ -305,11 +283,7 @@ def _apply_thesaurus_and_persist(
     return updated, stats
 
 
-# ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
-# ---------------------------------------------------------------------------
-
-
 def run_build(
     store_path: str | Path,
     *,
@@ -432,7 +406,6 @@ def run_build(
         # clusters.csv cuadre con los nodos del grafo (sin drift).
         corpus = corpus_full.scoped(corpus_scope)
 
-        # Caso de 0 nodos: no es error, pero sí merece un warning accionable.
         build_warnings: list[str] = []
         if len(corpus) == 0:
             msg = (
@@ -444,11 +417,9 @@ def run_build(
             artifacts_dir.mkdir(parents=True, exist_ok=True)
             (artifacts_dir / ".corpus_hash").write_text("", encoding="utf-8")
             store.backend.set_loop_state(new_state, cycle_round=new_round)
-            # scope_display para early-return (corpus vacío): mismo cálculo que el path normal.
             _scope_display_empty = (
                 scope_cli_token if scope_cli_token is not None else corpus_scope
             )
-            # Maturity en early-return: curated desde corpus_full (el filtrado está vacío).
             from bib2graph.service.maturity import compute_maturity as _compute_maturity
 
             _maturity_empty = _compute_maturity(
@@ -471,16 +442,11 @@ def run_build(
             }
 
         # Diagnóstico pre-build (ADR 0037 §(e), fuente única con status-time).
-        # Indexado por kind para lookup O(1) en el loop post-build.
         preview_by_kind = {str(e["kind"]): e for e in predict_build_preview(corpus)}
 
-        # Construir artefactos según el modo.
         if spec_path is not None:
-            # Modo declarativo: YAML → specs → Networks.build por red.
-            # _build_from_spec_file levanta DataError / DependencyError.
             artifacts = _build_from_spec_file(corpus, spec_path)
         else:
-            # Modo quick: Networks.quick con min_weight propagado a cada spec.
             try:
                 artifacts = Networks.quick(corpus, min_weight=min_weight)
             except ImportError as exc:
@@ -491,9 +457,7 @@ def run_build(
 
         networks_info = _write_artifacts(artifacts, corpus, artifacts_dir)
 
-        # Diagnóstico de redes vacías en build-time.
         # Reusa los reason/fix_command del preview (fuente única — ADR 0037 §(e)).
-        # Si el preview predijo no-vacía pero salió vacía, sospechamos min_weight.
         empty_networks: list[dict[str, object]] = []
         for art in artifacts:
             kind_str = str(art.spec.kind)
@@ -517,11 +481,9 @@ def run_build(
                     else None
                 )
             elif spec_path is None and min_weight > 1:
-                # Modo quick: el --min-weight del CLI filtró todas las aristas.
                 reason = f"0 aristas con peso ≥ {min_weight}; bajá --min-weight"
                 fix_cmd = f"b2g build --min-weight {min_weight - 1}"
             elif spec_path is not None and art.spec.min_weight > 1:
-                # Modo spec: el min_weight del propio YAML filtró todas las aristas.
                 # El --min-weight de la CLI NO se usa en modo spec → no sugerir bajarlo.
                 reason = (
                     f"0 aristas con peso ≥ {art.spec.min_weight} "
@@ -529,7 +491,6 @@ def run_build(
                 )
                 fix_cmd = None
             else:
-                # Caso inesperado: red vacía sin causa clara identificable.
                 reason = "Red vacía (sin datos suficientes)"
                 fix_cmd = None
 
@@ -588,11 +549,7 @@ def run_build(
     }
 
 
-# ---------------------------------------------------------------------------
 # Comando Click
-# ---------------------------------------------------------------------------
-
-
 @click.command("build")
 @click.option(
     "--out-dir",
@@ -705,7 +662,6 @@ def build_cmd(
     if effective_out_dir is None:
         effective_out_dir = ws.networks_dir
 
-    # Resolver scope: --corpus-scope deprecado tiene prioridad con aviso.
     corpus_scope_dep_msg: str | None = None
     if corpus_scope_deprecated is not None:
         corpus_scope_dep_msg = emit_deprecation(
@@ -716,9 +672,7 @@ def build_cmd(
         internal_scope = corpus_scope_deprecated
         cli_token: str = corpus_scope_deprecated
     else:
-        # El vocab nuevo (all|accepted|seeds) necesita mapeo para seeds→seeds_only.
         internal_scope = _map_scope(scope)
-        # scope es el token tal como lo tipió el usuario ("seeds"/"accepted"/"all").
         cli_token = scope
 
     # FIX 1a — footgun: --min-weight se ignora en modo spec.
@@ -742,7 +696,6 @@ def build_cmd(
     )
 
     if json_mode(json_output):
-        # Fusionar warnings de corpus con el aviso de deprecación de --corpus-scope.
         all_warnings: list[str] = list(data.get("warnings") or [])
         if corpus_scope_dep_msg is not None:
             all_warnings.append(corpus_scope_dep_msg)
@@ -758,7 +711,6 @@ def build_cmd(
         # Warnings van a stderr en modo humano (ADR 0021 §C; patrón de status.py).
         for w in data.get("warnings", []):
             print(f"ADVERTENCIA: {w}", file=sys.stderr)
-        # Diagnósticos de redes vacías también a stderr (no son warnings de corpus).
         for en in data.get("empty_networks", []):
             fix = f" Sugerencia: {en['fix_command']}" if en.get("fix_command") else ""
             print(

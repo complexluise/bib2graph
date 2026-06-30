@@ -18,10 +18,6 @@ from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import open_store_readonly, resolve_library_path
 from bib2graph.constants import Col, CurationStatus
 
-# ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click)
-# ---------------------------------------------------------------------------
-
 
 def run_validate(store_path: str | Path) -> dict[str, Any]:
     """Valida el schema del store y la consistencia del corpus.
@@ -60,7 +56,6 @@ def run_validate(store_path: str | Path) -> dict[str, Any]:
             f"Error al leer el store: {exc}. El archivo puede estar corrupto."
         ) from exc
 
-    # Validación con validate_table (lanza SchemaError si falla)
     try:
         validate_table(table)
     except SchemaError as exc:
@@ -68,7 +63,6 @@ def run_validate(store_path: str | Path) -> dict[str, Any]:
             f"Schema del corpus inválido: {exc}. Verificá la integridad del store."
         ) from exc
 
-    # Verificaciones de consistencia
     issues = []
     rows = table.to_pylist()
 
@@ -104,11 +98,6 @@ def run_validate(store_path: str | Path) -> dict[str, Any]:
         "total_papers": len(table),
         "issues": [],
     }
-
-
-# ---------------------------------------------------------------------------
-# Comando Click
-# ---------------------------------------------------------------------------
 
 
 @click.command("validate")
