@@ -290,3 +290,204 @@ def test_duckdb_backend_close_es_idempotente(tmp_path: Path) -> None:
     backend2 = DuckDBBackend(path=db_path)
     assert len(backend2) == 0
     backend2.close()
+
+
+# ---------------------------------------------------------------------------
+# Correctitud: lote con ids duplicados → dedup-MERGE (regresión #211)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_persist_lote_con_duplicados_dedup_merge(tmp_path: Path) -> None:
+    """persist de lote con id duplicado: una fila final, provenance acumulada.
+
+    Regresión #211: el upsert bulk anterior lanzaba ConstraintException
+    (PRIMARY KEY) cuando el lote tenía dos filas con el mismo id.  Ahora se
+    deduplica-MERGE antes del upsert, igual que el loop fila-a-fila previo:
+    provenance append-only y curación "más reciente gana".
+    """
+    db_path = tmp_path / "lib_dup.duckdb"
+    paper_id = "oa:test0000aaaa0000"
+
+    prov_seed = json.dumps(
+        [
+            {
+                "action": "seeded",
+                "equation_id": "eq1",
+                "chaining_hop": None,
+                "source": "openalex",
+                "fetched_at": None,
+                "decided_by": None,
+                "decided_at": None,
+            }
+        ]
+    )
+    prov_accept = json.dumps(
+        [
+            {
+                "action": "accepted",
+                "equation_id": None,
+                "chaining_hop": None,
+                "source": None,
+                "fetched_at": None,
+                "decided_by": "revisor",
+                "decided_at": "2026-01-01T00:00:00+00:00",
+            }
+        ]
+    )
+
+    # Lote con el mismo id dos veces: candidate→seeded primero, accepted→prov_accept después
+    row_a = _make_row(id=paper_id, curation_status="candidate", provenance=prov_seed)
+    row_b = _make_row(id=paper_id, curation_status="accepted", provenance=prov_accept)
+    corpus = _make_corpus([row_a, row_b])
+
+    store = DuckDBStore(db_path)
+    store.persist(corpus)  # No debe lanzar ConstraintException
+
+    loaded = store.load()
+    assert len(loaded) == 1, "Debe haber solo 1 fila tras dedup"
+
+    row = loaded.to_arrow().to_pylist()[0]
+    assert row["curation_status"] == "accepted", "Curación más reciente gana"
+    events = json.loads(row["provenance"])
+    assert len(events) == 2, "Provenance acumulada de ambas apariciones"
+    actions = {e["action"] for e in events}
+    assert "seeded" in actions
+    assert "accepted" in actions
+
+
+@pytest.mark.integration
+def test_persist_overwrite_corpus_lote_con_duplicados(tmp_path: Path) -> None:
+    """overwrite_corpus con lote duplicado: una fila final, provenance acumulada.
+
+    Complementa el test anterior para la ruta de ``overwrite_corpus``
+    (DELETE + INSERT masivo), que también recibe el lote antes del upsert
+    y debe deduplicar con la misma semántica.
+    """
+    import pyarrow as pa
+
+    from bib2graph.backends.duckdb import DuckDBBackend
+    from bib2graph.schemas import CORPUS_SCHEMA
+
+    db_path = tmp_path / "lib_ow_dup.duckdb"
+    paper_id = "oa:test1111bbbb1111"
+
+    prov_a = json.dumps(
+        [
+            {
+                "action": "seeded",
+                "equation_id": "eq2",
+                "chaining_hop": None,
+                "source": "openalex",
+                "fetched_at": None,
+                "decided_by": None,
+                "decided_at": None,
+            }
+        ]
+    )
+    prov_b = json.dumps(
+        [
+            {
+                "action": "accepted",
+                "equation_id": None,
+                "chaining_hop": None,
+                "source": None,
+                "fetched_at": None,
+                "decided_by": "curador",
+                "decided_at": "2026-02-01T00:00:00+00:00",
+            }
+        ]
+    )
+
+    row_a = _make_row(id=paper_id, curation_status="candidate", provenance=prov_a)
+    row_b = _make_row(id=paper_id, curation_status="accepted", provenance=prov_b)
+    table = pa.Table.from_pylist([row_a, row_b], schema=CORPUS_SCHEMA)
+
+    backend = DuckDBBackend(path=db_path)
+    backend.overwrite_corpus(table)  # No debe lanzar ConstraintException
+
+    assert len(backend) == 1, "Debe haber solo 1 fila tras dedup en overwrite"
+
+    row = backend.to_arrow().to_pylist()[0]
+    assert row["curation_status"] == "accepted"
+    events = json.loads(row["provenance"])
+    assert len(events) == 2
+    actions = {e["action"] for e in events}
+    assert "seeded" in actions
+    assert "accepted" in actions
+
+
+# ---------------------------------------------------------------------------
+# Correctitud: orden determinista de _seq para múltiples filas nuevas en un lote
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_persist_multifila_nueva_seq_determinista(tmp_path: Path) -> None:
+    """persist de lote con N filas nuevas → orden D3 estable en to_arrow().
+
+    Regresión de la observación MEDIO del verifier (#211): ROW_NUMBER() OVER ()
+    sin ORDER BY no garantiza el orden en SQL estándar.  Con la columna auxiliar
+    ``_row_idx`` (ORDER BY _row_idx), el _seq respeta el orden de aparición de
+    la tabla Arrow entrante.
+
+    El test verifica el ORDER (no solo el corpus_hash, que es order-independent)
+    con MÚLTIPLES filas nuevas en el lote, pues el bug solo se manifiesta con ≥2
+    filas nuevas y dependencia del scan interno de DuckDB.
+    """
+    db_path = tmp_path / "lib_ord.duckdb"
+    # 6 ids en orden deliberado (mezcla de hex para evitar colusión con ascii sort)
+    ids = [
+        "oa:ffff000000000001",
+        "oa:aaaa000000000002",
+        "oa:9999000000000003",
+        "oa:bbbb000000000004",
+        "oa:1111000000000005",
+        "oa:cccc000000000006",
+    ]
+    rows = [_make_row(id=id_, title=f"Paper {i}") for i, id_ in enumerate(ids)]
+    corpus = _make_corpus(rows)
+
+    store = DuckDBStore(db_path)
+    store.persist(corpus)
+
+    loaded_ids = store.load().to_arrow().column("id").to_pylist()
+    assert loaded_ids == ids, (
+        f"El orden D3 debe coincidir con el de la tabla Arrow entrante.\n"
+        f"Esperado: {ids}\nObtenido: {loaded_ids}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Benchmark de escala — upsert masivo (issue #211)
+# Marcado @slow: NO corre en el gate por defecto (-m "not network and not slow").
+# La idempotencia a escala pequeña ya está cubierta por test_persist_idempotente.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_persist_escala_masiva(tmp_path: Path) -> None:
+    """persist de 50.000 filas es correcto e idempotente (benchmark de escala).
+
+    Consolida los dos tests de 50 K anteriores en uno: verifica que todas las
+    filas persisten y que una segunda pasada no duplica (idempotencia D3).
+
+    No hay assert de wall-clock (era la fuente de flake en runners CI cargados).
+    La señal de rendimiento queda implícita en que el test termine en tiempo
+    razonable (no bloquea el gate por estar marcado @slow).
+    """
+    N = 50_000
+    rows = [_make_row(id=f"oa:{i:016x}", title=f"Paper {i}") for i in range(N)]
+    corpus = _make_corpus(rows)
+
+    db_path = tmp_path / "lib_bench.duckdb"
+    store = DuckDBStore(db_path)
+    store.persist(corpus)
+
+    assert len(store.load()) == N, "No se persistieron todas las filas"
+
+    # Segunda pasada: idempotencia (sin duplicados, mismo hash)
+    store.persist(corpus)
+    loaded = store.load()
+    assert len(loaded) == N, "La segunda persist duplicó filas"
