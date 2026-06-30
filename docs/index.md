@@ -33,9 +33,13 @@ mismo input, mismas redes.
 
     De una ecuación a un GraphML, sin escribir código.
 
--   :material-book-open-variant: **[Guías](guias/index.md)**
+-   :material-book-open-variant: **[Tutoriales](tutoriales/index.md)**
 
-    Tutoriales y recetas para tareas concretas de investigación.
+    Desde tu primer mapa en 5 minutos hasta un reporte de SOTA riguroso.
+
+-   :material-silverware-fork-knife: **[Guías](guias/index.md)**
+
+    Recetas para tareas concretas de investigación.
 
 -   :material-api: **[Referencia](reference/cli.md)**
 
