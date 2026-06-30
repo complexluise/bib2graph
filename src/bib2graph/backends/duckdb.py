@@ -46,9 +46,7 @@ from bib2graph.constants import LIST_COLUMNS, CurationStatus
 from bib2graph.cycle import CycleState
 from bib2graph.schemas import CORPUS_SCHEMA, validate_table
 
-# ---------------------------------------------------------------------------
 # Error de bloqueo de archivo (ADR 0019)
-# ---------------------------------------------------------------------------
 
 
 class StoreLockedError(OSError):
@@ -58,9 +56,7 @@ class StoreLockedError(OSError):
     """
 
 
-# ---------------------------------------------------------------------------
 # SQL DDL
-# ---------------------------------------------------------------------------
 
 # ADR 0024: ``_seq BIGINT`` es una columna interna (no parte de CORPUS_SCHEMA)
 # que fija el orden de primera aparición para garantizar D3 sin DELETE+reinsert.
@@ -103,10 +99,7 @@ CREATE TABLE IF NOT EXISTS loop_state_log (
 )
 """
 
-# R3: si la tabla ya existía sin la columna ``round`` (bases creadas antes de R3),
-# agregamos la columna en modo migración liviana (pre-1.0, sin datos reales en uso).
-# DuckDB no soporta ADD COLUMN con NOT NULL constraint; se agrega como nullable
-# con default 0 y se trata como entero en loop_round().
+# DuckDB no soporta ADD COLUMN con NOT NULL; se agrega nullable con DEFAULT 0.
 _DDL_LOOP_STATE_MIGRATE = """
 ALTER TABLE loop_state_log ADD COLUMN round INTEGER DEFAULT 0
 """
@@ -155,10 +148,6 @@ CREATE TABLE IF NOT EXISTS filter_log (
 )
 """
 
-# #141 — tabla de EnricherRef para trazabilidad del manifest.
-# Cada ejecución de enriquecimiento appendea/reemplaza sus refs de enriquecedor.
-# ``params_json`` almacena el dict ``params`` de ``EnricherRef`` serializado como JSON.
-# ``recorded_at`` usa ``now()`` de DuckDB (mismo patrón que ``filter_log``).
 _DDL_ENRICHER_LOG = """
 CREATE TABLE IF NOT EXISTS enricher_log (
     name        VARCHAR NOT NULL,
@@ -167,7 +156,6 @@ CREATE TABLE IF NOT EXISTS enricher_log (
 )
 """
 
-# ADR 0024: migración liviana para bases pre-existentes sin columna ``_seq``.
 # Se suprime el error si la columna ya existe (CatalogException o BinderException).
 # El backfill usa ``rowid`` como proxy de orden de inserción original; es inocuo
 # cuando no hay NULLs (UPDATE … WHERE _seq IS NULL no toca nada).
@@ -179,7 +167,6 @@ _DDL_CORPUS_BACKFILL_SEQ = """
 UPDATE corpus SET _seq = rowid WHERE _seq IS NULL
 """
 
-# ---------------------------------------------------------------------------
 # SQL de UPSERT
 # El merge campo a campo (D3) se expresa en SQL:
 #   - Escalares: COALESCE(excluded.col, corpus.col)
@@ -187,7 +174,6 @@ UPDATE corpus SET _seq = rowid WHERE _seq IS NULL
 #   - provenance / curation_status: delegados a UDFs Python
 # ADR 0024: ``_seq`` se incluye en el INSERT pero NO en el DO UPDATE SET,
 # de modo que filas existentes conservan su ``_seq`` original (primera aparición).
-# ---------------------------------------------------------------------------
 
 
 def _build_upsert_sql() -> str:
@@ -226,7 +212,6 @@ def _build_upsert_sql() -> str:
         for c in list_cols
     ]
 
-    # UDFs para los campos especiales
     special_updates = [
         "    curation_status = _merge_curation_status_udf(\n"
         "        corpus.curation_status, corpus.provenance,\n"
@@ -241,7 +226,6 @@ def _build_upsert_sql() -> str:
     # ADR 0024: columnas del INSERT = CORPUS_SCHEMA + _seq (columna interna de orden)
     schema_cols = ", ".join(f.name for f in CORPUS_SCHEMA)
     insert_cols = f"{schema_cols}, _seq"
-    # Un placeholder extra para _seq al final
     placeholders = ", ".join(f"${i + 1}" for i in range(len(CORPUS_SCHEMA) + 1))
 
     return (
@@ -254,9 +238,7 @@ def _build_upsert_sql() -> str:
 
 _UPSERT_SQL = _build_upsert_sql()
 
-# ---------------------------------------------------------------------------
 # Helpers de conversión Python ↔ DuckDB
-# ---------------------------------------------------------------------------
 
 
 def _row_to_params(row: dict[str, object]) -> list[object]:
@@ -287,9 +269,7 @@ def _arrow_table_from_con(con: duckdb.DuckDBPyConnection) -> pa.Table:
     return result.cast(CORPUS_SCHEMA)
 
 
-# ---------------------------------------------------------------------------
 # DuckDBBackend
-# ---------------------------------------------------------------------------
 
 
 class DuckDBBackend:
@@ -339,37 +319,25 @@ class DuckDBBackend:
         if table is not None:
             self._upsert_table(table)
 
-    # ------------------------------------------------------------------
     # Inicialización interna
-    # ------------------------------------------------------------------
 
     def _setup(self) -> None:
         """Crea las tablas DDL, aplica migraciones y registra las UDFs Python."""
         self._con.execute(_DDL_CORPUS)
         self._con.execute(_DDL_LOOP_STATE)
-        # R3: migración liviana — agrega columna round si falta (bases pre-R3).
         with contextlib.suppress(duckdb.CatalogException):
             self._con.execute(_DDL_LOOP_STATE_MIGRATE)
-        # ADR 0024: migración liviana — agrega columna _seq si falta (bases pre-ADR 0024).
         # CatalogException: columna ya existe. BinderException: variante alternativa DuckDB.
         with contextlib.suppress(duckdb.CatalogException, duckdb.BinderException):
             self._con.execute(_DDL_CORPUS_MIGRATE_SEQ)
-        # Backfill: asigna _seq = rowid a filas legacy sin _seq asignado.
-        # Es inocuo cuando no hay NULLs (WHERE _seq IS NULL no toca nada).
         self._con.execute(_DDL_CORPUS_BACKFILL_SEQ)
-        # ADR 0036: migración liviana — renombra openalex_id → source_id si falta.
-        # Bases pre-ADR 0036 tienen la columna como openalex_id; se renombra.
         with contextlib.suppress(duckdb.CatalogException, duckdb.BinderException):
             self._con.execute(
                 "ALTER TABLE corpus RENAME COLUMN openalex_id TO source_id"
             )
-        # #54: tabla auxiliar para IDs backward observados pero no materializados.
         self._con.execute(_DDL_REFERENCED_BUT_NOT_FETCHED)
-        # ADR 0036 (opción C): tabla lateral de IDs externos por motor.
         self._con.execute(_DDL_EXTERNAL_IDS)
-        # #126: tabla de pasos de filtro PRISMA para trazabilidad del manifest.
         self._con.execute(_DDL_FILTER_LOG)
-        # #141: tabla de EnricherRef para trazabilidad del manifest.
         self._con.execute(_DDL_ENRICHER_LOG)
         self._register_udfs()
 
@@ -430,13 +398,11 @@ class DuckDBBackend:
         rows = table.to_pylist()
         if not rows:
             return
-        # ADR 0024: base para el _seq monótono de esta inserción por lote
         result = self._con.execute(
             "SELECT COALESCE(MAX(_seq), 0) FROM corpus"
         ).fetchone()
         start: int = int(result[0]) if result else 0
         for i, row in enumerate(rows):
-            # _seq = start + 1 + i garantiza valores únicos y crecientes en este lote
             params = [*_row_to_params(row), start + 1 + i]
             self._con.execute(_UPSERT_SQL, params)
 
@@ -458,7 +424,6 @@ class DuckDBBackend:
             new_backend._setup()
             if len(current_table) > 0:
                 new_backend._upsert_table(current_table)
-            # Copiar el loop_state_log (incluyendo round — R3)
             log_rows = self._con.execute(
                 "SELECT state, round, recorded_at FROM loop_state_log ORDER BY recorded_at"
             ).fetchall()
@@ -467,7 +432,6 @@ class DuckDBBackend:
                     "INSERT INTO loop_state_log (state, round, recorded_at) VALUES (?, ?, ?)",
                     [state_val, round_val, at_val],
                 )
-            # #54: copiar la tabla referenced_but_not_fetched (hermana de loop_state_log)
             ref_rows = self._con.execute(
                 "SELECT ref_id, cycle_round, observed_at "
                 "FROM referenced_but_not_fetched ORDER BY observed_at"
@@ -478,7 +442,6 @@ class DuckDBBackend:
                     "(ref_id, cycle_round, observed_at) VALUES (?, ?, ?)",
                     [ref_id_val, cycle_round_val, observed_at_val],
                 )
-            # ADR 0036: copiar la tabla lateral external_ids
             ext_rows = self._con.execute(
                 "SELECT paper_id, engine, id FROM external_ids"
             ).fetchall()
@@ -488,7 +451,6 @@ class DuckDBBackend:
                     "VALUES (?, ?, ?)",
                     [paper_id_val, engine_val, id_val],
                 )
-            # #126: copiar la tabla de pasos de filtro PRISMA
             filter_rows = self._con.execute(
                 "SELECT name, criteria, count_before, count_after, recorded_at "
                 "FROM filter_log ORDER BY recorded_at"
@@ -500,7 +462,6 @@ class DuckDBBackend:
                     "VALUES (?, ?, ?, ?, ?)",
                     [name_val, criteria_val, cb_val, ca_val, at_val],
                 )
-            # #141: copiar la tabla de EnricherRef
             enricher_rows = self._con.execute(
                 "SELECT name, params_json, recorded_at "
                 "FROM enricher_log ORDER BY recorded_at"
@@ -513,16 +474,13 @@ class DuckDBBackend:
                 )
             return new_backend
         else:
-            # Para archivo en disco: compartimos la ruta; nueva instancia abre nueva conexión
             new_backend = DuckDBBackend.__new__(DuckDBBackend)
             new_backend._path = self._path
             new_backend._con = duckdb.connect(self._path)
             new_backend._setup()
             return new_backend
 
-    # ------------------------------------------------------------------
     # TabularBackend protocol
-    # ------------------------------------------------------------------
 
     def to_arrow(self) -> pa.Table:
         """Exporta el contenido completo como tabla Arrow canónica.
@@ -550,7 +508,6 @@ class DuckDBBackend:
             Nueva instancia con el paper agregado.
         """
         new_backend = self._clone()
-        # ADR 0024: _seq para la fila nueva = MAX actual + 1
         result = new_backend._con.execute(
             "SELECT COALESCE(MAX(_seq), 0) FROM corpus"
         ).fetchone()
@@ -611,8 +568,6 @@ class DuckDBBackend:
         Returns:
             Nueva instancia con la curación aplicada.
         """
-        # Leer solo las filas afectadas, aplicar la lógica Python verificada,
-        # y hacer upsert de vuelta
         current_table = _arrow_table_from_con(self._con)
         current_rows = current_table.to_pylist()
         updated_rows = _apply_curation_to_rows(
@@ -620,7 +575,6 @@ class DuckDBBackend:
         )
 
         new_backend = self._clone()
-        # Sólo actualizar las filas que cambiaron
         id_set = set(ids)
         for row in updated_rows:
             if str(row.get("id")) in id_set:
@@ -692,9 +646,7 @@ class DuckDBBackend:
             return False
         return self.corpus_hash() == other.corpus_hash()
 
-    # ------------------------------------------------------------------
     # Extensiones propias: CycleState (ADR 0016, R3)
-    # ------------------------------------------------------------------
 
     def loop_state(self) -> CycleState | None:
         """Estado actual del lazo de investigación.
@@ -754,9 +706,7 @@ class DuckDBBackend:
             [state.value, current_round],
         )
 
-    # ------------------------------------------------------------------
     # Extensiones propias: referenced_but_not_fetched (#54)
-    # ------------------------------------------------------------------
 
     def add_referenced_refs(self, ref_ids: list[str], *, cycle_round: int) -> int:
         """Appendea IDs backward observados a ``referenced_but_not_fetched``.
@@ -810,9 +760,7 @@ class DuckDBBackend:
         ).fetchall()
         return [r[0] for r in rows]
 
-    # ------------------------------------------------------------------
     # Extensiones propias: external_ids (ADR 0036 opción C)
-    # ------------------------------------------------------------------
 
     def add_external_id(self, paper_id: str, engine: str, id: str) -> None:
         """Registra un ID externo para un paper dado un motor.
@@ -862,9 +810,7 @@ class DuckDBBackend:
         ).fetchall()
         return [(r[0], r[1], r[2]) for r in rows]
 
-    # ------------------------------------------------------------------
     # Extensiones propias: filter_log (#126)
-    # ------------------------------------------------------------------
 
     def persist_filter_steps(
         self,
@@ -927,9 +873,7 @@ class DuckDBBackend:
             for r in rows
         ]
 
-    # ------------------------------------------------------------------
     # Extensiones propias: enricher_log (#141)
-    # ------------------------------------------------------------------
 
     def persist_enricher_refs(
         self,
@@ -985,9 +929,7 @@ class DuckDBBackend:
             for r in rows
         ]
 
-    # ------------------------------------------------------------------
     # Extensión: query SQL libre
-    # ------------------------------------------------------------------
 
     def close(self) -> None:
         """Cierra la conexión DuckDB subyacente y libera el lock de archivo.
