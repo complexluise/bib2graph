@@ -1531,12 +1531,14 @@ networks:
 
 **Dedup fuzzy determinista** con `rapidfuzz` (núcleo desde #88): el complemento aproximado de la
 normalización conservadora del `Preprocessor` (§6). Las funciones siguen exportadas desde
-`bib2graph.preprocessors`, pero **se invocan automáticamente** desde el helper de frontera
-`cli/_ingest.py::normalize_and_dedup`, no a mano. Operan sobre la columna `_id`
+`bib2graph.preprocessors`, pero **se invocan automáticamente** desde el helper canónico
+`preprocessors.pipeline::normalize_and_dedup`, no a mano. Operan sobre la columna `_id`
 (`authors_id`/`keywords_id`), **nunca** sobre `_raw`.
 
 ```python
-# Helper de frontera — punto único de la ingesta (cli/_ingest.py)
+# Helper canónico — punto único de la ingesta (preprocessors/pipeline.py;
+# re-exportado por compat desde cli/_ingest.py → el import viejo
+# `from bib2graph.cli._ingest import normalize_and_dedup` sigue vivo, no es breaking)
 def normalize_and_dedup(corpus: Corpus, *, applied_at: datetime | None = None) -> Corpus:
     """normalize → deduplicate_authors(0.92) → deduplicate_keywords(0.90), en ese orden, sobre el
     corpus COMPLETO YA MERGEADO (existing + incoming) ⇒ dedup CROSS-BIBLIOTECA. NO aplica thesaurus
@@ -1561,7 +1563,9 @@ def deduplicate_keywords(corpus: Corpus, *, threshold: float = 0.90) -> Corpus:
   **`persist_replace`** (§4.1) porque el upsert-concat D3 reintroduciría las variantes colapsadas.
   `build` sigue **puro** (el corpus ya entra deduplicado).
 - **`threshold` por-campo** (autores `0.92` / keywords `0.90`): `rapidfuzz.fuzz.token_sort_ratio` (0–100)
-  contra `threshold * 100`. Umbrales fijos en `cli/_ingest.py`.
+  contra `threshold * 100`. Umbrales fijos como **constantes públicas** `THRESHOLD_AUTHORS` /
+  `THRESHOLD_KEYWORDS` de `bib2graph.preprocessors` (fuente única en `preprocessors.pipeline`, issue
+  #175): el umbral compartido por la ingesta y el `restore` es **uno solo**, sin copias que diverjan.
 - **Determinista e idempotente:** los pares ≥ umbral forman **componentes conexas** vía Union-Find; el
   **canónico** del cluster es la variante más frecuente (desempate por `id` ascendente); se preserva el
   **orden de primera aparición** y **nunca se toca `_raw`**. Mismo corpus + threshold + versión de
