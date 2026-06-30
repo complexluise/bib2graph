@@ -11,6 +11,13 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.10.1](https://github.com/complexluise/bib2graph/compare/v0.10.0...v0.10.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* **export:** escribir CSV en utf-8-sig (BOM) para Excel-Windows ([#216](https://github.com/complexluise/bib2graph/issues/216)) ([66339a7](https://github.com/complexluise/bib2graph/commit/66339a787debb04e88413147cfc8d7e22916ae2f))
+
 ## [0.10.0](https://github.com/complexluise/bib2graph/compare/v0.9.0...v0.10.0) (2026-06-28)
 
 
