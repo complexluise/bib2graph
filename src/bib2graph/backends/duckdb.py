@@ -40,6 +40,7 @@ from bib2graph.backends.memory import (
     _apply_curation_to_rows,
     _merge_curation_status,
     _merge_provenance,
+    _merge_rows,
     compute_corpus_hash,
 )
 from bib2graph.constants import LIST_COLUMNS, CurationStatus
@@ -254,6 +255,118 @@ def _build_upsert_sql() -> str:
 
 _UPSERT_SQL = _build_upsert_sql()
 
+
+def _build_bulk_update_existing_sql() -> str:
+    """SQL para actualizar filas que ya existen en ``corpus`` (conflictos reales).
+
+    Lee el lote desde la vista registrada ``_incoming_upsert`` y actualiza solo
+    las filas cuyo ``id`` ya existe en ``corpus``.  Las UDFs Python
+    ``_merge_curation_status_udf`` y ``_merge_provenance_udf`` se invocan
+    únicamente para las filas que efectivamente están en conflicto (no para
+    inserciones nuevas), eliminando el overhead de UDF para el caso de primer
+    persist sin conflictos.
+
+    La columna ``_seq`` NO se actualiza: las filas existentes conservan su
+    orden de primera aparición (ADR 0024, D3).
+    """
+    scalar_cols = [
+        "source_id",
+        "doi",
+        "title",
+        "year",
+        "abstract",
+        "source",
+        "language",
+        "publisher",
+        "is_seed",
+    ]
+    list_cols = list(LIST_COLUMNS)
+
+    scalar_sets = [f"    {c} = COALESCE(src.{c}, corpus.{c})" for c in scalar_cols]
+
+    # D3 para listas: unión ordenada deduplicada; NULL si ambos son NULL
+    list_sets = [
+        f"    {c} = CASE\n"
+        f"        WHEN corpus.{c} IS NULL AND src.{c} IS NULL THEN NULL\n"
+        f"        ELSE list_sort(list_distinct(list_concat(\n"
+        f"            COALESCE(corpus.{c}, []),\n"
+        f"            COALESCE(src.{c}, [])\n"
+        f"        )))\n"
+        f"    END"
+        for c in list_cols
+    ]
+
+    # UDFs para los campos especiales de merge
+    special_sets = [
+        "    curation_status = _merge_curation_status_udf(\n"
+        "        corpus.curation_status, corpus.provenance,\n"
+        "        src.curation_status, src.provenance\n"
+        "    )",
+        "    provenance = _merge_provenance_udf(corpus.provenance, src.provenance)",
+    ]
+
+    all_sets = scalar_sets + list_sets + special_sets
+    sets_sql = ",\n".join(all_sets)
+
+    return (
+        f"UPDATE corpus SET\n"
+        f"{sets_sql}\n"
+        f"FROM _incoming_upsert AS src\n"
+        f"WHERE corpus.id = src.id"
+    )
+
+
+def _build_bulk_insert_new_sql() -> str:
+    """SQL para insertar filas nuevas (sin conflicto con ``corpus``).
+
+    Lee el lote desde la vista registrada ``_incoming_upsert`` y hace INSERT
+    solo de las filas cuyo ``id`` NO existe todavía en ``corpus``.  No invoca
+    ninguna UDF Python (las filas son nuevas, no hay merge que hacer).
+
+    ADR 0024: ``_seq = CAST($1 AS BIGINT) + ROW_NUMBER() OVER (ORDER BY _row_idx)``
+    asigna valores únicos y crecientes en el orden de aparición del lote Arrow.
+    ``_row_idx`` es una columna auxiliar (índice 0-based) agregada al registrar
+    la vista, que garantiza que el ROW_NUMBER() respete el orden de la tabla
+    Arrow entrante sin depender del scan de DuckDB (no garantizado por SQL estándar
+    sin ORDER BY).  ``$1`` es el ``MAX(_seq)`` calculado antes de la llamada.
+    """
+    schema_cols = ", ".join(f.name for f in CORPUS_SCHEMA)
+    insert_cols = f"{schema_cols}, _seq"
+    return (
+        f"INSERT INTO corpus ({insert_cols})\n"
+        f"SELECT {schema_cols},\n"
+        f"    CAST($1 AS BIGINT) + ROW_NUMBER() OVER (ORDER BY _row_idx) AS _seq\n"
+        f"FROM _incoming_upsert\n"
+        f"WHERE id NOT IN (SELECT id FROM corpus)"
+    )
+
+
+def _build_simple_insert_sql() -> str:
+    """SQL de INSERT directo sin filtro de conflicto (usado tras DELETE en overwrite).
+
+    Después de un ``DELETE FROM corpus`` la tabla está vacía y cualquier
+    fila de ``_incoming_upsert`` es nueva: el filtro ``NOT IN`` sería un
+    no-op costoso.  Este SQL hace el INSERT sin ninguna condición.
+
+    ADR 0024: ``_seq`` empieza en 1.  ``ROW_NUMBER() OVER (ORDER BY _row_idx)``
+    garantiza que el orden de filas en la tabla Arrow se preserve fielmente en
+    ``_seq`` (la columna ``_row_idx`` es el índice 0-based agregado al registrar
+    la vista; sin ORDER BY el scan de DuckDB no tiene orden garantizado por SQL).
+    """
+    schema_cols = ", ".join(f.name for f in CORPUS_SCHEMA)
+    insert_cols = f"{schema_cols}, _seq"
+    return (
+        f"INSERT INTO corpus ({insert_cols})\n"
+        f"SELECT {schema_cols},\n"
+        f"    ROW_NUMBER() OVER (ORDER BY _row_idx) AS _seq\n"
+        f"FROM _incoming_upsert"
+    )
+
+
+_BULK_UPDATE_EXISTING_SQL = _build_bulk_update_existing_sql()
+_BULK_INSERT_NEW_SQL = _build_bulk_insert_new_sql()
+_SIMPLE_INSERT_SQL = _build_simple_insert_sql()
+
 # ---------------------------------------------------------------------------
 # Helpers de conversión Python ↔ DuckDB
 # ---------------------------------------------------------------------------
@@ -285,6 +398,45 @@ def _arrow_table_from_con(con: duckdb.DuckDBPyConnection) -> pa.Table:
             schema=CORPUS_SCHEMA,
         )
     return result.cast(CORPUS_SCHEMA)
+
+
+def _dedup_merge_table(table: pa.Table) -> pa.Table:
+    """Deduplica las filas de ``table`` por ``id``, mergeando duplicados con semántica D3.
+
+    Si el lote entrante contiene múltiples filas con el mismo ``id``, las fusiona
+    progresivamente usando la misma lógica que ``_merge_rows`` de ``backends.memory``
+    (la misma semántica que las UDFs ``_merge_curation_status_udf`` y
+    ``_merge_provenance_udf``).  El orden de primera aparición se preserva.
+
+    Garantiza que el lote no viole el PRIMARY KEY de ``corpus`` (``id UNIQUE``),
+    que antes causaba ``ConstraintException`` en el upsert bulk cuando el batch
+    entrante ya contenía ids repetidos.
+
+    Args:
+        table: Tabla Arrow de entrada (puede tener ``id`` duplicados).
+
+    Returns:
+        Tabla Arrow sin ids duplicados, con el mismo schema canónico.
+        Si la tabla no tiene duplicados, la devuelve intacta.
+    """
+    if len(table) == 0:
+        return table
+    rows = table.to_pylist()
+    seen: dict[str, dict[str, object]] = {}
+    order: list[str] = []
+    for row in rows:
+        id_ = str(row["id"])
+        if id_ not in seen:
+            seen[id_] = row
+            order.append(id_)
+        else:
+            # Merge progresivo: preserva provenance acumulada y curación más reciente
+            seen[id_] = _merge_rows(seen[id_], row)
+    if len(seen) == len(rows):
+        # Sin duplicados: devolver la tabla original sin coste de reconstrucción
+        return table
+    deduped = [seen[id_] for id_ in order]
+    return pa.Table.from_pylist(deduped, schema=CORPUS_SCHEMA)
 
 
 # ---------------------------------------------------------------------------
@@ -421,24 +573,53 @@ class DuckDBBackend:
     def _upsert_table(self, table: pa.Table) -> None:
         """Hace upsert de todas las filas de ``table`` en la base de datos.
 
-        ADR 0024: calcula ``start = COALESCE(MAX(_seq), 0)`` una sola vez y
-        asigna ``_seq = start + 1 + i`` (0-based) a cada fila. Filas ya
-        existentes (ON CONFLICT) ignoran el ``_seq`` provisto porque el
-        DO UPDATE no lo actualiza, preservando así el orden de primera
-        aparición (D3).
+        Ingesta vectorizada de dos pasos — registra la tabla Arrow en DuckDB
+        (zero-copy) y ejecuta exactamente 2 + 1 sentencias SQL por lote:
+
+        1. **UPDATE** filas ya existentes (las UDFs Python se invocan solo para
+           los conflictos reales; para un primer persist sin conflictos = 0 UDFs).
+        2. **INSERT** filas nuevas con ``WHERE id NOT IN (SELECT id FROM corpus)``
+           (vectorizado, cero UDFs).
+
+        Elimina el round-trip por fila previo (O(n) → O(1) viajes al motor SQL)
+        y evita además llamar a las UDFs Python para filas sin conflicto,
+        logrando la mayor ganancia de velocidad en el caso de primer persist
+        (corpus vacío → todas las filas son nuevas → 0 UDFs).
+
+        Pre-procesamiento del lote:
+        - **Dedup-MERGE** (``_dedup_merge_table``): si el lote contiene ids
+          duplicados, los fusiona con la misma semántica D3 que las UDFs
+          (provenance append-only, curación más reciente gana) antes de registrar
+          la vista, evitando violaciones de PRIMARY KEY.
+        - **Columna ``_row_idx``**: se agrega al registrar la vista para que
+          ``ROW_NUMBER() OVER (ORDER BY _row_idx)`` en ``_BULK_INSERT_NEW_SQL``
+          produzca un ``_seq`` determinista y estable que respeta el orden de
+          aparición de la tabla Arrow entrante (ADR 0024, D3).
+
+        Las filas existentes conservan su ``_seq`` original (D3).
         """
-        rows = table.to_pylist()
-        if not rows:
+        if len(table) == 0:
             return
-        # ADR 0024: base para el _seq monótono de esta inserción por lote
+        # Dedup-MERGE: fusiona ids duplicados en el lote ANTES del upsert SQL
+        table = _dedup_merge_table(table)
+        # ADR 0024: base para el _seq monótono de las filas nuevas en este lote
         result = self._con.execute(
             "SELECT COALESCE(MAX(_seq), 0) FROM corpus"
         ).fetchone()
         start: int = int(result[0]) if result else 0
-        for i, row in enumerate(rows):
-            # _seq = start + 1 + i garantiza valores únicos y crecientes en este lote
-            params = [*_row_to_params(row), start + 1 + i]
-            self._con.execute(_UPSERT_SQL, params)
+        # _row_idx: columna auxiliar de orden para ROW_NUMBER() OVER (ORDER BY _row_idx)
+        table_with_idx = table.append_column(
+            "_row_idx",
+            pa.array(range(len(table)), type=pa.int64()),
+        )
+        self._con.register("_incoming_upsert", table_with_idx)
+        try:
+            # Paso 1: actualizar filas existentes (UDFs solo para conflictos reales)
+            self._con.execute(_BULK_UPDATE_EXISTING_SQL)
+            # Paso 2: insertar filas nuevas (vectorizado, sin UDF)
+            self._con.execute(_BULK_INSERT_NEW_SQL, [start])
+        finally:
+            self._con.unregister("_incoming_upsert")
 
     def _clone(self) -> DuckDBBackend:
         """Crea una nueva instancia apuntando al mismo archivo (path compartido).
@@ -566,9 +747,12 @@ class DuckDBBackend:
         luego las nuevas filas de ``other_table`` en su orden de aparición) se
         garantiza por la columna interna ``_seq``:
         - Filas de ``self`` ya tienen ``_seq`` asignado (se preservan en el
-          ON CONFLICT DO UPDATE, que no actualiza ``_seq``).
-        - Filas nuevas de ``other_table`` reciben ``_seq`` mayor (calculado
-          como ``MAX(_seq) + 1 + i`` en ``_upsert_table``).
+          UPDATE, que no actualiza ``_seq``).
+        - Filas nuevas de ``other_table`` reciben ``_seq`` mayor, calculado
+          con ``ROW_NUMBER() OVER (ORDER BY _row_idx)`` desde ``MAX(_seq)``
+          en ``_upsert_table``; la columna auxiliar ``_row_idx`` (índice
+          0-based del lote Arrow) garantiza que el orden de primera aparición
+          se preserve de forma determinista, sin depender del scan de DuckDB.
         - ``_arrow_table_from_con`` lee con ``ORDER BY _seq``.
         No se requiere DELETE+reinsert.
 
@@ -1005,9 +1189,10 @@ class DuckDBBackend:
     def overwrite_corpus(self, table: pa.Table) -> None:
         """Reemplaza TODA la tabla ``corpus`` con el contenido de ``table``.
 
-        Hace TRUNCATE + INSERT (no upsert) para que el estado en disco sea
-        exactamente ``table``, sin residuos de filas previas.  Preserva las
-        tablas hermanas (``loop_state_log``, ``referenced_but_not_fetched``).
+        Hace TRUNCATE + INSERT masivo (no upsert fila-a-fila) para que el estado
+        en disco sea exactamente ``table``, sin residuos de filas previas.
+        Preserva las tablas hermanas (``loop_state_log``,
+        ``referenced_but_not_fetched``).
 
         Úsalo solo en la ruta de ingesta (``seed``, ``restore``, ``chain``,
         ``thesaurus``) donde ya tenés el corpus completo y correcto en
@@ -1024,10 +1209,22 @@ class DuckDBBackend:
                 Debe cumplir ``CORPUS_SCHEMA``.
         """
         self._con.execute("DELETE FROM corpus")
-        rows = table.to_pylist()
-        for i, row in enumerate(rows):
-            params = [*_row_to_params(row), i + 1]
-            self._con.execute(_UPSERT_SQL, params)
+        if len(table) == 0:
+            return
+        # Dedup-MERGE: fusiona ids duplicados en el lote ANTES del INSERT masivo
+        table = _dedup_merge_table(table)
+        # Tras DELETE la tabla está vacía: INSERT directo sin filtro NOT IN
+        # (más eficiente que _BULK_INSERT_NEW_SQL para el caso de tabla limpia)
+        # _row_idx: columna auxiliar de orden para ROW_NUMBER() OVER (ORDER BY _row_idx)
+        table_with_idx = table.append_column(
+            "_row_idx",
+            pa.array(range(len(table)), type=pa.int64()),
+        )
+        self._con.register("_incoming_upsert", table_with_idx)
+        try:
+            self._con.execute(_SIMPLE_INSERT_SQL)
+        finally:
+            self._con.unregister("_incoming_upsert")
 
     def query(self, sql: str) -> pa.Table:
         """Ejecuta una consulta SQL sobre el backend y devuelve tabla Arrow.
