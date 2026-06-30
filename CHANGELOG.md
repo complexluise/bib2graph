@@ -11,6 +11,17 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.10.3](https://github.com/complexluise/bib2graph/compare/v0.10.2...v0.10.3) (2026-06-30)
+
+
+### Documentation
+
+* add glossary to close issue [#208](https://github.com/complexluise/bib2graph/issues/208) completely ([219d52d](https://github.com/complexluise/bib2graph/commit/219d52d7a9a0a5f7e6d308342fe9285d361c87f5))
+* add tutorial and guide for documentation improvements ([cb1bdfb](https://github.com/complexluise/bib2graph/commit/cb1bdfb1b682f81473a290d5520165ca2910d9b8))
+* fix language and add CLI foundation, remove vendor locking ([9619b51](https://github.com/complexluise/bib2graph/commit/9619b51f68a5743b6e3dc20b6b110d7361e1e795))
+* restructure guides — 5 acotadas vs. 1 monolítica ([0add9e6](https://github.com/complexluise/bib2graph/commit/0add9e6266ec7fd4a03b765a0843a0fff7848fc0))
+* restructure tutorials — quick start (5min) + complete (3-4h) ([bfa7850](https://github.com/complexluise/bib2graph/commit/bfa7850412de4d865b4df5ca8adef775c98aa86a))
+
 ## [0.10.2](https://github.com/complexluise/bib2graph/compare/v0.10.1...v0.10.2) (2026-06-30)
 
 
