@@ -555,8 +555,8 @@ git commit -m "SOTA: [Tu Tema] — corpus, redes, reporte"
 
 ## Referencias
 
-- [Cómo elaborar un reporte de estado del arte (guía)](../guias/reporte-estado-del-arte.md) —
-  complemento con más detalles en curación y redacción.
+- [Guías (how-to)](../guias/index.md) — recetas acotadas que complementan cada
+  paso: ecuación, forrajeo, curación PRISMA, lectura de redes y redacción del reporte.
 - [Arquitectura de bib2graph](../ARCHITECTURE.md)
 - [Referencia del CLI `b2g`](../reference/cli.md)
 - [API Python](../reference/python-api.md)
