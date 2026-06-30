@@ -4,29 +4,27 @@ title: Tutoriales
 
 # Tutoriales
 
-Los **tutoriales** te enseñan a usar bib2graph paso a paso, partiendo de cero y
-llegando a un resultado concreto. Son para *aprender* (a diferencia de las
-[Guías](../guias/index.md), que son para *resolver una tarea puntual*).
+Los **tutoriales** enseñan a usar bib2graph paso a paso, partiendo de cero y
+llegando a un resultado concreto. Son para *aprender*.
 
-!!! note "En construcción"
-    El tutorial end-to-end está en preparación. Hoy, el camino guiado más corto
-    es el [Quickstart](../getting-started/quickstart.md).
+## Para empezar (5 minutos)
 
-    Planificado (seguimiento en el
-    [issue #208](https://github.com/complexluise/bib2graph/issues/208)):
+-   :material-robot: **[Tu primer mapa en Claude (5 min)](claude-code.md)**
 
-    **De una pregunta de investigación a un mapa de citación.** Un caso real,
-    de punta a punta, reusando el corpus de ejemplo `examples/valoraciones/`:
+    Cómo armar, sin instalar nada, una red visual de papers sobre un tema.
+    Conversación con Claude — todo automatizado. Ideal para explorar rápido.
 
-    1. Plantear la pregunta y la ecuación de búsqueda.
-    2. Sembrar el corpus (`seed`).
-    3. Expandir por citaciones (`chain`).
-    4. Curar: aceptar/rechazar, filtros PRISMA.
-    5. Construir las redes (`build`) y leerlas (`read`).
-    6. Exportar a GraphML y abrir en Gephi.
+## Tutorial completo (3–4 horas)
 
-## Mientras tanto
+-   :material-book: **[De la pregunta al reporte de SOTA](sota-completo.md)**
 
-- [Quickstart](../getting-started/quickstart.md) — el ciclo mínimo en 2 minutos.
+    Recorrido completo paso a paso: pregunta → ecuación → corpus → curación PRISMA
+    → 3 redes → análisis de comunidades → tendencias → redacción del reporte.
+    Para alguien que quiere hacer un SOTA riguroso.
+
+## También útil
+
+- [Quickstart](../getting-started/quickstart.md) — el ciclo mínimo con CLI `b2g` en tu máquina (2 min).
 - [Guías (how-to)](../guias/index.md) — recetas para tareas concretas.
 - [Referencia del CLI `b2g`](../reference/cli.md) — todos los comandos.
+- [API Python](../reference/python-api.md) — bib2graph como librería.
