@@ -15,7 +15,7 @@ Criterios soportados:
 
 R5: campo o operador desconocido → ``ValueError`` accionable (antes era no-op silencioso).
 
-ADR 0043: la inclusión manual gana — el filtro nunca rechaza un paper
+ADR 0044: la inclusión manual gana — el filtro nunca rechaza un paper
 ``accepted``, solo actúa sobre ``candidate`` (y demás no-``accepted``,
 no-``rejected``).
 
@@ -164,7 +164,7 @@ def apply_filter(
     Los papers rechazados siguen en la tabla con ``curation_status='rejected'``
     (NUNCA se borran; flujo PRISMA).
 
-    ADR 0043: la inclusión manual gana sobre el criterio automático — el
+    ADR 0044: la inclusión manual gana sobre el criterio automático — el
     filtro NUNCA mueve un paper ``accepted`` a ``rejected``. El filtro actúa
     solo sobre papers no-aceptados (``candidate`` y demás no-``accepted``),
     igual que ya omite a los ya-``rejected``.

@@ -134,7 +134,7 @@ VERBO:** solo **`curate filter`→`FILTERED`**; el resto transversal. **BREAKING
   inclusión/exclusión PRISMA **marcando `rejected`** (no borra) con conteo por paso. **Transiciona a
   `FILTERED`.** Comparte `filter_corpus(store_path, *, year_gte, year_lte, language, type_in,
   min_citations, decided_at)` con el verbo suelto `filter`. **La inclusión manual gana** (ADR
-  [0043](decisiones/0043-precedencia-inclusion-manual-en-curate.md)): el filtro **omite los papers
+  [0044](decisiones/0044-precedencia-inclusion-manual-en-curate.md)): el filtro **omite los papers
   `accepted`** (nunca los rechaza, aunque no cumplan el criterio), igual que ya omite a los `rejected`;
   solo marca `rejected` a los **no-aceptados** (`candidate` y demás) que no pasan.
 
@@ -1217,14 +1217,14 @@ def apply_filters(corpus: Corpus, criteria: list[FilterCriterion]) -> tuple[Corp
   `curation_status='rejected'` vía `corpus.reject(...)` (con el criterio en `provenance`), nunca se
   borra. La exclusión es curación **reversible y auditable** (biblioteca viva, ADR 0009/0013).
 - **La inclusión manual gana — el filtro OMITE `accepted`** (ADR
-  [0043](decisiones/0043-precedencia-inclusion-manual-en-curate.md)): un paper `accepted` a mano queda
+  [0044](decisiones/0044-precedencia-inclusion-manual-en-curate.md)): un paper `accepted` a mano queda
   **intacto** aunque no cumpla el criterio; el filtro **nunca** lo mueve `accepted`→`rejected` (lo
   excluye del conjunto a rechazar, igual que ya excluye a los `rejected`). Solo actúa sobre **no-aceptados**
   (`candidate` y demás). Precisa el scope de 0020 §C, sin revertirlo. Un `accepted` sale del corpus solo
   por decisión humana explícita (`curate reject --ids ...`).
 - **Conteo PRISMA por paso:** cada `FilterStep` lleva `count_before`/`count_after` sobre los papers
   **no-rejected** (candidate + accepted). Los `accepted` **nunca abandonan** ese conjunto por efecto de
-  un filtro (ADR 0043).
+  un filtro (ADR 0044).
 - **`keywords_id` es post-thesaurus:** los proyectores de co-ocurrencia de keywords (§7) deben correr
   **después** de `apply_thesaurus`.
 - **Campo/operador desconocido LANZA** `ValueError` accionable (lista los válidos); no es no-op

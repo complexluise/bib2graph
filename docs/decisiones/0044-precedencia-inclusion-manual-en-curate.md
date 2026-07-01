@@ -1,4 +1,4 @@
-# 0043 — Precedencia de la inclusión manual sobre el filtro PRISMA en `curate filter`: `accepted` gana
+# 0044 — Precedencia de la inclusión manual sobre el filtro PRISMA en `curate filter`: `accepted` gana
 
 - **Estado:** Aceptada
 - **Fecha:** 2026-06-30

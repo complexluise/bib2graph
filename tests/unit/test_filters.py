@@ -132,7 +132,7 @@ class TestApplyFilterAnio:
 
 
 class TestApplyFilterPrecedenciaInclusionManual:
-    """Regresión #233 / ADR 0043: ``accepted`` es intocable para el filtro."""
+    """Regresión #233 / ADR 0044: ``accepted`` es intocable para el filtro."""
 
     def test_accepted_que_no_cumple_criterio_no_se_rechaza(self) -> None:
         """Un paper accepted que no cumple el criterio queda intacto."""
