@@ -131,6 +131,50 @@ class TestApplyFilterAnio:
         assert step.count_after == 1
 
 
+class TestApplyFilterPrecedenciaInclusionManual:
+    """Regresión #233 / ADR 0043: ``accepted`` es intocable para el filtro."""
+
+    def test_accepted_que_no_cumple_criterio_no_se_rechaza(self) -> None:
+        """Un paper accepted que no cumple el criterio queda intacto."""
+        corpus = _make_corpus(
+            _base_row("P1", year=2005, curation_status="accepted"),
+            _base_row("P2", year=2020, curation_status="candidate"),
+        )
+        criterion = FilterCriterion(field="year", op="gte", value=2010)
+        new_corpus, step = apply_filter(corpus, criterion)
+
+        rows = new_corpus.to_arrow().to_pylist()
+        statuses = {r["id"]: r["curation_status"] for r in rows}
+        # El accepted NUNCA se mueve a rejected, aunque no pase el criterio.
+        assert statuses["P1"] == "accepted"
+        # El candidate que no cumple sí se rechaza: el filtro sigue vivo.
+        assert statuses["P2"] == "candidate"
+
+        # count_before/count_after siguen contando candidate+accepted (ADR 0020 §C):
+        # ambos papers están del lado no-rejected antes y después, porque el
+        # accepted nunca sale de ese conjunto por efecto del filtro.
+        assert step.count_before == 2
+        assert step.count_after == 2
+
+    def test_candidate_que_no_cumple_criterio_se_rechaza(self) -> None:
+        """El filtro sigue funcionando: un candidate que no cumple sí se rechaza."""
+        corpus = _make_corpus(
+            _base_row("P1", year=2005, curation_status="accepted"),
+            _base_row("P2", year=2005, curation_status="candidate"),
+        )
+        criterion = FilterCriterion(field="year", op="gte", value=2010)
+        new_corpus, step = apply_filter(corpus, criterion)
+
+        rows = new_corpus.to_arrow().to_pylist()
+        statuses = {r["id"]: r["curation_status"] for r in rows}
+        assert statuses["P1"] == "accepted"
+        assert statuses["P2"] == "rejected"
+
+        # count_before = 2 (accepted + candidate); count_after = 1 (solo accepted).
+        assert step.count_before == 2
+        assert step.count_after == 1
+
+
 class TestApplyFilterIdioma:
     def test_filtra_por_language_eq(self) -> None:
         corpus = _make_corpus(

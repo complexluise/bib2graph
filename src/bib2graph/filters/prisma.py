@@ -15,6 +15,10 @@ Criterios soportados:
 
 R5: campo o operador desconocido → ``ValueError`` accionable (antes era no-op silencioso).
 
+ADR 0043: la inclusión manual gana — el filtro nunca rechaza un paper
+``accepted``, solo actúa sobre ``candidate`` (y demás no-``accepted``,
+no-``rejected``).
+
 Ver docs/API.md §convenciones (CLI ``filter``).
 """
 
@@ -160,6 +164,11 @@ def apply_filter(
     Los papers rechazados siguen en la tabla con ``curation_status='rejected'``
     (NUNCA se borran; flujo PRISMA).
 
+    ADR 0043: la inclusión manual gana sobre el criterio automático — el
+    filtro NUNCA mueve un paper ``accepted`` a ``rejected``. El filtro actúa
+    solo sobre papers no-aceptados (``candidate`` y demás no-``accepted``),
+    igual que ya omite a los ya-``rejected``.
+
     R2 (ADR 0017 enmendado): ``decided_at`` se inyecta desde la frontera
     (CLI) para que el núcleo no llame al reloj.  Si es ``None``, el backend
     usa ``datetime.now(UTC)`` como conveniencia para uso como librería.
@@ -179,7 +188,8 @@ def apply_filter(
     ids_to_reject = [
         str(row[Col.ID])
         for row in rows
-        if row.get(Col.CURATION_STATUS) != CurationStatus.REJECTED
+        if row.get(Col.CURATION_STATUS)
+        not in (CurationStatus.REJECTED, CurationStatus.ACCEPTED)
         and not _passes(row, criterion)
     ]
 
