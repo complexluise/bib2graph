@@ -215,3 +215,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# LOCAL-ONLY (no commitear): artefactos de sesión, no se versionan (decisión PO 2026-06-22)
+examples/ied-presentacion/
+examples/pensamiento-complejo-grafo/
