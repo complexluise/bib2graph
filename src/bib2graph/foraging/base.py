@@ -16,7 +16,6 @@ from pydantic import BaseModel, ConfigDict
 
 from bib2graph.corpus import Corpus
 
-# Alias público para el tipo de dirección de chaining
 Direction = Literal["backward", "forward", "both"]
 
 

@@ -68,12 +68,10 @@ class CsvExporter:
         out_path: Path,
     ) -> None:
         """Escribe nodos.csv con id, label, atributos de nodo y métricas (D5)."""
-        # Recoger nombres de columnas de atributos de nodo
         node_attr_keys: set[str] = set()
         for _, attrs in g.nodes(data=True):
             node_attr_keys.update(attrs.keys())
 
-        # Recoger nombres de columnas de métricas (solo los anidados {nodo: val})
         metric_keys: list[str] = []
         metric_dicts: dict[str, dict[Any, Any]] = {}
         for k, v in results.items():
@@ -81,7 +79,6 @@ class CsvExporter:
                 metric_keys.append(k)
                 metric_dicts[k] = v
 
-        # Columnas: id, label, atributos de nodo (ordenados), métricas (ordenadas)
         attr_cols = sorted(node_attr_keys - {"label"})  # 'label' la manejamos aparte
         metric_cols = sorted(metric_keys)
         header = ["id", "label", *attr_cols, *metric_cols]

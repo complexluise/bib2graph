@@ -54,11 +54,8 @@ valoraciones_*
 # Excepción: corpus de ejemplo commiteado (ADR 0030, Ciclo 9b)
 # examples/ contiene el corpus congelado, equation.yaml y README — sí van al repo.
 # Los archivos fuente del PO (*.bak, valoraciones_*) siguen gitignoreados arriba.
-!examples/
-!examples/**
-# Defensivo: un .duckdb (estado vivo no determinista) NUNCA va al repo, ni
-# siquiera dentro de un workspace de ejemplo (ADR 0030 §Convención lo prohíbe).
-examples/**/*.duckdb
+examples/
+!examples/ciclo-investigación
 
 
 # Docs (MkDocs) — output de build local; el sitio se publica vía CI (docs.yml),
@@ -67,6 +64,13 @@ site/
 
 # Borradores y exploración local (no va al repo)
 scratch/
+
+# Notas personales / cognición tercerizada de Luis — NUNCA se trackean.
+# Norma: cualquier nota privada va acá y el agente no la puede subir por error.
+docs/Notas/NO-HACER-COMMIT-*
+docs/Notas/local/
+**/*.local.md
+.notas-locales/
 
 # Logs
 logs

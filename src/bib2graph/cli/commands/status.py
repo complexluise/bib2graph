@@ -31,9 +31,7 @@ from bib2graph.cli._store import open_store_readonly, resolve_workspace
 from bib2graph.cycle import CURATION_ACTIONS, available_transitions, next_best_action
 from bib2graph.networks.facade import predict_build_preview
 
-# ---------------------------------------------------------------------------
 # Función núcleo (testeable, sin Click)
-# ---------------------------------------------------------------------------
 
 
 def run_status(store_path: str | Path) -> dict[str, Any]:
@@ -75,7 +73,6 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
     state_str = loop_state.value if loop_state is not None else None
     current_round = store.backend.loop_round()
 
-    # Conteos por curation_status via query SQL
     from bib2graph.constants import Col
 
     counts_table = store.backend.query(
@@ -94,7 +91,6 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
     transitions = available_transitions(loop_state)
 
     # Curación transversal: siempre disponible, nunca transiciona el lazo.
-    # Antes de R3, ``transitions_available`` nunca listaba accept/reject → bug cerrado.
     curation = list(CURATION_ACTIONS)
 
     # #54: conteo de IDs backward observados pero no materializados.
@@ -109,7 +105,6 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
     # next_best_action: derivado puramente del FSM (cycle.py).
     action = next_best_action(loop_state)
 
-    # build_preview: predice vacío/no-vacío por red sin proyectar el grafo.
     build_prev = predict_build_preview(corpus)
 
     # readiness: si el próximo paso va a DAR FRUTO (no solo si está permitido).
@@ -168,9 +163,7 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
 # Comando Click
-# ---------------------------------------------------------------------------
 
 
 @click.command("status")
@@ -197,7 +190,6 @@ def status_cmd(
 
     data = run_status(store_path)
 
-    # Agregar info del workspace (campo aditivo, schema="1" se mantiene)
     data["workspace"] = {
         "root": str(ws.root) if ws.root is not None else None,
         "source": ws.source,
@@ -254,7 +246,6 @@ def status_cmd(
         ref_count = data.get("referenced_not_fetched", 0)
         if ref_count > 0:
             emit_human(f"Referenciados sin materializar: {ref_count}")
-        # ADR 0037 §(e) — campos aditivos
         emit_human(f"Próximo mejor paso: b2g {data['next_best_action']}")
         readiness = data["readiness"]
         ready_str = (

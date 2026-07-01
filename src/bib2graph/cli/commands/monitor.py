@@ -29,10 +29,6 @@ from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import resolve_library_path
 
-# ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click)
-# ---------------------------------------------------------------------------
-
 
 def run_monitor(
     store_path: str | Path,
@@ -74,11 +70,6 @@ def run_monitor(
         "loop_state": result["loop_state"],
         "round": result["round"],
     }
-
-
-# ---------------------------------------------------------------------------
-# Comando Click
-# ---------------------------------------------------------------------------
 
 
 @click.command("monitor")

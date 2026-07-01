@@ -11,10 +11,6 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-# ---------------------------------------------------------------------------
-# Col — nombres canónicos de columna del Corpus (23 columnas según CORPUS_SCHEMA)
-# ---------------------------------------------------------------------------
-
 
 class Col(StrEnum):
     """Nombres canónicos de columna del schema Arrow del Corpus.
@@ -69,11 +65,6 @@ class Col(StrEnum):
     CITED_BY_ID = "cited_by_id"
 
 
-# ---------------------------------------------------------------------------
-# CurationStatus — valores canónicos de curation_status
-# ---------------------------------------------------------------------------
-
-
 class CurationStatus(StrEnum):
     """Valores canónicos del campo ``curation_status``.
 
@@ -84,11 +75,6 @@ class CurationStatus(StrEnum):
     CANDIDATE = "candidate"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
-
-
-# ---------------------------------------------------------------------------
-# NetworkKind — tipos de red bibliométrica
-# ---------------------------------------------------------------------------
 
 
 class NetworkKind(StrEnum):
@@ -105,9 +91,23 @@ class NetworkKind(StrEnum):
     KEYWORD_COOCCURRENCE = "keyword_cooccurrence"
 
 
-# ---------------------------------------------------------------------------
-# LIST_COLUMNS — columnas de tipo list[string] (centraliza _LIST_COLS y _LIST_COL_NAMES)
-# ---------------------------------------------------------------------------
+def doi_to_url(doi: str | None) -> str | None:
+    """Deriva la URL canónica ``https://doi.org/<doi>`` a partir de un DOI.
+
+    Criterio compartido por ``networks/decorate.py`` y ``service/reads.py``
+    para evitar drift en la regla de derivación.
+
+    Args:
+        doi: String del DOI (sin prefijo URL), o ``None``.
+
+    Returns:
+        ``"https://doi.org/<doi>"`` si ``doi`` es un string no vacío;
+        ``None`` en cualquier otro caso (None, vacío).
+    """
+    if isinstance(doi, str) and doi:
+        return f"https://doi.org/{doi}"
+    return None
+
 
 LIST_COLUMNS: frozenset[str] = frozenset(
     {

@@ -14,6 +14,11 @@ R5 — footgun de auto-creación:
   para no crear silenciosamente un store vacío ante un typo en la ruta
   (Nota 06, catálogo de secundarios).  ``open_store`` (escritura) mantiene
   el comportamiento de crear el archivo si no existe.
+
+Fuente única (issue #175):
+  ``open_store`` se re-exporta desde ``service.store`` para que la capa de
+  servicios y el CLI usen la misma implementación sin violar el layering
+  (ADR 0028).
 """
 
 from __future__ import annotations
@@ -22,6 +27,11 @@ from pathlib import Path
 from typing import Any
 
 from bib2graph.cli._errors import StoreError, UsageError
+
+# Re-exportar open_store desde la capa neutral (service.store) para:
+# 1. Mantener backward compat con todos los imports de ``cli._store.open_store``.
+# 2. Garantizar fuente única con ``service.snapshot`` (issue #175).
+from bib2graph.service.store import open_store as open_store
 
 
 def resolve_library_path(ctx_obj: dict[str, Any]) -> Path:
@@ -79,39 +89,6 @@ def resolve_workspace(ctx_obj: dict[str, Any]) -> Any:
         return Workspace.resolve(workspace=workspace)
     except WorkspaceNotFoundError as exc:
         raise UsageError(str(exc)) from exc
-
-
-def open_store(path: str | Path) -> Any:
-    """Abre (o crea) el DuckDBStore en ``path``.
-
-    Captura ``StoreLockedError`` (subclase de ``OSError``) y lo re-lanza
-    como ``StoreError`` (exit 5) para el decorador ``@handle_errors``.
-
-    Uso: comandos de ESCRITURA (seed, chain, filter, build, accept, reject,
-    snapshot, export).  Los comandos de SOLO LECTURA deben usar
-    ``open_store_readonly`` para no auto-crear el store ante un typo.
-
-    Args:
-        path: Ruta al archivo ``.duckdb``.
-
-    Returns:
-        ``DuckDBStore`` abierto y listo para usar.
-
-    Raises:
-        StoreError: Si el archivo está bloqueado o no se puede abrir.
-    """
-    from bib2graph.backends.duckdb import StoreLockedError
-    from bib2graph.stores.duckdb import DuckDBStore
-
-    try:
-        return DuckDBStore(path)
-    except StoreLockedError as exc:
-        raise StoreError(str(exc)) from exc
-    except OSError as exc:
-        raise StoreError(
-            f"No se puede abrir el store '{path}': {exc}. "
-            "Verificá que el archivo no esté bloqueado por otro proceso."
-        ) from exc
 
 
 def open_store_readonly(path: str | Path) -> Any:

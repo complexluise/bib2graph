@@ -29,9 +29,7 @@ from typing import Any
 from bib2graph.constants import Col
 from bib2graph.service.errors import NetworkError, StoreError
 
-# ---------------------------------------------------------------------------
 # Helper de normalización DOI (espeja el de openalex.py, función pura)
-# ---------------------------------------------------------------------------
 
 
 def _normalize_doi(raw: str | None) -> str | None:
@@ -44,11 +42,6 @@ def _normalize_doi(raw: str | None) -> str | None:
             doi = doi[len(prefix) :]
             break
     return doi.lower() or None
-
-
-# ---------------------------------------------------------------------------
-# Helper interno — abrir store para escritura
-# ---------------------------------------------------------------------------
 
 
 def _open_writable(path: Path) -> Any:
@@ -75,11 +68,6 @@ def _open_writable(path: Path) -> Any:
             f"No se puede abrir el store '{path}': {exc}. "
             "Verificá que el archivo no esté bloqueado por otro proceso."
         ) from exc
-
-
-# ---------------------------------------------------------------------------
-# _resolve_dois_on_store — núcleo puro que opera sobre un store ya abierto
-# ---------------------------------------------------------------------------
 
 
 def _resolve_dois_on_store(
@@ -122,13 +110,9 @@ def _resolve_dois_on_store(
     from bib2graph.sources.openalex import OpenAlexSource
 
     corpus = store.load()
-    # Convertir a lista de dicts para filtrado Python puro
     rows = corpus.to_arrow().to_pylist()
     total_papers = len(rows)
 
-    # Identificar papers con doi y con/sin source_id
-    # «tiene doi» = doi no nulo y no vacío
-    # «necesita resolver» = tiene doi Y source_id es nulo
     total_with_doi = sum(1 for r in rows if r.get(Col.DOI))
     needs_resolve = [r for r in rows if r.get(Col.DOI) and r.get(Col.SOURCE_ID) is None]
     already_resolved = total_with_doi - len(needs_resolve)
@@ -141,7 +125,6 @@ def _resolve_dois_on_store(
             "total_papers": total_papers,
         }
 
-    # Extraer DOIs normalizados a resolver
     dois_to_resolve: list[str] = []
     for row in needs_resolve:
         doi_norm = _normalize_doi(row.get(Col.DOI))
@@ -156,7 +139,6 @@ def _resolve_dois_on_store(
             "total_papers": total_papers,
         }
 
-    # Llamar a OpenAlex para resolver DOI→source_id
     source = OpenAlexSource(email=email, transport=transport)
     try:
         doi_to_source_id = source.fetch_dois_to_openalex_ids(dois_to_resolve)
@@ -174,7 +156,6 @@ def _resolve_dois_on_store(
             "total_papers": total_papers,
         }
 
-    # Actualizar source_id en las filas que correspondan
     resolved_count = 0
     for row in rows:
         if row.get(Col.SOURCE_ID) is not None:
@@ -187,7 +168,6 @@ def _resolve_dois_on_store(
             row[Col.SOURCE_ID] = doi_to_source_id[doi_norm]
             resolved_count += 1
 
-    # Reconstruir la tabla con los source_id actualizados
     updated_table = pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
     updated_corpus = Corpus.from_arrow(updated_table)
     backend_close = getattr(updated_corpus._backend, "close", None)
@@ -206,11 +186,6 @@ def _resolve_dois_on_store(
         "already_resolved": already_resolved,
         "total_papers": total_papers,
     }
-
-
-# ---------------------------------------------------------------------------
-# resolve_dois — punto de entrada público (abre y cierra su propio store)
-# ---------------------------------------------------------------------------
 
 
 def resolve_dois(

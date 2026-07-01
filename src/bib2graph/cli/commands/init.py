@@ -27,10 +27,6 @@ from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import UsageError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
 
-# ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click)
-# ---------------------------------------------------------------------------
-
 
 def run_init(path: Path, name: str) -> dict[str, Any]:
     """Crea un workspace nuevo en ``path`` con el nombre ``name``.
@@ -60,11 +56,6 @@ def run_init(path: Path, name: str) -> dict[str, Any]:
         "library_path": str(ws.library_path),
         "manifest": ws.manifest.model_dump() if ws.manifest else {},
     }
-
-
-# ---------------------------------------------------------------------------
-# Comando Click
-# ---------------------------------------------------------------------------
 
 
 @click.command("init")
@@ -98,12 +89,9 @@ def init_cmd(
     """
     target_path = Path(target)
 
-    # Si el target es un nombre simple (no una ruta que ya existe ni "."),
-    # se crea como subdirectorio del cwd.
     if not target_path.is_absolute() and not target_path.exists() and target != ".":
         target_path = Path.cwd() / target_path
 
-    # Nombre de la investigación: --name explícito o nombre del directorio
     resolved_name = name if name else target_path.resolve().name
 
     data = run_init(target_path, resolved_name)

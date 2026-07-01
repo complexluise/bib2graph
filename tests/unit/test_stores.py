@@ -458,6 +458,44 @@ def test_persist_multifila_nueva_seq_determinista(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.integration
+def test_persist_dup_colapsado_conserva_primera_aparicion(tmp_path: Path) -> None:
+    """Un id duplicado intercalado con filas nuevas conserva su PRIMERA aparición.
+
+    Seguimiento #235 (hueco señalado por el verifier de #211): los tests de
+    orden cubrían filas nuevas sin duplicados; faltaba el caso combinado de un
+    id que reaparece DESPUÉS de filas nuevas.  ``_dedup_merge_table`` registra
+    el orden solo en la primera aparición, así que el id colapsado debe quedar
+    en su posición inicial, no en la de su reaparición.
+
+    Lote entrante: [A, B, A, C].  A reaparece en el índice 2 (después de B).
+    El orden D3 esperado es [A, B, C] (A en su primera posición); si la
+    deduplicación conservara la última aparición saldría [B, A, C] o similar.
+    """
+    db_path = tmp_path / "lib_dup_ord.duckdb"
+    id_a = "oa:aaaa000000000001"
+    id_b = "oa:bbbb000000000002"
+    id_c = "oa:cccc000000000003"
+
+    rows = [
+        _make_row(id=id_a, title="A primera"),
+        _make_row(id=id_b, title="B nueva"),
+        _make_row(id=id_a, title="A reaparece"),
+        _make_row(id=id_c, title="C nueva"),
+    ]
+    corpus = _make_corpus(rows)
+
+    store = DuckDBStore(db_path)
+    store.persist(corpus)
+
+    loaded = store.load()
+    loaded_ids = loaded.to_arrow().column("id").to_pylist()
+    assert loaded_ids == [id_a, id_b, id_c], (
+        f"El id colapsado debe conservar su primera aparición.\n"
+        f"Esperado: {[id_a, id_b, id_c]}\nObtenido: {loaded_ids}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Benchmark de escala — upsert masivo (issue #211)
 # Marcado @slow: NO corre en el gate por defecto (-m "not network and not slow").

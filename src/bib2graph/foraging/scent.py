@@ -89,7 +89,6 @@ def compute_backward_scent(
         Dict ``{candidate_id: score}`` donde score = nº de corpus-papers
         que listan al candidato en ``references_id``.
     """
-    # ids ya presentes en el corpus (para excluir candidatos duplicados).
     # Se incluye tanto Col.ID como Col.SOURCE_ID: las references_id de OpenAlex
     # son IDs de motor (W…) y deben cruzar contra el source_id W… del corpus.
     corpus_ids: set[str] = set()
@@ -101,7 +100,6 @@ def compute_backward_scent(
         if source_id_val:
             corpus_ids.add(str(source_id_val))
 
-    # Primitivo del proyector: {ref_id → [paper_ids del corpus que lo citan]}
     # Usamos Col.ID como id_col para registrar qué corpus-paper hace la cita.
     ref_to_papers = collect_item_to_papers(corpus_rows, Col.ID, Col.REFERENCES_ID)
 
@@ -150,9 +148,8 @@ def compute_forward_scent(
         Dict ``{citing_id: score}`` donde score = nº de corpus-papers
         citados directamente por el candidato Y.
     """
-    # corpus_ids: ids y source_ids del corpus
-    # — sirven para (a) excluir candidatos ya presentes y
-    #   (b) intersectar con Y.references_id para el score de citación directa.
+    # Sirven para (a) excluir candidatos ya presentes y
+    # (b) intersectar con Y.references_id para el score de citación directa.
     # Se incluye tanto Col.ID como Col.SOURCE_ID: las references_id de OpenAlex
     # son IDs de motor (W…) y deben cruzar contra el source_id W… del corpus.
     corpus_ids: set[str] = set()
@@ -171,13 +168,12 @@ def compute_forward_scent(
             continue
         citing_id_str = str(citing_id)
         if citing_id_str in corpus_ids:
-            continue  # ya en el corpus, no es candidato nuevo
+            continue
 
         refs = row.get(Col.REFERENCES_ID)
         if not refs or not isinstance(refs, list):
             continue
 
-        # Citación directa: cuántos corpus-papers aparecen en Y.references_id
         direct = sum(
             1 for ref in refs if ref and isinstance(ref, str) and str(ref) in corpus_ids
         )

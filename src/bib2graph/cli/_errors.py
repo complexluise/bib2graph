@@ -64,11 +64,6 @@ __all__ = [
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-# ---------------------------------------------------------------------------
-# Decorador de captura
-# ---------------------------------------------------------------------------
-
-
 # Importación perezosa del envelope para evitar importación circular
 def _emit_error_envelope(
     command: str,
@@ -122,7 +117,6 @@ def handle_errors(command: str) -> Callable[[F], F]:
     def decorator(func: F) -> F:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            # Determinar modo JSON desde el flag local (json_output) o env var B2G_JSON.
             _local_flag = bool(kwargs.get("json_output", False))
             json_mode: bool = _resolve_json_mode(_local_flag)
 
@@ -134,8 +128,6 @@ def handle_errors(command: str) -> Callable[[F], F]:
                 )
                 sys.exit(exc.exit_code)
             except OSError as exc:
-                # Captura OSError y su subclase StoreLockedError (exit 5).
-                # R5: rama muerta eliminada — el if/else previo hacía lo mismo.
                 _emit_error_envelope(command, 5, "STORE_ERROR", str(exc), json_mode)
                 sys.exit(5)
             except ImportError as exc:
@@ -146,8 +138,6 @@ def handle_errors(command: str) -> Callable[[F], F]:
                 _emit_error_envelope(command, 3, "DEPENDENCY_ERROR", msg, json_mode)
                 sys.exit(3)
             except httpx.HTTPError as exc:
-                # Captura por tipo: HTTPStatusError, ConnectError, TimeoutException,
-                # RemoteProtocolError, TransportError y toda la jerarquía httpx.
                 msg = (
                     f"Error de red ({type(exc).__name__}): {exc}. "
                     "Verificá tu conexión a internet y reintentá."

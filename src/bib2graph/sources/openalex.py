@@ -39,9 +39,7 @@ from bib2graph.service.errors import NetworkError
 
 from .base import SeedResult
 
-# ---------------------------------------------------------------------------
 # Constantes internas
-# ---------------------------------------------------------------------------
 
 _BASE_URL = "https://api.openalex.org"
 _FIELDS = ",".join(
@@ -86,9 +84,7 @@ _MSG_RATE_LIMIT_429 = (
 )
 
 
-# ---------------------------------------------------------------------------
 # Traducción de ecuación (función pura, sin I/O)
-# ---------------------------------------------------------------------------
 
 
 def _translate(
@@ -138,7 +134,6 @@ def _translate(
     if native:
         return query, ["query nativa OpenAlex, sin traducción"]
 
-    # Detectar límites y acumular reporte
     if _RE_NEAR.search(query):
         report.append(
             "Límite ADR-0007: NEAR/n no soportado en OpenAlex; "
@@ -163,7 +158,6 @@ def _translate(
     # en el filtro de OpenAlex (un `"` embebido cierra la frase antes de tiempo).
     terms = [t.strip().replace('"', "") for t in (exclude or []) if t and t.strip()]
 
-    # Construir el cuerpo interno: (query) [AND NOT "t1" AND NOT "t2" ...]
     body = f"({query})"
     if terms:
         not_clauses = " ".join(f'AND NOT "{t}"' for t in terms)
@@ -174,11 +168,8 @@ def _translate(
             + ". Cláusulas AND NOT añadidas al filtro de OpenAlex."
         )
 
-    # Envolver UNA sola vez en el campo de OpenAlex (PASSTHROUGH)
     executed = f"title_and_abstract.search:{body}"
 
-    # Filtro de año: sintaxis idiomática de rango de OpenAlex.
-    # Las cláusulas se combinan con AND junto al resto del filtro.
     year_clauses: list[str] = []
     if min_year is not None:
         year_clauses.append(f"from_publication_date:{min_year}-01-01")
@@ -200,9 +191,7 @@ def _translate(
     return executed, report
 
 
-# ---------------------------------------------------------------------------
 # Helpers de mapeo JSON → fila del Corpus
-# ---------------------------------------------------------------------------
 
 
 def _reconstruct_abstract(inv_index: dict[str, list[int]] | None) -> str | None:
@@ -292,11 +281,9 @@ def _work_to_row(
     Returns:
         Dict con todas las columnas del schema canónico.
     """
-    # --- Identificadores ---
     openalex_id = _oa_id_short(work.get("id"))
     doi = _normalize_doi(work.get("doi"))
 
-    # --- Autores y afiliaciones ---
     authorships: list[dict[str, Any]] = work.get("authorships") or []
     authors_raw: list[str] = []
     authors_id: list[str] = []
@@ -312,13 +299,11 @@ def _work_to_row(
             _oa_id_short(author.get("orcid") or author.get("id")) or name or "unknown"
         )
         authors_id.append(au_id)
-        # Afiliaciones per-autor
         for inst in authorship.get("institutions") or []:
             country = (inst.get("country_code") or "").upper() or "??"
             inst_name = inst.get("display_name") or "?"
             authors_affiliations.append(f"{inst_name} ({country})")
 
-    # --- Instituciones únicas ---
     institutions_raw: list[str] = []
     institutions_id: list[str] = []
     seen_inst: set[str] = set()
@@ -332,7 +317,6 @@ def _work_to_row(
                     institutions_raw.append(inst_name)
                 institutions_id.append(inst_id)
 
-    # --- Keywords ---
     kws: list[dict[str, Any]] = work.get("keywords") or []
     keywords_raw = [k.get("display_name", "") for k in kws if k.get("display_name")]
     keywords_id = [
@@ -341,19 +325,16 @@ def _work_to_row(
         if k.get("id") or k.get("display_name")
     ]
 
-    # --- Referencias (``referenced_works`` = URLs de OpenAlex) ---
     ref_urls: list[str] = work.get("referenced_works") or []
     references_id = [_oa_id_short(r) for r in ref_urls if r]
     # Filtra posibles None (aunque _oa_id_short solo devuelve None si la URL
     # es vacía, lo cual no ocurre en la lista anterior)
     references_id_clean: list[str] = [r for r in references_id if r]
 
-    # --- Venue / source ---
     primary_loc: dict[str, Any] = work.get("primary_location") or {}
     loc_source: dict[str, Any] = primary_loc.get("source") or {}
     venue = loc_source.get("display_name")
 
-    # --- Provenance (evento inicial) ---
     provenance_event = ProvenanceEvent(
         action=action,
         equation_id=equation_id,
@@ -389,11 +370,6 @@ def _work_to_row(
         Col.REFERENCES_DOI: None,
         Col.CITED_BY_ID: [],
     }
-
-
-# ---------------------------------------------------------------------------
-# OpenAlexSource
-# ---------------------------------------------------------------------------
 
 
 class OpenAlexSource:
@@ -439,9 +415,7 @@ class OpenAlexSource:
         self._max_results = max_results
         self._transport = transport
 
-    # ------------------------------------------------------------------
     # Construcción del cliente httpx
-    # ------------------------------------------------------------------
 
     def _client(self) -> httpx.Client:
         """Construye el cliente httpx con las credenciales inyectadas.
@@ -468,9 +442,7 @@ class OpenAlexSource:
             params=params,
         )
 
-    # ------------------------------------------------------------------
     # Paginación con cursor
-    # ------------------------------------------------------------------
 
     def _fetch_all(self, filter_str: str) -> tuple[list[dict[str, Any]], str | None]:
         """Recupera works de OpenAlex paginando con cursor.
@@ -524,9 +496,7 @@ class OpenAlexSource:
 
         return works[: self._max_results], openalex_version or fetched_at
 
-    # ------------------------------------------------------------------
     # API pública
-    # ------------------------------------------------------------------
 
     def seed(
         self,
@@ -600,7 +570,6 @@ class OpenAlexSource:
                 ],
             }
         )
-        # Sustituir el manifest en el corpus usando la API pública
         result_corpus = corpus.with_manifest(updated_manifest)
 
         return SeedResult(
@@ -679,11 +648,9 @@ class OpenAlexSource:
         fetched_at = datetime.now(UTC).isoformat()
         equation_id = f"chaining:forward:{openalex_id}"
 
-        # R5: retry/backoff ante 429/5xx
         works, _ = self._fetch_all_with_retry(filter_str)
         rows: list[dict[str, Any]] = []
         for work in works:
-            # is_seed=False: los citantes son candidatos, no semillas.
             # La provenance se sobreescribe para agregar chaining_hop=1 (no
             # soportado como parámetro de _work_to_row: es específico de fetch_citing).
             row = _work_to_row(
@@ -738,7 +705,6 @@ class OpenAlexSource:
         if not ids:
             return {}
 
-        # Normalizar IDs a la forma corta (W...) por si vienen como URL
         normalized = [_oa_id_short(i) or i for i in ids]
 
         resultado: dict[str, str] = {}
@@ -746,7 +712,6 @@ class OpenAlexSource:
 
         for start in range(0, len(normalized), batch_size):
             lote = normalized[start : start + batch_size]
-            # Filtro OR de OpenAlex: openalex_id:W1|W2|...
             filter_str = "openalex_id:" + "|".join(lote)
 
             # Usamos el cliente directamente con select acotado (id + doi)
@@ -792,9 +757,7 @@ class OpenAlexSource:
         if not dois:
             return {}
 
-        # Normalizar DOIs de entrada (minúsculas, sin prefijo URL)
         normalized_dois = [_normalize_doi(d) for d in dois]
-        # Filtrar Nones de la normalización
         valid_dois = [d for d in normalized_dois if d]
 
         if not valid_dois:
@@ -805,7 +768,6 @@ class OpenAlexSource:
 
         for start in range(0, len(valid_dois), batch_size):
             lote = valid_dois[start : start + batch_size]
-            # Filtro OR de OpenAlex: doi:d1|d2|...
             filter_str = "doi:" + "|".join(lote)
 
             # Usamos el cliente directamente con select acotado (id + doi)
@@ -857,7 +819,6 @@ class OpenAlexSource:
             )
             return Corpus.from_arrow(table)
 
-        # Normalizar IDs a la forma corta (W...) por si vienen como URL
         normalized = [_oa_id_short(i) or i for i in ids]
 
         fetched_at = datetime.now(UTC).isoformat()

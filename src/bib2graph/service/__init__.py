@@ -14,6 +14,9 @@ Contrato público re-exportado:
     (#156, sub-issue de la superficie CLI 0.10.0).
   - ``get_top`` — nodos centrales + pares de co-citación con título resuelto
     (#157, sub-issue de la superficie CLI 0.10.0).
+  - ``resolve_doi``, ``resolve_url`` — resolución inversa id→DOI/URL sin red
+    (#212, opción 1); criterio de derivación compartido con
+    ``networks/decorate.py`` vía ``doi_to_url`` de ``constants.py``.
   - ``accept_papers``, ``reject_papers``, ``curate_paper`` — escrituras del
     Hito G3 (ADR 0028).
   - ``resolve_dois`` — resolución DOI→source_id (ADR 0035).
@@ -45,6 +48,8 @@ from bib2graph.service.reads import (
     get_workspace,
     list_papers,
     list_rounds,
+    resolve_doi,
+    resolve_url,
 )
 from bib2graph.service.resolve import resolve_dois
 
@@ -71,5 +76,7 @@ __all__ = [
     "list_papers",
     "list_rounds",
     "reject_papers",
+    "resolve_doi",
     "resolve_dois",
+    "resolve_url",
 ]

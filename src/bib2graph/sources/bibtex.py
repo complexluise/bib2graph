@@ -96,7 +96,6 @@ def _entry_to_row(
     _venue_raw = entry.get("journal") or entry.get("booktitle")
     venue = str(_venue_raw) if _venue_raw else None
 
-    # Año: convertir a int si es posible
     raw_year = entry.get("year")
     year: int | None = None
     if raw_year:
@@ -105,7 +104,6 @@ def _entry_to_row(
         except ValueError:
             year = None
 
-    # DOI: normalizar quitando prefijo URL
     raw_doi = str(entry.get("doi") or "")
     doi: str | None = None
     if raw_doi:
@@ -116,7 +114,6 @@ def _entry_to_row(
                 break
         doi = d.lower() or None
 
-    # Provenance
     provenance_event = ProvenanceEvent(
         action="seeded",
         equation_id=None,
@@ -258,7 +255,6 @@ class BibtexSource:
 
         # R5: bulk load — construir la tabla Arrow de una vez y usar from_arrow
         # en vez del loop add_paper/clone que era O(n²).
-        # Pre-computar ids (D1) antes de armar la tabla.
         rows_complete = _rows_with_ids(rows) if rows else []
         if rows_complete:
             table = pa.Table.from_pylist(rows_complete, schema=CORPUS_SCHEMA)

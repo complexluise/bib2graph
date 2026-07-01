@@ -135,11 +135,19 @@ nav:
       - Quickstart: getting-started/quickstart.md
   - Tutoriales:
       - tutoriales/index.md
+      - Tu primer mapa (5 min): tutoriales/claude-code.md
+      - De la pregunta al reporte de SOTA: tutoriales/sota-completo.md
   - Guías (how-to):
       - guias/index.md
+      - Ecuación de búsqueda: guias/ecuacion-busqueda.md
+      - Forrajeo (expandir el corpus): guias/forrajeo.md
+      - Curación PRISMA: guias/curacion-prisma.md
+      - Leer las 5 redes: guias/leer-redes.md
+      - Del corpus al reporte: guias/reporte.md
   - Referencia:
       - API de Python: reference/python-api.md
       - CLI b2g: reference/cli.md
+      - Glosario: reference/glosario.md
       - Contratos detallados: API.md
   - Explicación:
       - Arquitectura: ARCHITECTURE.md

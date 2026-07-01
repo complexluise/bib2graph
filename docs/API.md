@@ -125,7 +125,8 @@ VERBO:** solo **`curate filter`→`FILTERED`**; el resto transversal. **BREAKING
   `undecided`→no-op; case-insensitive). **Idempotente** (`decided_at` inyectado en la frontera CLI, R2).
   CSV sin `id`/`decision` o `decision` inválida → `DataError` exit 2. IDs huérfanos → `not_found_count` +
   aviso (no no-op silencioso). `data = {accepted_count, rejected_count, skipped_count, not_found_count,
-  total_rows}`. **`note` se ignora en apply** (advisory).
+  total_rows}`. **`note` se ignora en apply** (advisory). Lee el CSV con `utf-8-sig`: **tolera el
+  BOM UTF-8** que Excel-Windows agrega al guardar como UTF-8 (#238, política Excel-friendly de #214).
 - **`curate accept --ids ... [--by NOMBRE]`** / **`curate reject --ids ... [--by NOMBRE]`** — por ID
   (uno-a-uno o lote). Comparten `accept_papers`/`reject_papers` con los verbos sueltos `accept`/`reject`
   (alias deprecados).
@@ -424,7 +425,9 @@ transición de ciclo**; determinismo R2 (mismo corpus → misma lectura).
 
 El módulo conserva además funciones de lectura más ricas (`get_workspace`, `list_rounds`, `get_scent`,
 `get_network`, `compare_rounds`) que hoy ningún comando consume (su poda opcional es trabajo de
-limpieza, [#191](https://github.com/complexluise/bib2graph/issues/191)). Decisiones de modelado:
+limpieza, [#191](https://github.com/complexluise/bib2graph/issues/191)), más la **resolución inversa
+id→DOI/URL** (`resolve_doi`, `resolve_url`; [#212](https://github.com/complexluise/bib2graph/issues/212),
+aditiva, devuelven `None` sin lanzar). Decisiones de modelado:
 **ronda = snapshot sellado** (no el contador `loop_round`), `get_scent` = **score de acoplamiento real
 + vecinos**, `get_network` = **red de la ronda viva recomputada**.
 
@@ -509,6 +512,23 @@ def get_top(ws: Workspace, *, n=10, kind="bibliographic_coupling") -> dict[str, 
     SIEMPRE presente, scope="all", empty_networks=["cocitation"] si la co-citación quedó vacía.
     Raises DataError si kind inválido, n <= 0, o la red
     falla genuinamente; StoreError si el store falla. (Detrás de `read top`.)"""
+
+
+# --- Resolución inversa id→DOI/URL (#212, opción 1; sin red, sobre el corpus cargado) ---
+
+def resolve_doi(ws: Workspace, paper_id: str) -> str | None:
+    """DOI desnudo del paper con `Col.ID == paper_id`, o `None`. Devuelve `None`
+    (NO lanza DataError) cuando el id no existe, el paper no tiene DOI, o el DOI es
+    cadena vacía `""` (mismo criterio de "vacío = ausente" que networks/decorate.py).
+    Sin red: opera sobre el corpus ya cargado. Raises StoreError si el store falla."""
+
+def resolve_url(ws: Workspace, paper_id: str) -> str | None:
+    """URL canónica `https://doi.org/<doi>` del paper, o `None` en los mismos casos
+    que resolve_doi (id inexistente / sin DOI / DOI vacío). Deriva vía
+    `doi_to_url(resolve_doi(...))`. Sin red. Raises StoreError si el store falla.
+    `doi_to_url(doi: str|None) -> str|None` (bib2graph.constants) es la FUENTE ÚNICA
+    de la derivación DOI→URL, compartida con la decoración del atributo `url` de redes
+    (#209, ver §8 nota) — sin drift."""
 ```
 
 **Nota de fidelidad al núcleo.** Las lecturas no inventan campos que el núcleo no sostiene:
@@ -1273,9 +1293,20 @@ def decorate(artifact: NetworkArtifact, table: pa.Table) -> None:
 | `label` | todos | string legible (mapeo por kind, abajo) |
 | `degree_centrality` | todos | `float`, vía `nx.degree_centrality` |
 | `year` | paper (coupling/cocitation) | `int` (ausente si `None` en el corpus) |
+| `doi` | paper (coupling/cocitation) | `string` desde `Col.DOI` (DOI desnudo/normalizado, p. ej. `10.1234/abc`); **ausente si el paper no tiene DOI** (mismo criterio que `year`) |
+| `url` | paper (coupling/cocitation) | `string` derivada `https://doi.org/<doi>`; **solo presente si hay DOI** (no es columna del corpus, ver nota abajo) |
 | `is_seed` | paper | `bool` |
 | `curation_status` | paper | `string` |
 | `community` | todos | `int`, **solo** si se provee `artifact.communities` |
+
+`doi`/`url` aplican **solo a paper-kinds** (`bibliographic_coupling` y `cocitation`); los nodos de
+autor/institución/keyword **no los reciben**. `url` es **derivada** (`https://doi.org/<doi>`), no una
+columna del corpus: el DOI es la única identidad de primera clase (ADR 0036) y la URL es una expansión
+trivial determinista a la hora de decorar. La derivación vive en `doi_to_url(doi: str|None) -> str|None`
+(`bib2graph.constants`), **fuente única** compartida con `resolve_url` (§0.1, #212) — sin drift.
+Ausencia condicional como `year`: sin DOI truthy, el nodo no
+recibe ni `doi` ni `url`. Los exporters CSV/GraphML (§9) los propagan **automáticamente** cuando están
+presentes (son genéricos y omiten `None`) — sin cambios en exporters.
 
 **Mapeo de `label` por `NetworkKind`:**
 
@@ -1402,8 +1433,9 @@ class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
 
 - **`CsvExporter`** escribe `aristas.csv` (`source,target,weight`) y `nodos.csv` (`id,label` +
   atributos de nodo + métricas de `results` —degree/betweenness/community— unidas por id). Orden
-  de filas determinista. El `label` (y `year`/`is_seed`/`curation_status`/`community`) lo inyecta la
-  capa `decorate` (§7.1) antes del export, no el exporter.
+  de filas determinista. El `label` (y `year`/`doi`/`url`/`is_seed`/`curation_status`/`community`) lo
+  inyecta la capa `decorate` (§7.1) antes del export, no el exporter; `doi`/`url` salen solo en
+  paper-kinds y solo cuando el paper tiene DOI.
 - **`GraphMLExporter`** escribe esos atributos como node attributes, **omite** los atributos con
   valor `None` (Gephi / `nx.write_graphml` no los admiten) y **no muta** el grafo original (opera
   sobre una copia).
@@ -1521,12 +1553,14 @@ networks:
 
 **Dedup fuzzy determinista** con `rapidfuzz` (núcleo desde #88): el complemento aproximado de la
 normalización conservadora del `Preprocessor` (§6). Las funciones siguen exportadas desde
-`bib2graph.preprocessors`, pero **se invocan automáticamente** desde el helper de frontera
-`cli/_ingest.py::normalize_and_dedup`, no a mano. Operan sobre la columna `_id`
+`bib2graph.preprocessors`, pero **se invocan automáticamente** desde el helper canónico
+`preprocessors.pipeline::normalize_and_dedup`, no a mano. Operan sobre la columna `_id`
 (`authors_id`/`keywords_id`), **nunca** sobre `_raw`.
 
 ```python
-# Helper de frontera — punto único de la ingesta (cli/_ingest.py)
+# Helper canónico — punto único de la ingesta (preprocessors/pipeline.py;
+# re-exportado por compat desde cli/_ingest.py → el import viejo
+# `from bib2graph.cli._ingest import normalize_and_dedup` sigue vivo, no es breaking)
 def normalize_and_dedup(corpus: Corpus, *, applied_at: datetime | None = None) -> Corpus:
     """normalize → deduplicate_authors(0.92) → deduplicate_keywords(0.90), en ese orden, sobre el
     corpus COMPLETO YA MERGEADO (existing + incoming) ⇒ dedup CROSS-BIBLIOTECA. NO aplica thesaurus
@@ -1551,7 +1585,9 @@ def deduplicate_keywords(corpus: Corpus, *, threshold: float = 0.90) -> Corpus:
   **`persist_replace`** (§4.1) porque el upsert-concat D3 reintroduciría las variantes colapsadas.
   `build` sigue **puro** (el corpus ya entra deduplicado).
 - **`threshold` por-campo** (autores `0.92` / keywords `0.90`): `rapidfuzz.fuzz.token_sort_ratio` (0–100)
-  contra `threshold * 100`. Umbrales fijos en `cli/_ingest.py`.
+  contra `threshold * 100`. Umbrales fijos como **constantes públicas** `THRESHOLD_AUTHORS` /
+  `THRESHOLD_KEYWORDS` de `bib2graph.preprocessors` (fuente única en `preprocessors.pipeline`, issue
+  #175): el umbral compartido por la ingesta y el `restore` es **uno solo**, sin copias que diverjan.
 - **Determinista e idempotente:** los pares ≥ umbral forman **componentes conexas** vía Union-Find; el
   **canónico** del cluster es la variante más frecuente (desempate por `id` ascendente); se preserva el
   **orden de primera aparición** y **nunca se toca `_raw`**. Mismo corpus + threshold + versión de

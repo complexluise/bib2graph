@@ -1,12 +1,14 @@
-"""Tests de la capa decorate — issue #25.
+"""Tests de la capa decorate — issue #25 y #209.
 
 Verifica:
 - ``decorate_graph`` inyecta ``label`` correcto por ``NetworkKind``.
 - Atributos ``year``/``is_seed``/``curation_status``/``degree_centrality`` presentes
   en nodos de paper.
+- Atributos ``doi``/``url`` presentes en nodos de paper cuando hay DOI (#209).
 - Atributo ``community`` presente cuando se pasa ``communities``.
 - Round-trip GraphML: exportar grafo decorado → releer → nodos tienen ``label``
   legible (no el id crudo).
+- Round-trip CSV y GraphML incluyen ``doi``/``url`` cuando están presentes (#209).
 - Los proyectores siguen puros (sin ``label``) — la decoración es aparte.
 - Determinismo: mismo corpus → mismos atributos.
 
@@ -23,6 +25,8 @@ import pytest
 
 from bib2graph.constants import NetworkKind
 from bib2graph.corpus import Corpus
+from bib2graph.exporters.csv import CsvExporter
+from bib2graph.exporters.graphml import GraphMLExporter
 from bib2graph.networks.decorate import LABEL_MAX_CHARS, decorate, decorate_graph
 from bib2graph.networks.facade import Networks
 from bib2graph.networks.projectors import (
@@ -471,3 +475,237 @@ def test_label_paper_truncado_si_titulo_largo() -> None:
     assert label.endswith("..."), f"label largo no truncado: {label!r}"
     # El label truncado tiene exactamente LABEL_MAX_CHARS chars + "..."
     assert len(label) == LABEL_MAX_CHARS + 3
+
+
+# ---------------------------------------------------------------------------
+# doi / url en nodos de paper (#209)
+# ---------------------------------------------------------------------------
+
+
+def _make_table_con_doi() -> pa.Table:
+    """Tabla Arrow con un paper con DOI y otro sin DOI.
+
+    Ambos comparten ``R_shared`` para que el acoplamiento bibliográfico cree
+    una arista entre ellos (los dos nodos quedan en el grafo).
+    """
+    rows = [
+        {
+            "id": "PDOI",
+            "source_id": None,
+            "doi": "10.1234/ejemplo.2024",
+            "title": "Paper con DOI",
+            "year": 2024,
+            "abstract": None,
+            "source": None,
+            "language": None,
+            "publisher": None,
+            "research_areas": None,
+            "is_seed": True,
+            "curation_status": "accepted",
+            "provenance": None,
+            "authors_raw": None,
+            "authors_id": None,
+            "authors_affiliations": None,
+            "keywords_raw": None,
+            "keywords_id": None,
+            "institutions_raw": None,
+            "institutions_id": None,
+            "references_id": ["R_shared", "R_a"],
+            "references_doi": None,
+            "cited_by_id": None,
+        },
+        {
+            "id": "PNODOI",
+            "source_id": None,
+            "doi": None,
+            "title": "Paper sin DOI",
+            "year": 2023,
+            "abstract": None,
+            "source": None,
+            "language": None,
+            "publisher": None,
+            "research_areas": None,
+            "is_seed": True,
+            "curation_status": "candidate",
+            "provenance": None,
+            "authors_raw": None,
+            "authors_id": None,
+            "authors_affiliations": None,
+            "keywords_raw": None,
+            "keywords_id": None,
+            "institutions_raw": None,
+            "institutions_id": None,
+            "references_id": ["R_shared", "R_b"],
+            "references_doi": None,
+            "cited_by_id": None,
+        },
+    ]
+    return pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
+
+
+@pytest.mark.unit
+def test_doi_y_url_en_nodo_paper_con_doi() -> None:
+    """Nodo de paper con DOI → atributos ``doi`` y ``url`` correctos (#209)."""
+    table = _make_table_con_doi()
+    projector = BibliographicCouplingProjector()
+    g = projector.project(table)
+    assert "PDOI" in g.nodes, "PDOI debe estar en el grafo"
+
+    decorate_graph(g, table, NetworkKind.BIBLIOGRAPHIC_COUPLING)
+
+    attrs = g.nodes["PDOI"]
+    assert "doi" in attrs, "atributo doi ausente en nodo con DOI"
+    assert attrs["doi"] == "10.1234/ejemplo.2024"
+    assert "url" in attrs, "atributo url ausente en nodo con DOI"
+    assert attrs["url"] == "https://doi.org/10.1234/ejemplo.2024"
+
+
+@pytest.mark.unit
+def test_sin_doi_no_tiene_url_basura() -> None:
+    """Nodo de paper sin DOI NO debe tener atributos ``doi`` ni ``url`` (#209).
+
+    Garantiza que no aparezca ``url = 'https://doi.org/None'`` ni un doi vacío.
+    """
+    table = _make_table_con_doi()
+    projector = BibliographicCouplingProjector()
+    g = projector.project(table)
+    assert "PNODOI" in g.nodes, "PNODOI debe estar en el grafo"
+
+    decorate_graph(g, table, NetworkKind.BIBLIOGRAPHIC_COUPLING)
+
+    attrs = g.nodes["PNODOI"]
+    assert "doi" not in attrs, f"doi no debería estar en nodo sin DOI: {attrs!r}"
+    assert "url" not in attrs, f"url no debería estar en nodo sin DOI: {attrs!r}"
+
+
+@pytest.mark.unit
+def test_doi_no_se_inyecta_en_nodo_autor() -> None:
+    """Los atributos doi/url NO se inyectan en nodos de red de autores.
+
+    Solo aplican a paper-kinds (bibliographic_coupling, cocitation).
+    """
+    rows = [
+        {
+            "id": "PA1",
+            "source_id": None,
+            "doi": "10.9999/autor.2024",
+            "title": "Autor compartido A",
+            "year": 2024,
+            "abstract": None,
+            "source": None,
+            "language": None,
+            "publisher": None,
+            "research_areas": None,
+            "is_seed": True,
+            "curation_status": "accepted",
+            "provenance": None,
+            "authors_raw": ["Juan Pérez"],
+            "authors_id": ["auth_shared"],
+            "authors_affiliations": None,
+            "keywords_raw": None,
+            "keywords_id": None,
+            "institutions_raw": None,
+            "institutions_id": None,
+            "references_id": None,
+            "references_doi": None,
+            "cited_by_id": None,
+        },
+        {
+            "id": "PA2",
+            "source_id": None,
+            "doi": "10.9999/autor.2025",
+            "title": "Autor compartido B",
+            "year": 2025,
+            "abstract": None,
+            "source": None,
+            "language": None,
+            "publisher": None,
+            "research_areas": None,
+            "is_seed": True,
+            "curation_status": "accepted",
+            "provenance": None,
+            "authors_raw": ["Juan Pérez", "Ana García"],
+            "authors_id": ["auth_shared", "auth_other"],
+            "authors_affiliations": None,
+            "keywords_raw": None,
+            "keywords_id": None,
+            "institutions_raw": None,
+            "institutions_id": None,
+            "references_id": None,
+            "references_doi": None,
+            "cited_by_id": None,
+        },
+    ]
+    t = pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
+    projector = AuthorCollaborationProjector()
+    g = projector.project(t)
+    assert g.number_of_nodes() > 0, "grafo de autores debe tener nodos"
+
+    decorate_graph(g, t, NetworkKind.AUTHOR_COLLAB)
+
+    for node in g.nodes():
+        attrs = g.nodes[node]
+        assert "doi" not in attrs, (
+            f"doi no debe estar en nodo de autor {node!r}: {attrs!r}"
+        )
+        assert "url" not in attrs, (
+            f"url no debe estar en nodo de autor {node!r}: {attrs!r}"
+        )
+
+
+@pytest.mark.unit
+def test_export_csv_incluye_doi_url(tmp_path: Path) -> None:
+    """El CSV de un grafo decorado con DOIs incluye columnas doi y url (#209).
+
+    CsvExporter es genérico: vuelca todos los atributos de nodo presentes.
+    Si decorate_graph inyecta doi/url, aparecen en nodos.csv.
+    """
+    table = _make_table_con_doi()
+    projector = BibliographicCouplingProjector()
+    g = projector.project(table)
+    decorate_graph(g, table, NetworkKind.BIBLIOGRAPHIC_COUPLING)
+
+    CsvExporter().export(g, {}, tmp_path)
+
+    content = (tmp_path / "nodos.csv").read_text(encoding="utf-8-sig")
+    header = content.splitlines()[0]
+    assert "doi" in header, f"columna doi ausente en nodos.csv; header: {header!r}"
+    assert "url" in header, f"columna url ausente en nodos.csv; header: {header!r}"
+
+    # El nodo con DOI tiene el valor correcto
+    assert "10.1234/ejemplo.2024" in content
+    assert "https://doi.org/10.1234/ejemplo.2024" in content
+
+
+@pytest.mark.unit
+def test_export_graphml_incluye_doi_url(tmp_path: Path) -> None:
+    """El GraphML de un grafo decorado con DOIs incluye atributos doi y url (#209).
+
+    GraphMLExporter es genérico: escribe todos los atributos de nodo presentes.
+    """
+    table = _make_table_con_doi()
+    projector = BibliographicCouplingProjector()
+    g = projector.project(table)
+    decorate_graph(g, table, NetworkKind.BIBLIOGRAPHIC_COUPLING)
+
+    GraphMLExporter().export(g, {}, tmp_path)
+
+    reloaded = nx.read_graphml(str(tmp_path / "network.graphml"))
+
+    # El nodo con DOI tiene ambos atributos
+    assert "doi" in reloaded.nodes["PDOI"], (
+        f"doi ausente en PDOI tras round-trip GraphML: {dict(reloaded.nodes['PDOI'])!r}"
+    )
+    assert reloaded.nodes["PDOI"]["doi"] == "10.1234/ejemplo.2024"
+    assert "url" in reloaded.nodes["PDOI"], (
+        f"url ausente en PDOI tras round-trip GraphML: {dict(reloaded.nodes['PDOI'])!r}"
+    )
+    assert reloaded.nodes["PDOI"]["url"] == "https://doi.org/10.1234/ejemplo.2024"
+
+    # El nodo sin DOI NO tiene url basura
+    assert "doi" not in reloaded.nodes["PNODOI"], (
+        "doi no debería aparecer en PNODOI tras round-trip GraphML"
+    )
+    assert "url" not in reloaded.nodes["PNODOI"], (
+        "url no debería aparecer en PNODOI tras round-trip GraphML"
+    )

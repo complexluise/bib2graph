@@ -448,8 +448,18 @@ Detalle en [`CONTRIBUTING.md`](CONTRIBUTING.md) y [`VERSIONING.md`](VERSIONING.m
 - **Docstrings** en español (la doc y los comentarios de los ADRs están en español; mantener
   el idioma del proyecto). Una línea para funciones triviales, multilínea con secciones
   `Args:` / `Returns:` / `Raises:` para lo demás.
-- **Sin comentarios innecesarios.** El código se explica solo. Los docstrings justifican el
-  *por qué*, no el *qué*.
+- **Comentarios: escasos, actuales, solo el *por qué* no obvio.** Un comentario se justifica solo
+  si da contexto o una decisión que el código no muestra, **está vigente** y es **escaso** (si hay
+  muchos, dejan de ser relevantes — para eso están los docs/ADRs). Los **docstrings** son el lugar
+  del *qué*; los comentarios, del *por qué*.
+  **Cortar:** los que parafrasean el *qué* (lo dice el código); los **desactualizados** (migraciones
+  o compat de datos "pre-X"/legacy que ya no existen, narraciones de código borrado); los **banners
+  separadores** (`# ----`, `# ====`, enumeraciones `# 1.`/`# 2.` — a lo sumo **un** título de
+  sección de una línea, y solo en archivos largos); y las **referencias ADR/issue peladas**
+  (`# ADR 0024`, `# #126` sin explicación).
+  **Conservar:** el *por qué* que justifica un orden, un workaround o una decisión no evidente —
+  **incluida** la referencia ADR/issue cuando viene **con** esa explicación
+  (`# ADR 0024: _seq es interna, no parte de CORPUS_SCHEMA`).
 - `from __future__ import annotations` en todos los módulos del paquete.
 
 ### Imports

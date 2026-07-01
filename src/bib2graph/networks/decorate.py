@@ -30,6 +30,8 @@ Atributos adicionales de paper (coupling/cocitation):
   - ``year``: int o ausente si None.
   - ``is_seed``: bool.
   - ``curation_status``: string.
+  - ``doi``: string o ausente si no hay DOI en el corpus.
+  - ``url``: ``"https://doi.org/<doi>"`` o ausente si no hay DOI.
 
 Atributo de comunidad (si se provee ``communities``):
   - ``community``: int.
@@ -42,7 +44,7 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 import pyarrow as pa
 
-from bib2graph.constants import Col, NetworkKind
+from bib2graph.constants import Col, NetworkKind, doi_to_url
 
 if TYPE_CHECKING:
     from bib2graph.networks.spec import NetworkArtifact
@@ -52,24 +54,18 @@ if TYPE_CHECKING:
 else:
     _Graph = nx.Graph
 
-# Límite de caracteres para el label de paper (título largo truncado)
 LABEL_MAX_CHARS: int = 60
 
-# Kinds de red cuyo nodo es un paper (Col.ID)
 _PAPER_KINDS: frozenset[str] = frozenset(
     {NetworkKind.BIBLIOGRAPHIC_COUPLING, NetworkKind.COCITATION}
 )
 
 
-# ---------------------------------------------------------------------------
-# Índices internos: construidos una sola vez por llamada a decorate_graph
-# ---------------------------------------------------------------------------
-
-
 def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
-    """Construye un índice ``{paper_id → {label, year, is_seed, curation_status}}``.
+    """Construye un índice ``{paper_id → {label, year, is_seed, curation_status, doi}}``.
 
     El label de paper es ``"título (año)"`` truncado a ``LABEL_MAX_CHARS`` chars.
+    ``doi`` es el DOI del paper (string) o ``None`` si no está disponible.
 
     Args:
         table: Tabla Arrow canónica del Corpus.
@@ -82,15 +78,15 @@ def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
     years = table.column(Col.YEAR).to_pylist()
     is_seeds = table.column(Col.IS_SEED).to_pylist()
     statuses = table.column(Col.CURATION_STATUS).to_pylist()
+    dois = table.column(Col.DOI).to_pylist()
 
     index: dict[str, dict[str, object]] = {}
-    for pid, title, year, is_seed, status in zip(
-        ids, titles, years, is_seeds, statuses, strict=False
+    for pid, title, year, is_seed, status, doi in zip(
+        ids, titles, years, is_seeds, statuses, dois, strict=False
     ):
         if pid is None:
             continue
         key = str(pid)
-        # Construir label
         if title:
             label = str(title)
             if year is not None:
@@ -98,13 +94,14 @@ def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
             if len(label) > LABEL_MAX_CHARS:
                 label = label[:LABEL_MAX_CHARS] + "..."
         else:
-            label = key  # fallback al id crudo si no hay título
+            label = key
 
         index[key] = {
             "label": label,
             "year": int(year) if year is not None else None,
             "is_seed": bool(is_seed) if is_seed is not None else False,
             "curation_status": str(status) if status is not None else None,
+            "doi": str(doi) if doi is not None else None,
         }
     return index
 
@@ -134,7 +131,6 @@ def _build_author_index(table: pa.Table) -> dict[str, str]:
                 continue
             key = str(author_id)
             if key not in index:
-                # Usar el nombre raw correlativo si existe
                 name = raw_list[i] if i < len(raw_list) and raw_list[i] else key
                 index[key] = str(name)
     return index
@@ -169,9 +165,7 @@ def _build_institution_index(table: pa.Table) -> dict[str, str]:
     return index
 
 
-# ---------------------------------------------------------------------------
 # API pública
-# ---------------------------------------------------------------------------
 
 
 def decorate_graph(
@@ -194,6 +188,8 @@ def decorate_graph(
       - ``year``: int o ausente si None en el corpus.
       - ``is_seed``: bool.
       - ``curation_status``: string.
+      - ``doi``: string o ausente si el paper no tiene DOI en el corpus.
+      - ``url``: ``"https://doi.org/<doi>"`` o ausente si no hay DOI.
 
     Atributo de comunidad (si se provee ``communities``):
       - ``community``: int.
@@ -211,7 +207,6 @@ def decorate_graph(
     # Centralidad de grado (una sola llamada, determinista)
     deg_centrality: dict[Any, float] = nx.degree_centrality(graph)
 
-    # Construir índices según kind
     if kind in _PAPER_KINDS:
         paper_index = _build_paper_index(table)
         for node in graph.nodes():
@@ -219,7 +214,6 @@ def decorate_graph(
             info = paper_index.get(key, {})
             graph.nodes[node]["label"] = str(info.get("label", key))
             graph.nodes[node]["degree_centrality"] = deg_centrality.get(node, 0.0)
-            # Atributos extra de paper: solo si están disponibles
             year = info.get("year")
             if isinstance(year, int):
                 graph.nodes[node]["year"] = year
@@ -229,6 +223,12 @@ def decorate_graph(
             curation = info.get("curation_status")
             if curation is not None:
                 graph.nodes[node]["curation_status"] = str(curation)
+            doi_val = info.get("doi")
+            doi_str = doi_val if isinstance(doi_val, str) else None
+            url = doi_to_url(doi_str)
+            if url is not None:
+                graph.nodes[node]["doi"] = doi_str
+                graph.nodes[node]["url"] = url
 
     elif kind == NetworkKind.AUTHOR_COLLAB:
         author_index = _build_author_index(table)
@@ -256,7 +256,6 @@ def decorate_graph(
             graph.nodes[node]["label"] = str(node)
             graph.nodes[node]["degree_centrality"] = deg_centrality.get(node, 0.0)
 
-    # Comunidades (opcional, todos los kinds)
     if communities is not None:
         for node, comm_id in communities.items():
             if graph.has_node(node):

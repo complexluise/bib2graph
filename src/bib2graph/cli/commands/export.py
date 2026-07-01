@@ -22,10 +22,6 @@ from bib2graph.cli._errors import DataError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import resolve_workspace
 
-# ---------------------------------------------------------------------------
-# Función núcleo (testeable, sin Click)
-# ---------------------------------------------------------------------------
-
 
 def run_export(
     store_path: str | Path,
@@ -70,7 +66,6 @@ def run_export(
             "Ejecutá primero ``b2g build``."
         )
 
-    # Buscar subdirectorios de redes
     kind_dirs = [d for d in nets_dir.iterdir() if d.is_dir()]
     if not kind_dirs:
         raise DataError(
@@ -121,11 +116,6 @@ def run_export(
         "files_written": files_written,
         "networks_exported": len(kind_dirs),
     }
-
-
-# ---------------------------------------------------------------------------
-# Comando Click
-# ---------------------------------------------------------------------------
 
 
 @click.command("export")

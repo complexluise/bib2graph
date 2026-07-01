@@ -42,9 +42,7 @@ from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import UsageError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
 
-# ---------------------------------------------------------------------------
 # Helpers internos
-# ---------------------------------------------------------------------------
 
 
 def _locate_skill_source() -> Path:
@@ -107,9 +105,6 @@ def _trees_identical(a: Path, b: Path) -> bool:
 
 # Resumen "a grandes rasgos" de cómo opera bib2graph, para que un agente de
 # CUALQUIER proveedor (no solo Claude Code) sepa qué es esto y vaya al SKILL.md.
-# (La integración real depende del cliente; esto la hace auto-descubrible: la
-# salida del CLI dice dónde está el artículo y pide leerlo. Ver #193 para la
-# distribución agnóstica al proveedor de 0.11.0.)
 _HOW_IT_WORKS = (
     "bib2graph entrevista al investigador y corre el ciclo de forrajeo "
     "seed→chain→build→read (one-shot o profundizando), priorizando candidatos "
@@ -197,9 +192,7 @@ def run_skill_add(
     return _build_result(dest, scope, installed=True, already_present=False)
 
 
-# ---------------------------------------------------------------------------
 # Grupo raíz
-# ---------------------------------------------------------------------------
 
 
 @click.group("skill", invoke_without_command=True)
@@ -221,9 +214,7 @@ def skill_grp(ctx: click.Context) -> None:
         click.echo(ctx.get_help())
 
 
-# ---------------------------------------------------------------------------
 # skill add
-# ---------------------------------------------------------------------------
 
 
 @skill_grp.command("add")

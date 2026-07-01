@@ -1038,3 +1038,56 @@ def test_round_trip_con_columnas_nuevas(tmp_path: Path) -> None:
     by_id = {r["id"]: r for r in corpus.to_arrow().to_pylist()}
     assert by_id["PA"]["curation_status"] == "accepted"
     assert by_id["PB"]["curation_status"] == "rejected"
+
+
+# ---------------------------------------------------------------------------
+# 26. BOM UTF-8 — curate apply tolera el BOM que agrega Excel-Windows (#238)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "with_bom",
+    [False, True],
+    ids=["sin_bom", "con_bom"],
+)
+def test_from_csv_tolerates_utf8_bom(tmp_path: Path, with_bom: bool) -> None:
+    """run_curate_from_csv procesa correctamente CSV con y sin BOM UTF-8 (#238).
+
+    Excel-Windows antepone EF BB BF al guardar CSV como UTF-8.  Sin utf-8-sig
+    el header de la primera columna se lee como '\\ufeffid' en vez de 'id',
+    causando el falso error 'falta columna id'.
+    """
+    from bib2graph.cli.commands.curate import CSV_COLUMNS, run_curate_from_csv
+    from bib2graph.stores.duckdb import DuckDBStore
+
+    store_path = tmp_path / "test.duckdb"
+    rows = [_make_corpus_row(id="P1"), _make_corpus_row(id="P2")]
+    _seed_store(store_path, rows)
+
+    encoding = "utf-8-sig" if with_bom else "utf-8"
+    csv_path = tmp_path / "decisions.csv"
+    with open(csv_path, "w", newline="", encoding=encoding) as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+        writer.writeheader()
+        writer.writerow(
+            {**{c: "" for c in CSV_COLUMNS}, "id": "P1", "decision": "accepted"}
+        )
+        writer.writerow(
+            {**{c: "" for c in CSV_COLUMNS}, "id": "P2", "decision": "rejected"}
+        )
+
+    now = datetime.now(UTC)
+    result = run_curate_from_csv(store_path, csv_path, decided_at=now)
+
+    assert result["accepted_count"] == 1
+    assert result["rejected_count"] == 1
+    assert result["skipped_count"] == 0
+    assert result["not_found_count"] == 0
+
+    store = DuckDBStore(store_path)
+    corpus = store.load()
+    by_id = {r["id"]: r for r in corpus.to_arrow().to_pylist()}
+    store.close()
+    assert by_id["P1"]["curation_status"] == "accepted"
+    assert by_id["P2"]["curation_status"] == "rejected"

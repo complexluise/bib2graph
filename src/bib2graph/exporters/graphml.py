@@ -49,7 +49,6 @@ class GraphMLExporter:
         # Copiar el grafo para no mutar el original
         export_g: _Graph = g.copy()
 
-        # Fusionar métricas de nodo desde results (D5)
         for metric_name, metric_value in results.items():
             if isinstance(metric_value, dict):
                 for node, val in metric_value.items():

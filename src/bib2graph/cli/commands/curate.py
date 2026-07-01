@@ -75,11 +75,7 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
 # Grupo raíz
-# ---------------------------------------------------------------------------
-
-
 @click.group("curate", invoke_without_command=True)
 @click.pass_context
 def curate_grp(ctx: click.Context) -> None:
@@ -102,11 +98,7 @@ def curate_grp(ctx: click.Context) -> None:
         click.echo(ctx.get_help())
 
 
-# ---------------------------------------------------------------------------
 # curate dump
-# ---------------------------------------------------------------------------
-
-
 @curate_grp.command("dump")
 @click.option(
     "--out",
@@ -170,11 +162,7 @@ def dump_cmd(
         emit_human(f"Exportados {data['papers_exported']} papers a: {data['csv_path']}")
 
 
-# ---------------------------------------------------------------------------
 # curate apply
-# ---------------------------------------------------------------------------
-
-
 @curate_grp.command("apply")
 @click.argument("csv_file", type=click.Path())
 @click.option(
@@ -233,11 +221,7 @@ def apply_cmd(
             )
 
 
-# ---------------------------------------------------------------------------
 # curate accept
-# ---------------------------------------------------------------------------
-
-
 @curate_grp.command("accept")
 @click.option(
     "--ids",
@@ -283,11 +267,7 @@ def curate_accept_cmd(
         emit_human(f"Aceptados {data['accepted_count']} papers.")
 
 
-# ---------------------------------------------------------------------------
 # curate reject
-# ---------------------------------------------------------------------------
-
-
 @curate_grp.command("reject")
 @click.option(
     "--ids",
@@ -333,11 +313,7 @@ def curate_reject_cmd(
         emit_human(f"Rechazados {data['rejected_count']} papers.")
 
 
-# ---------------------------------------------------------------------------
 # curate filter
-# ---------------------------------------------------------------------------
-
-
 @curate_grp.command("filter")
 @click.option("--year-gte", type=int, default=None, help="Incluir años >= este valor.")
 @click.option("--year-lte", type=int, default=None, help="Incluir años <= este valor.")
@@ -410,8 +386,5 @@ def curate_filter_cmd(
         emit_human(f"Total en corpus: {data['total_papers']}")
 
 
-# ---------------------------------------------------------------------------
 # Alias curate_cmd → curate_grp (compat con registros existentes)
-# ---------------------------------------------------------------------------
-
 curate_cmd = curate_grp

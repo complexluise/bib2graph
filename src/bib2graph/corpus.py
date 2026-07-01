@@ -31,17 +31,9 @@ from bib2graph.schemas import (
     validate_table,
 )
 
-# ---------------------------------------------------------------------------
 # Re-exporta compute_corpus_hash con el nombre histórico que usan los tests
 # del Hito 1 (``from bib2graph.corpus import _compute_corpus_hash``).
-# ---------------------------------------------------------------------------
-
 _compute_corpus_hash = compute_corpus_hash
-
-
-# ---------------------------------------------------------------------------
-# Versión de la librería (D5)
-# ---------------------------------------------------------------------------
 
 
 def _lib_version() -> str:
@@ -59,11 +51,7 @@ def _lib_version() -> str:
         return "unknown"
 
 
-# ---------------------------------------------------------------------------
-# Identidad canónica de un paper (D1) — accesible al backend y a Corpus
-# ---------------------------------------------------------------------------
-
-
+# Identidad canónica: doi > source_id > título+año (D1, ADR 0036)
 def _compute_id(
     doi: str | None,
     source_id: str | None,
@@ -135,11 +123,6 @@ def _rows_with_ids(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     return result
 
 
-# ---------------------------------------------------------------------------
-# Submodelos del Manifest (API.md §1.3)
-# ---------------------------------------------------------------------------
-
-
 class EquationRef(BaseModel):
     """Referencia a una ecuación de búsqueda ejecutada."""
 
@@ -179,11 +162,6 @@ class EnricherRef(BaseModel):
     params: dict[str, str] = Field(default_factory=dict)
 
 
-# ---------------------------------------------------------------------------
-# Manifest (API.md §1.3, D5)
-# ---------------------------------------------------------------------------
-
-
 class Manifest(BaseModel):
     """Metadatos sellados del Corpus.
 
@@ -196,18 +174,12 @@ class Manifest(BaseModel):
     lib_version: str
     created_at: datetime
 
-    # Opcionales con default (D5)
     openalex_version: str | None = None
     equations: list[EquationRef] = Field(default_factory=list)
     chaining: ChainingParams | None = None
     preprocessors: list[PreprocRef] = Field(default_factory=list)
     filters: list[FilterStep] = Field(default_factory=list)
     enrichers: list[EnricherRef] = Field(default_factory=list)
-
-
-# ---------------------------------------------------------------------------
-# Corpus (API.md §1.2)
-# ---------------------------------------------------------------------------
 
 
 class Corpus:
@@ -235,10 +207,6 @@ class Corpus:
         self._backend = backend
         self._manifest = manifest
 
-    # ------------------------------------------------------------------
-    # Propiedades de acceso
-    # ------------------------------------------------------------------
-
     @property
     def table(self) -> pa.Table:
         """Tabla Arrow del contenido actual (delegada al backend)."""
@@ -248,10 +216,6 @@ class Corpus:
     def manifest(self) -> Manifest:
         """Metadatos del Corpus (solo lectura)."""
         return self._manifest
-
-    # ------------------------------------------------------------------
-    # Constructor canónico
-    # ------------------------------------------------------------------
 
     @classmethod
     def from_arrow(
@@ -288,10 +252,6 @@ class Corpus:
         )
         return cls(resolved_backend, manifest)
 
-    # ------------------------------------------------------------------
-    # Exportación
-    # ------------------------------------------------------------------
-
     def to_arrow(self) -> pa.Table:
         """Devuelve la tabla Arrow del contenido actual.
 
@@ -299,10 +259,6 @@ class Corpus:
             Tabla Arrow con el schema canónico.
         """
         return self._backend.to_arrow()
-
-    # ------------------------------------------------------------------
-    # Vistas filtradas (delegadas al backend)
-    # ------------------------------------------------------------------
 
     def seeds(self) -> pa.Table:
         """Vista de los papers semilla (``is_seed == True``).
@@ -327,10 +283,6 @@ class Corpus:
             Tabla Arrow filtrada.
         """
         return self._backend.filter_view("accepted")
-
-    # ------------------------------------------------------------------
-    # Vista de scope por estado de curación (issue #56)
-    # ------------------------------------------------------------------
 
     def scoped(self, scope: str) -> Corpus:
         """Devuelve un Corpus nuevo con el subconjunto de filas según el scope.
@@ -376,10 +328,6 @@ class Corpus:
 
         new_backend = InMemoryBackend(filtered)
         return Corpus(new_backend, self._manifest)
-
-    # ------------------------------------------------------------------
-    # Mutación (semántica de valor: devuelven Corpus nuevo)
-    # ------------------------------------------------------------------
 
     def add_paper(self, row: dict[str, object]) -> Corpus:
         """Agrega un paper validando la fila con ``PaperRow``.
@@ -619,11 +567,6 @@ class Corpus:
         if not isinstance(other, Corpus):
             return False
         return self._backend.corpus_hash() == other._backend.corpus_hash()
-
-
-# ---------------------------------------------------------------------------
-# CorpusSnapshot (API.md §1.3)
-# ---------------------------------------------------------------------------
 
 
 class CorpusSnapshot:
