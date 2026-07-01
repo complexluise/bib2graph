@@ -11,6 +11,39 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.11.0](https://github.com/complexluise/bib2graph/compare/v0.10.2...v0.11.0) (2026-07-01)
+
+
+### Features
+
+* **service:** resolver público id→DOI/URL (resolve_doi/resolve_url) ([#212](https://github.com/complexluise/bib2graph/issues/212)) ([#236](https://github.com/complexluise/bib2graph/issues/236)) ([91ff6b2](https://github.com/complexluise/bib2graph/commit/91ff6b238d441ad0356f620fcf584d7c9a560093))
+
+
+### Bug Fixes
+
+* **curate:** apply tolera CSV con BOM UTF-8 (Excel-Windows) ([#238](https://github.com/complexluise/bib2graph/issues/238)) ([#239](https://github.com/complexluise/bib2graph/issues/239)) ([81d96c7](https://github.com/complexluise/bib2graph/commit/81d96c76c760190479048e9b8ebf2567629f3002))
+
+
+### Documentation
+
+* add glossary to close issue [#208](https://github.com/complexluise/bib2graph/issues/208) completely ([219d52d](https://github.com/complexluise/bib2graph/commit/219d52d7a9a0a5f7e6d308342fe9285d361c87f5))
+* add glossary to close issue [#208](https://github.com/complexluise/bib2graph/issues/208) completely ([10452f8](https://github.com/complexluise/bib2graph/commit/10452f820df9e23fc538b6e935037134a2c2121e))
+* add tutorial and guide for documentation improvements ([cb1bdfb](https://github.com/complexluise/bib2graph/commit/cb1bdfb1b682f81473a290d5520165ca2910d9b8))
+* add tutorial and guide for documentation improvements ([cef4168](https://github.com/complexluise/bib2graph/commit/cef4168d8769c84dfa2a9ef79dd2b2b21e0f12b7))
+* add tutorial and guide for documentation improvements ([bc6ee77](https://github.com/complexluise/bib2graph/commit/bc6ee777a087ebc878407a71bcfed5462fd2842f))
+* **adr:** 0043 posiciona el contrato agent-native del CLI ([a25333b](https://github.com/complexluise/bib2graph/commit/a25333bfb4337bbf3458acbd7967e348bd9ccc53))
+* **adr:** 0043 posiciona el contrato agent-native del CLI ([7a12a98](https://github.com/complexluise/bib2graph/commit/7a12a9803ac1d4774a904b69da4dfe4dc228d13c))
+* exponer tutoriales y guías en el nav + arreglar enlace roto ([4cd2291](https://github.com/complexluise/bib2graph/commit/4cd22912d903bf7cedb193fa8da7d0250a43bb3e))
+* exponer tutoriales y guías en el nav + arreglar enlace roto ([d363182](https://github.com/complexluise/bib2graph/commit/d36318276e429055ea4f4c3f945e492b7e3faa74))
+* fix language and add CLI foundation, remove vendor locking ([9619b51](https://github.com/complexluise/bib2graph/commit/9619b51f68a5743b6e3dc20b6b110d7361e1e795))
+* fix language and add CLI foundation, remove vendor locking ([cf9d64c](https://github.com/complexluise/bib2graph/commit/cf9d64cb439ae4125d0b579bcbbe6dddae567633))
+* **notas:** publicar notas 20, 23-28 (renumera recibo a 27, marco a 28) ([de87de1](https://github.com/complexluise/bib2graph/commit/de87de1779db7c956e11b9b778a63fd3fb86ff26))
+* **notas:** publicar notas 20, 23-28 (renumera recibo a 27, marco a 28) ([ebe1069](https://github.com/complexluise/bib2graph/commit/ebe10694ee1b6f15a935533082a69c876dc00424))
+* restructure guides — 5 acotadas vs. 1 monolítica ([0add9e6](https://github.com/complexluise/bib2graph/commit/0add9e6266ec7fd4a03b765a0843a0fff7848fc0))
+* restructure guides — 5 acotadas vs. 1 monolítica ([1f55e94](https://github.com/complexluise/bib2graph/commit/1f55e94e69e2ecab1d93c0c67a6a1a31cc0beeab))
+* restructure tutorials — quick start (5min) + complete (3-4h) ([bfa7850](https://github.com/complexluise/bib2graph/commit/bfa7850412de4d865b4df5ca8adef775c98aa86a))
+* restructure tutorials — quick start (5min) + complete (3-4h) ([e80bec1](https://github.com/complexluise/bib2graph/commit/e80bec1ee42107345b9dd113e2958a5530a8d891))
+
 ## [0.10.2](https://github.com/complexluise/bib2graph/compare/v0.10.1...v0.10.2) (2026-06-30)
 
 
