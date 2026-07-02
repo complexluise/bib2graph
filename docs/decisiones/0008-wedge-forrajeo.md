@@ -4,8 +4,8 @@
   retira del producto; el forrajeo se asiste por estructura bibliométrica, sin IA — ver "Enmienda")
 - **Fecha:** 2026-06-15
 - **Relacionada con:** [0007](0007-openalex-backbone.md),
-  [`../Notas/04-direccion-ia-in-the-loop.md`](../Notas/04-direccion-ia-in-the-loop.md),
-  [`../Notas/05-ciclo-investigacion-humano.md`](../Notas/05-ciclo-investigacion-humano.md)
+  `../Notas/04-direccion-ia-in-the-loop.md`,
+  `../Notas/05-ciclo-investigacion-humano.md`
 
 ## Contexto
 
@@ -28,7 +28,7 @@ tensiones se difiere explícitamente a v2**. Los pasos 5 (organizar en evidencia
 ## Consecuencias
 
 - **Wedge entregable y ya validado**: el sandbox de intercambio ecológico desigual
-  ([`../exploracion/informe_ied_lectura_2.md`](../../exploracion/informe_ied_lectura_2.md)) corre
+  (`../exploracion/informe_ied_lectura_2.md`) corre
   este flujo end-to-end con datos reales de OpenAlex.
 - La **diferenciación de la V1** descansa en: ecuación consciente + reporte de traducción,
   biblioteca viva curada, ranking por estructura bibliométrica y CLI agente-native — **no** en
@@ -42,7 +42,7 @@ tensiones se difiere explícitamente a v2**. Los pasos 5 (organizar en evidencia
 ## Enmienda — 2026-06-15 (la máquina de tensiones se retira del producto; el forrajeo no usa IA)
 
 > Motivada por el red-team del AS-BUILT v0.2
-> ([Nota 06](../Notas/06-critica-as-built-v0.2.md), RAÍZ 1) y la decisión del PO de que **el producto
+> (Nota 06, RAÍZ 1) y la decisión del PO de que **el producto
 > no usa IA generativa** (ADR [0022](0022-producto-sin-ia-generativa.md)). El cuerpo del ADR (arriba)
 > queda como historia; esta enmienda corrige dos cosas.
 

@@ -45,7 +45,7 @@ que aparecieron al planificar la implementación:
    sin reinventar un formato.
 
 Una exploración más amplia (cuatro arquitecturas candidatas) está en
-[`exploracion/arquitecturas-alternativas.md`](../Notas/02-exploracion/arquitecturas-alternativas.md).
+`exploracion/arquitecturas-alternativas.md`.
 Las alternativas evaluadas y descartadas:
 
 - **Event sourcing / log inmutable:** sobreingeniería; el mismo poder se

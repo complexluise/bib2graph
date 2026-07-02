@@ -6,7 +6,7 @@
 > bibliométrica determinista** (*information scent*), sin LLM ni embeddings. El desarrollo sí es
 > asistido por IA; el producto no. El "porqué" de cada decisión vive en los ADR de
 > [`decisiones/`](decisiones/) (linkeados en cada sección); el método en
-> [`Notas/metodología.md`](Notas/metodología.md); los contratos públicos en [`API.md`](API.md).
+> `Notas/metodología.md`; los contratos públicos en [`API.md`](API.md).
 
 ## 1. Idea en un párrafo
 
@@ -130,7 +130,7 @@ Funciones puras sobre `networkx.Graph`: **métricas** (densidad, componentes, cl
 fuerte si falta—, propagación, modularidad voraz), **asortatividad** (por un **atributo categórico
 configurable** —p. ej. región— y por grado, más la **composición de cada comunidad**; las métricas
 sobre un **proxy** se reportan con su disclaimer; el atributo es config del usuario, no hardcodeado) e
-**informe de calidad** de la co-citación ([`metodología.md`](Notas/metodología.md) §4, umbrales
+**informe de calidad** de la co-citación (`metodología.md` §4, umbrales
 configurables).
 
 ### 3.4 `Exporter` — resultados → archivos
@@ -248,7 +248,7 @@ expone `CycleState` (`SEEDED/FORAGED/FILTERED/BUILT/MONITORED`), `apply_transiti
 round) → (state, round)`, `available_transitions(state)` y `CURATION_ACTIONS`. El backend persiste el
 estado y la **ronda** en `loop_state_log`.
 
-FSM **cíclico** fiel a la [Nota 05](Notas/05-ciclo-investigacion-humano.md):
+FSM **cíclico** fiel a la Nota 05:
 
 ```
 SEEDED ──chain──► FORAGED ──filter──► FILTERED ──build──► BUILT ──monitor──► MONITORED

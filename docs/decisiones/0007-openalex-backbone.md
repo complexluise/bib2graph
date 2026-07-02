@@ -8,7 +8,7 @@
 ## Contexto
 
 El diseño previo (ver [`../PRD.md`](../PRD.md) anterior y
-[`../critica-base.md`](../Notas/critica-base.md) §1) pivoteaba sobre **BibTeX como entrada de
+`../critica-base.md` §1) pivoteaba sobre **BibTeX como entrada de
 referencia**. Pero el BibTeX **no trae las listas de referencias citadas**, y eso fabricaba el
 problema más caro de toda la arquitectura: un `Enricher` de Semantic Scholar **estructural**
 para poder construir la red de co-citación (API keys, rate limits, rama opcional, reintentos

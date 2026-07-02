@@ -9,8 +9,8 @@
 - **Relacionada con:** [0009](0009-biblioteca-viva-duckdb.md) (biblioteca viva = unidad de trabajo),
   [0032](0032-capa-servicios-duena-del-flujo.md) (el servicio dueño del flujo lo habilita),
   [0034](0034-etiquetado-tabla-tags-lateral.md) (etiquetado, parte del ejercicio bibliotecario).
-- **Encuadre:** [Nota 16](../Notas/16-retroalimentacion-gui-mvp.md) §Re-priorización/§H1 +
-  [Nota 18](../Notas/18-flujo-canonico-biblioteca.md). **Decidido por el PO (2026-06-18).**
+- **Encuadre:** Nota 16 §Re-priorización/§H1 +
+  Nota 18. **Decidido por el PO (2026-06-18).**
 - **Epic:** GUI local [#34](https://github.com/complexluise/bib2graph/issues/34).
 
 ## Contexto

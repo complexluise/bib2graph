@@ -8,8 +8,8 @@
   (etiquetar es parte del ejercicio bibliotecario primario), [0011](0011-thesaurus-multilingue.md)/
   [0031](0031-preprocesamiento-automatico-en-ingesta.md) (tesauro/topics = camino a taxonomía),
   [0024](0024-orden-d3-columna-secuencia-duckdb.md) (patrón de tablas hermanas fuera del `corpus_hash`).
-- **Encuadre:** [Nota 16](../Notas/16-retroalimentacion-gui-mvp.md) §H1/§H1b +
-  [Nota 17](../Notas/17-validacion-tercero-gate34.md) §BUG-2 + [Nota 18](../Notas/18-flujo-canonico-biblioteca.md).
+- **Encuadre:** Nota 16 §H1/§H1b +
+  Nota 17 §BUG-2 + Nota 18.
   **Decidido por el PO (2026-06-18): tags libres ahora, tabla lateral, sin BIBFRAME.**
 - **Epic:** GUI local [#34](https://github.com/complexluise/bib2graph/issues/34).
 

@@ -3,19 +3,19 @@
 - **Estado:** Aceptada
 - **Fecha:** 2026-06-15
 - **Decidido por:** Product Owner humano (tras el red-team de la
-  [`../Notas/06-critica-as-built-v0.2.md`](../Notas/06-critica-as-built-v0.2.md))
+  `../Notas/06-critica-as-built-v0.2.md`)
 - **Relacionada con:** [0008](0008-wedge-forrajeo.md) (wedge = forrajeo; tensiones removidas),
   [0011](0011-thesaurus-multilingue.md) (thesaurus determinista, sin fallback LLM),
   [0020](0020-metodo-forrajeo-scent-filtros-reject.md) (scent = estructura bibliométrica),
-  [`../Notas/04-direccion-ia-in-the-loop.md`](../Notas/04-direccion-ia-in-the-loop.md) (base de la
+  `../Notas/04-direccion-ia-in-the-loop.md` (base de la
   "máquina de tensiones", ahora abandonada),
-  [`../Notas/05-ciclo-investigacion-humano.md`](../Notas/05-ciclo-investigacion-humano.md)
+  `../Notas/05-ciclo-investigacion-humano.md`
 
 ## Contexto
 
 El giro "IA in the loop" (Notas 04/05) proponía **dos puntos de inserción de IA** en el producto:
 nº1 (forrajeo) y nº2 (sensemaking / "máquina de tensiones"). El red-team del AS-BUILT v0.2
-([Nota 06](../Notas/06-critica-as-built-v0.2.md), RAÍZ 1) mostró que esa IA-en-el-producto es **casi
+(Nota 06, RAÍZ 1) mostró que esa IA-en-el-producto es **casi
 vapor**: el forrajeo rankea por un **conteo aritmético** (no bibliometría, no IA), la curación es
 **100% humana**, y el único gancho de LLM (`explain_candidate`) es un `NotImplementedError`
 permanente con el extra `[llm]` vacío. README/AI_DISCLOSURE/Nota 05, en cambio, **venden IA en el
@@ -39,7 +39,7 @@ bibliométrica como *information scent***, **determinista y reproducible** (acop
    [0008](0008-wedge-forrajeo.md) actualizado). El **sensemaking sigue siendo humano**, asistido por
    las redes (no por IA).
 3. **Queda un solo sentido de "AI-in-the-loop":** el *desarrollo* de la librería es asistido por IA
-   (ver [`../../AI_DISCLOSURE.md`](../../AI_DISCLOSURE.md)); el *producto* **no** usa IA. Ya no hay
+   (ver `../../AI_DISCLOSURE.md`); el *producto* **no** usa IA. Ya no hay
    "dos inserciones de IA": hay **una inserción algorítmica** (forrajeo por estructura
    bibliométrica), que no es IA.
 
@@ -75,7 +75,7 @@ centralidad diferida) se documentan en el AS-BUILT del ADR
 
 ## Enmienda — 2026-06-17 (la curación automatizada `[auto-vN]` es opt-in y excepción, NO default · #65)
 
-La [Nota 13](../Notas/13-continuacion-sesion-valoraciones.md) (sesión de QA con el caso
+La Nota 13 (sesión de QA con el caso
 `valoraciones`) usó **curación automatizada por heurísticas de keywords** sobre
 título/abstract/keywords para cerrar el ciclo de QA sin esperar la CLI de curación (#22/#26).
 Cada decisión del clasificador quedó marcada con un tag de auditoría (`[auto-v1]`/`[auto-v3]`/
@@ -94,5 +94,5 @@ Esto **NO modifica la decisión de este ADR.** La regla **"la curación es 100% 
    auditoría + reversibilidad humana); el humano sigue siendo quien acepta o revierte. Esa sería una
    **decisión nueva** (enmienda o ADR nuevo), no un comportamiento por defecto.
 
-Referencia: [Nota 13 — Continuación de la sesión QA](../Notas/13-continuacion-sesion-valoraciones.md)
+Referencia: Nota 13 — Continuación de la sesión QA
 §"La excepción a la regla 'curación 100% humana'".

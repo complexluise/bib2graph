@@ -23,7 +23,7 @@
 
 ## Contexto
 
-El Hito 7 ([ROADMAP/04](../ROADMAP/04-lo-que-viene.md)) materializa la deduplicación **fuzzy** de
+El Hito 7 (ROADMAP/04) materializa la deduplicación **fuzzy** de
 `authors_id` y `keywords_id`: el complemento aproximado de la normalización conservadora del
 `Preprocessor` (ADR 0011, Hito 5), que solo colapsa variantes triviales (lowercase, acentos,
 espacios) y matchea keywords contra el thesaurus curado. Lo que queda son variantes **casi-iguales**

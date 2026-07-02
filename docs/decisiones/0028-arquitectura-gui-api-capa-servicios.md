@@ -19,7 +19,7 @@
 
 ## Contexto
 
-La [Nota 12](../Notas/12-arquitectura-gui-encuadre.md) (revisada 2026-06-18) encuadró la arquitectura:
+La Nota 12 (revisada 2026-06-18) encuadró la arquitectura:
 la GUI agrega un **4º frontend (SPA)** y una **costura nueva de servidor (API local)**, sin romper
 "núcleo puro + costuras". El principio es **no tener dos implementaciones de la lógica de negocio**: CLI
 y API deben compartir la orquestación.

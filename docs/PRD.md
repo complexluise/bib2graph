@@ -6,7 +6,7 @@
 > [0022](decisiones/0022-producto-sin-ia-generativa.md)): la asistencia del forrajeo es estructura
 > bibliométrica determinista (*information scent*); el desarrollo sí es asistido por IA. Diseño en
 > [`ARCHITECTURE.md`](ARCHITECTURE.md); contratos en [`API.md`](API.md); método en
-> [`Notas/metodología.md`](Notas/metodología.md).
+> `Notas/metodología.md`.
 
 ## 1. Qué es
 
@@ -39,8 +39,8 @@ que **la colección vive** (berry growing).*
 ## 2. Problema que resuelve
 
 La exploración bibliográfica humana es **iterativa, no lineal** (Kuhlthau, Ellis, Bates,
-Pirolli, Wohlin — ver [`Notas/05`](Notas/05-ciclo-investigacion-humano.md) y
-[`metodología.md`](Notas/metodología.md)): se siembra, se hace *chaining*, la query y la idea
+Pirolli, Wohlin — ver `Notas/05` y
+`metodología.md`): se siembra, se hace *chaining*, la query y la idea
 **mutan** al leer (berrypicking), y la colección **se cultiva** en el tiempo (berry growing). El
 snowballing manual es mecánico y agota; documentarlo con rigor (PRISMA / vom Brocke) es trabajo.
 
@@ -57,7 +57,7 @@ Falta una herramienta **abierta, poseída por el investigador**, que parta de la
 consciente**, **asista el forrajeo** usando la estructura bibliométrica como *information scent*,
 y conserve una **biblioteca viva reproducible**.
 
-La contribución (y la tesis del paper, [`Notas/05`](Notas/05-ciclo-investigacion-humano.md) §5)
+La contribución (y la tesis del paper, `Notas/05` §5)
 es **re-instrumentar el ciclo humano clásico** con un método donde la **estructura bibliométrica
 funciona como *information scent*** (forrajeo asistido, **determinista y reproducible, sin IA
 generativa**), **sin desplazar el juicio humano**. Mapeo del ciclo de 9 pasos (05 §3–4) sobre el
@@ -215,7 +215,7 @@ viva. La experiencia visual library-centric vive en un **producto separado**, fu
    bibliométrico** del forrajeo (acoplamiento/co-citación/centralidad, determinista, reproducible). El
    **juicio humano** (formular la idea, dejarla mutar, decidir qué curar, leer las tensiones) **no se
    automatiza**. "AI-in-the-loop" se refiere **solo** al *desarrollo* asistido por IA (ver
-   [`AI_DISCLOSURE.md`](../AI_DISCLOSURE.md)).
+   `AI_DISCLOSURE.md`).
 3. **Núcleo puro, costuras opcionales.** La lógica bibliométrica no depende de servidores ni red.
 4. **Configuración inyectada, nunca embebida.** Ningún secreto en el código, sin efectos de import.
 5. **Contratos estables y tipados** entre costuras (sin *signature drift*).
@@ -310,8 +310,8 @@ Detalle del schema de columnas + la API del wrapper en [`API.md`](API.md) §1.
 El caso de referencia de bib2graph es **el ciclo de investigación aplicado a la teoría que mejora
 bib2graph**: la herramienta **se usa a sí misma como objeto de estudio** para iterar su propio diseño.
 La literatura sobre **forrajeo de información, ciclo de investigación humano y bibliometría** (Bates,
-Ellis, Kuhlthau, Pirolli, Wohlin, vom Brocke; ver [`Notas/05`](Notas/05-ciclo-investigacion-humano.md)
-y [`metodología.md`](Notas/metodología.md)) es a la vez **el corpus que bib2graph procesa** y **la
+Ellis, Kuhlthau, Pirolli, Wohlin, vom Brocke; ver `Notas/05`
+y `metodología.md`) es a la vez **el corpus que bib2graph procesa** y **la
 fuente de los requisitos** del producto: sembrar la ecuación de esa teoría, forrajear sus referencias y
 citantes, curar la biblioteca viva, proyectar las redes y leer las tensiones es **lo que valida que el
 método sirve** — y cada vuelta del ciclo retroalimenta el diseño (qué falta en el forrajeo, qué red
@@ -324,7 +324,7 @@ vivos** reflejan el resultado, no el debate.
 
 El caso **intercambio ecológico desigual (IED)** —el pipeline corrido end-to-end sobre papers reales de
 OpenAlex, con redes con estructura, thesaurus multilingüe y asimetría Norte–Sur medible (ver
-[`exploracion/informe_ied_lectura_2.md`](../exploracion/informe_ied_lectura_2.md))— queda como **caso
+`exploracion/informe_ied_lectura_2.md`)— queda como **caso
 de validación interna histórico**: evidencia de que el método produce resultados con datos reales, **no
 un criterio de release**. El estudio de semiconductores sigue como caso documentado en
-[`metodología.md`](Notas/metodología.md).
+`metodología.md`.

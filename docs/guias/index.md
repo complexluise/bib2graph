@@ -5,7 +5,8 @@ title: Guías (how-to)
 # Guías (how-to)
 
 Las **guías** son recetas para decisiones puntuales: ya sabes qué quieres hacer,
-buscas cómo hacerlo bien. Si en cambio quieres *aprender* desde cero, comienza por los [Tutoriales](../tutoriales/index.md).
+buscas cómo hacerlo bien. Si en cambio quieres *aprender* desde cero, comienza por
+[Tu primer mapa de investigación](../tutoriales/primer-mapa.md) (5 min), en Inicio.
 
 Las guías están organizadas por **paso del flujo.** Úsalas como referencia mientras
 trabajas.
@@ -68,7 +69,7 @@ trabajas.
 
 ## Complementario
 
-- [Tutoriales](../tutoriales/index.md) — aprende desde cero (quick start o completo)
+- [Tu primer mapa de investigación](../tutoriales/primer-mapa.md) — aprende desde cero, en 5 minutos
 - [Quickstart](../getting-started/quickstart.md) — ciclo mínimo en 2 minutos
 - [Referencia CLI](../reference/cli.md) — todos los comandos
 - [API Python](../reference/python-api.md) — como librería

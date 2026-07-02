@@ -7,11 +7,11 @@
   estructural y S2 se demota), [0004](0004-enriquecimiento-opcional.md) (principio de enriquecimiento
   opt-in, nunca obligatorio, keys inyectadas), [0014](0014-proyeccion-redes-pesos-asortatividad.md)
   (semántica del `CoCitationProjector`), [0021](0021-cli-agente-native-contrato.md) (set de
-  subcomandos del CLI), [`metodología.md`](../Notas/metodología.md) (co-citación = citantes compartidos)
+  subcomandos del CLI), `metodología.md` (co-citación = citantes compartidos)
 
 ## Contexto
 
-El Hito 8 ([ROADMAP/04](../ROADMAP/04-lo-que-viene.md)) materializa la costura `Enricher` opt-in
+El Hito 8 (ROADMAP/04) materializa la costura `Enricher` opt-in
 para resolver `references_id`→`references_doi` y habilitar la **co-citación** end-to-end. El DoD
 original del hito lo encuadraba sobre el extra **`[s2]`** (Semantic Scholar), residuo del diseño
 **pre-giro** previo al [ADR 0007](0007-openalex-backbone.md): cuando la entrada era BibTeX, el único
@@ -78,7 +78,7 @@ El hito es grande para un solo ciclo, por lo que se **parte en dos**:
 
 El `CoCitationProjector` (ADR [0014](0014-proyeccion-redes-pesos-asortatividad.md)) **no se toca**:
 cuenta **`cited_by_id` compartido** = los **citantes compartidos** de la
-[`metodología.md`](../Notas/metodología.md). La frase de los docs "citantes con sus citas" se **reconcilia**
+`metodología.md`. La frase de los docs "citantes con sus citas" se **reconcilia**
 documentando que el 2º nivel se materializa como **`cited_by_id`** (8b): "citantes con sus citas" ≡
 **`cited_by_id` compartido**, que es lo que el projector ya consume.
 

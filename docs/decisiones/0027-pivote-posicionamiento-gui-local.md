@@ -13,8 +13,8 @@
   [0021](0021-cli-agente-native-contrato.md) (contrato del CLI),
   [0029](0029-workspace-por-investigacion.md) (workspace = unidad de proyecto, prerequisito ya hecho).
 - **Epic:** GUI local [#34](https://github.com/complexluise/bib2graph/issues/34). Dirección en
-  Notas [07](../Notas/07-frontend-tool-for-thought.md)/[08](../Notas/08-referentes-frontend.md)/
-  [10](../Notas/10-sintesis-contextualizacion-gui.md).
+  Notas 07/08/
+  10.
 
 ## Contexto
 

@@ -189,6 +189,29 @@ Total: 12–20 páginas
 > **Emergentes:** Keyword "low-resource" crece 3x desde 2020. Autores nuevos en este sub-tema.
 > Nuevas partnerships: Google + universidades en Asia (multilingüe sobre lenguas de baja disponibilidad).
 
+### Cómo pedírselo a tu asistente
+
+Si estás operando bib2graph vía un [asistente de IA](../reference/glosario.md#asistente-de-ia),
+no necesitas calcular esto a mano. Pídeselo directamente:
+
+```text
+Muestra:
+- Gráfico de # papers/año en el corpus, y cómo cambiaron las comunidades
+  (% de papers) año a año. ¿Hay una comunidad que crecía y ahora decrece?
+  ¿Hay una emergente (crecimiento exponencial últimos 3 años)?
+
+Top 10 autores por:
+- Cantidad de papers (productividad)
+- Grado en la red de co-citación (influencia)
+- Betweenness (actúan de "puente" entre comunidades)
+
+Mirando las 3 redes, identifica:
+- Comunidades o autores que no se conectan entre sí (fronteras vacías)
+- Combinaciones de keywords que NO aparecen (gaps)
+
+Co-autoría: top 10 instituciones por cantidad de papers y colaboraciones externas.
+```
+
 ---
 
 ## 6. TENSIONES Y DEBATES
@@ -318,6 +341,28 @@ No asumas jerga. Explica conceptos:
 - [ ] Conclusiones: huecos identificados, recomendaciones futuras
 - [ ] Figuras: todas con leyendas claras + 2–3 frases de interpretación
 - [ ] Redacción: sin jerga sin explicar, citas presentes, transiciones claras
+
+---
+
+## Guarda y versiona tus artefactos
+
+**Si trabajaste con un asistente de IA:** su entorno de ejecución es efímero.
+Antes de cerrar la conversación, descarga `corpus.parquet` (o el `.duckdb`),
+los `.graphml` de cada red, el `clusters.csv` (papers → comunidad) y tu
+reporte final. Guárdalos juntos en una carpeta: `sota-[tema]-[fecha]/`.
+
+**Si trabajaste con bib2graph localmente:** exporta y versiona con git:
+
+```bash
+b2g export --format graphml
+b2g export --format csv
+
+git add .
+git commit -m "SOTA: [tu tema] — corpus, redes, reporte"
+```
+
+Esto es lo que hace tu SOTA **reproducible**: alguien (incluida tu versión
+futura) puede volver a la misma ecuación y llegar a las mismas redes.
 
 ---
 

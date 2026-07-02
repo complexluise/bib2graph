@@ -8,7 +8,7 @@ Referencia de la **superficie pública de la librería** `bib2graph`, agrupada p
 tema. Se **autogenera desde los docstrings** del código (mkdocstrings): si cambia
 el código, cambia esta página.
 
-Para usar la herramienta desde la terminal, mirá la [referencia del CLI `b2g`](cli.md).
+Para usar la herramienta desde la terminal, mira la [referencia del CLI `b2g`](cli.md).
 
 ## Corpus y persistencia
 

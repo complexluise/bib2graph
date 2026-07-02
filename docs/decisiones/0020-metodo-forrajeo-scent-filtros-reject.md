@@ -124,7 +124,7 @@ decía que `keywords_id` son los "canónicos (post-thesaurus)": antes de aplicar
 ## Enmienda — 2026-06-15 (scent bibliométrico determinista; sin LLM)
 
 > Motivada por el red-team del AS-BUILT v0.2
-> ([Nota 06](../Notas/06-critica-as-built-v0.2.md), RAÍZ 1) y la decisión del PO de que **el producto
+> (Nota 06, RAÍZ 1) y la decisión del PO de que **el producto
 > no usa IA generativa** (ADR [0022](0022-producto-sin-ia-generativa.md)). El cuerpo del ADR (arriba)
 > queda como historia; esta enmienda revierte la decisión **A** (scent = frecuencia de enlace) y
 > elimina el stub LLM.
@@ -132,7 +132,7 @@ decía que `keywords_id` son los "canónicos (post-thesaurus)": antes de aplicar
 1. **El scent pasa de "frecuencia de enlace" a estructura bibliométrica.** El *information scent*
    usa los **PROYECTORES** —**acoplamiento / co-citación / centralidad** del candidato respecto del
    corpus curado— en vez del conteo aritmético de citas directas. Es lo que la
-   [Nota 05](../Notas/05-ciclo-investigacion-humano.md) §4 siempre prometió ("la bibliometría ES el
+   Nota 05 §4 siempre prometió ("la bibliometría ES el
    information scent… mapea a los proyectores"). Sigue siendo una **función pura y determinista**
    (mismo corpus → mismo ranking, mismo desempate por `id`), **sin LLM ni embeddings**. El forrajeo
    (costura) **depende del núcleo de proyección** (puro); el núcleo nunca de la costura.
@@ -289,8 +289,8 @@ semántica.
 
 ### El "no contaminan" era falso — los stubs SÍ contaminaron
 
-Las sesiones de QA con datos reales lo destaparon ([Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md),
-[Nota 13](../Notas/13-continuacion-sesion-valoraciones.md), "el bug de fondo del Forager"): los stubs
+Las sesiones de QA con datos reales lo destaparon (Nota 09,
+Nota 13, "el bug de fondo del Forager"): los stubs
 `[candidate:W...]` **sí contaminaron**. Llegaron a ser **~la mitad del corpus** (filas-fantasma sin
 metadata real) y, peor, **entraron al `corpus_hash`** (eran filas del `corpus`, no ruido externo) —
 rompiendo la reproducibilidad y las redes legibles. La promesa de "curables/enriquecibles después"

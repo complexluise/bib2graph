@@ -5,7 +5,7 @@
 - **Fecha:** 2026-06-15
 - **Relacionada con:** [0006](0006-tabla-canonica-y-networkspec.md) (`Preprocessor`),
   [0007](0007-openalex-backbone.md)
-- **Validado en:** [`../exploracion/informe_ied_lectura_2.md`](../../exploracion/informe_ied_lectura_2.md)
+- **Validado en:** `../exploracion/informe_ied_lectura_2.md`
   (T6 y T10)
 
 ## Contexto

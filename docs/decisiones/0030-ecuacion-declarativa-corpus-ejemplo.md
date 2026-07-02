@@ -22,7 +22,7 @@
   `corpus_hash`), [0005](0005-dependencias-extras.md) (extra `[bibtex]` perezoso).
 - **Prerequisito de:** Ciclo #33 ("caso real reproducido") → **gate de #34** (epic GUI).
 - **Issues / contexto:** #14 (`--max-results`), #30 (`--exclude`), #25/#31 (redes legibles +
-  `clusters.csv`), #26 (`curate --from-csv`), [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md)
+  `clusters.csv`), #26 (`curate --from-csv`), Nota 09
   (sesión QA — ecología de valoraciones; agujero R2 de reproducibilidad de comunidades).
 
 ## Contexto
@@ -353,7 +353,7 @@ lo construido. **Gate verde, 571 tests; el verifier pasa.**
   **composición de comunidades es estable entre corridas** (Louvain seeded); redes no vacías
   (coupling 132/3897, author_collab 327/729, institution_collab 136/300, keyword 483/5350;
   co-citación vacía omitida graceful porque `cited_by_id` está en blanco). **Cierra el agujero R2
-  que la [Nota 09](../Notas/09-sesion-qa-prueba-ecologia-valoraciones.md) dejó abierto** sobre la
+  que la Nota 09 dejó abierto** sobre la
   estabilidad de la composición de comunidades.
 - **Bifurcación residual del PO resuelta (opción mínima):** `examples/valoraciones/` commitea
   **solo el corpus + `equation.yaml` + README + script**, no un `workspace.json`/`library.duckdb`

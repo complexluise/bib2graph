@@ -10,7 +10,7 @@
   [0033](0033-producto-library-centric-grafo-proyeccion.md) (posicionamiento library-centric),
   [0035](0035-ingesta-multipuerta-resolucion-doi.md) (ingesta multi-puerta + resolución DOI→ID son
   operaciones de servicio).
-- **Encuadre:** [Nota 18](../Notas/18-flujo-canonico-biblioteca.md) (flujo canónico paso a paso).
+- **Encuadre:** Nota 18 (flujo canónico paso a paso).
 - **Epic:** GUI local [#34](https://github.com/complexluise/bib2graph/issues/34) (iterada post-MVP).
 
 ## Contexto

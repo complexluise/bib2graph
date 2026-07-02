@@ -3,7 +3,7 @@
 > Contratos de las costuras y del núcleo: el "producto" que ve quien la integra o la extiende.
 > Son **bocetos de interfaz** (firmas + docstrings), no la implementación: el código es la fuente de
 > verdad última y este doc describe el contrato que ese código cumple. Diseño de fondo en
-> [`ARCHITECTURE.md`](ARCHITECTURE.md); método en [`Notas/metodología.md`](Notas/metodología.md).
+> [`ARCHITECTURE.md`](ARCHITECTURE.md); método en `Notas/metodología.md`.
 >
 > El `Corpus` es una **tabla Arrow validada con Pydantic v2** (ADR
 > [0006](decisiones/0006-tabla-canonica-y-networkspec.md)) respaldada por un **`TabularBackend`**

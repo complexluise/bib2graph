@@ -8,8 +8,8 @@
   (`seed --from-bib`, 3er modo BibTeX sin red), [0032](0032-capa-servicios-duena-del-flujo.md) (ingesta
   y resolución viven en `service/`), [0031](0031-preprocesamiento-automatico-en-ingesta.md) (ambas
   puertas comparten `normalize_and_dedup`).
-- **Encuadre:** [Nota 17](../Notas/17-validacion-tercero-gate34.md) §GAP-1/§GAP-2 + DECISIÓN DEL PO +
-  [Nota 18](../Notas/18-flujo-canonico-biblioteca.md). **Decidido por el PO (2026-06-18): el flujo
+- **Encuadre:** Nota 17 §GAP-1/§GAP-2 + DECISIÓN DEL PO +
+  Nota 18. **Decidido por el PO (2026-06-18): el flujo
   BibTeX/archivo es de PRIMERA CLASE.**
 - **Epic:** GUI local [#34](https://github.com/complexluise/bib2graph/issues/34).
 - **AS-BUILT (0.8, 2026-06-22):** se grada a Aceptada y se implementa el **core de resolución**
