@@ -126,17 +126,17 @@ exclude_docs: |
   ROADMAP/
   RELEASE_TEMPLATE.md
 
-# Estructura Diátaxis (https://diataxis.fr): Empezar/Tutoriales (aprender),
-# Guías (resolver una tarea), Referencia (consultar), Explicación (entender).
+# Estructura Diátaxis (https://diataxis.fr): Inicio (aprender/empezar, camino
+# recomendado = asistente de IA — incluye el único tutorial), Guías (resolver
+# una tarea), Referencia (consultar). La Explicación (entender: arquitectura,
+# ADRs, PRD) vive dentro de "Contribuye" — es contexto para quien va a tocar
+# el código, no una sección aparte.
 nav:
-  - Inicio: index.md
-  - Empezar:
+  - Inicio:
+      - index.md
       - Instalación: getting-started/installation.md
       - Quickstart: getting-started/quickstart.md
-  - Tutoriales:
-      - tutoriales/index.md
-      - Tu primer mapa (5 min): tutoriales/claude-code.md
-      - De la pregunta al reporte de SOTA: tutoriales/sota-completo.md
+      - Tu primer mapa (5 min): tutoriales/primer-mapa.md
   - Guías (how-to):
       - guias/index.md
       - Ecuación de búsqueda: guias/ecuacion-busqueda.md
@@ -148,13 +148,11 @@ nav:
       - API de Python: reference/python-api.md
       - CLI b2g: reference/cli.md
       - Glosario: reference/glosario.md
-      - Contratos detallados: API.md
-  - Explicación:
+  - Contribuye:
+      - Contribuir: contributing.md
       - Arquitectura: ARCHITECTURE.md
       - Decisiones de diseño (ADRs): decisiones/README.md
       - Requisitos del producto (PRD): PRD.md
-  - Proyecto:
-      - Contribuir: contributing.md
       - Versionado: versioning.md
       - IA en el desarrollo: ai-disclosure.md
       - Changelog: changelog.md

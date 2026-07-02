@@ -20,6 +20,14 @@ Medida de similitud entre dos papers basada en las referencias que comparten. Do
 
 ---
 
+### Asistente de IA
+
+Un chat de IA con ejecución de código (Claude, ChatGPT, MiniMax, o similar) al que le pides que instale y opere bib2graph por ti. No es parte del motor de bib2graph —que no usa IA generativa, ver [IA en el desarrollo](../ai-disclosure.md)— sino la interfaz conversacional que usa un humano no técnico para dirigir el CLI, sin escribir código ni abrir una terminal.
+
+**En bib2graph:** el asistente ejecuta los mismos comandos `b2g` que correrías a mano; la diferencia es que los corre dentro de su propio entorno de ejecución (no en tu máquina), a tu pedido. Ver [Tutorial: Tu primer mapa de investigación](../tutoriales/primer-mapa.md).
+
+---
+
 ## B
 
 ### Backward chaining

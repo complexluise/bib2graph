@@ -22,38 +22,31 @@ mismo input, mismas redes.
 
 ---
 
-## Elige tu camino
+## Empieza: pídeselo a un asistente de IA
 
-¿Cómo quieres usar bib2graph? Cada flujo es válido.
+No hace falta instalar nada en tu máquina. Abre Claude, ChatGPT o MiniMax (con
+ejecución de código activada) y pégale esto:
 
-<div class="grid cards" markdown>
+!!! example
+    ```text
+    Instala la librería de Python "bib2graph" (pip install bib2graph) en tu
+    entorno de ejecución de código, entiende el CLI corriendo `b2g --help`, y
+    confírmame que tienes salida a internet hacia la API de OpenAlex.
+    ```
 
--   :material-robot: **Sin instalar nada (5 min)**
+El [asistente de IA](reference/glosario.md#asistente-de-ia) instala bib2graph en
+su propio entorno y te confirma si puede operarlo — tú no abres una terminal.
+Este es el camino recomendado, programes o no: incluso si escribes código todos
+los días, para una exploración puntual es más rápido que instalarlo tú mismo.
 
-    Cuéntale a Claude, ChatGPT o MiniMax tu tema de investigación.
-    El agente trae papers, construye redes, tú descargas resultados.
-    
-    👉 [Tutorial: Usuario no técnico](tutoriales/claude-code.md)
-
--   :material-code-braces: **Aprendiendo paso a paso (3–4 horas)**
-
-    Instala bib2graph. Sigue 10 pasos: desde pregunta hasta reporte.
-    Ejecutas cada comando, entiendes cómo funciona todo.
-    
-    👉 [Tutorial completo: De la pregunta al reporte](tutoriales/sota-completo.md)
-
--   :material-hammer-wrench: **Hibrido: CLI + agente (1–2 horas)**
-
-    Instala bib2graph. El agente te ayuda con las partes difíciles.
-    Tú ejecutas comandos. Usa guías rápidas para decisiones.
-    
-    👉 [Guías prácticas](guias/index.md)
-
-</div>
+👉 [Tutorial completo: Tu primer mapa de investigación (5 min)](tutoriales/primer-mapa.md)
 
 ---
 
-## Primeros pasos
+## ¿Prefieres instalarlo tú? Más control
+
+Para scripting, integraciones, o si quieres correr bib2graph directamente en tu
+propio código:
 
 <div class="grid cards" markdown>
 
@@ -65,9 +58,9 @@ mismo input, mismas redes.
 
     El ciclo mínimo en 2 minutos — desde ecuación a GraphML.
 
--   :material-api: **[Referencia](reference/cli.md)**
+-   :material-hammer-wrench: **[Guías (CLI + asistente)](guias/index.md)**
 
-    El CLI `b2g`, API de Python, y glosario de términos.
+    Instalas bib2graph y un asistente te ayuda con las partes difíciles.
 
 </div>
 

@@ -16,6 +16,38 @@ Esta guía es una receta para llegar a una ecuación acotada, testeada, sin ruid
 
 ---
 
+## Antes de empezar: afina tu pregunta
+
+Una ecuación acotada sale de una **pregunta acotada**. Si partes de un tema
+genérico, la ecuación va a ser genérica también.
+
+❌ *"Inteligencia artificial"* — demasiado genérico. ¿Qué aspecto? ¿Qué dominio?
+
+✅ *"¿Cómo se aborda el problema de alineación de valores en modelos de
+lenguaje grandes, y cuáles son las tensiones entre eficiencia computacional
+y robustez ética entre 2020 y hoy?"*
+
+**Checklist de tu pregunta:**
+
+- [ ] **¿Específica?** ¿Puedes reducirla a 4–6 palabras clave?
+- [ ] **¿Temporal?** ¿Hay un rango de años relevante? (5–10 años suele ser ideal).
+- [ ] **¿Acotada?** ¿Esperas 50 papers, 500, 5000?
+- [ ] **¿Contestable?** ¿Puedes responderla buscando en artículos científicos?
+
+### Ejemplo: de tema a pregunta
+
+**Tema inicial:** "Métodos de recuperación de información."
+
+**Pregunta después del refinamiento:**
+> ¿Cuáles son los enfoques dominantes para recuperación de información en
+> contextos multilingües, cuáles son sus tensiones (vocabulario vs. semántica,
+> eficiencia vs. precisión), y cuáles son los huecos sin explorar entre 2015
+> y 2024?
+
+Eso es buscable, acotado, y con una tensión clara — ya listo para el Paso 1.
+
+---
+
 ## La estructura de una ecuación
 
 ```
