@@ -34,7 +34,7 @@
   conteos del corpus, sin modelo generativo.
 - **Origen:** Discussion [#127](https://github.com/complexluise/bib2graph/discussions/127),
   comentario *"Propuesta de convergencia: superficie agents-first para 0.10.0 (más es menos)"*.
-  Encuadre: [Nota 05](../Notas/05-ciclo-investigacion-humano.md) (el ciclo de investigación humano) y
+  Encuadre: Nota 05 (el ciclo de investigación humano) y
   la **nota de sesión 20** (`docs/Notas/20-ax-agente-cli-redes-vacias.md` — AX de un agente en frío:
   *"redes vacías con cara de éxito"*; nota de sesión, **aún no versionada en `dev`**, citada como
   encuadre empírico).
@@ -59,7 +59,7 @@ solapamientos** que un agente —y un humano— tienen que desambiguar sin que e
 
 Dos hechos de diseño ordenan la salida:
 
-- **La superficie ES el ciclo de investigación.** La [Nota 05](../Notas/05-ciclo-investigacion-humano.md)
+- **La superficie ES el ciclo de investigación.** La Nota 05
   modela el ciclo humano (Kuhlthau/Ellis/Bates/Pirolli/Wohlin): IDEA → SEMILLAS → CHAINING →
   BROWSING/DIFERENCIAR → ORGANIZAR → SENSEMAKING → CURAR → MONITOREAR, **iterativo y no lineal**. Una
   superficie que **mapea 1:1 ese ciclo** es legible sin manual: el verbo *es* el paso.
@@ -176,7 +176,7 @@ diagnostica antes** —el agente no se queda con una "cara de éxito" vacía.
 **Lo que se gana**
 
 - **El ciclo se vuelve legible y one-shot.** La superficie mapea 1:1 los pasos de la
-  [Nota 05](../Notas/05-ciclo-investigacion-humano.md); un agente (o un humano) infiere el flujo sin
+  Nota 05; un agente (o un humano) infiere el flujo sin
   manual: el verbo *es* el paso. El default sin curar deja correr `init→seed→chain→build→read` de
   punta a punta.
 - **Menos superficie, menos solapamiento.** De ~20 subcomandos con 6 solapamientos a **10 verbos**;

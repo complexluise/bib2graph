@@ -100,7 +100,7 @@
 > tomado por el ADR de proyección de redes (Hito 2). Para no reescribir historia, los ADR nuevos
 > usan **`0015`–`0019`**. La separación `filter`/`curate` (punto 4 del acta) **no recibió ADR
 > propio**: es una decisión de superficie CLI/roadmap, no de arquitectura — se refleja en
-> [`../ROADMAP.md`](../ROADMAP/README.md) (Hito 6) y [`../API.md`](../API.md) (§convenciones CLI).
+> `../ROADMAP.md` (Hito 6) y [`../API.md`](../API.md) (§convenciones CLI).
 
 ---
 
@@ -319,7 +319,7 @@
 > **Reconciliación de docs (arquitecto, 2026-06-16):** ADR 0016 (nota "implementado en R3"), ADR 0021
 > (envelope de `status` con `curation_available`/`round` aditivos, `schema="1"`), ROADMAP (Hito R3 ✅ +
 > banner as-built), ARCHITECTURE.md (§5.5 FSM → `cycle.py` AS-BUILT R3), API.md (§convenciones CLI +
-> bloque `cycle.py`), CHANGELOG (R3 marcado). La [Nota 05](../Notas/05-ciclo-investigacion-humano.md)
+> bloque `cycle.py`), CHANGELOG (R3 marcado). La Nota 05
 > ya describía el ciclo correcto y **no requirió cambios** (R3 la **implementa**, no la corrige).
 
 ---
@@ -330,7 +330,7 @@
 > [0020](0020-metodo-forrajeo-scent-filtros-reject.md) (scent = proyectores),
 > [0022](0022-producto-sin-ia-generativa.md) (el producto no usa IA) y
 > [0008](0008-wedge-forrajeo.md) (tensiones retiradas). Cierra la RAÍZ 1 (parte de IA) de la
-> [Nota 06](../Notas/06-critica-as-built-v0.2.md). **291 tests** verdes, mypy strict / ruff limpios; el
+> Nota 06. **291 tests** verdes, mypy strict / ruff limpios; el
 > núcleo de scent depende del núcleo de proyección (puro), no al revés. **Verifier: APRUEBA CON
 > RESERVAS** (3 cuestiones de método); el **steering arquitectónico (2026-06-16)** las resolvió.
 
@@ -357,7 +357,7 @@
 > ADR 0022 (AS-BUILT: sin IA construido), ROADMAP (Hito R4 ✅ TERMINADO + DoD reconciliado),
 > ARCHITECTURE.md (§3.5 scent→proyectores AS-BUILT R4), API.md (§5 scent bibliométrico construido),
 > CHANGELOG (R4 marcado). README/AI_DISCLOSURE/AGENTS ya describían el retiro de `[llm]`/IA en pasado y
-> **no requirieron limpieza adicional**. La [Nota 05](../Notas/05-ciclo-investigacion-humano.md) §4 ya
+> **no requirieron limpieza adicional**. La Nota 05 §4 ya
 > prometía "la bibliometría ES el information scent" y **no requirió cambios** (R4 la **implementa**).
 
 ---
@@ -366,7 +366,7 @@
 
 > Último hito de la tanda de remediación. **No cambia el modelo conceptual; endurece lo construido.**
 > Cierra la RAÍZ 3 (no corre a escala + bug del contrato agente-native) y el catálogo de secundarios de
-> la [Nota 06](../Notas/06-critica-as-built-v0.2.md). **319 tests** verdes
+> la Nota 06. **319 tests** verdes
 > (`tests/unit/test_r5_robustness.py` + ajustes), mypy strict / ruff check+format limpios.
 > **Verifier: APRUEBA** (reservas cerradas). Con R5 la **tanda R1–R5 queda COMPLETA**.
 
@@ -403,7 +403,7 @@
 > completada), ROADMAP (Hito R5 ✅ + banner as-built + DoD reconciliado: batching diferido; tanda R1–R5
 > COMPLETA), ARCHITECTURE.md (§3.1 bulk-load, §6.3 UTF-8/store-readonly, §8 footguns), API.md (PRISMA
 > lanza, store read-only, `.bib` lanza, `lib_version` "unknown", forward `DependencyError`+retry),
-> CHANGELOG (R5 ✅ Fixed + Changed de comportamiento). La [Nota 06](../Notas/06-critica-as-built-v0.2.md)
+> CHANGELOG (R5 ✅ Fixed + Changed de comportamiento). La Nota 06
 > recibió una nota corta de cierre (rastro histórico, sin reescribir hallazgos).
 
 ---

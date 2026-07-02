@@ -6,7 +6,7 @@
 - **Relacionada con:** [0008](0008-wedge-forrajeo.md) (wedge = forrajeo),
   [0009](0009-biblioteca-viva-duckdb.md) (biblioteca viva en DuckDB),
   [0015](0015-corpus-tabular-backend.md) (`Corpus` sobre `TabularBackend`),
-  [`../Notas/05-ciclo-investigacion-humano.md`](../Notas/05-ciclo-investigacion-humano.md)
+  `../Notas/05-ciclo-investigacion-humano.md`
 
 ## Contexto
 
@@ -60,7 +60,7 @@ los estados no son una escalera de un solo sentido.
   Bates/Ellis/Kuhlthau, al costo de que el `LoopState` es un **mapa**, no un guardia.
 - **Recomendación para el `coder`:** el `LoopState` (enum + transición + timestamp) y la tabla que
   lo persiste caen en el **Hito 3** (`DuckDBBackend`/`DuckDBStore`); el comando `b2g status` en el
-  **Hito 6** (CLI). Ver [ROADMAP](../ROADMAP/README.md) Hitos 3 y 6.
+  **Hito 6** (CLI). Ver ROADMAP Hitos 3 y 6.
 - **Tensión declarada:** la máquina de estados es del **archivo vivo**; el **snapshot** (ADR
   [0017](0017-reproducibilidad-historia-snapshot.md)) es una foto que puede incluir el `LoopState`
   del instante sellado, pero no es donde vive.
@@ -68,7 +68,7 @@ los estados no son una escalera de un solo sentido.
 ## Enmienda — 2026-06-15 (FSM cíclico de dominio; `reseed` de primera clase; curación transversal)
 
 > Motivada por el red-team del AS-BUILT v0.2
-> ([Nota 06](../Notas/06-critica-as-built-v0.2.md), RAÍZ 1): este ADR prometía no-linealidad de
+> (Nota 06, RAÍZ 1): este ADR prometía no-linealidad de
 > primera clase, pero el AS-BUILT la entregó como un enum **lineal** (`SEEDED→FORAGED→FILTERED→BUILT`)
 > enterrado en `backends/duckdb.py:67-78`, con la no-linealidad reducida a un comentario
 > ("transiciones permisivas") y la curación **invisible** en el mapa. El cuerpo del ADR (arriba)
@@ -77,7 +77,7 @@ los estados no son una escalera de un solo sentido.
 1. **El ciclo es un concepto de DOMINIO puro y testeable** — módulo nuevo `cycle.py` (núcleo): el
    modelo de estados + las reglas de transición viven ahí; el **backend solo lo persiste** (el
    `LoopState` deja de estar definido dentro de `backends/duckdb.py`).
-2. **FSM cíclico fiel a la [Nota 05](../Notas/05-ciclo-investigacion-humano.md):**
+2. **FSM cíclico fiel a la Nota 05:**
 
    ```
    SEEDED ─(chain)→ FORAGED ─(filter)→ FILTERED ─(build)→ BUILT ─(monitor)→ MONITORED

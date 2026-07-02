@@ -63,7 +63,7 @@ en fechas distintas no son comparables.
 ## Enmienda — 2026-06-15 (identidad vs procedencia; reloj en la frontera; Louvain seeded)
 
 > Motivada por el red-team del AS-BUILT v0.2
-> ([Nota 06](../Notas/06-critica-as-built-v0.2.md), RAÍZ 2): el **principio de este ADR es
+> (Nota 06, RAÍZ 2): el **principio de este ADR es
 > correcto**, pero el **código no lo cumple** — el `corpus_hash` actual **incluye los timestamps de
 > curación**, así que dos corridas que aceptan los mismos ids producen hash distinto y el snapshot
 > **no** es reproducible bit a bit. El cuerpo del ADR (arriba) queda como historia; esta enmienda

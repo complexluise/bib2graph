@@ -3,7 +3,7 @@
 - **Estado:** Aceptada
 - **Fecha:** 2026-06-15
 - **Decidido por:** Product Owner humano (tras el red-team de la
-  [`../Notas/06-critica-as-built-v0.2.md`](../Notas/06-critica-as-built-v0.2.md), secciones CONSTANTS
+  `../Notas/06-critica-as-built-v0.2.md`, secciones CONSTANTS
   y MODELS)
 - **Relacionada con:** [0006](0006-tabla-canonica-y-networkspec.md) (tabla canónica + schema Pydantic),
   [0013](0013-identidad-hash-merge-corpus.md) (`provenance` como log append-only),
@@ -11,7 +11,7 @@
 
 ## Contexto
 
-El red-team del AS-BUILT v0.2 ([Nota 06](../Notas/06-critica-as-built-v0.2.md)) encontró dos clases
+El red-team del AS-BUILT v0.2 (Nota 06) encontró dos clases
 de fragilidad de base:
 
 - **No hay módulo de constantes.** ~62 nombres de columna viven como **string-literal** en 14

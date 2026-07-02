@@ -7,7 +7,7 @@
   (ver [`registro-ia.md`](registro-ia.md))
 - **Relacionada con:** [0007](0007-openalex-backbone.md) (OpenAlex backbone),
   [0010](0010-agente-native-columna.md) (config inyectada); lecciones 1 y 6 de v0
-- **Observado en:** [`../../exploracion/scripts/01_search_openalex.py`](../../exploracion/scripts/01_search_openalex.py)
+- **Observado en:** `../../exploracion/scripts/01_search_openalex.py`
 
 ## Contexto
 

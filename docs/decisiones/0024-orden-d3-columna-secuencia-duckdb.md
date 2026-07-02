@@ -21,7 +21,7 @@ por fila** en cada `merge` (reescribía la tabla entera). La causa raíz: `_arro
 el orden de primera aparición. La única forma de garantizar D3 era reescribir físicamente toda la
 tabla en el orden correcto en cada `merge`.
 
-La [Nota 06](../Notas/06-critica-as-built-v0.2.md) / el review marcaron ese **full-rewrite por
+La Nota 06 / el review marcaron ese **full-rewrite por
 merge** como la única operación con olor a ineficiencia real (no un bug) del backend: en una
 **biblioteca viva** (ADR 0009) que mergea en **cada ronda de chaining/reseed**, reescribir toda la
 tabla por fila escala mal con el tamaño del corpus.

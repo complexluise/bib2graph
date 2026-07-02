@@ -112,7 +112,9 @@ markdown_extensions:
   - mkdocs-click
 
 # Páginas que se construyen y son enlazables por URL, pero NO aparecen en el
-# sidebar (los 38 ADRs viven en su índice docs/decisiones/README.md).
+# sidebar. Las 38 ADRs viven en su índice docs/decisiones/README.md (visible
+# por URL — ejercicio de transferencia — pero no en el nav principal, para no
+# abrumar al usuario final ni al asistente de IA).
 not_in_nav: |
   /decisiones/0*.md
   /decisiones/registro-ia.md
@@ -151,7 +153,6 @@ nav:
   - Contribuye:
       - Contribuir: contributing.md
       - Arquitectura: ARCHITECTURE.md
-      - Decisiones de diseño (ADRs): decisiones/README.md
       - Requisitos del producto (PRD): PRD.md
       - Versionado: versioning.md
       - IA en el desarrollo: ai-disclosure.md
