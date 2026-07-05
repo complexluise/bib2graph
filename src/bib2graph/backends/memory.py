@@ -349,7 +349,7 @@ class InMemoryBackend:
     Semántica de valor: todas las operaciones mutantes devuelven una nueva
     instancia; la original no cambia nunca.
 
-    #54: almacena también los IDs backward observados en ``_referenced_refs``
+    Ref #54: almacena también los IDs backward observados en ``_referenced_refs``
     (lista en memoria, equivalente a la tabla ``referenced_but_not_fetched``
     de ``DuckDBBackend``).
     """

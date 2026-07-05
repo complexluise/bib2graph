@@ -76,9 +76,9 @@ class DuckDBStore:
         archivo; las operaciones subsecuentes (``accept``, ``reject``,
         ``merge``) mutarán el archivo en disco.
 
-        #126: reconstruye ``manifest.filters`` desde ``filter_log`` para que
+        Ref #126: reconstruye ``manifest.filters`` desde ``filter_log`` para que
         los pasos PRISMA persistan entre sesiones.
-        #141: reconstruye ``manifest.enrichers`` desde ``enricher_log`` para
+        Ref #141: reconstruye ``manifest.enrichers`` desde ``enricher_log`` para
         que los ``EnricherRef`` persistan entre sesiones.
 
         Returns:
