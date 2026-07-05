@@ -34,6 +34,23 @@ visual library-centric vive en un producto separado; ADR [0040](decisiones/0040-
 
 ## 2. Vista de alto nivel
 
+```mermaid
+flowchart LR
+    EQ["ecuación de búsqueda<br/>o archivo .bib"] --> SRC["Source<br/>OpenAlex · BibTeX"]
+    SRC --> CORPUS[("CORPUS<br/>tabla Arrow<br/>1 fila / paper")]
+    FOR["Forrajeo<br/>back/forward · rank = scent"] <--> CORPUS
+    PRE["Preprocessor<br/>normalize + thesaurus"] --> CORPUS
+    CORPUS --> PROJ["Projectors<br/>acoplamiento · co-citación<br/>co-autoría · keyword · institución"]
+    PROJ --> NET["Networks<br/>networkx"]
+    NET --> ANA["Análisis<br/>métricas · centralidad<br/>comunidades · asortatividad"]
+    NET --> EXP["Exporters<br/>GraphML / CSV"]
+    ANA --> REP["informe de calidad"]
+    CORPUS -. persiste .-> DUCK[("DuckDBBackend<br/>biblioteca viva · stateful")]
+    DUCK -. snapshot sellado .-> SNAP["CorpusSnapshot"]
+```
+
+*Detalle anotado del mismo flujo (con topes, procedencia y estado del ciclo):*
+
 ```
    ecuación de búsqueda
           │  (traducción + reporte de traducción, ADR 0007)

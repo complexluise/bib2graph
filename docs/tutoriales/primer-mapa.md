@@ -148,4 +148,4 @@ En 5 minutos:
   ecuación de búsqueda, forrajeo, curación PRISMA, lectura de redes y
   redacción del reporte.
 - **Referencia completa:** [Todos los comandos de bib2graph](../reference/cli.md).
-- **Como librería Python:** [API Python](../reference/python-api.md).
+- **Como librería Python:** [API Python](../reference/python-api/index.md).
