@@ -988,7 +988,7 @@ class DuckDBBackend:
     ) -> None:
         """Persiste los pasos de filtro PRISMA en ``filter_log``.
 
-        #126 — trazabilidad PRISMA: los pasos aplicados en ``b2g filter``
+        Ref #126 — trazabilidad PRISMA: los pasos aplicados en ``b2g filter``
         se guardan para que ``manifest.filters`` sobreviva entre cargas del
         store.
 
@@ -1020,7 +1020,7 @@ class DuckDBBackend:
     def load_filter_steps(self) -> list[dict[str, object]]:
         """Carga los pasos de filtro PRISMA desde ``filter_log``.
 
-        #126 — trazabilidad PRISMA: permite que ``DuckDBStore.load()``
+        Ref #126 — trazabilidad PRISMA: permite que ``DuckDBStore.load()``
         reconstruya ``manifest.filters`` con los pasos persistidos.
 
         Returns:
@@ -1051,7 +1051,7 @@ class DuckDBBackend:
     ) -> None:
         """Persiste las referencias de enriquecedor en ``enricher_log``.
 
-        #141 — trazabilidad de enriquecimiento: los ``EnricherRef`` aplicados
+        Ref #141 — trazabilidad de enriquecimiento: los ``EnricherRef`` aplicados
         en ``b2g enrich`` / ``b2g chain`` / ``b2g build`` se guardan para que
         ``manifest.enrichers`` sobreviva entre cargas del store.
 
@@ -1078,7 +1078,7 @@ class DuckDBBackend:
     def load_enricher_refs(self) -> list[dict[str, Any]]:
         """Carga las referencias de enriquecedor desde ``enricher_log``.
 
-        #141 — trazabilidad de enriquecimiento: permite que
+        Ref #141 — trazabilidad de enriquecimiento: permite que
         ``DuckDBStore.load()`` reconstruya ``manifest.enrichers`` con los
         EnricherRef persistidos.
 

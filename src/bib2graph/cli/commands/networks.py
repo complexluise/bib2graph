@@ -21,7 +21,7 @@ Envelope ``--json`` (schema="1"): lista de redes en el mismo formato que
 
 DEPRECADO (ADR 0038, #165): usar ``b2g build --spec``.  Se retira en 0.11.0.
 
-#159 — helper compartido:
+Ref #159 — helper compartido:
   ``run_networks`` delega la carga YAML y proyección a ``_build_from_spec_file``
   (definido en ``build.py``).  Esto garantiza que ``build --spec`` y
   ``networks --spec`` nunca diverjan, y que #165 pueda retirar ``networks``

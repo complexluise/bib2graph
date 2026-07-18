@@ -72,4 +72,4 @@ trabajas.
 - [Tu primer mapa de investigación](../tutoriales/primer-mapa.md) — aprende desde cero, en 5 minutos
 - [Quickstart](../getting-started/quickstart.md) — ciclo mínimo en 2 minutos
 - [Referencia CLI](../reference/cli.md) — todos los comandos
-- [API Python](../reference/python-api.md) — como librería
+- [API Python](../reference/python-api/index.md) — como librería
