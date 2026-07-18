@@ -25,7 +25,7 @@ Característica: Proyectar el corpus a redes bibliométricas y exportarlas
     Y tras el build el estado del lazo transiciona a "BUILT"
     Y "networks/.corpus_hash" queda sellado con el hash del corpus filtrado
 
-  Escenario: D1 — La co-citación aparece solo tras enriquecer (cited_by_id)
+  Escenario: D1 — La co-citación aparece cuando cited_by_id está poblado
     Dado un corpus sin "cited_by_id" poblado
     Cuando ejecuto "b2g enrich --max-citing 25 --json"
     Y luego ejecuto "b2g build --json"
@@ -33,6 +33,9 @@ Característica: Proyectar el corpus a redes bibliométricas y exportarlas
     Y "data.networks" incluye el kind "cocitation"
     # Networks.quick agrega cocitación solo si algún paper tiene cited_by_id (Hito 8b).
     # enrich NO transiciona el lazo (ortogonal al FSM).
+    # ADR 0048/#270: enrich NO es el único camino a cited_by_id — "b2g chain --direction forward"
+    # también lo puebla (de las semillas alcanzadas) al traer los citantes. Por eso el lazo natural
+    # seed → chain forward → curate accept → build arma la co-citación SIN enrich (ver B-forrajear).
 
   Escenario: D1 — Filtrar el corpus por curación antes de proyectar
     Cuando ejecuto "b2g build --corpus-scope accepted --json"
