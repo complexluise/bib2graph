@@ -523,3 +523,195 @@ def test_skill_add_salida_humana_es_explicita(
     assert "seed→chain→build→read" in out or "ciclo" in out.lower(), (
         "La salida debe explicar a grandes rasgos cómo opera bib2graph."
     )
+
+
+# ---------------------------------------------------------------------------
+# 13. --provider agnóstico del proveedor (ADR 0046, #193)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_skill_add_default_provider_es_claude_code(tmp_path: Path) -> None:
+    """Sin --provider, run_skill_add usa 'claude-code' — compat 0039 intacta."""
+    data = run_skill_add(scope="user", force=False, home=tmp_path)
+
+    assert data["provider"] == "claude-code"
+    install_path = Path(data["install_path"])
+    assert install_path == tmp_path / ".claude" / "skills" / "bib2graph"
+
+
+@pytest.mark.unit
+def test_skill_add_provider_opencode_scope_project(tmp_path: Path) -> None:
+    """--provider opencode --project instala en <cwd>/.opencode/skills/bib2graph/."""
+    data = run_skill_add(
+        scope="project", force=False, provider="opencode", cwd=tmp_path
+    )
+
+    assert data["provider"] == "opencode"
+    install_path = Path(data["install_path"])
+    assert install_path == tmp_path / ".opencode" / "skills" / "bib2graph"
+
+    skill_md = install_path / "SKILL.md"
+    assert skill_md.exists(), f"SKILL.md no fue copiado a {skill_md}"
+
+
+@pytest.mark.unit
+def test_skill_add_provider_opencode_scope_user(tmp_path: Path) -> None:
+    """--provider opencode --user instala en ~/.config/opencode/skills/bib2graph/."""
+    data = run_skill_add(scope="user", force=False, provider="opencode", home=tmp_path)
+
+    assert data["provider"] == "opencode"
+    install_path = Path(data["install_path"])
+    assert install_path == tmp_path / ".config" / "opencode" / "skills" / "bib2graph"
+    assert (install_path / "SKILL.md").exists()
+
+
+@pytest.mark.unit
+def test_skill_add_provider_opencode_mismo_contenido_que_claude_code(
+    tmp_path: Path,
+) -> None:
+    """La skill instalada vía --provider opencode es idéntica a la de claude-code.
+
+    Transform = identidad (ADR 0046): mismo SKILL.md, distinta carpeta.
+    """
+    home_cc = tmp_path / "home_cc"
+    home_oc = tmp_path / "home_oc"
+    home_cc.mkdir()
+    home_oc.mkdir()
+
+    d_cc = run_skill_add(scope="user", force=False, home=home_cc)
+    d_oc = run_skill_add(scope="user", force=False, provider="opencode", home=home_oc)
+
+    content_cc = Path(d_cc["skill_md"]).read_text(encoding="utf-8")
+    content_oc = Path(d_oc["skill_md"]).read_text(encoding="utf-8")
+    assert content_cc == content_oc, (
+        "El SKILL.md instalado por cada provider debe ser byte-idéntico "
+        "(transform=identidad, ADR 0046)."
+    )
+
+
+@pytest.mark.unit
+def test_skill_add_provider_opencode_via_cli(tmp_path: Path, runner: CliRunner) -> None:
+    """``b2g skill add --provider opencode`` vía CLI instala en .opencode/skills/."""
+    with patch.object(Path, "cwd", return_value=tmp_path):
+        result = runner.invoke(
+            b2g,
+            ["skill", "add", "--provider", "opencode", "--project"],
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 0, (
+        f"Falló con exit {result.exit_code}: {result.output!r}"
+    )
+    skill_md = tmp_path / ".opencode" / "skills" / "bib2graph" / "SKILL.md"
+    assert skill_md.exists(), f"SKILL.md no fue instalado en {skill_md}"
+
+
+@pytest.mark.unit
+def test_skill_add_provider_claude_code_explicito_sin_cambios(
+    tmp_path: Path,
+) -> None:
+    """--provider claude-code explícito se comporta igual que el default."""
+    data = run_skill_add(
+        scope="user", force=False, provider="claude-code", home=tmp_path
+    )
+    assert data["provider"] == "claude-code"
+    install_path = Path(data["install_path"])
+    assert install_path == tmp_path / ".claude" / "skills" / "bib2graph"
+
+
+@pytest.mark.unit
+def test_skill_add_provider_desconocido_falla(tmp_path: Path) -> None:
+    """Un --provider no soportado lanza UsageError accionable."""
+    from bib2graph.cli._errors import UsageError
+
+    with pytest.raises(UsageError) as exc_info:
+        run_skill_add(scope="user", force=False, provider="cursor", home=tmp_path)
+
+    assert "cursor" in str(exc_info.value)
+    assert "skill providers" in str(exc_info.value)
+
+
+@pytest.mark.unit
+def test_skill_add_provider_desconocido_via_cli_exit_no_cero(
+    tmp_path: Path, runner: CliRunner
+) -> None:
+    """``b2g skill add --provider desconocido`` vía CLI falla con exit != 0.
+
+    Click valida contra ``click.Choice`` antes de invocar la función.
+    """
+    result = runner.invoke(b2g, ["skill", "add", "--provider", "cursor"])
+    assert result.exit_code != 0
+
+
+@pytest.mark.unit
+def test_skill_add_provider_opencode_idempotente(tmp_path: Path) -> None:
+    """Re-correr --provider opencode con la vendida ya instalada → no-op."""
+    d1 = run_skill_add(scope="user", force=False, provider="opencode", home=tmp_path)
+    assert d1["installed"] is True
+
+    d2 = run_skill_add(scope="user", force=False, provider="opencode", home=tmp_path)
+    assert d2["installed"] is False
+    assert d2["already_present"] is True
+
+
+# ---------------------------------------------------------------------------
+# 14. b2g skill providers (ADR 0046, #193)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_skill_providers_aparece_en_skill_help(runner: CliRunner) -> None:
+    """``providers`` aparece listado en ``b2g skill --help``."""
+    result = runner.invoke(b2g, ["skill", "--help"])
+    assert result.exit_code == 0
+    assert "providers" in result.output
+
+
+@pytest.mark.unit
+def test_skill_providers_lista_ambos_providers(runner: CliRunner) -> None:
+    """``b2g skill providers`` lista claude-code y opencode."""
+    result = runner.invoke(b2g, ["skill", "providers"], catch_exceptions=False)
+    assert result.exit_code == 0, f"Falló: {result.output!r}"
+    assert "claude-code" in result.output
+    assert "opencode" in result.output
+
+
+@pytest.mark.unit
+def test_skill_providers_json_envelope_valido(runner: CliRunner) -> None:
+    """``b2g skill providers --json`` emite envelope schema='1' con ambos providers."""
+    result = runner.invoke(
+        b2g, ["skill", "providers", "--json"], catch_exceptions=False
+    )
+    assert result.exit_code == 0, f"Falló: {result.output!r}"
+
+    lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+    assert len(lines) == 1, (
+        f"Se esperaba 1 línea en stdout, se obtuvieron {len(lines)}:\n{result.stdout!r}"
+    )
+
+    envelope: dict[str, Any] = json.loads(lines[0])
+    assert envelope.get("schema") == "1"
+    assert envelope.get("ok") is True
+    assert envelope.get("command") == "skill providers"
+    assert envelope.get("exit_code") == 0
+
+    data = envelope.get("data", {})
+    assert data.get("default_provider") == "claude-code"
+    names = {p["name"] for p in data.get("providers", [])}
+    assert names == {"claude-code", "opencode"}
+
+    claude_entry = next(p for p in data["providers"] if p["name"] == "claude-code")
+    assert claude_entry["default"] is True
+    opencode_entry = next(p for p in data["providers"] if p["name"] == "opencode")
+    assert opencode_entry["default"] is False
+
+
+@pytest.mark.unit
+def test_skill_providers_no_requiere_workspace(
+    tmp_path: Path, runner: CliRunner
+) -> None:
+    """``skill providers`` corre OK sin workspace.json (comando meta)."""
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        result = runner.invoke(b2g, ["skill", "providers"], catch_exceptions=False)
+    assert result.exit_code == 0
