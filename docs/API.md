@@ -38,8 +38,8 @@ estable/versionado, también activable con **`B2G_JSON=1`**, ver §Envelope JSON
 estado entre invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción global
 **opcional** `--workspace`; `--store` fue eliminada en #75).
 
-**Superficie 0.10.0 — 10 verbos del ciclo + 3 grupos noun-verb + `skill`** (ADR
-[0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md)/[0038](decisiones/0038-destino-verbos-huerfanos-0037.md)/[0039](decisiones/0039-skill-comando-meta-distribucion.md)).
+**Superficie — 10 verbos del ciclo + 3 grupos noun-verb + `skill` + `schema`** (ADR
+[0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md)/[0038](decisiones/0038-destino-verbos-huerfanos-0037.md)/[0039](decisiones/0039-skill-comando-meta-distribucion.md)/[0045](decisiones/0045-cerrar-tres-grietas-agent-native.md)).
 La superficie mapea 1:1 el ciclo (*más es menos*); el conteo es **verificable contra `b2g --help`**:
 
 - **10 verbos del ciclo:** `init`, `seed`, `chain`, `curate` (grupo), `build`, `read` (grupo),
@@ -47,7 +47,8 @@ La superficie mapea 1:1 el ciclo (*más es menos*); el conteo es **verificable c
 - **3 grupos noun-verb:** `read {list,stats,show,top}`, `curate {dump,apply,accept,reject,filter}`,
   `snapshot {create,restore}`. Un grupo **sin subcomando** imprime ayuda y sale **exit 0**; el `command`
   del envelope usa la **ruta completa** (`"read list"`).
-- **1 comando meta** fuera del set de 10 (no es un paso del ciclo): **`skill add`** (ADR 0039).
+- **2 comandos meta** fuera del set de 10 (no son pasos del ciclo; ni FSM ni workspace):
+  **`skill add`** (ADR 0039) y **`schema`** (ADR 0045 #260, ver §`schema`).
 - **Aliases deprecados** (vivos con aviso a stderr, retiro **0.11.0**): `accept`, `reject`, `filter`,
   `inspect`, `monitor`, `networks`, `enrich`, `restore`, `resolve` (ver §Avisos de deprecación).
   **`thesaurus` NO es alias: se retiró por completo** (su capacidad es `build --thesaurus`, #164).
@@ -55,7 +56,8 @@ La superficie mapea 1:1 el ciclo (*más es menos*); el conteo es **verificable c
 **`status`** expone el ciclo: estado actual del FSM (`SEEDED/FORAGED/FILTERED/BUILT/MONITORED`, dominio
 en `bib2graph.cycle`), `transitions_available`, `curation_available` (`accept`/`reject` siempre
 disponibles, curación transversal), `round` (contador de ronda con `reseed`), conteos por
-`curation_status`, `workspace: {root, source}`, `networks_cache_stale: bool` (+ `warnings` accionable
+`curation_status`, `workspace: {root, source}` (el bloque hoy es **universal** en los comandos del
+ciclo, ADR 0045 #259 — ver §Envelope), `networks_cache_stale: bool` (+ `warnings` accionable
 cuando la cache de `networks/` quedó obsoleta — avisa, NO regenera) y `referenced_not_fetched` (nº de
 IDs que el backward chaining observó sin materializar; §4/§5). Todos campos aditivos, `schema="1"`
 intacto. **`validate`** chequea la consistencia del workspace (read-only).
@@ -219,6 +221,22 @@ si el destino existe y difiere falla accionable y **`--force`** pisa. **Funciona
 en el Claude Code del usuario, no en el producto; ADR 0022). `data = {install_path, scope, installed,
 already_present, skill_md, reference_dir, how_to}`.
 
+**`schema`** (comando meta, ADR [0045](decisiones/0045-cerrar-tres-grietas-agent-native.md) #260):
+**introspección del contrato por el mismo canal de invocación**, para que un agente en frío conozca la
+forma del envelope y los exit codes sin salir a `docs/API.md` en prosa. Sigue el patrón de `skill`: **no
+transiciona la FSM, no resuelve workspace, no lee el store ni hace red** — determinista y estático (mismo
+resultado en cualquier invocación). `data = {contract_version, envelope_schema, exit_codes,
+surface_summary}`: **`contract_version`** = `ENVELOPE_SCHEMA_VERSION` (hoy `"1"`); **`envelope_schema`**
+= JSON-schema Draft-07 simplificado del envelope `{schema, ok, command, exit_code, data, warnings,
+error}` (incluye `error.subcode` como propiedad opcional); **`exit_codes`** = los 6 (0–5) con `name` y
+`meaning` (el 4 menciona `subcode`); **`surface_summary`** = descripción textual de la superficie
+("10 verbos del ciclo + skill + schema"). Ver `cli/commands/schema.py::build_schema_data()`.
+
+```bash
+b2g schema --json      # envelope con el contrato legible por máquina
+b2g schema             # resumen humano: versión, exit codes y superficie (stderr)
+```
+
 **`resolve`** (alias deprecado): resuelve los DOIs del corpus a `source_id` de OpenAlex (cierra el GAP del
 flujo BibTeX: sin `source_id`, `chain` da 0). Filtra `doi != NULL AND source_id IS NULL`, consulta
 OpenAlex (`OpenAlexSource.fetch_dois_to_openalex_ids` vía `service/resolve.py::resolve_dois`) y puebla
@@ -263,6 +281,34 @@ codes se mapean **por tipo de error** (ADR 0021 §D): `DataError`→2, `ImportEr
 `NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5. `AttributeError` **no** se
 mapea (un bug real no se disfraza de "capacidad faltante"); la capacidad-de-source-faltante se convierte
 en `DependencyError` con un **pre-check `hasattr` en el comando** (p. ej. `chain` antes del `Forager`).
+
+**`error.subcode` — desambiguación de red (ADR [0045](decisiones/0045-cerrar-tres-grietas-agent-native.md) #258).**
+El objeto `error` puede llevar un campo **opcional** `subcode`, poblado **solo** para
+`code="NETWORK_ERROR"` (exit 4). Valores: **`RATE_LIMITED`** (HTTP 429, transitorio → reintentar con
+backoff) y **`UPSTREAM_TIMEOUT`** (HTTP 504 o timeout → no reintentable sin cambiar la petición). Cuando
+no aplica, el campo **no aparece** (no se emite `subcode: null`). Es **aditivo**: `code` sigue
+`NETWORK_ERROR` y `exit_code` sigue 4, sin cambios en el mapeo. El source lo puebla al agotar reintentos
+(`sources/openalex.py` en 429/504); si una `httpx.HTTPStatusError`/`httpx.TimeoutException` cruda llega a
+`handle_errors` sin traducir, el borde CLI lo deriva del `response.status_code` (429/504) o asume
+`UPSTREAM_TIMEOUT` para timeouts (`cli/_errors.py::_subcode_for_http_error`; `service/errors.py::subcode_for_status`).
+
+```json
+{ "code": "NETWORK_ERROR", "message": "…", "subcode": "RATE_LIMITED" }
+```
+
+**`data.workspace` universal + warning de walk-up (ADR 0045 #259).** Todos los comandos del ciclo que
+resuelven un workspace ecoan `data["workspace"] = {"root": <str|null>, "source": <str>}` (antes solo lo
+hacía `status`). `source` ∈ {`flag`, `env`, `cwd`, `init`}, según la precedencia de resolución (ADR 0029;
+la precedencia **no cambió**). Cuando `source == "cwd"` (resolución implícita por walk-up del cwd, sin
+`--workspace`/`B2G_WORKSPACE`) se anexa a `warnings` el mensaje literal (constante
+`WORKSPACE_WALKUP_WARNING`, `cli/_store.py`):
+
+```text
+workspace resuelto por walk-up del cwd; usá --workspace o B2G_WORKSPACE para fijarlo explícitamente
+```
+
+Los comandos meta que corren **sin** workspace (`init`, `skill`, `schema`) **no** ecoan `data.workspace`
+ni emiten este warning.
 
 **Borde: el error de uso sale SIN envelope.** Ante una opción requerida faltante, una opción desconocida
 (p. ej. `--store`) o ningún workspace resoluble, Click aborta el parseo **antes** de entrar al comando:
@@ -386,7 +432,14 @@ class UsageError(B2GError):      exit_code = 1; code = "USAGE_ERROR"       # uso
 class DataError(B2GError):       exit_code = 2; code = "DATA_ERROR"        # schema/ids/filtro inválido
 class DependencyError(B2GError): exit_code = 3; code = "DEPENDENCY_ERROR"  # ImportError / capacidad faltante
 class NetworkError(B2GError):    exit_code = 4; code = "NETWORK_ERROR"     # httpx.HTTPError / timeout
+    # ADR 0045 #258: __init__(message, *, subcode=None) — subcode aditivo (RATE_LIMITED / UPSTREAM_TIMEOUT),
+    # propagado a error.subcode del envelope solo para NETWORK_ERROR (ver §Envelope).
 class StoreError(B2GError):      exit_code = 5; code = "STORE_ERROR"       # store/snapshot bloqueado o corrupto
+
+# Subcodes de red (ADR 0045 #258) + mapeo de status HTTP → subcode
+RATE_LIMITED = "RATE_LIMITED"; UPSTREAM_TIMEOUT = "UPSTREAM_TIMEOUT"
+def subcode_for_status(status_code: int) -> str | None:
+    """429 → RATE_LIMITED, 504 → UPSTREAM_TIMEOUT, otro → None. Función pura."""
 
 
 def code_for(exc: BaseException) -> int:

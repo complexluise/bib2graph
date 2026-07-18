@@ -25,7 +25,11 @@ from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import resolve_library_path
+from bib2graph.cli._store import (
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 
 
 def run_filter(
@@ -113,11 +117,11 @@ def filter_cmd(
     Tras el filtro, el estado del lazo transiciona a FILTERED.
     """
     dep_msg = emit_deprecation("b2g filter", "b2g curate filter")
-    store_path = resolve_library_path(ctx.obj)
+    ws = resolve_workspace(ctx.obj)
     # R2: el reloj se inyecta en la frontera CLI (ADR 0017 enmendado).
     now = datetime.now(UTC)
     data = run_filter(
-        store_path,
+        ws.library_path,
         year_gte=year_gte,
         year_lte=year_lte,
         language=list(language) if language else None,
@@ -126,13 +130,16 @@ def filter_cmd(
         decided_at=now,
     )
 
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
+
     if json_mode(json_output):
         envelope = build_envelope(
             command="filter",
             ok=True,
             data=data,
             exit_code=0,
-            warnings=[dep_msg],
+            warnings=[dep_msg, *workspace_walkup_warning(ws)],
         )
         emit(envelope)
     else:

@@ -44,7 +44,11 @@ import click
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import resolve_workspace
+from bib2graph.cli._store import (
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 from bib2graph.service.snapshot import run_restore, run_snapshot
 
 __all__ = [
@@ -110,12 +114,16 @@ def create_cmd(
 
     data = run_snapshot(ws.library_path, out_dir=effective_out_dir)
 
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
+
     if json_mode(json_output):
         envelope = build_envelope(
             command="snapshot create",
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:
@@ -166,12 +174,16 @@ def restore_sub_cmd(
     decided_at = datetime.now(UTC)
     data = run_restore(ws.library_path, corpus_path, decided_at=decided_at)
 
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
+
     if json_mode(json_output):
         envelope = build_envelope(
             command="snapshot restore",
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:

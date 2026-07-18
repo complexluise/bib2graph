@@ -48,7 +48,12 @@ from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import open_store, resolve_workspace
+from bib2graph.cli._store import (
+    open_store,
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 
 if TYPE_CHECKING:
     from bib2graph.corpus import Corpus
@@ -695,8 +700,12 @@ def build_cmd(
         thesaurus_path=thesaurus_path,
     )
 
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
+
     if json_mode(json_output):
         all_warnings: list[str] = list(data.get("warnings") or [])
+        all_warnings.extend(workspace_walkup_warning(ws))
         if corpus_scope_dep_msg is not None:
             all_warnings.append(corpus_scope_dep_msg)
         envelope = build_envelope(
