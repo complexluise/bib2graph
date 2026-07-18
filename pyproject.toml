@@ -133,7 +133,7 @@ dev = [
 # desde docstrings) y mkdocs-click (CLI b2g, desde el grupo Click). termynal
 # anima las sesiones de terminal del quickstart.
 docs = [
-    "mkdocs-material>=9.5",
+    "mkdocs-material>=9.5,<10",
     "mkdocs-include-markdown-plugin>=6",
     "mkdocstrings[python]>=0.24",
     "mkdocs-click>=0.8",

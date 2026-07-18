@@ -172,7 +172,7 @@ dev = [
 docs = [
     { name = "mkdocs-click", specifier = ">=0.8" },
     { name = "mkdocs-include-markdown-plugin", specifier = ">=6" },
-    { name = "mkdocs-material", specifier = ">=9.5" },
+    { name = "mkdocs-material", specifier = ">=9.5,<10" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.24" },
     { name = "termynal", specifier = ">=0.12" },
 ]
