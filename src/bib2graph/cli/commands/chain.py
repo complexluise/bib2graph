@@ -63,7 +63,10 @@ def run_chain(
         Dict con ``candidates_found``, ``total_papers``, ``ranking_preview``
         (modo normal); o con ``preview``, ``estimated_candidates``,
         ``by_direction``, ``capped_by_max``, ``forward_requires_fetch``,
-        ``forward_from_cited_by`` (modo preview).
+        ``forward_from_cited_by`` (modo preview).  ``candidates_found`` es el
+        total de candidatos rankeados (backward observados + forward
+        materializados, #269); NO cuenta solo lo materializado en el corpus,
+        que en chaining puramente backward siempre da 0 (opción B, #54).
 
     Raises:
         DependencyError: Si el source no soporta forward chaining.
@@ -163,7 +166,15 @@ def run_chain(
         # decorador @handle_errors las captura por tipo y emite exit 4.
         # AttributeError genuino se propaga limpio (no se disfraza de exit 3).
 
-        candidates_found = len(ranked.corpus)
+        # #269: candidates_found debe reflejar el TOTAL de candidatos encontrados
+        # por el ranking (backward + forward), no solo las filas materializadas
+        # en ranked.corpus. Backward NO materializa filas (opción B, #54): sus IDs
+        # viven en ranked.observed_refs / ranked.ranking, así que len(ranked.corpus)
+        # da 0 en chaining puramente backward aunque haya miles de candidatos
+        # observados — contradiciendo lo que --preview lista. ranked.ranking es la
+        # lista completa (recortada solo por --max-candidates, igual que el preview),
+        # separada del render truncado a 10 de ranking_preview.
+        candidates_found = len(ranked.ranking)
         ranking_preview = [
             {"id": id_, "scent": scent} for id_, scent in ranked.ranking[:10]
         ]

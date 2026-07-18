@@ -474,6 +474,40 @@ class TestRunChainBackwardNoPersistePlaceholders:
         assert "observed_refs_count" in result
         assert result["observed_refs_count"] == 2
 
+    def test_candidates_found_no_es_cero_con_refs_observadas(
+        self, tmp_path: Path
+    ) -> None:
+        """#269: candidates_found refleja el total real de candidatos backward.
+
+        Antes del fix, ``candidates_found = len(ranked.corpus)`` daba SIEMPRE
+        0 en chaining puramente backward (opción B, #54: los candidatos
+        backward no se materializan como filas del corpus) — contradiciendo
+        lo que ``--preview`` lista (miles de referencias observadas).  El
+        envelope debe reportar el total de candidatos backward encontrados,
+        coincidiendo con lo que ve el preview (``estimated_candidates`` /
+        ``by_direction["backward"]``).
+        """
+        from bib2graph.cli.commands.chain import run_chain
+
+        store_path = tmp_path / "lib.duckdb"
+        self._seed_store(store_path, ["REF_A", "REF_B", "REF_C"])
+
+        # El preview ve 3 candidatos backward (references_id de la semilla).
+        preview_result = run_chain(store_path, direction="backward", preview=True)
+        assert preview_result["by_direction"]["backward"] == 3
+
+        # El chain real (sin preview) debe reportar el mismo total, no 0.
+        result = run_chain(store_path, direction="backward", transport=_NOOP_TRANSPORT)
+
+        assert result["candidates_found"] > 0, (
+            "candidates_found es 0 pese a haber refs observadas: el envelope "
+            "se contradice con --preview (#269)"
+        )
+        assert result["candidates_found"] == 3
+        assert result["candidates_found"] == preview_result["by_direction"]["backward"]
+        # Coincide también con lo que observed_refs_count reporta (mismo total).
+        assert result["candidates_found"] == result["observed_refs_count"]
+
     def test_chain_idempotente_referenced(self, tmp_path: Path) -> None:
         """Correr chain backward dos veces no duplica los IDs en la tabla auxiliar."""
         from bib2graph.backends.duckdb import DuckDBBackend
@@ -568,11 +602,21 @@ class TestForwardNoRegression:
         forager = Forager(TrackingSource(), depth=1)  # type: ignore[arg-type]
         ranked = forager.chain(corpus, direction="forward")
 
-        # Forward: el corpus tiene el candidato
+        # Forward: el corpus tiene el candidato Y la actualización de cited_by_id
+        # de la semilla P1 (ADR 0048, #270) — 2 filas en total.
         cand_rows = ranked.corpus.to_arrow().to_pylist()
-        assert len(cand_rows) == 1, (
-            f"Forward chaining debe materializar 1 candidato, hay {len(cand_rows)}"
+        assert len(cand_rows) == 2, (
+            f"Forward chaining debe materializar 1 candidato + 1 actualización "
+            f"de semilla (cited_by_id, ADR 0048), hay {len(cand_rows)}"
         )
+        # El ranking (candidatos reales) sigue teniendo exactamente 1 entrada
+        # (el candidato W9999, identificado por su source_id de OpenAlex).
+        assert len(ranked.ranking) == 1
+        assert ranked.ranking[0][0] == "W9999"
+        # La fila de actualización de semilla es la de P1 (id existente,
+        # no recalculado por _rows_with_ids).
+        seed_row = next(row for row in cand_rows if row["id"] == "P1")
+        assert seed_row["cited_by_id"] == ["W9999"]
         # observed_refs está vacío (solo backward genera observed_refs)
         assert ranked.observed_refs == []
 

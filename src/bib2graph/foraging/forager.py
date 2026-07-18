@@ -14,6 +14,11 @@ funciones puras de ``scent.py`` (R4, ADR 0020/0022):
   Robusto ante corpus con ``references_id`` ralas (estado común tras un seed
   sin enriquecimiento); el acoplamiento bibliográfico puro degeneraba a 0.
   Los candidatos forward SÍ se materializan como filas del corpus.
+- **Co-citación (ADR 0048, #270)**: la pasada forward, de paso, puebla
+  ``cited_by_id`` de las semillas alcanzadas (la atribución citante→semilla
+  ya se trae para el scent; cero red extra).  Deja listo el insumo del
+  ``CoCitationProjector`` (ADR 0014, no se toca) sin requerir ``enrich`` ni
+  curación previa.  Ver ``Forager._build_seed_cited_by_updates``.
 
 Solo él toca la red (a través del ``Source`` inyectado).  El núcleo de
 scent es puro.  ``explain_candidate`` fue **eliminado** (R4, ADR 0022).
@@ -284,8 +289,15 @@ class Forager:
         Los candidatos forward SÍ se materializan como filas en
         ``RankedCandidates.corpus`` (con metadata traída por ``fetch_citing_batch``).
 
+        **ADR 0048 (#270):** en direction forward/both, ``corpus`` también
+        incluye filas de **semillas ya existentes** con ``cited_by_id``
+        actualizado (unión con los citantes traídos en esta pasada). No son
+        candidatos nuevos: el merge posterior (``Corpus.merge``) las fusiona
+        por ``id`` con la semilla ya persistida, sin duplicar filas.
+
         Devuelve un ``RankedCandidates`` con:
-        - ``corpus``: SOLO candidatos forward (no mergeado con el corpus semilla).
+        - ``corpus``: candidatos forward + actualizaciones de cited_by_id de
+          semillas (no mergeado con el corpus semilla).
         - ``ranking``: candidatos backward + forward rankeados por scent.
         - ``observed_refs``: IDs backward observados (no en corpus, tabla auxiliar).
 
@@ -306,6 +318,10 @@ class Forager:
         fwd_candidate_rows: dict[str, dict[str, Any]] = {}
         # IDs backward: se observan pero NO se materializan como corpus rows
         bwd_observed: set[str] = set()
+        # ADR 0048 (#270): filas de semillas con cited_by_id actualizado.
+        # NO son candidatos (no entran al ranking/scent): son actualizaciones
+        # de filas ya existentes que el merge posterior fusiona por id.
+        seed_cited_by_updates: dict[str, dict[str, Any]] = {}
 
         if direction in ("backward", "both"):
             bwd_scent = compute_backward_scent(rows)
@@ -314,7 +330,7 @@ class Forager:
                 bwd_observed.add(ref_id)
 
         if direction in ("forward", "both"):
-            fwd_scent, fwd_rows = self._fetch_forward(
+            fwd_scent, fwd_rows, seed_cited_by_updates = self._fetch_forward(
                 rows, fetched_at=fetched_at, since=since
             )
             for cand_id, scent_val in fwd_scent.items():
@@ -335,14 +351,19 @@ class Forager:
             and cand_id not in fwd_candidate_rows
         ]
 
-        # R5: bulk-load — solo filas FORWARD materializadas.
-        # El orden del ranking se preserva construyendo la lista en ese orden.
+        # R5: bulk-load — filas FORWARD materializadas + actualizaciones de
+        # semillas (ADR 0048, #270). El orden del ranking se preserva
+        # construyendo la lista de candidatos forward en ese orden; las
+        # actualizaciones de semilla van al final (ya tienen id propio, no
+        # participan del ranking). Ambas se fusionan con el corpus original
+        # vía Corpus.merge (unión de sets en cited_by_id — D3, idempotente).
         fwd_rows_ordered = [
             fwd_candidate_rows[cand_id]
             for cand_id, _ in ranking
             if cand_id in fwd_candidate_rows
         ]
-        rows_with_ids = _rows_with_ids(fwd_rows_ordered)
+        all_rows = fwd_rows_ordered + list(seed_cited_by_updates.values())
+        rows_with_ids = _rows_with_ids(all_rows)
         if rows_with_ids:
             table = pa.Table.from_pylist(rows_with_ids, schema=CORPUS_SCHEMA)
             candidates_corpus = Corpus.from_arrow(table)
@@ -376,8 +397,8 @@ class Forager:
         *,
         fetched_at: str,
         since: date | None = None,
-    ) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
-        """Trae citantes via batcheo y calcula scent forward.
+    ) -> tuple[dict[str, float], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+        """Trae citantes via batcheo, calcula scent forward y puebla ``cited_by_id``.
 
         Usa ``fetch_citing_batch_with_works`` del source (batcheo OR ≤50 IDs
         por request, presupuesto por semilla, retry/backoff incluidos) para
@@ -398,14 +419,27 @@ class Forager:
         canónico), con ``is_seed=False``, ``chaining_hop=1`` y
         ``source_tag='chaining:forward'``.
 
+        **ADR 0048 (#270):** además, puebla ``cited_by_id`` de las semillas del
+        corpus alcanzadas por esta pasada (la atribución citante→semillas ya
+        se trajo para calcular el scent; no requiere red extra).  Devuelve
+        filas de actualización *completas* (copia de la fila semilla original
+        con ``cited_by_id`` unido a los nuevos citantes) para que ``chain()``
+        las incluya en ``RankedCandidates.corpus`` y el merge posterior
+        (``Corpus.merge``, unión de sets — D3) las fusione de forma
+        idempotente con la semilla ya persistida.  El ``CoCitationProjector``
+        (ADR 0014, no se toca) consume ``cited_by_id`` como insumo.
+
         Args:
             corpus_rows: Filas del corpus actual.
             fetched_at: Timestamp ISO del fetch.
 
         Returns:
-            Tupla ``(scent_map, candidate_rows)`` donde ``candidate_rows``
-            tiene la fila completa (con metadata real) de cada candidato
-            forward con score > 0.
+            Tupla ``(scent_map, candidate_rows, seed_updates)`` donde
+            ``candidate_rows`` tiene la fila completa (con metadata real) de
+            cada candidato forward con score > 0, y ``seed_updates`` tiene,
+            por ``id`` canónico de semilla, la fila de la semilla con
+            ``cited_by_id`` actualizado (unión con los citantes de esta
+            pasada).
 
         Raises:
             AttributeError: Si el ``source`` no tiene ``fetch_citing_batch``.
@@ -420,7 +454,7 @@ class Forager:
         # Alcance: todas las semillas (is_seed=True); el chaining precede a la curación
         seed_ids = _extract_seed_ids(corpus_rows)
         if not seed_ids:
-            return {}, {}
+            return {}, {}, {}
 
         # Se incluye source_id porque los IDs de motor (W… de OpenAlex) aparecen
         # en references_id y deben cruzar contra source_id W… del corpus.
@@ -478,8 +512,16 @@ class Forager:
                 if citer_id not in corpus_ids:
                     citer_to_seeds.setdefault(citer_id, []).append(seed_id)
 
+        # ADR 0048 (#270): construir seed_updates = filas de semilla con
+        # cited_by_id poblado, ANTES del early-return, porque citing_dict ya
+        # trae la atribución completa (incluye citantes que ya estaban en el
+        # corpus_ids, filtrados arriba solo de citer_to_seeds). Se reconstruye
+        # la atribución completa (sin excluir citer_id ∈ corpus_ids) porque un
+        # citante ya presente en el corpus también cuenta para cited_by_id.
+        seed_updates = self._build_seed_cited_by_updates(corpus_rows, citing_dict)
+
         if not citer_to_seeds:
-            return {}, {}
+            return {}, {}, seed_updates
 
         # Construir filas con metadata real (vía _work_to_row) cuando el source
         # proveyó los works; el score es len(seeds_citados ∩ corpus_ids).
@@ -543,4 +585,54 @@ class Forager:
                     }
                 candidate_rows[citer_id] = row
 
-        return scent_map, candidate_rows
+        return scent_map, candidate_rows, seed_updates
+
+    def _build_seed_cited_by_updates(
+        self,
+        corpus_rows: list[dict[str, Any]],
+        citing_dict: dict[str, list[str]],
+    ) -> dict[str, dict[str, Any]]:
+        """Construye filas de semilla con ``cited_by_id`` actualizado (ADR 0048).
+
+        Para cada semilla con citantes nuevos en ``citing_dict``, copia su fila
+        original del corpus y le une (D3: unión de sets) los ``citer_id``
+        encontrados a ``cited_by_id``.  Devuelve filas *completas* (no parches)
+        para que ``Corpus.merge`` las fusione sin fabricar valores placeholder
+        en columnas no-nullable (``title``, ``is_seed``, ``curation_status``).
+
+        Si una semilla no tiene citantes nuevos, o ``cited_by_id`` ya contiene
+        exactamente el mismo set, no se incluye en el resultado (idempotencia:
+        no aporta nada nuevo al merge).
+
+        Args:
+            corpus_rows: Filas del corpus actual (incluye las semillas).
+            citing_dict: ``{seed_source_id: [citer_id, ...]}`` devuelto por
+                ``fetch_citing_batch``/``fetch_citing_batch_with_works``.
+
+        Returns:
+            Dict ``{id_canonico_semilla: fila_actualizada}``.
+        """
+        if not citing_dict:
+            return {}
+
+        # source_id (W...) → fila completa de la semilla en el corpus.
+        seed_rows_by_source_id: dict[str, dict[str, Any]] = {}
+        for row in corpus_rows:
+            if row.get(Col.IS_SEED) and row.get(Col.SOURCE_ID):
+                seed_rows_by_source_id[str(row[Col.SOURCE_ID])] = row
+
+        updates: dict[str, dict[str, Any]] = {}
+        for seed_source_id, citer_ids in citing_dict.items():
+            seed_row = seed_rows_by_source_id.get(seed_source_id)
+            if seed_row is None or not citer_ids:
+                continue
+            existing: list[str] = list(seed_row.get(Col.CITED_BY_ID) or [])
+            merged = sorted(set(existing) | set(citer_ids))
+            if set(merged) == set(existing):
+                # Nada nuevo: no aporta al merge (idempotencia limpia).
+                continue
+            updated_row = dict(seed_row)
+            updated_row[Col.CITED_BY_ID] = merged
+            updates[str(seed_row[Col.ID])] = updated_row
+
+        return updates
