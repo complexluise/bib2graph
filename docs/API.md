@@ -49,7 +49,8 @@ comandos de nivel superior, ni uno más):
   `snapshot {create,restore}`. Un grupo **sin subcomando** imprime ayuda y sale **exit 0**; el `command`
   del envelope usa la **ruta completa** (`"read list"`).
 - **2 comandos meta** fuera del set de 10 (no son pasos del ciclo; ni FSM ni workspace):
-  **`skill add`** (ADR 0039) y **`schema`** (ADR 0045 #260, ver §`schema`).
+  **`skill`** (grupo `{add,providers}`; ADR 0039, ADR 0046 #193) y **`schema`** (ADR 0045 #260, ver
+  §`schema`). Un grupo `skill` **sin subcomando** imprime ayuda y sale **exit 0** (como los demás grupos).
 
 **Retirado en `0.12.0` (BREAKING, #207, ADR 0038 P1 ejecutado):** los **9 verbos planos deprecados**
 —`accept`, `reject`, `filter`, `inspect`, `monitor`, `networks`, `enrich`, `restore`, `resolve`— ya
@@ -254,17 +255,34 @@ Lógica en `service/reads.py` (§0.1).
   `cited_by_id`) → bloque `[]` + `reason`/`fix_command` (de `predict_build_preview`). `--kind` inválido →
   exit 1; `n <= 0` o red que falla genuinamente → `DataError` exit 2.
 
-**`skill add [--user|--project] [--force]`** (comando meta, ADR
-[0039](decisiones/0039-skill-comando-meta-distribucion.md)): **instala la skill de Claude Code end-user**
+**`skill add [--provider claude-code|opencode] [--user|--project] [--force]`** (comando meta, ADR
+[0039](decisiones/0039-skill-comando-meta-distribucion.md), enmendado por ADR
+[0046](decisiones/0046-skill-distribucion-agnostica-proveedor.md) #193): **instala la skill end-user**
 que enseña al agente a usar bib2graph (los 10 verbos + el one-shot `init→seed→chain→build→read`). La
 skill viaja **vendoreada en el wheel** bajo `src/bib2graph/skill/` (`SKILL.md` + `reference/`, fuente
 commiteada vía `packages = ["src/bib2graph"]`): el version-lock skill==cli garantiza que la skill enseñe
-los verbos que el CLI expone. `skill add` **copia** la skill al directorio del cliente: **`--user`**
-(default) → `~/.claude/skills/bib2graph/`, **`--project`** → `.claude/skills/bib2graph/`. **Idempotente**;
-si el destino existe y difiere falla accionable y **`--force`** pisa. **Funciona SIN workspace** y emite
-`--json` `schema="1"` **sin transición de FSM**. La skill es markdown sin dependencias Python (la IA está
-en el Claude Code del usuario, no en el producto; ADR 0022). `data = {install_path, scope, installed,
+los verbos que el CLI expone. `skill add` **copia** la skill al directorio del cliente elegido por
+**`--provider`** (default `claude-code`; el provider es un **dato**, no una rama de control, ADR 0046) y
+scope **`--user`** (default) o **`--project`**:
+
+| `--provider` | `--user` (default) | `--project` |
+|---|---|---|
+| `claude-code` (default) | `~/.claude/skills/bib2graph/` | `.claude/skills/bib2graph/` |
+| `opencode` | `~/.config/opencode/skills/bib2graph/` | `.opencode/skills/bib2graph/` |
+
+La transformación del contenido es **identidad** (mismo `SKILL.md` para todo provider; OpenCode ya lee
+`.claude/skills/` de todos modos — ADR 0046, fase 1). **Idempotente**; si el destino existe y difiere,
+falla accionable y **`--force`** pisa. **Funciona SIN workspace** y emite `--json` `schema="1"` **sin
+transición de FSM**. La skill es markdown sin dependencias Python (la IA está en el Claude Code / OpenCode
+del usuario, no en el producto; ADR 0022). `data = {install_path, scope, provider, installed,
 already_present, skill_md, reference_dir, how_to}`.
+
+**`skill providers [--json]`** (comando meta, ADR 0046 #193): **enumera los providers soportados** por
+`skill add`, para que un agente descubra por introspección qué clientes puede targetear sin leer el
+código ni la doc. Sigue el patrón de `skill`/`schema`: **no transiciona la FSM, no resuelve workspace, no
+lee el store ni hace red**. `data = {providers: [{name, default, description, project_root, user_root}],
+default_provider}` (con `default_provider = "claude-code"`; las rutas van relativas, tal como se resuelven
+contra cwd/home).
 
 **`schema`** (comando meta, ADR [0045](decisiones/0045-cerrar-tres-grietas-agent-native.md) #260):
 **introspección del contrato por el mismo canal de invocación**, para que un agente en frío conozca la
@@ -1394,19 +1412,26 @@ def decorate(artifact: NetworkArtifact, table: pa.Table) -> None:
 | `degree_centrality` | todos | `float`, vía `nx.degree_centrality` |
 | `year` | paper (coupling/cocitation) | `int` (ausente si `None` en el corpus) |
 | `doi` | paper (coupling/cocitation) | `string` desde `Col.DOI` (DOI desnudo/normalizado, p. ej. `10.1234/abc`); **ausente si el paper no tiene DOI** (mismo criterio que `year`) |
-| `url` | paper (coupling/cocitation) | `string` derivada `https://doi.org/<doi>`; **solo presente si hay DOI** (no es columna del corpus, ver nota abajo) |
+| `url` | paper (coupling/cocitation) | `string` derivada **DOI-first**: `https://doi.org/<doi>` si hay DOI; **fallback** `https://openalex.org/<source_id>` si no hay DOI pero sí `source_id` de OpenAlex (#203); **ausente** si no hay ninguno de los dos (no es columna del corpus, ver nota abajo) |
+| `venue` | paper (coupling/cocitation) | `string` desde `Col.SOURCE` (revista / fuente); **ausente** si el paper no tiene fuente (#203) |
+| `authors` | paper (coupling/cocitation) | `string`: nombres de `Col.AUTHORS_RAW` unidos con `"\|"`; **ausente** si no hay autores (#203) |
+| `keywords` | paper (coupling/cocitation) | `string`: keywords de `Col.KEYWORDS_ID` unidas con `"\|"`; **ausente** si no hay keywords (#203) |
+| `cited_by_count` | paper (coupling/cocitation) | `int` **derivado** `len(Col.CITED_BY_ID)` (nº de citantes conocidos en el corpus); **ausente** si la lista es vacía/`None`. **Puede subestimar** el conteo real si el corpus no pasó por la pasada `cited_by` de `build` (#203) |
 | `is_seed` | paper | `bool` |
 | `curation_status` | paper | `string` |
 | `community` | todos | `int`, **solo** si se provee `artifact.communities` |
 
-`doi`/`url` aplican **solo a paper-kinds** (`bibliographic_coupling` y `cocitation`); los nodos de
-autor/institución/keyword **no los reciben**. `url` es **derivada** (`https://doi.org/<doi>`), no una
-columna del corpus: el DOI es la única identidad de primera clase (ADR 0036) y la URL es una expansión
-trivial determinista a la hora de decorar. La derivación vive en `doi_to_url(doi: str|None) -> str|None`
-(`bib2graph.constants`), **fuente única** compartida con `resolve_url` (§0.1, #212) — sin drift.
-Ausencia condicional como `year`: sin DOI truthy, el nodo no
-recibe ni `doi` ni `url`. Los exporters CSV/GraphML (§9) los propagan **automáticamente** cuando están
-presentes (son genéricos y omiten `None`) — sin cambios en exporters.
+`doi`/`url`/`venue`/`authors`/`keywords`/`cited_by_count` aplican **solo a paper-kinds**
+(`bibliographic_coupling` y `cocitation`); los nodos de autor/institución/keyword **no los reciben**.
+`url` es **derivada** (no es columna del corpus) y **DOI-first con fallback a OpenAlex**: el DOI es la
+única identidad de primera clase (ADR 0036), pero cuando el paper no tiene DOI la URL cae al recurso de
+OpenAlex (`https://openalex.org/<source_id>`) para no perder el enlace navegable (#203). La derivación
+vive en `resolve_paper_url(doi: str|None, source_id: str|None) -> str|None` (`bib2graph.constants`),
+que compone `doi_to_url` y `openalex_id_to_url` (**fuente única** de cada regla, compartida con
+`resolve_url` §0.1, #212 — sin drift). Ausencia condicional como `year`: sin DOI **ni** `source_id`, el
+nodo no recibe `url`; `venue`/`authors`/`keywords`/`cited_by_count` se omiten cuando su valor es vacío/
+`None`. Los exporters CSV/GraphML (§9) propagan **todos** estos atributos **automáticamente** cuando
+están presentes (son genéricos y omiten `None`) — sin cambios en exporters.
 
 **Mapeo de `label` por `NetworkKind`:**
 
@@ -1533,9 +1558,12 @@ class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
 
 - **`CsvExporter`** escribe `aristas.csv` (`source,target,weight`) y `nodos.csv` (`id,label` +
   atributos de nodo + métricas de `results` —degree/betweenness/community— unidas por id). Orden
-  de filas determinista. El `label` (y `year`/`doi`/`url`/`is_seed`/`curation_status`/`community`) lo
-  inyecta la capa `decorate` (§7.1) antes del export, no el exporter; `doi`/`url` salen solo en
-  paper-kinds y solo cuando el paper tiene DOI.
+  de filas determinista. Ambos CSV se escriben con **BOM UTF-8** (`encoding="utf-8-sig"`) para que
+  Excel-Windows autodetecte UTF-8 y no rompa tildes (#214). El `label` (y `year`/`doi`/`url`/`venue`/
+  `authors`/`keywords`/`cited_by_count`/`is_seed`/`curation_status`/`community`) lo inyecta la capa
+  `decorate` (§7.1) antes del export, no el exporter; `doi`/`url`/`venue`/`authors`/`keywords`/
+  `cited_by_count` salen solo en paper-kinds y solo cuando su valor está presente. `url` es DOI-first
+  con fallback a OpenAlex (#203, §7.1); `authors`/`keywords` van con separador `"|"`.
 - **`GraphMLExporter`** escribe esos atributos como node attributes, **omite** los atributos con
   valor `None` (Gephi / `nx.write_graphml` no los admiten) y **no muta** el grafo original (opera
   sobre una copia).
