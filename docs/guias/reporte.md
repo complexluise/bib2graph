@@ -110,7 +110,7 @@ Total: 12–20 páginas
 > **Años:** 2015–2024 (con 3 foundational 2008–2010).
 >
 > **Redes:** Acoplamiento bibliográfico (comunidades), co-citación (influentes), co-autoría (colaboraciones).
-> **Herramienta:** bib2graph v0.3 + Louvain clustering (resolution=1.0).
+> **Herramienta:** bib2graph (indicá la versión con `b2g --version`) + Louvain clustering (resolution=1.0).
 
 ---
 

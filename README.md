@@ -2,6 +2,12 @@
 
 > De una búsqueda bibliográfica a **redes de citación reproducibles** — una biblioteca de literatura que curás vos, sin servidores ni planillas.
 
+**Un antídoto al sesgo del *related work* escrito de memoria.** Cuando armás la revisión
+de literatura recordando papers, repetís lo que ya conocés y dejás afuera lo que no.
+bib2graph convierte una búsqueda en un **corpus + redes de citación + un orden de lectura
+priorizado** —deterministas, reproducibles y con procedencia—. **Te lleva hasta la lectura
+y se detiene ahí:** no interpreta, no gestiona tu investigación ni usa IA; el juicio queda tuyo.
+
 [![PyPI](https://img.shields.io/pypi/v/bib2graph)](https://pypi.org/project/bib2graph/)
 [![Python](https://img.shields.io/pypi/pyversions/bib2graph)](https://pypi.org/project/bib2graph/)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
@@ -36,19 +42,23 @@ Sembrar desde archivos BibTeX necesita un extra: `bib2graph[bibtex]`.
 
 ## Quickstart
 
-De una ecuación a un GraphML, sin escribir código:
+De una ecuación de búsqueda hasta un orden de lectura, sin escribir código:
 
 ```bash
 b2g init mi-investigacion
 cd mi-investigacion
 
-b2g seed --equation '"unequal ecological exchange"' --max-results 50   # corpus desde OpenAlex
-b2g build                                                              # construye las redes
-b2g export --format graphml                                           # → redes en GraphML
+b2g seed --equation '"unequal ecological exchange"' --max-results 50   # 1. corpus desde OpenAlex
+b2g chain --direction both --max-candidates 300                        # 2. barrido: siguiendo citaciones
+b2g curate dump && b2g curate apply curacion.csv                       # 3. curás vos (revisás el CSV)
+b2g build                                                              # 4. construye las redes
+b2g read top --kind bibliographic_coupling                            #    → orden de lectura (centrales primero)
+b2g export --format graphml                                           # → redes en GraphML para Gephi
 ```
 
-Cada comando acepta `--json` para orquestarlo desde scripts o agentes. Lista completa de
-comandos: `b2g --help`.
+Ese es el hilo completo: **lista ingenua → barrido → curación → redes → lectura dirigida.**
+La escritura de tu revisión narrativa —el paso 5— queda de tu lado. Cada comando acepta
+`--json` para orquestarlo desde scripts o agentes. Lista completa: `b2g --help`.
 
 ### Con Claude Code: pedile a Claude que lo use
 
