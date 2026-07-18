@@ -31,7 +31,17 @@ Atributos adicionales de paper (coupling/cocitation):
   - ``is_seed``: bool.
   - ``curation_status``: string.
   - ``doi``: string o ausente si no hay DOI en el corpus.
-  - ``url``: ``"https://doi.org/<doi>"`` o ausente si no hay DOI.
+  - ``url``: ``"https://doi.org/<doi>"`` (DOI-first) o, sin DOI,
+    ``"https://openalex.org/<source_id>"`` si el paper viene de OpenAlex
+    (#203); ausente si no hay ninguno de los dos.
+  - ``venue``: string (``Col.SOURCE``) o ausente si no hay fuente/revista.
+  - ``authors``: nombres de autor unidos con ``"|"`` (``Col.AUTHORS_RAW``),
+    o ausente si no hay autores.
+  - ``keywords``: keywords unidas con ``"|"`` (``Col.KEYWORDS_ID``), o
+    ausente si no hay keywords.
+  - ``cited_by_count``: int, nº de citantes conocidos en el corpus
+    (``len(Col.CITED_BY_ID)``); ausente si la lista es vacía/None (mismo
+    criterio de "vacío = ausente" que el resto de los atributos opcionales).
 
 Atributo de comunidad (si se provee ``communities``):
   - ``community``: int.
@@ -44,7 +54,7 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 import pyarrow as pa
 
-from bib2graph.constants import Col, NetworkKind, doi_to_url
+from bib2graph.constants import Col, NetworkKind, resolve_paper_url
 
 if TYPE_CHECKING:
     from bib2graph.networks.spec import NetworkArtifact
@@ -62,10 +72,13 @@ _PAPER_KINDS: frozenset[str] = frozenset(
 
 
 def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
-    """Construye un índice ``{paper_id → {label, year, is_seed, curation_status, doi}}``.
+    """Construye un índice ``{paper_id → {label, year, is_seed, ...}}``.
 
     El label de paper es ``"título (año)"`` truncado a ``LABEL_MAX_CHARS`` chars.
-    ``doi`` es el DOI del paper (string) o ``None`` si no está disponible.
+    ``doi``/``source_id`` alimentan la derivación de ``url`` (#203, DOI-first
+    con fallback a OpenAlex). ``authors``/``venue``/``keywords`` son campos
+    útiles para un investigador que no estaban expuestos en nodos.csv (#203);
+    ``cited_by_count`` es un conteo derivado (no columna del schema).
 
     Args:
         table: Tabla Arrow canónica del Corpus.
@@ -79,10 +92,38 @@ def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
     is_seeds = table.column(Col.IS_SEED).to_pylist()
     statuses = table.column(Col.CURATION_STATUS).to_pylist()
     dois = table.column(Col.DOI).to_pylist()
+    source_ids = table.column(Col.SOURCE_ID).to_pylist()
+    venues = table.column(Col.SOURCE).to_pylist()
+    authors_raw = table.column(Col.AUTHORS_RAW).to_pylist()
+    keywords_id = table.column(Col.KEYWORDS_ID).to_pylist()
+    cited_by = table.column(Col.CITED_BY_ID).to_pylist()
 
     index: dict[str, dict[str, object]] = {}
-    for pid, title, year, is_seed, status, doi in zip(
-        ids, titles, years, is_seeds, statuses, dois, strict=False
+    for (
+        pid,
+        title,
+        year,
+        is_seed,
+        status,
+        doi,
+        source_id,
+        venue,
+        authors,
+        keywords,
+        citers,
+    ) in zip(
+        ids,
+        titles,
+        years,
+        is_seeds,
+        statuses,
+        dois,
+        source_ids,
+        venues,
+        authors_raw,
+        keywords_id,
+        cited_by,
+        strict=False,
     ):
         if pid is None:
             continue
@@ -102,6 +143,17 @@ def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
             "is_seed": bool(is_seed) if is_seed is not None else False,
             "curation_status": str(status) if status is not None else None,
             "doi": str(doi) if doi is not None else None,
+            "source_id": str(source_id) if source_id is not None else None,
+            "venue": str(venue) if venue else None,
+            "authors": "|".join(str(a) for a in authors)
+            if isinstance(authors, list) and authors
+            else None,
+            "keywords": "|".join(str(k) for k in keywords)
+            if isinstance(keywords, list) and keywords
+            else None,
+            "cited_by_count": len(citers)
+            if isinstance(citers, list) and citers
+            else None,
         }
     return index
 
@@ -189,7 +241,13 @@ def decorate_graph(
       - ``is_seed``: bool.
       - ``curation_status``: string.
       - ``doi``: string o ausente si el paper no tiene DOI en el corpus.
-      - ``url``: ``"https://doi.org/<doi>"`` o ausente si no hay DOI.
+      - ``url``: ``"https://doi.org/<doi>"`` (DOI-first) o
+        ``"https://openalex.org/<source_id>"`` como fallback (#203); ausente
+        si no hay ni DOI ni source_id de OpenAlex.
+      - ``venue``: string o ausente si no hay fuente/revista.
+      - ``authors``: nombres unidos con ``"|"``, o ausente si no hay autores.
+      - ``keywords``: keywords unidas con ``"|"``, o ausente si no hay.
+      - ``cited_by_count``: int, o ausente si no hay citantes conocidos.
 
     Atributo de comunidad (si se provee ``communities``):
       - ``community``: int.
@@ -225,10 +283,25 @@ def decorate_graph(
                 graph.nodes[node]["curation_status"] = str(curation)
             doi_val = info.get("doi")
             doi_str = doi_val if isinstance(doi_val, str) else None
-            url = doi_to_url(doi_str)
-            if url is not None:
+            if doi_str is not None:
                 graph.nodes[node]["doi"] = doi_str
+            source_id_val = info.get("source_id")
+            source_id_str = source_id_val if isinstance(source_id_val, str) else None
+            url = resolve_paper_url(doi_str, source_id_str)
+            if url is not None:
                 graph.nodes[node]["url"] = url
+            venue = info.get("venue")
+            if venue is not None:
+                graph.nodes[node]["venue"] = str(venue)
+            authors = info.get("authors")
+            if authors is not None:
+                graph.nodes[node]["authors"] = str(authors)
+            keywords = info.get("keywords")
+            if keywords is not None:
+                graph.nodes[node]["keywords"] = str(keywords)
+            cited_by_count = info.get("cited_by_count")
+            if isinstance(cited_by_count, int):
+                graph.nodes[node]["cited_by_count"] = cited_by_count
 
     elif kind == NetworkKind.AUTHOR_COLLAB:
         author_index = _build_author_index(table)

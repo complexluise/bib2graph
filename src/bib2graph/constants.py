@@ -109,6 +109,46 @@ def doi_to_url(doi: str | None) -> str | None:
     return None
 
 
+def openalex_id_to_url(source_id: str | None) -> str | None:
+    """Deriva la URL de OpenAlex ``https://openalex.org/<source_id>`` desde un id corto.
+
+    ``source_id`` (``Col.SOURCE_ID``) es el id corto de OpenAlex (p. ej. ``W12345``)
+    cuando el paper proviene de ``OpenAlexSource`` — las demás fuentes (p. ej.
+    ``BibtexSource``) siempre lo dejan en ``None``, así que un ``source_id`` truthy
+    es seguro de interpretar como id de OpenAlex.
+
+    Args:
+        source_id: Id corto de OpenAlex, o ``None``.
+
+    Returns:
+        ``"https://openalex.org/<source_id>"`` si ``source_id`` es un string no
+        vacío; ``None`` en cualquier otro caso.
+    """
+    if isinstance(source_id, str) and source_id:
+        return f"https://openalex.org/{source_id}"
+    return None
+
+
+def resolve_paper_url(doi: str | None, source_id: str | None) -> str | None:
+    """URL canónica del paper: DOI primero, OpenAlex como fallback (#203).
+
+    Precedencia: ``https://doi.org/<doi>`` si hay DOI; si no, y solo si hay
+    ``source_id`` (OpenAlex), ``https://openalex.org/<source_id>``. ``None``
+    si no hay ninguno de los dos — nunca inventa una URL.
+
+    Reusa ``doi_to_url``/``openalex_id_to_url`` (fuente única de cada regla de
+    derivación) para no duplicar el criterio de "string no vacío".
+
+    Args:
+        doi: DOI del paper (sin prefijo URL), o ``None``.
+        source_id: Id corto de OpenAlex, o ``None``.
+
+    Returns:
+        La URL canónica, o ``None`` si no hay DOI ni ``source_id``.
+    """
+    return doi_to_url(doi) or openalex_id_to_url(source_id)
+
+
 LIST_COLUMNS: frozenset[str] = frozenset(
     {
         Col.RESEARCH_AREAS,
