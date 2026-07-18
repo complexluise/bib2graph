@@ -6,6 +6,33 @@ title: Quickstart
 
 De una ecuación de búsqueda a un GraphML, sin escribir código.
 
+## El hilo: 5 pasos para no repetir tu related work de memoria
+
+Cuando escribís el *related work* de memoria, repetís los papers que ya conocés y
+dejás afuera —sin querer— los que no. bib2graph existe para romper ese sesgo:
+convierte tu búsqueda en un corpus, redes de citación y un **orden de lectura**
+con procedencia. Te lleva **hasta la lectura** y se detiene ahí; la interpretación
+y la escritura quedan tuyas.
+
+El ciclo de comandos que ves abajo es este hilo, paso a paso:
+
+1. **Lista ingenua → barrido.** Partís de tu ecuación de búsqueda y sembrás un
+   primer corpus (`seed`). Después lo expandís siguiendo las citaciones, para que
+   entren los papers que tu búsqueda inicial no vio (`chain`).
+2. **Puntos ciegos.** El barrido trae candidatos que *no* estaban en tu lista
+   mental. Esos son, justamente, los que tendías a olvidar.
+3. **Curás vos.** Aceptás o rechazás cada candidato con criterios explícitos
+   (`curate`). Vos decidís qué entra; bib2graph solo te da la estructura.
+4. **Lectura dirigida.** Construís las redes (`build`) y pedís el orden de lectura:
+   los papers más centrales primero (`read top`). No leés al azar ni de memoria:
+   leés por estructura.
+5. **Escritura narrativa.** Con el corpus, las redes y el orden de lectura en la
+   mano, escribís tu revisión. Ese paso es **tuyo** — bib2graph no interpreta ni
+   redacta por vos.
+
+Las [Guías](../guias/index.md) desarrollan cada paso en detalle. Lo que sigue es la
+versión mínima para verlo funcionar de punta a punta.
+
 ## Antes de empezar: conseguí tu API key de OpenAlex
 
 bib2graph siembra el corpus desde [OpenAlex](https://openalex.org). Funciona **sin
@@ -45,30 +72,44 @@ pool* de OpenAlex, con un límite más sano. No es un secreto (es un identificad
 
 ```
 $ b2g init mi-investigacion
-Workspace creado en ./mi-investigacion
+Carpeta de investigación creada en ./mi-investigacion
 $ cd mi-investigacion
 $ b2g seed --equation '"unequal ecological exchange"' --email tu@correo.org --max-results 50
-Sembrando desde OpenAlex...
+Sembrando desde OpenAlex...        # paso 1: lista ingenua
 ---> 100%
 52 papers en el corpus
-$ b2g build
+$ b2g chain --direction both --max-candidates 300 --email tu@correo.org
+Siguiendo citaciones...            # paso 1-2: barrido + puntos ciegos
+---> 100%
++180 candidatos para revisar
+$ b2g curate dump                  # paso 3: curás vos (revisás el CSV offline)
+Candidatos volcados a ./exports/curacion.csv
+$ b2g curate apply curacion.csv
+Aplicadas tus decisiones: 210 aceptados · 22 rechazados
+$ b2g build                        # paso 4: redes + orden de lectura
 Construyendo las redes...
 ---> 100%
 Listas: acoplamiento · co-citación · co-autoría · instituciones · co-keywords
+$ b2g read top --kind bibliographic_coupling
+Orden de lectura (papers más centrales primero):
+ 1. ...
 $ b2g export --format graphml
-Exportadas a ./redes/*.graphml
+Exportadas a ./exports/*.graphml
 ```
 
-En tres pasos pasaste de una ecuación a redes en GraphML, sin escribir código.
+Pasaste de una ecuación a un corpus curado, redes en GraphML y un orden de lectura,
+sin escribir código. Lo que hagas con esa lectura —el **paso 5**, la escritura— es
+tuyo.
 
 Cada comando acepta `--json` para orquestarlo desde scripts o agentes. Para la
 lista completa de comandos y opciones, corré `b2g --help` o mirá la
 [referencia del CLI `b2g`](../reference/cli.md).
 
-!!! tip "Workspace por investigación"
-    `b2g init` crea una carpeta autocontenida (`workspace.json` + base de datos +
-    redes/snapshots/exports). Todos los comandos resuelven el workspace desde el
-    directorio actual — por eso el `cd` después de `init`.
+!!! tip "Una carpeta por investigación"
+    `b2g init` crea una carpeta autocontenida con tu corpus, tus redes y tus
+    exports adentro. Corré el resto de los comandos **dentro de esa carpeta**
+    (por eso el `cd` después de `init`): así cada investigación queda separada y
+    todo lo que generás se guarda junto.
 
 ## Desde Python
 
@@ -76,7 +117,7 @@ lista completa de comandos y opciones, corré `b2g --help` o mirá la
 from pathlib import Path
 from bib2graph import OpenAlexSource, DuckDBStore, Networks, GraphMLExporter
 
-# email = polite pool; api_key se toma de OPENALEX_API_KEY si no se pasa (ADR 0012)
+# email = polite pool; api_key se toma de OPENALEX_API_KEY si no se pasa
 corpus = OpenAlexSource(email="tu@correo.org").seed('"unequal ecological exchange"').corpus
 store = DuckDBStore(Path("biblioteca.duckdb"))
 store.persist(corpus)
