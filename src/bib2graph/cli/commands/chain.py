@@ -17,7 +17,12 @@ from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, UsageError, handle_errors
 from bib2graph.cli._ingest import normalize_and_dedup
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import open_store, resolve_library_path
+from bib2graph.cli._store import (
+    open_store,
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 
 
 # Función núcleo (testeable, sin Click)
@@ -39,8 +44,9 @@ def run_chain(
     Cuando ``preview=True``, estima el crecimiento potencial **sin fetchear**
     ni transicionar el estado del corpus.  La estimación backward es exacta
     (desde ``references_id``); la forward es exacta si el corpus tiene
-    ``cited_by_id`` poblado (pasó por ``b2g enrich``), o indica que se
-    requiere fetch si ``cited_by_id`` está vacío.
+    ``cited_by_id`` poblado (por un ``chain forward`` previo o la pasada
+    cited_by de ``build``, ADR 0048), o indica que se requiere fetch si
+    ``cited_by_id`` está vacío.
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
@@ -58,7 +64,10 @@ def run_chain(
         Dict con ``candidates_found``, ``total_papers``, ``ranking_preview``
         (modo normal); o con ``preview``, ``estimated_candidates``,
         ``by_direction``, ``capped_by_max``, ``forward_requires_fetch``,
-        ``forward_from_cited_by`` (modo preview).
+        ``forward_from_cited_by`` (modo preview).  ``candidates_found`` es el
+        total de candidatos rankeados (backward observados + forward
+        materializados, #269); NO cuenta solo lo materializado en el corpus,
+        que en chaining puramente backward siempre da 0 (opción B, #54).
 
     Raises:
         DependencyError: Si el source no soporta forward chaining.
@@ -158,7 +167,15 @@ def run_chain(
         # decorador @handle_errors las captura por tipo y emite exit 4.
         # AttributeError genuino se propaga limpio (no se disfraza de exit 3).
 
-        candidates_found = len(ranked.corpus)
+        # #269: candidates_found debe reflejar el TOTAL de candidatos encontrados
+        # por el ranking (backward + forward), no solo las filas materializadas
+        # en ranked.corpus. Backward NO materializa filas (opción B, #54): sus IDs
+        # viven en ranked.observed_refs / ranked.ranking, así que len(ranked.corpus)
+        # da 0 en chaining puramente backward aunque haya miles de candidatos
+        # observados — contradiciendo lo que --preview lista. ranked.ranking es la
+        # lista completa (recortada solo por --max-candidates, igual que el preview),
+        # separada del render truncado a 10 de ranking_preview.
+        candidates_found = len(ranked.ranking)
         ranking_preview = [
             {"id": id_, "scent": scent} for id_, scent in ranked.ranking[:10]
         ]
@@ -267,9 +284,10 @@ def _run_chain_preview(
     if growth.forward_requires_fetch:
         warnings.append(
             "El crecimiento forward no puede estimarse sin red: el corpus no tiene "
-            "``cited_by_id`` poblado.  Ejecutá ``b2g enrich`` primero para obtener "
-            "una estimación local, o ejecutá ``b2g chain`` sin ``--preview`` para "
-            "traer los citantes directamente."
+            "``cited_by_id`` poblado.  Ejecutá ``b2g build`` primero para obtener "
+            "una estimación local (puebla cited_by_id de las semillas aceptadas), "
+            "o ejecutá ``b2g chain`` sin ``--preview`` para traer los citantes "
+            "directamente."
         )
 
     return {
@@ -327,8 +345,8 @@ def _run_chain_preview(
     help=(
         "Estima el crecimiento potencial SIN fetchear ni modificar el corpus "
         "(dry-run).  Backward: exacto desde references_id.  Forward: exacto "
-        "si el corpus tiene cited_by_id (requiere enrich previo), si no, "
-        "indica que se necesita fetch."
+        "si el corpus tiene cited_by_id (poblado por un chain forward previo), "
+        "si no, indica que se necesita fetch."
     ),
 )
 @click.option(
@@ -363,7 +381,8 @@ def chain_cmd(
     """
     from bib2graph.cli._options import parse_since
 
-    store_path = resolve_library_path(ctx.obj)
+    ws = resolve_workspace(ctx.obj)
+    store_path = ws.library_path
 
     # Parsear --since en la frontera (R2/ADR 0017): el reloj se fija aquí.
     since: date | None = None
@@ -381,13 +400,16 @@ def chain_cmd(
         since=since,
     )
 
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
+
     if json_mode(json_output):
         envelope = build_envelope(
             command="chain",
             ok=True,
             data=data,
             exit_code=0,
-            warnings=data.get("warnings", []),
+            warnings=list(data.get("warnings", [])) + workspace_walkup_warning(ws),
         )
         emit(envelope)
     elif preview:

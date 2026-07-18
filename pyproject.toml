@@ -86,10 +86,9 @@ Issues = "https://github.com/complexluise/bib2graph/issues"
 [project.scripts]
 # CLI entry point. Hito 6: implementación real del CLI agente-native.
 # El paquete bib2graph.cli (antes cli.py) expone main() en __init__.py.
+# El alias legado 'bib2graph' (ADR 0038, #165) se retiró en 0.12.0 (#207):
+# el único entry point es 'b2g'.
 b2g = "bib2graph.cli:main"
-# Alias deprecado del ejecutable legado 'bib2graph' (ADR 0038, #165).
-# Emite aviso a stderr y delega en main(). Se retira en 0.11.0.
-bib2graph = "bib2graph.cli:main_bib2graph_alias"
 
 # ----- Build (hatchling, src layout) --------------------------------------
 
@@ -133,7 +132,7 @@ dev = [
 # desde docstrings) y mkdocs-click (CLI b2g, desde el grupo Click). termynal
 # anima las sesiones de terminal del quickstart.
 docs = [
-    "mkdocs-material>=9.5",
+    "mkdocs-material>=9.5,<10",
     "mkdocs-include-markdown-plugin>=6",
     "mkdocstrings[python]>=0.24",
     "mkdocs-click>=0.8",

@@ -17,7 +17,7 @@ ADR 0030 — capa declarativa: ``--spec`` es equivalente a pasar ``--equation``
 con los flags correspondientes; los campos del YAML mapean 1:1 a los argumentos
 de ``run_seed``.
 
-Para cargar un corpus curado desde un parquet sin red, usá ``b2g restore``.
+Para cargar un corpus curado desde un parquet sin red, usá ``b2g snapshot restore``.
 """
 
 from __future__ import annotations
@@ -38,7 +38,12 @@ from bib2graph.cli._errors import (
 )
 from bib2graph.cli._ingest import normalize_and_dedup
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import open_store, resolve_library_path
+from bib2graph.cli._store import (
+    open_store,
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 
 # Función núcleo: siembra desde OpenAlex (testeable, sin Click)
 
@@ -382,7 +387,7 @@ def run_seed_from_bib(
     default=False,
     help=(
         "Tras cargar el .bib, resolver DOIs a source_id de OpenAlex "
-        "(solo con --from-bib; encadena b2g resolve automáticamente)."
+        "(solo con --from-bib; resuelve automáticamente en la misma invocación)."
     ),
 )
 @json_option
@@ -411,7 +416,7 @@ def seed_cmd(
       --from-bib archivo.bib  siembra desde un archivo BibTeX local (sin red).
 
     \b
-    Para cargar un corpus curado desde un parquet sin red, usá b2g restore.
+    Para cargar un corpus curado desde un parquet sin red, usá b2g snapshot restore.
 
     \b
     Tras el seed, el estado del lazo transiciona a SEEDED.
@@ -471,19 +476,24 @@ def seed_cmd(
         if do_resolve:
             raise UsageError(
                 "--resolve solo es válido con --from-bib. "
-                "Para resolver DOIs de un corpus existente, usá b2g resolve."
+                "Para un corpus existente, corré b2g seed --from-bib <archivo> --resolve "
+                "de nuevo (idempotente: solo resuelve los DOIs pendientes)."
             )
 
-    store_path = resolve_library_path(ctx.obj)
+    ws = resolve_workspace(ctx.obj)
+    store_path = ws.library_path
+    ws_warnings = workspace_walkup_warning(ws)
 
     if bib_path is not None:
         data = run_seed_from_bib(store_path, bib_path, resolve=do_resolve, email=email)
+        data["workspace"] = workspace_echo(ws)
         if json_mode(json_output):
             envelope = build_envelope(
                 command="seed",
                 ok=True,
                 data=data,
                 exit_code=0,
+                warnings=ws_warnings or None,
             )
             emit(envelope)
         else:
@@ -515,13 +525,14 @@ def seed_cmd(
             min_year=spec.min_year,
             max_year=spec.max_year,
         )
+        data["workspace"] = workspace_echo(ws)
         if json_mode(json_output):
             envelope = build_envelope(
                 command="seed",
                 ok=True,
                 data=data,
                 exit_code=0,
-                warnings=data.get("translation_report", []),
+                warnings=list(data.get("translation_report", [])) + ws_warnings,
             )
             emit(envelope)
         else:
@@ -544,6 +555,7 @@ def seed_cmd(
         min_year=min_year,
         max_year=max_year,
     )
+    data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -551,7 +563,7 @@ def seed_cmd(
             ok=True,
             data=data,
             exit_code=0,
-            warnings=data.get("translation_report", []),
+            warnings=list(data.get("translation_report", [])) + ws_warnings,
         )
         emit(envelope)
     else:

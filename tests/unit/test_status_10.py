@@ -35,7 +35,7 @@ pytestmark = pytest.mark.unit
 # user-facing se edita acá y no en ~10 asserts dispersos (epic #184, sub-tarea 8).
 # Espejan los literales de networks/facade.py (_predict/_empty_network_entry).
 FIX_RESOLVE = "b2g seed --resolve"
-FIX_ENRICH = "b2g enrich"
+FIX_ENRICH = "b2g build"
 FIX_THESAURUS = "b2g build --thesaurus <archivo>"
 
 # ---------------------------------------------------------------------------

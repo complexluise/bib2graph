@@ -267,3 +267,30 @@ los registra `cli/_deprecation.py` (#165):
 su capacidad vive como `build --thesaurus` (#164; nota append-only del ADR
 [0031](0031-preprocesamiento-automatico-en-ingesta.md)). AS-BUILT de la capa de avisos en
 [`../API.md`](../API.md) §Avisos de deprecación.
+
+## Enmienda 2026-07-18 (append-only) — el retiro de P1 no ocurrió en 0.11.0; se ejecuta en 0.12.0 (#207)
+
+> Anotación append-only (no revierte nada de arriba). Fija la versión real del retiro que P1 y sus
+> enmiendas agendaron nominalmente para 0.11.0.
+
+El parámetro **(P1)** —y sus enmiendas de `filter` (#155) y `enrich` (#162/#165)— fijaron el cierre de
+la ventana de deprecación en **`0.11.0`** (criterio por versión). **Ese retiro no se ejecutó en esa
+versión:** 0.11.0 salió mínima (solo lo ya acumulado en `dev`), sin la poda de superficie. El retiro
+se **ejecuta en `0.12.0`** ([#207](https://github.com/complexluise/bib2graph/issues/207)). El criterio
+por versión de P1 no cambia (sigue siendo *por versión, no fecha*); solo se corrige **cuál** versión
+materializa el corte.
+
+**AS-BUILT del retiro (0.12.0, BREAKING, verificable contra `src/bib2graph/cli/__init__.py`):**
+
+- Los **9 aliases deprecados** (`accept`, `reject`, `filter`, `inspect`, `monitor`, `networks`,
+  `enrich`, `restore`, `resolve`) **ya no se registran**: invocarlos da el error estándar de Click
+  (`No such command`). Sus formas canónicas son las de la tabla de la enmienda #162/#165 (arriba).
+- El **entry-point legado `bib2graph`** se retiró (queda solo `b2g`).
+- El flag **`build --corpus-scope`** se retiró (queda `build --scope`, default `all`).
+- El módulo `cli/_deprecation.py` (helper único de avisos) se eliminó.
+
+**Superficie final verificable = 12 registros exactos:** los **10 verbos del ciclo** (`init`, `seed`,
+`chain`, `build`, `export`, `status`, `validate` planos + los grupos `curate`, `read`, `snapshot`) **+
+`skill` + `schema`** (meta). Invariantes intactos: envelope `schema="1"`, exit codes 0–5 y la forma del
+FSM no cambian. AS-BUILT del contrato en [`../API.md`](../API.md) §Convenciones del CLI y §Formas
+canónicas de los verbos retirados.

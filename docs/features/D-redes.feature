@@ -25,19 +25,23 @@ Característica: Proyectar el corpus a redes bibliométricas y exportarlas
     Y tras el build el estado del lazo transiciona a "BUILT"
     Y "networks/.corpus_hash" queda sellado con el hash del corpus filtrado
 
-  Escenario: D1 — La co-citación aparece solo tras enriquecer (cited_by_id)
+  Escenario: D1 — La co-citación aparece cuando cited_by_id está poblado
     Dado un corpus sin "cited_by_id" poblado
-    Cuando ejecuto "b2g enrich --max-citing 25 --json"
+    Cuando ejecuto "b2g chain --direction forward --max-citing 25 --json"
     Y luego ejecuto "b2g build --json"
     Entonces "data.networks_built" es 5
     Y "data.networks" incluye el kind "cocitation"
     # Networks.quick agrega cocitación solo si algún paper tiene cited_by_id (Hito 8b).
-    # enrich NO transiciona el lazo (ortogonal al FSM).
+    # La pasada de co-citación corre automática dentro de chain/build (Enricher absorbido, #162);
+    # el verbo suelto b2g enrich se retiró en 0.12.0 (#207).
+    # ADR 0048/#270: "b2g chain --direction forward" puebla cited_by_id de las semillas alcanzadas
+    # al traer los citantes. Por eso el lazo natural seed → chain forward → curate accept → build
+    # arma la co-citación (ver B-forrajear).
 
   Escenario: D1 — Filtrar el corpus por curación antes de proyectar
-    Cuando ejecuto "b2g build --corpus-scope accepted --json"
+    Cuando ejecuto "b2g build --scope accepted --json"
     Entonces el exit code es 0
-    Y "data.corpus_scope" es "accepted"
+    Y "data.scope" es "accepted"
     # accepted = semillas (is_seed=True) + papers aceptados. NO confundir con NetworkSpec.scope.
 
   Escenario: D1 — Scope que deja 0 papers no es error
@@ -95,17 +99,20 @@ Característica: Proyectar el corpus a redes bibliométricas y exportarlas
     Y "error.code" indica un error de datos (DataError)
     # "No hay artefactos de build. Ejecutá primero b2g build."
 
-  # --- D (capa declarativa) · Redes ad-hoc desde YAML ---
-  Escenario: D1 — Construir redes declarativas desde un YAML (networks --spec)
+  # --- D (capa declarativa) · Redes declarativas desde YAML ---
+  # El ex verbo "b2g networks --spec" (transversal, ad-hoc) se retiró en 0.12.0 (#207);
+  # su forma canónica es "b2g build --spec" (paso BUILD pleno: transiciona y sella el hash).
+  Escenario: D1 — Construir redes declarativas desde un YAML (build --spec)
     Dado un archivo "redes.yaml" con la clave raíz "networks:" (lista de NetworkSpec)
-    Cuando ejecuto "b2g networks --spec redes.yaml --json"
+    Cuando ejecuto "b2g build --spec redes.yaml --json"
     Entonces el exit code es 0
-    Y "command" es "networks"
+    Y "command" es "build"
     Y "data.networks" tiene una entrada por red definida en el YAML
-    Y "networks --spec" NO transiciona el lazo ni sella "networks/.corpus_hash"
+    Y tras el build el estado del lazo transiciona a "BUILT"
+    Y "networks/.corpus_hash" queda sellado con el hash del corpus
 
   Escenario: D1 — YAML de redes malformado o spec inválida
     Dado un "redes.yaml" con un campo desconocido (extra="forbid")
-    Cuando ejecuto "b2g networks --spec redes.yaml --json"
+    Cuando ejecuto "b2g build --spec redes.yaml --json"
     Entonces el exit code es 2
     Y "error.code" indica un error de datos (DataError)

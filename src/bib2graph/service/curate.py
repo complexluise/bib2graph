@@ -528,7 +528,7 @@ def accept_papers(
         if missing:
             raise DataError(
                 f"IDs no encontrados en el corpus: {missing}. "
-                "Verificá los ids con 'b2g inspect'."
+                "Verificá los ids con 'b2g read list' o 'b2g status'."
             )
 
         updated = corpus.accept(ids, by=by, decided_at=decided_at)
@@ -581,7 +581,7 @@ def reject_papers(
         if missing:
             raise DataError(
                 f"IDs no encontrados en el corpus: {missing}. "
-                "Verificá los ids con 'b2g inspect'."
+                "Verificá los ids con 'b2g read list' o 'b2g status'."
             )
 
         updated = corpus.reject(ids, by=by, decided_at=decided_at)

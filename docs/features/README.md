@@ -61,31 +61,31 @@ uv run b2g seed --from-bib semillas.bib --json     # sin red
 uv run b2g chain --direction both --depth 1 --max-citing 25 --json
 
 # C — curar
-uv run b2g filter --year-gte 2010 --language en --json
+uv run b2g curate filter --year-gte 2010 --language en --json
 uv run b2g curate dump --json                      # escribe exports/curacion.csv (solo candidatos)
 # (editar la columna decision en exports/curacion.csv)
 uv run b2g curate apply exports/curacion.csv --json
-uv run b2g accept --ids oa:abc123 --json
+uv run b2g curate accept --ids oa:abc123 --json
 
 # D — redes
-uv run b2g enrich --max-citing 25 --json           # puebla cited_by_id (habilita cocitación)
 uv run b2g build --json                            # 4 o 5 redes en networks/<kind>/
-uv run b2g networks --spec redes.yaml --json       # redes ad-hoc desde YAML
+uv run b2g build --spec redes.yaml --json          # redes declarativas desde YAML
 uv run b2g export --format graphml --json
 
 # E — reproducibilidad / agente
-uv run b2g snapshot --json                          # snapshots/<...>/corpus.parquet + manifest.json
+uv run b2g snapshot create --json                   # snapshots/<...>/corpus.parquet + manifest.json
 uv run b2g status --json                            # mapa del lazo, conteos, workspace
-uv run b2g restore --from-corpus corpus.parquet --json   # rehidrata sin red
+uv run b2g snapshot restore --from-corpus corpus.parquet --json   # rehidrata sin red
 
 # Caso real reproducible sin red (gate #33):
-uv run b2g restore --from-corpus ../examples/valoraciones/corpus.parquet --json
+uv run b2g snapshot restore --from-corpus ../examples/valoraciones/corpus.parquet --json
 uv run b2g build --json
 ```
 
-Los pasos con red (`seed --equation/--spec`, `chain`, `enrich`, `monitor`) consultan OpenAlex; los
-sin red (`seed --from-bib`, `filter`, `accept`/`reject`/`curate`, `build`, `networks`, `export`,
-`snapshot`, `restore`, `status`) son deterministas y no requieren conexión.
+Los pasos con red (`seed --equation/--spec`, `chain`, `chain --since`) consultan OpenAlex; los
+sin red (`seed --from-bib`, `curate filter`, `curate accept/reject`, `build`, `export`,
+`snapshot create/restore`, `status`) son deterministas y no requieren conexión. La pasada de
+enriquecimiento (refs→DOI + co-citación) corre automática dentro de `chain`/`build`.
 
 ## Nota sobre futura ejecutabilidad (pytest-bdd)
 

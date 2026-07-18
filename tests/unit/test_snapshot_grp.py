@@ -7,12 +7,12 @@ Casos cubiertos:
 3.  ``snapshot restore`` mergea+dedup y transiciona a FILTERED.
 4.  ``snapshot restore`` envelope correcto: ``command == "snapshot restore"``.
 5.  ``snapshot`` sin subcomando → help + exit 0 (NO envelope de error).
-6.  ``restore`` suelto (shim) sigue funcionando idéntico (delega al servicio).
-7.  ``restore`` suelto: ``command == "restore"`` (compat backward).
-8.  Reloj inyectado: ``run_restore`` en service acepta ``decided_at`` param.
-9.  ``run_snapshot`` importable desde ``cli.commands.snapshot`` (backward compat).
-10. ``run_restore`` importable desde ``cli.commands.restore`` (backward compat).
-11. Stdout puro (#151): en modo JSON, stdout == exactamente 1 línea.
+6.  Reloj inyectado: ``run_restore`` en service acepta ``decided_at`` param.
+7.  ``run_snapshot`` importable desde ``cli.commands.snapshot`` (backward compat).
+8.  Stdout puro (#151): en modo JSON, stdout == exactamente 1 línea.
+
+El verbo suelto ``b2g restore`` (shim deprecado) fue retirado en 0.12.0 (#207,
+ADR 0038 P1); su forma canónica única es ``b2g snapshot restore``.
 
 Filosofía (AGENTS.md): se testea la FUNCIÓN detrás del comando cuando es
 posible; CliRunner solo donde hay integración necesaria.
@@ -273,54 +273,7 @@ def test_snapshot_sin_subcomando_stdout_no_envelope(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 6 & 7. restore suelto (shim): sigue funcionando, command == "restore"
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_restore_shim_funciona(tmp_path: Path) -> None:
-    """``b2g restore --from-corpus`` (shim) importa el corpus y transiciona a FILTERED."""
-    from click.testing import CliRunner
-
-    from bib2graph.cli import b2g
-    from bib2graph.cycle import CycleState
-    from bib2graph.stores.duckdb import DuckDBStore
-    from bib2graph.workspace import Workspace
-
-    ws_dir = tmp_path / "ws"
-    ws = Workspace.init(ws_dir, "test")
-    parquet_path = _make_parquet(tmp_path / "corpus.parquet")
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        [
-            "--workspace",
-            str(ws_dir),
-            "restore",
-            "--from-corpus",
-            str(parquet_path),
-            "--json",
-        ],
-        catch_exceptions=False,
-    )
-
-    assert result.exit_code == 0, f"Salida inesperada:\n{result.output}"
-    # Usar result.stdout porque b2g restore (shim deprecado, #165) emite aviso
-    # a stderr; result.output mezcla ambas streams en Click 8.4.1.
-    lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
-    assert len(lines) == 1
-    envelope = json.loads(lines[0])
-    assert envelope["ok"] is True
-    assert envelope["command"] == "restore"  # backward compat — NO "snapshot restore"
-    assert envelope["data"]["state"] == "FILTERED"
-
-    store = DuckDBStore(ws.library_path)
-    assert store.backend.loop_state() == CycleState.FILTERED
-
-
-# ---------------------------------------------------------------------------
-# 8. Reloj inyectado: run_restore acepta decided_at
+# 6. Reloj inyectado: run_restore acepta decided_at
 # ---------------------------------------------------------------------------
 
 
@@ -345,7 +298,7 @@ def test_run_restore_acepta_decided_at(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 9 & 10. Backward compat: importar run_snapshot / run_restore desde CLI modules
+# 7. Backward compat: importar run_snapshot desde cli.commands.snapshot
 # ---------------------------------------------------------------------------
 
 
@@ -364,21 +317,13 @@ def test_run_snapshot_importable_desde_cli_snapshot(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_run_restore_importable_desde_cli_restore(tmp_path: Path) -> None:
-    """``from bib2graph.cli.commands.restore import run_restore`` sigue funcionando."""
-    from bib2graph.cli.commands.restore import run_restore
-    from bib2graph.cycle import CycleState
-
-    parquet_path = _make_parquet(tmp_path / "corpus.parquet")
-    store_path = tmp_path / "test.duckdb"
-
-    data = run_restore(store_path, parquet_path)
-    assert data["state"] == str(CycleState.FILTERED)
-
-
-@pytest.mark.unit
 def test_run_restore_importable_desde_service_snapshot(tmp_path: Path) -> None:
-    """``from bib2graph.service.snapshot import run_restore`` funciona directamente."""
+    """``from bib2graph.service.snapshot import run_restore`` funciona directamente.
+
+    Fuente única (ADR 0038 §163): ``snapshot restore`` delega en
+    ``service.snapshot.run_restore``.  El shim suelto ``cli.commands.restore``
+    fue retirado en 0.12.0 (#207).
+    """
     from bib2graph.cycle import CycleState
     from bib2graph.service.snapshot import run_restore
 
@@ -390,7 +335,7 @@ def test_run_restore_importable_desde_service_snapshot(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 11. Stdout puro: en modo JSON stdout == exactamente 1 línea
+# 8. Stdout puro: en modo JSON stdout == exactamente 1 línea
 # ---------------------------------------------------------------------------
 
 

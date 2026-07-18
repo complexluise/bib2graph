@@ -40,9 +40,9 @@ Característica: Curar el corpus con filtros PRISMA y biblioteca viva
 
   # --- C3 · Filtros de inclusión/exclusión con conteo por paso (PRISMA) ---
   Escenario: C3 — Filtrar por año e idioma con conteo en cada paso
-    Cuando ejecuto "b2g filter --year-gte 2010 --language en --language es --json"
+    Cuando ejecuto "b2g curate filter --year-gte 2010 --language en --language es --json"
     Entonces el exit code es 0
-    Y "command" es "filter"
+    Y "command" es "curate filter"
     Y "data.criteria_applied" es 2
     Y "data.steps" es una lista, una entrada por criterio
     Y cada entrada tiene "count_before", "count_after" y "excluded"
@@ -51,35 +51,35 @@ Característica: Curar el corpus con filtros PRISMA y biblioteca viva
     # Los filtros MARCAN rejected (no borran): el corpus conserva la trazabilidad PRISMA.
 
   Escenario: C3 — Filtrar sin ningún criterio es un error de datos
-    Cuando ejecuto "b2g filter --json"
+    Cuando ejecuto "b2g curate filter --json"
     Entonces el exit code es 2
     Y "error.code" indica un error de datos (DataError)
     # "Debés especificar al menos un criterio: --year-gte/--year-lte/--language/--type/--min-citations."
 
   Escenario: C3 — Filtro por mínimo de citas
-    Cuando ejecuto "b2g filter --min-citations 5 --json"
+    Cuando ejecuto "b2g curate filter --min-citations 5 --json"
     Entonces el exit code es 0
     Y "data.steps" incluye un paso de mínimo de citas (len(cited_by_id) >= 5)
 
   # --- C4 · Aceptar/rechazar + biblioteca viva persistida que crece ---
   Escenario: C4 — Aceptar candidatos por ID
     Dado un candidato con id "oa:abc123def456" en el corpus
-    Cuando ejecuto "b2g accept --ids oa:abc123def456 --json"
+    Cuando ejecuto "b2g curate accept --ids oa:abc123def456 --json"
     Entonces el exit code es 0
-    Y "command" es "accept"
+    Y "command" es "curate accept"
     Y "data.accepted_count" es 1
-    Y "accept" NO transiciona el estado del lazo (curación transversal)
+    Y "curate accept" NO transiciona el estado del lazo (curación transversal)
 
   Escenario: C4 — Aceptar un ID inexistente
-    Cuando ejecuto "b2g accept --ids oa:no-existe --json"
+    Cuando ejecuto "b2g curate accept --ids oa:no-existe --json"
     Entonces el exit code es 2
     Y "error.code" indica un error de datos (DataError)
-    # "IDs no encontrados en el corpus: [...]. Verificá con b2g inspect."
+    # "IDs no encontrados en el corpus: [...]. Verificá con b2g read show --id <ID>."
 
   Escenario: C4 — Rechazar candidatos por ID
-    Cuando ejecuto "b2g reject --ids oa:abc123def456 --json"
+    Cuando ejecuto "b2g curate reject --ids oa:abc123def456 --json"
     Entonces el exit code es 0
-    Y "command" es "reject"
+    Y "command" es "curate reject"
     # reject tampoco transiciona el lazo (curación transversal).
 
   # --- C4 (escala) · Curación en lote vía CSV ---

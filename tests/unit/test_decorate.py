@@ -709,3 +709,180 @@ def test_export_graphml_incluye_doi_url(tmp_path: Path) -> None:
     assert "url" not in reloaded.nodes["PNODOI"], (
         "url no debería aparecer en PNODOI tras round-trip GraphML"
     )
+
+
+# ---------------------------------------------------------------------------
+# URL fallback a OpenAlex + campos adicionales en nodos.csv (#203)
+# ---------------------------------------------------------------------------
+
+
+def _make_table_url_fallback() -> pa.Table:
+    """Tabla con: paper con DOI, paper sin DOI pero con source_id de OpenAlex,
+    y paper sin DOI ni source_id (sin URL posible). Todos comparten refs para
+    quedar conectados en el acoplamiento bibliográfico.
+    """
+    rows = [
+        {
+            "id": "PDOI",
+            "source_id": "W111",
+            "doi": "10.1234/con-doi",
+            "title": "Paper con DOI",
+            "year": 2024,
+            "abstract": None,
+            "source": "Revista de Ejemplo",
+            "language": None,
+            "publisher": None,
+            "research_areas": None,
+            "is_seed": True,
+            "curation_status": "accepted",
+            "provenance": None,
+            "authors_raw": ["Ana Pérez", "José Muñoz"],
+            "authors_id": ["a1", "a2"],
+            "authors_affiliations": None,
+            "keywords_raw": None,
+            "keywords_id": ["bibliometría", "análisis de redes"],
+            "institutions_raw": None,
+            "institutions_id": None,
+            "references_id": ["R_shared"],
+            "references_doi": None,
+            "cited_by_id": ["C1", "C2", "C3"],
+        },
+        {
+            "id": "POA",
+            "source_id": "W222",
+            "doi": None,
+            "title": "Paper sin DOI, con OpenAlex id",
+            "year": 2023,
+            "abstract": None,
+            "source": None,
+            "language": None,
+            "publisher": None,
+            "research_areas": None,
+            "is_seed": True,
+            "curation_status": "candidate",
+            "provenance": None,
+            "authors_raw": None,
+            "authors_id": None,
+            "authors_affiliations": None,
+            "keywords_raw": None,
+            "keywords_id": None,
+            "institutions_raw": None,
+            "institutions_id": None,
+            "references_id": ["R_shared"],
+            "references_doi": None,
+            "cited_by_id": None,
+        },
+        {
+            "id": "PNADA",
+            "source_id": None,
+            "doi": None,
+            "title": "Paper sin DOI ni OpenAlex id",
+            "year": 2022,
+            "abstract": None,
+            "source": None,
+            "language": None,
+            "publisher": None,
+            "research_areas": None,
+            "is_seed": False,
+            "curation_status": "rejected",
+            "provenance": None,
+            "authors_raw": None,
+            "authors_id": None,
+            "authors_affiliations": None,
+            "keywords_raw": None,
+            "keywords_id": None,
+            "institutions_raw": None,
+            "institutions_id": None,
+            "references_id": ["R_shared"],
+            "references_doi": None,
+            "cited_by_id": None,
+        },
+    ]
+    return pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
+
+
+@pytest.mark.unit
+def test_url_doi_first_sobre_source_id() -> None:
+    """Con DOI y source_id ambos presentes, url usa el DOI (#203)."""
+    table = _make_table_url_fallback()
+    projector = BibliographicCouplingProjector()
+    g = projector.project(table)
+    decorate_graph(g, table, NetworkKind.BIBLIOGRAPHIC_COUPLING)
+
+    assert g.nodes["PDOI"]["url"] == "https://doi.org/10.1234/con-doi"
+
+
+@pytest.mark.unit
+def test_url_fallback_openalex_sin_doi() -> None:
+    """Sin DOI pero con source_id de OpenAlex, url cae al link de OpenAlex (#203)."""
+    table = _make_table_url_fallback()
+    projector = BibliographicCouplingProjector()
+    g = projector.project(table)
+    decorate_graph(g, table, NetworkKind.BIBLIOGRAPHIC_COUPLING)
+
+    assert "doi" not in g.nodes["POA"], "no debe inventar un doi ausente"
+    assert g.nodes["POA"]["url"] == "https://openalex.org/W222"
+
+
+@pytest.mark.unit
+def test_sin_doi_ni_source_id_no_hay_url() -> None:
+    """Sin DOI ni source_id, el nodo no recibe url (no se inventa nada, #203)."""
+    table = _make_table_url_fallback()
+    projector = BibliographicCouplingProjector()
+    g = projector.project(table)
+    decorate_graph(g, table, NetworkKind.BIBLIOGRAPHIC_COUPLING)
+
+    assert "url" not in g.nodes["PNADA"]
+    assert "doi" not in g.nodes["PNADA"]
+
+
+@pytest.mark.unit
+def test_campos_adicionales_venue_authors_keywords_cited_by_count() -> None:
+    """Nodos de paper traen venue/authors/keywords/cited_by_count cuando hay datos (#203)."""
+    table = _make_table_url_fallback()
+    projector = BibliographicCouplingProjector()
+    g = projector.project(table)
+    decorate_graph(g, table, NetworkKind.BIBLIOGRAPHIC_COUPLING)
+
+    attrs = g.nodes["PDOI"]
+    assert attrs["venue"] == "Revista de Ejemplo"
+    assert attrs["authors"] == "Ana Pérez|José Muñoz"
+    assert attrs["keywords"] == "bibliometría|análisis de redes"
+    assert attrs["cited_by_count"] == 3
+
+    # El nodo sin ninguno de esos datos no trae claves basura (criterio "vacío = ausente")
+    attrs_vacio = g.nodes["POA"]
+    assert "venue" not in attrs_vacio
+    assert "authors" not in attrs_vacio
+    assert "keywords" not in attrs_vacio
+    assert "cited_by_count" not in attrs_vacio
+
+
+@pytest.mark.unit
+def test_export_csv_incluye_url_fallback_y_campos_nuevos(tmp_path: Path) -> None:
+    """nodos.csv trae url (DOI-first/OpenAlex-fallback) + venue/authors/keywords/
+    cited_by_count, con tildes intactas vía BOM UTF-8 (#203)."""
+    table = _make_table_url_fallback()
+    projector = BibliographicCouplingProjector()
+    g = projector.project(table)
+    decorate_graph(g, table, NetworkKind.BIBLIOGRAPHIC_COUPLING)
+
+    CsvExporter().export(g, {}, tmp_path)
+
+    raw = (tmp_path / "nodos.csv").read_bytes()
+    assert raw.startswith(b"\xef\xbb\xbf"), "nodos.csv debe empezar con BOM UTF-8"
+
+    content = (tmp_path / "nodos.csv").read_text(encoding="utf-8-sig")
+    header = content.splitlines()[0]
+    for col in ("url", "venue", "authors", "keywords", "cited_by_count"):
+        assert col in header, (
+            f"columna {col!r} ausente en nodos.csv; header: {header!r}"
+        )
+
+    # DOI-first
+    assert "https://doi.org/10.1234/con-doi" in content
+    # Fallback a OpenAlex para el paper sin DOI
+    assert "https://openalex.org/W222" in content
+    # Tildes sobreviven el round-trip (autores/keywords con acentos)
+    assert "Ana Pérez|José Muñoz" in content
+    assert "bibliometría|análisis de redes" in content

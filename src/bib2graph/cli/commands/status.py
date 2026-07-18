@@ -27,7 +27,12 @@ import click
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import open_store_readonly, resolve_workspace
+from bib2graph.cli._store import (
+    open_store_readonly,
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 from bib2graph.cycle import CURATION_ACTIONS, available_transitions, next_best_action
 from bib2graph.networks.facade import predict_build_preview
 
@@ -190,17 +195,16 @@ def status_cmd(
 
     data = run_status(store_path)
 
-    data["workspace"] = {
-        "root": str(ws.root) if ws.root is not None else None,
-        "source": ws.source,
-    }
+    data["workspace"] = workspace_echo(ws)
 
     # ADR 0029 — aviso de staleness de la cache de redes.
     # Si networks/.corpus_hash existe y no coincide con el corpus vivo,
     # se emite un aviso accionable (no se regenera automáticamente).
     # R5: open_store_readonly para consistencia (no auto-crea ante typo;
     # mapea StoreLockedError → exit 5 vía el decorador @handle_errors).
-    warnings: list[str] = []
+    # ADR 0045 (#259): warning accionable si el workspace se resolvió por
+    # walk-up implícito del cwd (source=="cwd").
+    warnings: list[str] = list(workspace_walkup_warning(ws))
     from bib2graph.backends.memory import compute_corpus_hash
 
     _store = open_store_readonly(store_path)

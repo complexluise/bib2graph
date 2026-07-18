@@ -309,7 +309,7 @@ def get_scent(ws: Workspace, paper_id: str) -> dict[str, Any]:
     if not matching:
         raise DataError(
             f"Paper '{paper_id}' no encontrado en el corpus. "
-            "Verificá el id con 'b2g inspect'."
+            "Verificá el id con 'b2g read list' o 'b2g status'."
         )
 
     paper_row = matching[0]

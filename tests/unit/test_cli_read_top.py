@@ -390,8 +390,9 @@ def test_get_top_cocitacion_vacia_es_honest_empty(tmp_path: Path) -> None:
         "Se esperaba 'fix_command' cuando co-citación está vacía"
     )
     assert result["fix_command"] is not None
-    # El fix_command debe apuntar al enriquecimiento
-    assert "enrich" in str(result["fix_command"]).lower()
+    # El fix_command debe apuntar a build (pasada cited_by automática, ADR 0038
+    # §enrich; el verbo suelto 'enrich' fue retirado en 0.12.0, #207).
+    assert "build" in str(result["fix_command"]).lower()
 
 
 @pytest.mark.unit

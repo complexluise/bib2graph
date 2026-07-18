@@ -227,13 +227,13 @@ def test_run_status_devuelve_claves_esperadas(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_run_filter_devuelve_claves_esperadas(tmp_path: Path) -> None:
-    """run_filter devuelve steps, total_papers, criteria_applied."""
-    from bib2graph.cli.commands.filter import run_filter
+    """filter_corpus devuelve steps, total_papers, criteria_applied."""
+    from bib2graph.service.curate import filter_corpus
 
     store_path = tmp_path / "test.duckdb"
     _seed_store(store_path)
 
-    data = run_filter(store_path, year_gte=2000)
+    data = filter_corpus(store_path, year_gte=2000)
 
     assert "steps" in data
     assert "total_papers" in data
@@ -258,21 +258,6 @@ def test_run_validate_valido(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_run_inspect_sin_id(tmp_path: Path) -> None:
-    """run_inspect sin --id devuelve manifest y total_papers."""
-    from bib2graph.cli.commands.inspect import run_inspect
-
-    store_path = tmp_path / "test.duckdb"
-    _seed_store(store_path)
-
-    data = run_inspect(store_path)
-
-    assert "manifest" in data
-    assert "total_papers" in data
-    assert data["total_papers"] == 2
-
-
-@pytest.mark.unit
 def test_run_snapshot_crea_archivos(tmp_path: Path) -> None:
     """run_snapshot crea el directorio con corpus.parquet y manifest.json."""
     from bib2graph.cli.commands.snapshot import run_snapshot
@@ -291,14 +276,14 @@ def test_run_snapshot_crea_archivos(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_run_accept_marca_aceptado(tmp_path: Path) -> None:
-    """run_accept marca el paper como accepted y persiste."""
-    from bib2graph.cli.commands.accept import run_accept
+    """accept_papers marca el paper como accepted y persiste."""
+    from bib2graph.service.curate import accept_papers
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
     _seed_store(store_path)
 
-    data = run_accept(store_path, ["P1"])
+    data = accept_papers(store_path, ["P1"])
 
     assert data["accepted_count"] == 1
     # Verificar que persiste
@@ -311,14 +296,14 @@ def test_run_accept_marca_aceptado(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_run_reject_marca_rechazado(tmp_path: Path) -> None:
-    """run_reject marca el paper como rejected y persiste."""
-    from bib2graph.cli.commands.reject import run_reject
+    """reject_papers marca el paper como rejected y persiste."""
+    from bib2graph.service.curate import reject_papers
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
     _seed_store(store_path)
 
-    data = run_reject(store_path, ["P2"])
+    data = reject_papers(store_path, ["P2"])
 
     assert data["rejected_count"] == 1
     store = DuckDBStore(store_path)
@@ -352,13 +337,13 @@ def test_exit_code_1_sin_workspace(tmp_path: Path) -> None:
 def test_exit_code_2_accept_id_inexistente(tmp_path: Path) -> None:
     """accept de id inexistente → DataError → exit 2."""
     from bib2graph.cli._errors import DataError
-    from bib2graph.cli.commands.accept import run_accept
+    from bib2graph.service.curate import accept_papers
 
     store_path = tmp_path / "test.duckdb"
     _seed_store(store_path)
 
     with pytest.raises(DataError) as exc_info:
-        run_accept(store_path, ["ID_QUE_NO_EXISTE"])
+        accept_papers(store_path, ["ID_QUE_NO_EXISTE"])
 
     assert exc_info.value.exit_code == 2
 
@@ -367,13 +352,13 @@ def test_exit_code_2_accept_id_inexistente(tmp_path: Path) -> None:
 def test_exit_code_2_filter_sin_criterios(tmp_path: Path) -> None:
     """filter sin criterios → DataError → exit 2."""
     from bib2graph.cli._errors import DataError
-    from bib2graph.cli.commands.filter import run_filter
+    from bib2graph.service.curate import filter_corpus
 
     store_path = tmp_path / "test.duckdb"
     _seed_store(store_path)
 
     with pytest.raises(DataError) as exc_info:
-        run_filter(store_path)
+        filter_corpus(store_path)
 
     assert exc_info.value.exit_code == 2
 
@@ -550,9 +535,9 @@ def test_e2e_seed_chain_filter_build_export(tmp_path: Path) -> None:
     from bib2graph.cli.commands.build import run_build
     from bib2graph.cli.commands.chain import run_chain
     from bib2graph.cli.commands.export import run_export
-    from bib2graph.cli.commands.filter import run_filter
     from bib2graph.cli.commands.seed import run_seed
     from bib2graph.cycle import CycleState
+    from bib2graph.service.curate import filter_corpus
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "investigacion.duckdb"
@@ -580,7 +565,7 @@ def test_e2e_seed_chain_filter_build_export(tmp_path: Path) -> None:
     assert "total_papers" in chain_data
 
     # 3) filter: incluir solo papers con año >= 2010
-    filter_data = run_filter(store_path, year_gte=2010)
+    filter_data = filter_corpus(store_path, year_gte=2010)
     assert filter_data["criteria_applied"] == 1
     assert len(filter_data["steps"]) == 1
 
@@ -623,9 +608,9 @@ def test_e2e_seed_chain_filter_build_export(tmp_path: Path) -> None:
 def test_status_tras_seed_chain_filter(tmp_path: Path) -> None:
     """run_status tras seed→chain→filter devuelve loop_state=FILTERED y conteos."""
     from bib2graph.cli.commands.chain import run_chain
-    from bib2graph.cli.commands.filter import run_filter
     from bib2graph.cli.commands.seed import run_seed
     from bib2graph.cli.commands.status import run_status
+    from bib2graph.service.curate import filter_corpus
 
     store_path = tmp_path / "seq.duckdb"
     transport = _make_mock_transport()
@@ -641,7 +626,7 @@ def test_status_tras_seed_chain_filter(tmp_path: Path) -> None:
     )
 
     # filter
-    run_filter(store_path, year_gte=2000)
+    filter_corpus(store_path, year_gte=2000)
 
     # status
     data = run_status(store_path)
@@ -667,9 +652,9 @@ def test_loop_state_transiciona_en_secuencia(tmp_path: Path) -> None:
     """seed transiciona a SEEDED; chain a FORAGED; filter a FILTERED; build a BUILT."""
     from bib2graph.cli.commands.build import run_build
     from bib2graph.cli.commands.chain import run_chain
-    from bib2graph.cli.commands.filter import run_filter
     from bib2graph.cli.commands.seed import run_seed
     from bib2graph.cycle import CycleState
+    from bib2graph.service.curate import filter_corpus
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "transitions.duckdb"
@@ -689,7 +674,7 @@ def test_loop_state_transiciona_en_secuencia(tmp_path: Path) -> None:
     assert store3.backend.loop_state() == CycleState.FORAGED
 
     # Tras filter
-    run_filter(store_path, year_gte=2000)
+    filter_corpus(store_path, year_gte=2000)
     store4 = DuckDBStore(store_path)
     assert store4.backend.loop_state() == CycleState.FILTERED
 

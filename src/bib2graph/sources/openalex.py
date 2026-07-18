@@ -83,6 +83,17 @@ _MSG_RATE_LIMIT_429 = (
     " (variable de entorno OPENALEX_API_KEY). Ver ADR 0012."
 )
 
+# Mensaje accionable para 504 (ADR 0045 #258): no es reintentable sin cambiar
+# la petición (a diferencia de 429), así que sugiere simplificar la query en
+# vez de esperar/backoff.
+_MSG_UPSTREAM_TIMEOUT_504 = (
+    "OpenAlex respondió 504 (Gateway Timeout) tras agotar los reintentos:"
+    " la petición tardó demasiado en resolverse upstream. A diferencia de un"
+    " 429, reintentar la misma consulta probablemente vuelva a fallar."
+    " Simplificá la query (menos términos, --max-results más chico) y"
+    " reintentá."
+)
+
 
 # Traducción de ecuación (función pura, sin I/O)
 
@@ -539,7 +550,11 @@ class OpenAlexSource:
             works, openalex_version = self._fetch_all(executed_query)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 429:
-                raise NetworkError(_MSG_RATE_LIMIT_429) from exc
+                raise NetworkError(_MSG_RATE_LIMIT_429, subcode="RATE_LIMITED") from exc
+            if exc.response.status_code == 504:
+                raise NetworkError(
+                    _MSG_UPSTREAM_TIMEOUT_504, subcode="UPSTREAM_TIMEOUT"
+                ) from exc
             raise
 
         # R5: bulk-load — construir tabla Arrow de una vez en vez de N add_paper/clone.
@@ -599,7 +614,8 @@ class OpenAlexSource:
             Tupla ``(works, openalex_version)`` con retry/backoff.
 
         Raises:
-            NetworkError: Si se agotan los reintentos con 429 (con mensaje accionable).
+            NetworkError: Si se agotan los reintentos con 429 o 504 (con
+                mensaje accionable y ``subcode`` tipado, ADR 0045 #258).
             httpx.HTTPStatusError: Si se agotan los reintentos con otro código retryable.
         """
         last_exc: httpx.HTTPStatusError | None = None
@@ -616,7 +632,13 @@ class OpenAlexSource:
         # Se agotaron los reintentos
         assert last_exc is not None
         if last_exc.response.status_code == 429:
-            raise NetworkError(_MSG_RATE_LIMIT_429) from last_exc
+            raise NetworkError(
+                _MSG_RATE_LIMIT_429, subcode="RATE_LIMITED"
+            ) from last_exc
+        if last_exc.response.status_code == 504:
+            raise NetworkError(
+                _MSG_UPSTREAM_TIMEOUT_504, subcode="UPSTREAM_TIMEOUT"
+            ) from last_exc
         raise last_exc
 
     def fetch_citing(self, openalex_id: str) -> list[dict[str, Any]]:

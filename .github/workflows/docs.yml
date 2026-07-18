@@ -30,6 +30,11 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
+    env:
+      # mkdocs-material 9.7.2+ avisa sobre la migración a MkDocs 2.0 (ruptura
+      # total: sin plugins, config TOML). Ya estamos pineados <10 (defensa en
+      # profundidad, ver pyproject.toml), así que el aviso es ruido en CI.
+      NO_MKDOCS_2_WARNING: "1"
     steps:
       - uses: actions/checkout@v5
       - name: Install uv

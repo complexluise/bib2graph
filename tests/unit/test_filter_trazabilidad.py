@@ -89,7 +89,7 @@ def _seed_store(store_path: Path, rows: list[dict[str, Any]]) -> None:
 
 def test_manifest_filters_persiste_tras_run_filter(tmp_path: Path) -> None:
     """Tras run_filter, manifest.filters no queda vacío en la siguiente carga."""
-    from bib2graph.cli.commands.filter import run_filter
+    from bib2graph.service.curate import filter_corpus
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -103,7 +103,7 @@ def test_manifest_filters_persiste_tras_run_filter(tmp_path: Path) -> None:
     )
 
     # Aplicar un filtro de idioma
-    run_filter(store_path, language=["en"])
+    filter_corpus(store_path, language=["en"])
 
     # Reabrir el store y verificar que manifest.filters sobrevivió
     store = DuckDBStore(store_path)
@@ -117,7 +117,7 @@ def test_manifest_filters_persiste_tras_run_filter(tmp_path: Path) -> None:
 
 def test_manifest_filters_tiene_conteos_correctos(tmp_path: Path) -> None:
     """Los conteos del FilterStep persisten con los valores calculados."""
-    from bib2graph.cli.commands.filter import run_filter
+    from bib2graph.service.curate import filter_corpus
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -130,7 +130,7 @@ def test_manifest_filters_tiene_conteos_correctos(tmp_path: Path) -> None:
         ],
     )
 
-    run_filter(store_path, language=["en"])
+    filter_corpus(store_path, language=["en"])
 
     store = DuckDBStore(store_path)
     corpus = store.load()
@@ -145,7 +145,7 @@ def test_manifest_filters_tiene_conteos_correctos(tmp_path: Path) -> None:
 
 def test_manifest_filters_persiste_multiples_pasos(tmp_path: Path) -> None:
     """Varios criterios en una sola llamada → todos los pasos persisten."""
-    from bib2graph.cli.commands.filter import run_filter
+    from bib2graph.service.curate import filter_corpus
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -158,7 +158,7 @@ def test_manifest_filters_persiste_multiples_pasos(tmp_path: Path) -> None:
         ],
     )
 
-    run_filter(store_path, year_gte=2015, language=["en"])
+    filter_corpus(store_path, year_gte=2015, language=["en"])
 
     store = DuckDBStore(store_path)
     corpus = store.load()
@@ -180,7 +180,7 @@ def test_manifest_filters_persiste_multiples_pasos(tmp_path: Path) -> None:
 
 def test_provenance_rejected_tiene_source_con_criterio(tmp_path: Path) -> None:
     """El paper rechazado tiene en provenance source = criterio del filtro."""
-    from bib2graph.cli.commands.filter import run_filter
+    from bib2graph.service.curate import filter_corpus
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -192,7 +192,7 @@ def test_provenance_rejected_tiene_source_con_criterio(tmp_path: Path) -> None:
         ],
     )
 
-    run_filter(store_path, language=["en"])
+    filter_corpus(store_path, language=["en"])
 
     store = DuckDBStore(store_path)
     corpus = store.load()
@@ -224,7 +224,7 @@ def test_provenance_rejected_tiene_source_con_criterio(tmp_path: Path) -> None:
 
 def test_provenance_rejected_tiene_decided_by_prisma_filter(tmp_path: Path) -> None:
     """El evento rejected por filtro tiene decided_by='prisma_filter'."""
-    from bib2graph.cli.commands.filter import run_filter
+    from bib2graph.service.curate import filter_corpus
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -236,7 +236,7 @@ def test_provenance_rejected_tiene_decided_by_prisma_filter(tmp_path: Path) -> N
         ],
     )
 
-    run_filter(store_path, year_gte=2010)
+    filter_corpus(store_path, year_gte=2010)
 
     store = DuckDBStore(store_path)
     corpus = store.load()
@@ -258,8 +258,8 @@ def test_provenance_rejected_tiene_decided_by_prisma_filter(tmp_path: Path) -> N
 
 
 def test_reapply_filter_reemplaza_pasos_anteriores(tmp_path: Path) -> None:
-    """Re-ejecutar run_filter reemplaza los pasos; no los duplica."""
-    from bib2graph.cli.commands.filter import run_filter
+    """Re-ejecutar filter_corpus reemplaza los pasos; no los duplica."""
+    from bib2graph.service.curate import filter_corpus
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -272,9 +272,9 @@ def test_reapply_filter_reemplaza_pasos_anteriores(tmp_path: Path) -> None:
     )
 
     # Primera ejecución
-    run_filter(store_path, year_gte=2010)
+    filter_corpus(store_path, year_gte=2010)
     # Segunda ejecución con distinto criterio (reemplaza)
-    run_filter(store_path, year_gte=2015)
+    filter_corpus(store_path, year_gte=2015)
 
     store = DuckDBStore(store_path)
     corpus = store.load()
@@ -288,14 +288,19 @@ def test_reapply_filter_reemplaza_pasos_anteriores(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 4. inspect devuelve manifest.filters no vacío tras run_filter
+# 4. manifest.filters no vacío tras filter_corpus (verificado vía store.load())
+#
+# El verbo plano 'inspect' (que exponía manifest.filters directamente) fue
+# retirado en 0.12.0 (#207); su capacidad de lectura read-only vive ahora en
+# 'b2g status'/'b2g read'. Este test verifica la persistencia de manifest.filters
+# directamente contra el store, sin pasar por un comando CLI de lectura.
 # ---------------------------------------------------------------------------
 
 
-def test_inspect_devuelve_filters_no_vacios(tmp_path: Path) -> None:
-    """run_inspect tras run_filter refleja los pasos en manifest.filters."""
-    from bib2graph.cli.commands.filter import run_filter
-    from bib2graph.cli.commands.inspect import run_inspect
+def test_manifest_filters_no_vacio_tras_filter_via_store(tmp_path: Path) -> None:
+    """manifest.filters, leído directamente del store, refleja los pasos aplicados."""
+    from bib2graph.service.curate import filter_corpus
+    from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
     _seed_store(
@@ -306,13 +311,16 @@ def test_inspect_devuelve_filters_no_vacios(tmp_path: Path) -> None:
         ],
     )
 
-    run_filter(store_path, language=["en"])
-    data = run_inspect(store_path)
+    filter_corpus(store_path, language=["en"])
 
-    filters = data["manifest"]["filters"]
-    assert len(filters) >= 1, "inspect debe mostrar los filtros aplicados"
-    assert filters[0]["count_before"] == 2
-    assert filters[0]["count_after"] == 1
+    store = DuckDBStore(store_path)
+    corpus = store.load()
+    store.close()
+
+    filters = corpus.manifest.filters
+    assert len(filters) >= 1, "manifest.filters debe reflejar los filtros aplicados"
+    assert filters[0].count_before == 2
+    assert filters[0].count_after == 1
 
 
 # ---------------------------------------------------------------------------
@@ -327,7 +335,7 @@ def test_flujo_seed_filter_trazabilidad_completa(tmp_path: Path) -> None:
     - El paper rechazado tiene provenance con source del criterio.
     - El paper aceptado (no rechazado) no tiene evento rejected.
     """
-    from bib2graph.cli.commands.filter import run_filter
+    from bib2graph.service.curate import filter_corpus
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -341,7 +349,7 @@ def test_flujo_seed_filter_trazabilidad_completa(tmp_path: Path) -> None:
     )
 
     # Filtrar: solo incluir en/es
-    result = run_filter(store_path, language=["en", "es"])
+    result = filter_corpus(store_path, language=["en", "es"])
     assert result["criteria_applied"] == 1
     assert len(result["steps"]) == 1
     assert result["steps"][0]["excluded"] == 1  # solo C excluido

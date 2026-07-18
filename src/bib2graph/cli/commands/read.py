@@ -38,7 +38,11 @@ import click
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import UsageError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import resolve_workspace
+from bib2graph.cli._store import (
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 from bib2graph.constants import NetworkKind
 
 # Grupo raíz
@@ -132,6 +136,7 @@ def list_cmd(
 
     ws = resolve_workspace(ctx.obj)
     data = list_papers(ws, query=query, status=status, is_seed=is_seed, year=year)
+    data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -139,6 +144,7 @@ def list_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:
@@ -181,6 +187,7 @@ def stats_cmd(
 
     ws = resolve_workspace(ctx.obj)
     data = corpus_stats(ws, group_by=group_by)
+    data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -188,6 +195,7 @@ def stats_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:
@@ -229,6 +237,7 @@ def show_cmd(
 
     ws = resolve_workspace(ctx.obj)
     data = get_paper(ws, ident)
+    data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -236,6 +245,7 @@ def show_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:
@@ -292,8 +302,9 @@ def top_cmd(
                    descendente.  Default: bibliographic_coupling (robusto en
                    one-shot frío, no requiere enrich previo).
       cocitation — top N pares de co-citación por peso, SIEMPRE desde la red
-                   cocitation (requiere 'b2g enrich' previo para tener
-                   cited_by_id).  Si la red está vacía → bloque vacío con
+                   cocitation (requiere cited_by_id poblado: por un
+                   'b2g chain --direction forward' previo o la pasada cited_by
+                   de 'b2g build').  Si la red está vacía → bloque vacío con
                    reason/fix_command (honest-empty, exit 0).
 
     No requiere 'b2g build' previo: recomputa en tiempo de lectura.
@@ -302,6 +313,7 @@ def top_cmd(
 
     ws = resolve_workspace(ctx.obj)
     data = get_top(ws, n=n, kind=kind)
+    data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -309,6 +321,7 @@ def top_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:

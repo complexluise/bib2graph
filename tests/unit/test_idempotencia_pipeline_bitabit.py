@@ -163,7 +163,7 @@ def test_run_restore_corpus_hash_identico_entre_dos_runs(tmp_path: Path) -> None
     slice_parquet = tmp_path / "slice.parquet"
     pq.write_table(slice_table, str(slice_parquet))  # type: ignore[no-untyped-call]
 
-    from bib2graph.cli.commands.restore import run_restore
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     # Run A
@@ -221,7 +221,7 @@ def test_comunidades_identicas_entre_dos_runs_pipeline(tmp_path: Path) -> None:
     pq.write_table(slice_table, str(slice_parquet))  # type: ignore[no-untyped-call]
 
     from bib2graph.cli.commands.build import run_build
-    from bib2graph.cli.commands.restore import run_restore
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     # Run A: pipeline completo (incluye run_build para ejercer el camino de escritura).
@@ -307,7 +307,7 @@ def test_corpus_hash_coherente_store_vs_arrow_puro(tmp_path: Path) -> None:
     hash_arrow = corpus_arrow._backend.corpus_hash()
 
     # Path DuckDB (run_restore → DuckDBStore.load)
-    from bib2graph.cli.commands.restore import run_restore
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"

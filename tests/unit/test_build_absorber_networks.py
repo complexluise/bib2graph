@@ -2,14 +2,14 @@
 
 Cubre las decisiones y contratos del sub-issue #159 (ADR 0038):
 
-1. **Paridad**: ``build --spec YAML`` produce los mismos artefactos que
-   ``networks --spec`` para el mismo YAML.
-2. **D1**: ``build --spec`` transiciona FSM a BUILT y sella ``.corpus_hash``
-   (comportamiento deliberadamente distinto a ``networks``).
+1. [Retirado #207] La paridad ``build --spec`` ≡ ``networks --spec`` ya no
+   aplica: el verbo suelto ``networks`` fue eliminado en 0.12.0.
+2. **D1**: ``build --spec`` transiciona FSM a BUILT y sella ``.corpus_hash``.
 3. **Scopes**: ``--scope all|accepted|seeds`` filtran el corpus y sellan el hash
    del corpus filtrado.
-4. **Alias deprecado**: ``--corpus-scope seeds_only`` sigue funcionando y avisa
-   deprecación a stderr; no contamina stdout en ``--json``.
+4. **Parámetro interno**: ``run_build(corpus_scope=...)`` sigue vivo (usado por
+   ``--scope`` vía ``_map_scope``); el flag CLI deprecado ``--corpus-scope`` fue
+   retirado en 0.12.0 (#207, ADR 0038 P1) sin alias — solo queda ``--scope``.
 5. **min-weight**: aristas con peso < N se filtran; red vacía → warning específico.
 6. **No-divergencia** (ADR 0037 §(e)): corpus sin ``keywords_id`` → ``build``
    exit 0, warning ``reason``/``fix_command`` coincide con ``predict_build_preview``.
@@ -119,64 +119,11 @@ def _write_spec(path: Path, kinds: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 1. Paridad: build --spec ≡ networks --spec
+# 1. [Retirado #207] La paridad build --spec ≡ networks --spec ya no aplica:
+#    'b2g networks' fue eliminado en 0.12.0 (ADR 0038 P1); 'build --spec'
+#    (D1, abajo) es la única implementación. Su cobertura de artefactos
+#    (nodos/aristas por kind) vive en TestJsonOutput y en test_networkspec_yaml.py.
 # ---------------------------------------------------------------------------
-
-
-class TestParidadBuildVsNetworks:
-    """build --spec y networks --spec deben producir los mismos artefactos."""
-
-    def test_paridad_artefactos_mismos_nodos_aristas(self, tmp_path: Path) -> None:
-        """build --spec y networks --spec con el mismo YAML → mismos nodos/aristas."""
-        from bib2graph.cli.commands.build import run_build
-        from bib2graph.cli.commands.networks import run_networks
-
-        store_path = tmp_path / "lib.duckdb"
-        _seed_store(store_path, _rows_con_referencias())
-
-        spec_file = tmp_path / "redes.yaml"
-        _write_spec(spec_file, ["bibliographic_coupling"])
-
-        out_build = tmp_path / "out_build"
-        out_nets = tmp_path / "out_nets"
-
-        data_build = run_build(store_path, out_dir=out_build, spec_path=spec_file)
-        data_nets = run_networks(store_path, spec_file, out_dir=out_nets)
-
-        # Misma cantidad de redes
-        assert data_build["networks_built"] == data_nets["networks_built"]
-
-        # Mismos nodos y aristas por red (mismo kind)
-        build_by_kind = {n["kind"]: n for n in data_build["networks"]}
-        nets_by_kind = {n["kind"]: n for n in data_nets["networks"]}
-
-        for kind in build_by_kind:
-            assert kind in nets_by_kind, f"kind '{kind}' falta en networks"
-            assert build_by_kind[kind]["nodes"] == nets_by_kind[kind]["nodes"], (
-                f"kind={kind}: nodos divergen"
-            )
-            assert build_by_kind[kind]["edges"] == nets_by_kind[kind]["edges"], (
-                f"kind={kind}: aristas divergen"
-            )
-
-    def test_paridad_multiples_redes(self, tmp_path: Path) -> None:
-        """Con 2 redes en el YAML, build --spec y networks --spec coinciden."""
-        from bib2graph.cli.commands.build import run_build
-        from bib2graph.cli.commands.networks import run_networks
-
-        store_path = tmp_path / "lib.duckdb"
-        _seed_store(store_path, _rows_con_referencias())
-
-        spec_file = tmp_path / "redes.yaml"
-        _write_spec(spec_file, ["bibliographic_coupling", "keyword_cooccurrence"])
-
-        data_build = run_build(store_path, out_dir=tmp_path / "b", spec_path=spec_file)
-        data_nets = run_networks(store_path, spec_file, out_dir=tmp_path / "n")
-
-        assert data_build["networks_built"] == data_nets["networks_built"] == 2
-        build_kinds = {n["kind"] for n in data_build["networks"]}
-        nets_kinds = {n["kind"] for n in data_nets["networks"]}
-        assert build_kinds == nets_kinds
 
 
 # ---------------------------------------------------------------------------
@@ -231,29 +178,10 @@ class TestD1BuildSpecTransiciona:
         assert hash_file.read_text(encoding="utf-8") == data["corpus_hash"]
         assert len(data["corpus_hash"]) > 0
 
-    def test_networks_no_transiciona_fsm(self, tmp_path: Path) -> None:
-        """networks --spec NO transiciona el FSM (contraste con D1)."""
-        from bib2graph.cli.commands.networks import run_networks
-        from bib2graph.stores.duckdb import DuckDBStore
-
-        store_path = tmp_path / "lib.duckdb"
-        _seed_store(store_path, _rows_con_referencias())
-
-        spec_file = tmp_path / "redes.yaml"
-        _write_spec(spec_file, ["bibliographic_coupling"])
-
-        store_before = DuckDBStore(store_path)
-        state_before = store_before.backend.loop_state()
-        store_before.close()
-
-        run_networks(store_path, spec_file, out_dir=tmp_path / "nets")
-
-        store_after = DuckDBStore(store_path)
-        state_after = store_after.backend.loop_state()
-        store_after.close()
-
-        # networks NO debe cambiar el estado
-        assert state_after == state_before
+    # [Retirado #207] test_networks_no_transiciona_fsm probaba que el verbo
+    # suelto 'networks' (transversal, sin transición) contrastaba con D1;
+    # 'networks' fue eliminado en 0.12.0 y build --spec es ahora la única
+    # ruta — transiciona siempre, sin excepción a contrastar.
 
 
 # ---------------------------------------------------------------------------
@@ -387,80 +315,18 @@ class TestScopes:
 
 
 # ---------------------------------------------------------------------------
-# 4. Alias deprecado: --corpus-scope
+# 4. run_build(corpus_scope=...) — parámetro interno (el flag CLI
+#    '--corpus-scope' fue retirado en 0.12.0, #207, ADR 0038 P1; solo queda
+#    '--scope'). El parámetro interno 'corpus_scope' de la función núcleo
+#    sigue vivo (usado por '--scope' vía _map_scope) y se testea directo.
 # ---------------------------------------------------------------------------
 
 
-class TestAliasDeprecado:
-    """--corpus-scope funciona con aviso de deprecación; no contamina stdout en --json."""
+class TestScopeInternoSeedsOnly:
+    """run_build(corpus_scope='seeds_only') filtra correctamente (vocab interno)."""
 
-    def test_alias_deprecado_cli_avisa_a_stderr(self, tmp_path: Path) -> None:
-        """--corpus-scope emite aviso de deprecación a stderr."""
-        from click.testing import CliRunner
-
-        from bib2graph.cli import b2g
-        from bib2graph.workspace import Workspace
-
-        ws_dir = tmp_path / "ws"
-        ws = Workspace.init(ws_dir, "test")
-        _seed_store(ws.library_path, _rows_con_referencias())
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            [
-                "--workspace",
-                str(ws_dir),
-                "build",
-                "--corpus-scope",
-                "seeds_only",
-            ],
-        )
-
-        assert result.exit_code == 0, f"Salida inesperada: {result.output}"
-        assert "deprecad" in result.stderr.lower(), "Debe avisar deprecación en stderr"
-
-    def test_alias_deprecado_no_contamina_stdout_json(self, tmp_path: Path) -> None:
-        """--corpus-scope con --json: el aviso va a stderr, stdout es JSON puro."""
-        from click.testing import CliRunner
-
-        from bib2graph.cli import b2g
-        from bib2graph.workspace import Workspace
-
-        ws_dir = tmp_path / "ws"
-        ws = Workspace.init(ws_dir, "test")
-        _seed_store(ws.library_path, _rows_con_referencias())
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            [
-                "--workspace",
-                str(ws_dir),
-                "build",
-                "--corpus-scope",
-                "seeds_only",
-                "--json",
-            ],
-        )
-
-        assert result.exit_code == 0, f"Error: {result.output}"
-
-        # stdout (result.stdout) debe ser exactamente 1 línea JSON válida.
-        # Click 8.4.1: result.stdout = stdout puro; result.stderr = stderr puro.
-        stdout_lines = [line for line in result.stdout.splitlines() if line.strip()]
-        assert len(stdout_lines) == 1, (
-            f"stdout debe tener exactamente 1 línea JSON, tiene {len(stdout_lines)}: "
-            f"{result.stdout!r}"
-        )
-        envelope = json.loads(stdout_lines[0])
-        assert envelope["schema"] == "1"
-
-        # El aviso de deprecación va a stderr, no a stdout
-        assert "deprecad" in result.stderr.lower()
-
-    def test_alias_deprecado_seeds_only_funciona(self, tmp_path: Path) -> None:
-        """--corpus-scope seeds_only filtra correctamente (backward compat)."""
+    def test_corpus_scope_seeds_only_funciona(self, tmp_path: Path) -> None:
+        """run_build(corpus_scope='seeds_only') filtra a solo semillas."""
         from bib2graph.cli.commands.build import run_build
 
         store_path = tmp_path / "lib.duckdb"
@@ -1068,32 +934,6 @@ class TestFix2ScopeCliToken:
         assert data["corpus_scope"] == "seeds_only"
         assert data["scope"] == "seeds_only"
 
-    def test_scope_alias_deprecado_preserva_vocab_interno(self, tmp_path: Path) -> None:
-        """--corpus-scope seeds_only (deprecado) → data['scope']='seeds_only' (mismo vocab)."""
-        from click.testing import CliRunner
-
-        from bib2graph.cli import b2g
-        from bib2graph.workspace import Workspace
-
-        ws_dir = tmp_path / "ws"
-        ws = Workspace.init(ws_dir, "test")
-        _seed_store(ws.library_path, _rows_con_referencias())
-
-        runner = CliRunner()
-        result = runner.invoke(
-            b2g,
-            [
-                "--workspace",
-                str(ws_dir),
-                "build",
-                "--corpus-scope",
-                "seeds_only",
-                "--json",
-            ],
-        )
-
-        assert result.exit_code == 0
-        envelope = json.loads(result.stdout)
-        # El alias deprecado usa el vocab interno tal cual (no hay nuevo token)
-        assert envelope["data"]["scope"] == "seeds_only"
-        assert envelope["data"]["corpus_scope"] == "seeds_only"
+    # [Retirado #207] test_scope_alias_deprecado_preserva_vocab_interno testeaba
+    # el flag CLI '--corpus-scope' (deprecado desde 0037/0038); fue retirado en
+    # 0.12.0 sin alias. El caso "sin token CLI" queda cubierto arriba.

@@ -212,7 +212,7 @@ B-G2-1 abajo: G2 define `Round`/`compare_rounds` **sobre snapshots**, no sobre e
     acoplamiento** y los vecinos compartidos, no 4 paneles inventados.
 
 - `get_network(round: str, kind: str) -> dict` — origen: artefactos en `<workspace>/networks/<kind>/`
-  (`b2g build`/`b2g networks`) o recomputo con `Networks.build` + `decorate`.
+  (`b2g build` / `b2g build --spec`) o recomputo con `Networks.build` + `decorate`.
   - `kind` usa los valores de `NetworkKind` del **núcleo** (`bibliographic_coupling`, `cocitation`,
     `author_collab`, `institution_collab`, `keyword_cooccurrence`) — **NO** los del mock (`co_citation`,
     `co_authorship`, `co_occurrence`, `institutions`): el frontend nuevo se siembra de estos.
