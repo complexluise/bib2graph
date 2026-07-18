@@ -72,18 +72,25 @@ class GrowthPreview(BaseModel):
 class RankedCandidates(BaseModel):
     """Resultado del ``Forager.chain()``: candidatos rankeados por scent.
 
-    El corpus contiene SOLO los candidatos nuevos materializados (forward:
-    filas reales; backward: vacío — los IDs backward van a ``observed_refs``).
-    El corpus NO se mergeó con el corpus semilla.
+    El corpus contiene los candidatos nuevos materializados (forward: filas
+    reales; backward: vacío — los IDs backward van a ``observed_refs``) MÁS,
+    en direction forward/both, filas de semillas ya existentes con
+    ``cited_by_id`` actualizado (ADR 0048, #270).  El corpus NO se mergeó con
+    el corpus semilla — eso lo hace el llamador (``Corpus.merge``, unión de
+    sets en columnas lista — D3, idempotente).
     El ranking es una lista estable ordenada por scent descendente, con
     desempate por id ascendente.
 
     Attributes:
         corpus: Corpus de candidatos materializados con
-            ``curation_status='candidate'`` (solo forward; backward = vacío).
+            ``curation_status='candidate'`` (solo forward; backward = vacío)
+            más las actualizaciones de ``cited_by_id`` de semillas (ADR 0048;
+            estas últimas NO son candidatos: ya existen en el corpus semilla,
+            el merge las fusiona por ``id``).
         ranking: Lista ``(id, information_scent)`` ordenada por scent desc.
             Incluye tanto candidatos forward (materializados) como backward
-            (solo IDs observados, sin fila en corpus).
+            (solo IDs observados, sin fila en corpus).  NO incluye las
+            actualizaciones de ``cited_by_id`` de semillas (no son candidatos).
         observed_refs: IDs de OpenAlex observados en backward chaining pero
             NO materializados como filas del corpus (opción B — #54).  Son
             los candidatos backward que se persisten en la tabla auxiliar

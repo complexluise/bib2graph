@@ -21,15 +21,34 @@ Característica: Forrajear con chaining backward/forward rankeado por scent
     Y "data.candidates_found" es un entero >= 0
     Y "data.direction" es "both"
     Y "data.depth" es 1
-    Y "data.total_papers" es un entero >= "data.candidates_found"
     Y tras el chain el estado del lazo transiciona a "FORAGED"
+    # #269: "data.candidates_found" es el TOTAL de candidatos rankeados (backward observados +
+    # forward materializados, recortado por --max-candidates), NO el nº de filas del corpus.
+    # Por eso NO se sostiene "total_papers >= candidates_found": en backward puro los candidatos
+    # observados pueden exceder el corpus (que no crece — opción B, #54). candidates_found es
+    # independiente de total_papers.
+
+  Escenario: B1 — chain forward puebla cited_by_id de las semillas alcanzadas (ADR 0048)
+    # #270/ADR 0048: el forrajeo hacia adelante ya trae los citantes; con esto completa además
+    # "cited_by_id" de las semillas (unión idempotente vía Corpus.merge), dejando listo el insumo
+    # del CoCitationProjector. Así el lazo seed → chain forward → curate accept → build arma la red
+    # de co-citación SIN enrich. Anclado a src/bib2graph/foraging/forager.py::_build_seed_cited_by_updates.
+    Dado un corpus sembrado sin "cited_by_id" poblado
+    Cuando ejecuto "b2g chain --direction forward --json"
+    Entonces el exit code es 0
+    Y "data.direction" es "forward"
+    Y las semillas alcanzadas por citantes tienen "cited_by_id" poblado en el corpus persistido
+    Y un "b2g build" posterior proyecta una red de co-citación no vacía sin correr "b2g enrich"
 
   Escenario: B1 — Solo backward chaining (referencias de las semillas)
     Cuando ejecuto "b2g chain --direction backward --json"
     Entonces el exit code es 0
     Y "data.direction" es "backward"
     Y "data.observed_refs_count" es un entero >= 0
-    # #54: los IDs backward observados sin materializar se cuentan acá y en status.referenced_not_fetched.
+    Y "data.candidates_found" puede exceder "data.total_papers"
+    # #54/#269: los IDs backward observados sin materializar se cuentan en observed_refs_count y en
+    # status.referenced_not_fetched; también entran en candidates_found (total rankeado), que por eso
+    # puede superar total_papers — el corpus no crece con backward puro.
 
   Escenario: B1 — Forward chaining requiere un source con fetch_citing
     Dado un source sin "fetch_citing_batch" ni "fetch_citing"

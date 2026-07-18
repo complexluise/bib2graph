@@ -504,8 +504,12 @@ class TestForagerForward:
         assert len(ranked.ranking) >= 1
         # El score del candidato refleja citación directa (1 corpus-paper citado)
         assert ranked.ranking[0][1] == 1.0
-        # El candidato forward tiene is_seed=False
-        cand_rows = ranked.corpus.to_arrow().to_pylist()
+        # El candidato forward tiene is_seed=False (la fila de actualización de
+        # cited_by_id de la semilla P1, ADR 0048/#270, sí es is_seed=True y no
+        # es un candidato — se excluye por su id, que ya se conoce del corpus
+        # sembrado).
+        cand_rows = [r for r in ranked.corpus.to_arrow().to_pylist() if r["id"] != "P1"]
+        assert cand_rows
         assert all(not r["is_seed"] for r in cand_rows)
 
     def test_chain_forward_usa_fetch_citing_batch(self) -> None:
@@ -889,7 +893,9 @@ class TestForwardChainingMetadataReal:
         forager = Forager(source, depth=1)
         ranked = forager.chain(corpus, direction="forward")
 
-        cand_rows = ranked.corpus.to_arrow().to_pylist()
+        # La semilla P1 recibe además una fila de actualización de cited_by_id
+        # (ADR 0048/#270); se excluye para aislar el candidato forward real.
+        cand_rows = [r for r in ranked.corpus.to_arrow().to_pylist() if r["id"] != "P1"]
         assert len(cand_rows) == 1, "Debe haber exactamente 1 candidato forward"
         titulo = cand_rows[0].get("title", "")
         assert not titulo.startswith("[candidate:"), (
@@ -917,7 +923,9 @@ class TestForwardChainingMetadataReal:
         forager = Forager(source, depth=1)
         ranked = forager.chain(corpus, direction="forward")
 
-        cand_rows = ranked.corpus.to_arrow().to_pylist()
+        # La semilla P1 recibe además una fila de actualización de cited_by_id
+        # (ADR 0048/#270); se excluye para aislar el candidato forward real.
+        cand_rows = [r for r in ranked.corpus.to_arrow().to_pylist() if r["id"] != "P1"]
         assert len(cand_rows) == 1
         assert cand_rows[0]["year"] == 2022, (
             f"El año debe ser 2022; es {cand_rows[0]['year']}"
@@ -976,7 +984,9 @@ class TestForwardChainingMetadataReal:
         forager = Forager(source, depth=1)
         ranked = forager.chain(corpus, direction="forward")
 
-        cand_rows = ranked.corpus.to_arrow().to_pylist()
+        # La semilla P1 recibe además una fila de actualización de cited_by_id
+        # (ADR 0048/#270); se excluye para aislar el candidato forward real.
+        cand_rows = [r for r in ranked.corpus.to_arrow().to_pylist() if r["id"] != "P1"]
         assert len(cand_rows) == 1
         row = cand_rows[0]
         assert row["is_seed"] is False, "Los candidatos forward deben ser is_seed=False"

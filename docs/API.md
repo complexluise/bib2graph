@@ -99,6 +99,19 @@ desde `references_id`; forward exacto solo si hay `cited_by_id`). Transiciona a 
 {candidates_found, new_candidates, total_papers, direction, depth, ranking_preview, observed_refs_count,
 loop_state, round, enrichment}`.
 
+- **`chain forward`/`both` puebla `cited_by_id` de las semillas alcanzadas** (ADR 0048, #270): el
+  forrajeo hacia adelante ya trae los citantes; con esta decisión completa además la columna
+  `cited_by_id` de esas semillas (unión idempotente vía `Corpus.merge`), dejando listo el insumo del
+  `CoCitationProjector`. Así el lazo natural `seed → chain forward → curate accept → build` produce la
+  red de co-citación **sin `enrich`** ni flag que descubrir. `chain backward` puro no toca
+  `cited_by_id`.
+- **`candidates_found`** es el **total de candidatos rankeados** que ve `--preview` (backward observados
+  + forward materializados, recortado por `--max-candidates`), **NO** el número de filas materializadas
+  en el corpus (#269). En chaining puramente backward los IDs observados no se materializan como filas
+  (opción B, #54): viven en `observed_refs`/el ranking, así que `candidates_found` puede **exceder**
+  `total_papers` (el corpus no crece con backward). No confundir con `new_candidates` (filas nuevas
+  respecto del corpus previo).
+
 - **`--since` (forrajeo incremental, absorbe `monitor`):** trae **solo citantes desde** una fecha
   (**ISO `YYYY-MM-DD`** o atajo `90d`/`6m`/`1y`, parseado en `cli/_options.py::parse_since`). **Fuerza
   forward** y transiciona a **`MONITORED`**. `backward + --since` → exit 1; `both + --since` → la ventana
@@ -110,6 +123,14 @@ pasada **refs→DOI** corre automática en `chain`; la pasada **co-citación** (
 en `build` cuando hay semillas aceptadas (no-op de red sin ellas). Por eso **`build` ya NO es
 estrictamente "sin red"** (ADR 0025 enmendado). Ambos suman `data["enrichment"]`. El alias `b2g enrich`
 corre ambas pasadas y **NO transiciona**.
+
+> **`build` ya no es el único ni el primer poblador de `cited_by_id`** (ADR 0048, #270): desde que
+> `chain forward`/`both` puebla `cited_by_id` de las semillas alcanzadas, el insumo de la co-citación
+> suele llegar **ya poblado** al `build`. La pasada 8b de `build` sigue existiendo (la frase de arriba
+> sigue siendo cierta) y **se solapa transitoriamente** con lo que dejó `chain`; el solapamiento es
+> inocuo porque la unión sobre `cited_by_id` es **idempotente** (no duplica ni corrompe). Diferencia de
+> alcance: `chain forward` puebla `cited_by_id` de las semillas al traer los citantes (independiente de
+> la curación); la pasada 8b de `build` está atada a `accepted`.
 
 **`curate {dump,apply,accept,reject,filter}`** (grupo noun-verb, #155). **La transición la define el
 VERBO:** solo **`curate filter`→`FILTERED`**; el resto transversal. **BREAKING:** la forma-flag
@@ -1316,9 +1337,11 @@ completo** (crítica #2). La **co-citación** es la más cara (segundo nivel de 
   (`id`) es el nodo.
 - **Co-citación:** el `CoCitationProjector` cuenta **`cited_by_id` compartido** = los **citantes
   compartidos** de la metodología (la frase "citantes con sus citas" ≡ `cited_by_id` compartido).
-  Proyecta con scope `seeds_only`. La co-citación es **end-to-end**: la pasada `cited_by` que corre
-  automática en `build` (cuando hay aceptadas) puebla `cited_by_id` con el 2º nivel de fetch del
-  `OpenAlexEnricher` (ADR 0007/0025), y `Networks.quick` la incluye cuando esa columna está poblada (§10).
+  Proyecta con scope `seeds_only`. La co-citación es **end-to-end**: `cited_by_id` se puebla con el 2º
+  nivel de fetch — desde **`chain forward`/`both`** (ADR 0048/#270, al traer los citantes de las
+  semillas alcanzadas) y/o desde la pasada `cited_by` de **`build`** (cuando hay aceptadas; ADR
+  0007/0025), unión idempotente entre ambas —, y `Networks.quick` la incluye cuando esa columna está
+  poblada (§10).
 - **Los proyectores siguen PUROS — NO setean atributos de nodo** (ADR 0014): producen
   un `nx.Graph` con **ids crudos** como nodos (`doi:…`, `I185261750`, un ORCID), **sin** `label`. La
   legibilidad (label + atributos) la inyecta la **capa `decorate` (§7.1)**, que es la **frontera**
