@@ -38,7 +38,7 @@ Característica: Forrajear con chaining backward/forward rankeado por scent
     Entonces el exit code es 0
     Y "data.direction" es "forward"
     Y las semillas alcanzadas por citantes tienen "cited_by_id" poblado en el corpus persistido
-    Y un "b2g build" posterior proyecta una red de co-citación no vacía sin correr "b2g enrich"
+    Y un "b2g build" posterior proyecta una red de co-citación no vacía (sin ningún paso extra de enriquecimiento)
 
   Escenario: B1 — Solo backward chaining (referencias de las semillas)
     Cuando ejecuto "b2g chain --direction backward --json"
