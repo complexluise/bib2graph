@@ -1,4 +1,4 @@
-"""Tests de b2g restore — rehidratación de corpus curado desde parquet.
+"""Tests de b2g snapshot restore — rehidratación de corpus curado desde parquet.
 
 Casos cubiertos (movidos desde test_equation_spec.py + extendidos):
 
@@ -7,11 +7,14 @@ Casos cubiertos (movidos desde test_equation_spec.py + extendidos):
 2. run_restore preserva las columnas de curación (decision/curation_status/is_seed).
 3. run_restore con parquet inexistente → DataError accionable.
 4. run_restore transiciona el CycleState a FILTERED (permite build/networks
-   aguas abajo sin re-forrajeo; ver docstring de restore.py para la justificación).
-5. b2g restore --from-corpus importa sin red (CliRunner), envelope correcto.
+   aguas abajo sin re-forrajeo; ver docstring de service/snapshot.py para la
+   justificación).
+5. b2g snapshot restore --from-corpus importa sin red (CliRunner), envelope
+   correcto.  El verbo suelto ``b2g restore`` fue retirado en 0.12.0 (#207,
+   ADR 0038 P1).
 6. El estado FILTERED habilita build aguas abajo (FSM permisiva: apply_transition
    desde FILTERED → build → BUILT es válido).
-7. b2g restore requiere --from-corpus (no hay modo sin argumento).
+7. b2g snapshot restore requiere --from-corpus (no hay modo sin argumento).
 
 Filosofía (AGENTS.md): se testea la FUNCIÓN detrás del comando, NO el parser
 Click. CliRunner solo donde hay integración de flag necesaria.
@@ -101,7 +104,7 @@ def test_run_restore_persiste_sin_red(tmp_path: Path) -> None:
     requests HTTP — verificado implícitamente porque no importa httpx ni
     llama a ninguna source. El store queda con los papers del parquet.
     """
-    from bib2graph.cli.commands.restore import run_restore
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     rows = [
@@ -133,7 +136,7 @@ def test_run_restore_no_usa_red_con_transport_fallido(tmp_path: Path) -> None:
     fallaría porque no hay red y la importación fallaría o lanzaría error.
     Como no lanza, confirmamos que el camino es libre de red.
     """
-    from bib2graph.cli.commands.restore import run_restore
+    from bib2graph.service.snapshot import run_restore
 
     rows = [_make_corpus_row(id="P1"), _make_corpus_row(id="P2")]
     parquet_path = tmp_path / "corpus.parquet"
@@ -159,8 +162,8 @@ def test_run_restore_preserva_curacion(tmp_path: Path) -> None:
     Los papers aceptados/rechazados en el parquet conservan su estado
     en el store tras la importación.
     """
-    from bib2graph.cli.commands.restore import run_restore
     from bib2graph.constants import Col, CurationStatus
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     rows = [
@@ -187,8 +190,8 @@ def test_run_restore_preserva_curacion(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_run_restore_preserva_is_seed(tmp_path: Path) -> None:
     """run_restore preserva el campo is_seed del parquet."""
-    from bib2graph.cli.commands.restore import run_restore
     from bib2graph.constants import Col
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     rows = [
@@ -219,7 +222,7 @@ def test_run_restore_preserva_is_seed(tmp_path: Path) -> None:
 def test_run_restore_parquet_inexistente(tmp_path: Path) -> None:
     """Parquet inexistente → DataError con mensaje accionable."""
     from bib2graph.cli._errors import DataError
-    from bib2graph.cli.commands.restore import run_restore
+    from bib2graph.service.snapshot import run_restore
 
     store_path = tmp_path / "test.duckdb"
     with pytest.raises(DataError, match="no existe"):
@@ -238,8 +241,8 @@ def test_run_restore_transiciona_a_filtered(tmp_path: Path) -> None:
     FILTERED permite ejecutar build y networks aguas abajo sin re-forrajeo
     (FSM permisiva: build está disponible desde FILTERED).
     """
-    from bib2graph.cli.commands.restore import run_restore
     from bib2graph.cycle import CycleState
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     rows = [_make_corpus_row(id="P1")]
@@ -259,13 +262,13 @@ def test_run_restore_transiciona_a_filtered(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 5. b2g restore --from-corpus (CliRunner)
+# 5. b2g snapshot restore --from-corpus (CliRunner)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_restore_cmd_sin_red(tmp_path: Path) -> None:
-    """b2g restore --from-corpus importa el corpus sin realizar requests HTTP.
+    """b2g snapshot restore --from-corpus importa el corpus sin realizar requests HTTP.
 
     Verifica que el comando no instancia OpenAlexSource ni hace requests:
     el store queda con los papers del parquet y el envelope es correcto.
@@ -289,6 +292,7 @@ def test_restore_cmd_sin_red(tmp_path: Path) -> None:
         [
             "--workspace",
             str(ws_dir),
+            "snapshot",
             "restore",
             "--from-corpus",
             str(parquet_path),
@@ -298,11 +302,9 @@ def test_restore_cmd_sin_red(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0, f"Salida inesperada: {result.output}"
-    # Usar result.stdout (solo stdout) porque b2g restore emite aviso de deprecación
-    # a stderr (#165); result.output mezcla ambas streams en Click 8.4.1.
     envelope = json.loads(result.stdout)
     assert envelope["ok"] is True
-    assert envelope["command"] == "restore"
+    assert envelope["command"] == "snapshot restore"
     assert envelope["data"]["papers_loaded"] == 2
     assert envelope["data"]["total_papers"] == 2
     assert envelope["schema"] == "1"
@@ -315,7 +317,7 @@ def test_restore_cmd_sin_red(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_restore_cmd_envelope_contiene_state(tmp_path: Path) -> None:
-    """b2g restore --json incluye 'state' en el envelope."""
+    """b2g snapshot restore --json incluye 'state' en el envelope."""
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
@@ -334,6 +336,7 @@ def test_restore_cmd_envelope_contiene_state(tmp_path: Path) -> None:
         [
             "--workspace",
             str(ws_dir),
+            "snapshot",
             "restore",
             "--from-corpus",
             str(parquet_path),
@@ -343,7 +346,6 @@ def test_restore_cmd_envelope_contiene_state(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0
-    # Usar result.stdout porque b2g restore emite aviso de deprecación a stderr (#165).
     envelope = json.loads(result.stdout)
     assert "state" in envelope["data"]
     assert envelope["data"]["state"] == "FILTERED"
@@ -381,13 +383,13 @@ def test_filtered_habilita_networks_en_fsm() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 7. b2g restore requiere --from-corpus
+# 7. b2g snapshot restore requiere --from-corpus
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_restore_cmd_sin_from_corpus_falla(tmp_path: Path) -> None:
-    """b2g restore sin --from-corpus → error de uso de Click (--from-corpus required)."""
+    """b2g snapshot restore sin --from-corpus → error de uso de Click (opción requerida)."""
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
@@ -402,6 +404,7 @@ def test_restore_cmd_sin_from_corpus_falla(tmp_path: Path) -> None:
         [
             "--workspace",
             str(ws_dir),
+            "snapshot",
             "restore",
         ],
     )
@@ -436,11 +439,11 @@ def test_run_restore_con_estado_previo_preserva_ronda(tmp_path: Path) -> None:
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    from bib2graph.cli.commands.restore import run_restore
     from bib2graph.constants import Col, CurationStatus
     from bib2graph.corpus import Corpus
     from bib2graph.cycle import CycleState
     from bib2graph.schemas import CORPUS_SCHEMA
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     # --- 1. Preparar store con corpus inicial + estado SEEDED ronda=2 ---

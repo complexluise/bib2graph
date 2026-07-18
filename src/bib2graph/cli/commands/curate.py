@@ -229,7 +229,7 @@ def apply_cmd(
             emit_human(
                 f"Advertencia: {data['not_found_count']} IDs del CSV no se "
                 "encontraron en el corpus (posibles typos). "
-                "Verificá con ``b2g inspect``."
+                "Verificá con ``b2g read list`` o ``b2g status``."
             )
 
 

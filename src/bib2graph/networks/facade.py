@@ -577,7 +577,7 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
             "kind": str(NetworkKind.COCITATION),
             "would_be_empty": coc_empty,
             "reason": coc_reason,
-            "fix_command": "b2g enrich" if coc_empty else None,
+            "fix_command": "b2g build" if coc_empty else None,
         }
     )
 

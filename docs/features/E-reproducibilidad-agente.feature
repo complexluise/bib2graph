@@ -16,24 +16,24 @@ Característica: Snapshot reproducible y orquestación agente-native por CLI
 
   # --- E1 · Snapshot reproducible del estado vivo ---
   Escenario: E1 — Exportar un snapshot sellado
-    Cuando ejecuto "b2g snapshot --json"
+    Cuando ejecuto "b2g snapshot create --json"
     Entonces el exit code es 0
-    Y "command" es "snapshot"
+    Y "command" es "snapshot create"
     Y se escribe un parquet + "manifest.json" bajo "snapshots/"
     Y "data.corpus_hash" no está vacío
     Y "data.total_papers" es el número de papers del corpus
-    Y "snapshot" NO transiciona el estado del lazo
+    Y "snapshot create" NO transiciona el estado del lazo
 
   Escenario: E1 — Reproducir = re-leer el snapshot, no re-correr la ecuación
-    Dado un parquet "corpus.parquet" producido por "b2g snapshot"
+    Dado un parquet "corpus.parquet" producido por "b2g snapshot create"
     Y un workspace nuevo distinto
-    Cuando ejecuto "b2g restore --from-corpus corpus.parquet --json"
+    Cuando ejecuto "b2g snapshot restore --from-corpus corpus.parquet --json"
     Entonces el exit code es 0
-    Y "command" es "restore"
+    Y "command" es "snapshot restore"
     Y "data.papers_loaded" es el número de papers del parquet
     Y "data.state" es "FILTERED"
     Y la restauración NO hace ninguna llamada a OpenAlex (sin red)
-    # restore preserva la curación (curation_status/is_seed); reproducir NO re-corre la
+    # snapshot restore preserva la curación (curation_status/is_seed); reproducir NO re-corre la
     # ecuación (ADR 0017). OpenAlex cambia en el tiempo: re-correr es re-investigar, no reproducir.
 
   Escenario: E1 — El corpus_hash es estable entre corridas (identidad por contenido)
@@ -43,7 +43,7 @@ Característica: Snapshot reproducible y orquestación agente-native por CLI
     # R2 (ADR 0017 enmendado): el hash excluye provenance/timestamps e incluye curation_status.
 
   Escenario: E1 — Restaurar un parquet con schema no canónico falla accionable
-    Cuando ejecuto "b2g restore --from-corpus ajeno.parquet --json"
+    Cuando ejecuto "b2g snapshot restore --from-corpus ajeno.parquet --json"
     Entonces el exit code es 2
     Y "error.code" indica un error de datos (DataError)
 

@@ -4,19 +4,23 @@ Verifica que el mismo .bib procesado por dos rutas distintas produce
 exactamente los mismos ``source_id`` resueltos en el corpus:
 
   Camino A (separado):
-    run_seed_from_bib(store_a, bib)          # sin resolve
-    run_resolve(store_a, transport=mock)      # resolve explicito post-seed
+    run_seed_from_bib(store_a, bib)                    # sin resolve
+    resolve_dois(store_a, transport=mock)               # resolve explicito post-seed
 
-  Camino B (encadenado):
+  Camino B (encadenado, ruta canonica ``seed --resolve``):
     run_seed_from_bib(store_b, bib, resolve=True, transport=mock)
 
-Ambos caminos delegan en ``service.resolve._resolve_dois_on_store`` (ADR 0035,
-fuente unica): la diferencia es cuando se abre/cierra el store.  Si la fuente
-unica es verdaderamente compartida, los resultados deben ser identicos.
+Ambos caminos delegan en ``service.resolve`` (ADR 0035, fuente unica): la
+diferencia es cuando se abre/cierra el store.  Si la fuente unica es
+verdaderamente compartida, los resultados deben ser identicos.
 
-Esta es la red de seguridad para que #165 retire el verbo ``resolve`` sin
-reconciliar: un fallo aqui indica que los dos caminos divergieron y hay
-duplicacion real de logica que reconciliar antes de retirar el verbo.
+Nota (#207, ADR 0038 P1): el verbo suelto ``b2g resolve`` (y su función
+núcleo ``cli.commands.resolve.run_resolve``) fue retirado en 0.12.0. El
+Camino A usa ahora ``service.resolve.resolve_dois`` directamente — la misma
+fuente que ``run_resolve`` delegaba, y la que ``seed --resolve`` invoca vía
+``_resolve_dois_on_store``. Esta sigue siendo la red de seguridad original:
+un fallo aquí indica que los dos caminos divergieron y hay duplicación real
+de lógica sin reconciliar.
 
 Marcador: ``unit`` (DuckDB real en tmp_path, sin red real; MockTransport para OA).
 """
@@ -115,15 +119,15 @@ def _load_doi_to_source_id(store_path: Path) -> dict[str | None, str | None]:
 def test_parity_seed_resolve_separado_vs_encadenado(tmp_path: Path) -> None:
     """Paridad: seed+resolve separados == seed --resolve encadenado.
 
-    Camino A: run_seed_from_bib(store_a, bib) luego run_resolve(store_a, mock)
+    Camino A: run_seed_from_bib(store_a, bib) luego resolve_dois(store_a, mock)
     Camino B: run_seed_from_bib(store_b, bib, resolve=True, transport=mock)
 
     El assert principal es que el mapa doi->source_id es identico en ambos
     stores.  Los asserts secundarios verifican valores concretos para que el
     test falle con mensaje claro si cambia la logica de resolucion.
     """
-    from bib2graph.cli.commands.resolve import run_resolve
     from bib2graph.cli.commands.seed import run_seed_from_bib
+    from bib2graph.service.resolve import resolve_dois
 
     bib_path = tmp_path / "parity.bib"
     bib_path.write_text(BIB_PARITY, encoding="utf-8")
@@ -133,7 +137,7 @@ def test_parity_seed_resolve_separado_vs_encadenado(tmp_path: Path) -> None:
 
     # -- Camino A: dos operaciones secuenciales (store abre y cierra dos veces) --
     run_seed_from_bib(store_path_a, bib_path)
-    run_resolve(store_path_a, transport=_make_mock_transport(_WORKS_MOCK))
+    resolve_dois(store_path_a, transport=_make_mock_transport(_WORKS_MOCK))
 
     # -- Camino B: operacion encadenada (store abre y cierra una sola vez) ----
     run_seed_from_bib(

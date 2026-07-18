@@ -6,7 +6,9 @@ Cubre:
 2. ``service.resolve.resolve_dois``: corpus con doi+source_id=NULL →
    tras resolver, source_id poblado (W…); papers sin DOI intactos;
    idempotente (re-ejecutar no cambia nada).
-3. CLI ``b2g resolve --email …``: envelope JSON correcto.
+3. CLI ``seed --from-bib <bib> --resolve --email …``: envelope JSON correcto
+   (ruta única de resolución DOI→OpenAlex desde 0.12.0, #207 — el verbo
+   suelto ``b2g resolve`` fue retirado).
 4. CLI ``seed --from-bib <bib> --resolve --email …``: carga + resuelve en
    un paso, envelope incluye sub-dict ``resolve``.
 5. Integración acotada: from-bib → resolve → corpus tiene source_id poblado
@@ -327,60 +329,45 @@ def test_resolve_dois_corpus_sin_papers_con_doi(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 3. CLI b2g resolve
+# 3. run_seed_from_bib(resolve=True) — ruta única de resolución (seed --resolve)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_cli_resolve_json_envelope(tmp_path: Path) -> None:
-    """b2g resolve --json emite envelope correcto."""
-    from click.testing import CliRunner
+def test_run_seed_from_bib_resolve_envelope_shape(tmp_path: Path) -> None:
+    """run_seed_from_bib(resolve=True) devuelve el sub-dict 'resolve' con forma estable.
 
-    from bib2graph.cli import b2g
-    from bib2graph.stores.duckdb import DuckDBStore
+    El CLI ``b2g seed --from-bib --resolve`` no acepta inyección de transport;
+    se ejerce la función núcleo directamente (misma ruta de código que el CLI,
+    sin la capa Click) con MockTransport — patrón usado en el resto del módulo.
+    """
+    from bib2graph.cli.commands.seed import run_seed_from_bib
+
+    bib_content = """@article{test2024,
+  title = {Test Article},
+  author = {Smith, John},
+  year = {2024},
+  doi = {10.1234/abc},
+  journal = {Test Journal}
+}
+"""
+    bib_path = tmp_path / "test.bib"
+    bib_path.write_text(bib_content, encoding="utf-8")
+
+    works = [
+        {"id": "https://openalex.org/W999", "doi": "https://doi.org/10.1234/abc"},
+    ]
+    transport = _make_doi_resolve_handler(works)
 
     db_path = tmp_path / "test.duckdb"
-    ws_path = tmp_path
+    data = run_seed_from_bib(db_path, bib_path, resolve=True, transport=transport)
 
-    # Inicializar workspace mínimo
-    (ws_path / "workspace.json").write_text(
-        json.dumps(
-            {
-                "name": "test",
-                "version": "1",
-                "created_at": "2026-01-01T00:00:00",
-                "bib2graph_version": "test",
-            }
-        )
-    )
-
-    # Corpus con un DOI sin resolver
-    corpus = _make_corpus_with_dois(dois=["10.1234/abc"], source_ids=[None])
-    store = DuckDBStore(db_path)
-    store.persist_replace(corpus)
-    store.close()
-
-    runner = CliRunner()
-    # Usamos --workspace explícito para evitar ambigüedad
-    # No podemos inyectar MockTransport desde el CLI — el CLI llama a run_resolve
-    # que llama a service.resolve_dois. Para este test, verificamos el envelope
-    # cuando no hay DOIs que resolver (corpus vacío de papers que necesiten resolve).
-    corpus_ya_resuelto = _make_corpus_with_dois(
-        dois=["10.1234/abc"], source_ids=["W999"]
-    )
-    store2 = DuckDBStore(db_path)
-    store2.persist_replace(corpus_ya_resuelto)
-    store2.close()
-
-    result = runner.invoke(b2g, ["--workspace", str(ws_path), "resolve", "--json"])
-    assert result.exit_code == 0, result.output
-    # Usar result.stdout porque b2g resolve emite aviso de deprecación a stderr (#165).
-    data = json.loads(result.stdout)
-    assert data["ok"] is True
-    assert data["command"] == "resolve"
-    assert "resolved" in data["data"]
-    assert "total_with_doi" in data["data"]
-    assert "total_papers" in data["data"]
+    assert "resolve" in data
+    r = data["resolve"]
+    assert "resolved" in r
+    assert "total_with_doi" in r
+    assert "total_papers" in r
+    assert r["resolved"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -463,24 +450,40 @@ def test_cli_seed_from_bib_resolve_envelope(tmp_path: Path) -> None:
     con_doi = next(row for row in rows if row.get(Col.DOI))
     assert con_doi[Col.SOURCE_ID] == "W7777"
 
-    # Test CLI envelope para verificar la salida estructurada
+    # Test CLI envelope para verificar la salida estructurada de 'seed --resolve'
+    # (ruta única de resolución DOI→OpenAlex desde 0.12.0, #207: el CLI no
+    # inyecta transport, así que ejercemos un .bib con DOI ya sin nada pendiente
+    # de resolver — no dispara red — para verificar solo la forma del envelope).
     runner = CliRunner()
-    # Usamos un store ya resuelto (source_id ya poblado) para ejercer el envelope
+    bib_sin_doi = tmp_path / "sin_doi.bib"
+    bib_sin_doi.write_text(
+        """@article{nodoi2024,
+  title = {Sin DOI},
+  author = {Doe, Jane},
+  year = {2024},
+  journal = {Test Journal}
+}
+""",
+        encoding="utf-8",
+    )
     result = runner.invoke(
         b2g,
         [
             "--workspace",
             str(ws_path),
-            "resolve",
+            "seed",
+            "--from-bib",
+            str(bib_sin_doi),
+            "--resolve",
             "--json",
         ],
     )
     assert result.exit_code == 0, result.output
-    # Usar result.stdout porque b2g resolve emite aviso de deprecación a stderr (#165).
     data = json.loads(result.stdout)
     assert data["ok"] is True
-    assert data["command"] == "resolve"
-    assert "resolved" in data["data"]
+    assert data["command"] == "seed"
+    assert "resolve" in data["data"]
+    assert "resolved" in data["data"]["resolve"]
 
 
 # ---------------------------------------------------------------------------

@@ -23,10 +23,9 @@ Round-trip:
   10. curate dump → editar CSV → curate apply → corpus refleja decisiones.
   11. curate apply con IDs huérfanos → not_found_count reportado.
 
-Regresión #165 (verbos sueltos intactos):
-  12. b2g accept --ids … → envelope command="accept", misma transición (ninguna).
-  13. b2g reject --ids … → envelope command="reject", misma transición (ninguna).
-  14. b2g filter --year-gte … → envelope command="filter", misma transición FILTERED.
+12-14. [Retirado #207, ADR 0038 P1] Los verbos planos 'accept'/'reject'/'filter'
+  sueltos fueron eliminados en 0.12.0. Su cobertura vive en 3/4/8/9 arriba
+  (formas canónicas 'curate accept'/'curate reject'/'curate filter').
 
 Marcador: ``unit`` (DuckDB en tmp_path, sin red real).
 """
@@ -578,138 +577,15 @@ def test_curate_apply_ids_huerfanos_reportados(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 12. Regresión #165: b2g accept suelto sigue funcionando
+# 12-14. [Retirado #207] Los verbos planos 'accept'/'reject'/'filter' sueltos
+# fueron eliminados en 0.12.0 (ADR 0038 P1); ya no se registran en el CLI.
+# Su cobertura de envelope y transición de FSM vive en las formas canónicas
+# 'curate accept'/'curate reject'/'curate filter' (arriba: envelope en
+# test_curate_accept_envelope_correcto/test_curate_reject_envelope_correcto/
+# test_curate_filter_envelope_correcto; transición en
+# test_curate_filter_transiciona_a_filtered/test_curate_accept_no_transiciona_fsm/
+# test_curate_reject_no_transiciona_fsm).
 # ---------------------------------------------------------------------------
-
-
-def test_accept_suelto_envelope_intacto(tmp_path: Path) -> None:
-    """b2g accept (suelto) sigue emitiendo envelope con command='accept'."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, [_row(id="P1")])
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "accept", "--ids", "P1", "--json"],
-        catch_exceptions=False,
-    )
-    assert result.exit_code == 0, result.output
-    data = _assert_one_json_line(result.stdout)
-    assert data["ok"] is True
-    assert data["command"] == "accept"
-    assert data["data"]["accepted_count"] == 1
-
-
-def test_accept_suelto_no_transiciona_fsm(tmp_path: Path) -> None:
-    """b2g accept suelto NO transiciona el CycleState (curación transversal)."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, [_row(id="P1")])
-
-    estado_previo = _get_loop_state(ws)
-
-    runner = CliRunner()
-    runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "accept", "--ids", "P1"],
-        catch_exceptions=False,
-    )
-
-    estado_post = _get_loop_state(ws)
-    assert estado_post == estado_previo
-
-
-# ---------------------------------------------------------------------------
-# 13. Regresión #165: b2g reject suelto sigue funcionando
-# ---------------------------------------------------------------------------
-
-
-def test_reject_suelto_envelope_intacto(tmp_path: Path) -> None:
-    """b2g reject (suelto) sigue emitiendo envelope con command='reject'."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, [_row(id="P1")])
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "reject", "--ids", "P1", "--json"],
-        catch_exceptions=False,
-    )
-    assert result.exit_code == 0, result.output
-    data = _assert_one_json_line(result.stdout)
-    assert data["ok"] is True
-    assert data["command"] == "reject"
-    assert data["data"]["rejected_count"] == 1
-
-
-def test_reject_suelto_no_transiciona_fsm(tmp_path: Path) -> None:
-    """b2g reject suelto NO transiciona el CycleState (curación transversal)."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, [_row(id="P1")])
-
-    estado_previo = _get_loop_state(ws)
-
-    runner = CliRunner()
-    runner.invoke(
-        b2g,
-        ["--workspace", str(ws.root), "reject", "--ids", "P1"],
-        catch_exceptions=False,
-    )
-
-    estado_post = _get_loop_state(ws)
-    assert estado_post == estado_previo
-
-
-# ---------------------------------------------------------------------------
-# 14. Regresión #165: b2g filter suelto sigue funcionando y transiciona a FILTERED
-# ---------------------------------------------------------------------------
-
-
-def test_filter_suelto_envelope_intacto(tmp_path: Path) -> None:
-    """b2g filter (suelto) sigue emitiendo envelope con command='filter'."""
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, [_row(id="P1", year=2020)])
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        [
-            "--workspace",
-            str(ws.root),
-            "filter",
-            "--year-gte",
-            "1900",
-            "--json",
-        ],
-        catch_exceptions=False,
-    )
-    assert result.exit_code == 0, result.output
-    data = _assert_one_json_line(result.stdout)
-    assert data["ok"] is True
-    assert data["command"] == "filter"
-
-
-def test_filter_suelto_transiciona_a_filtered(tmp_path: Path) -> None:
-    """b2g filter suelto transiciona a FILTERED (mismo comportamiento que curate filter)."""
-    from bib2graph.cycle import CycleState
-
-    ws = _init_workspace(tmp_path)
-    _seed_store(ws, [_row(id="P1", year=2020)])
-
-    runner = CliRunner()
-    runner.invoke(
-        b2g,
-        [
-            "--workspace",
-            str(ws.root),
-            "filter",
-            "--year-gte",
-            "1900",
-        ],
-        catch_exceptions=False,
-    )
-
-    estado_post = _get_loop_state(ws)
-    assert estado_post == CycleState.FILTERED
 
 
 # ---------------------------------------------------------------------------

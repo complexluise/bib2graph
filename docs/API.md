@@ -31,16 +31,17 @@
 
 ### Convenciones del CLI agente-native (ADR 0010 / 0021)
 
-El CLI `b2g` (paquete `bib2graph.cli`, entry point `b2g = "bib2graph.cli:main"`) cumple el contrato del
-ADR [0021](decisiones/0021-cli-agente-native-contrato.md). Cada subcomando lleva `--json` (envelope
-estable/versionado, también activable con **`B2G_JSON=1`**, ver §Envelope JSON) y exit codes (`0` éxito
-· `1` uso · `2` datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado). **Sin
-estado entre invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción global
+El CLI `b2g` (paquete `bib2graph.cli`, **único** entry point `b2g = "bib2graph.cli:main"`) cumple el
+contrato del ADR [0021](decisiones/0021-cli-agente-native-contrato.md). Cada subcomando lleva `--json`
+(envelope estable/versionado, también activable con **`B2G_JSON=1`**, ver §Envelope JSON) y exit codes
+(`0` éxito · `1` uso · `2` datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado).
+**Sin estado entre invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción global
 **opcional** `--workspace`; `--store` fue eliminada en #75).
 
-**Superficie — 10 verbos del ciclo + 3 grupos noun-verb + `skill` + `schema`** (ADR
+**Superficie — 10 verbos del ciclo + `skill` + `schema` = 12 registros exactos** (ADR
 [0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md)/[0038](decisiones/0038-destino-verbos-huerfanos-0037.md)/[0039](decisiones/0039-skill-comando-meta-distribucion.md)/[0045](decisiones/0045-cerrar-tres-grietas-agent-native.md)).
-La superficie mapea 1:1 el ciclo (*más es menos*); el conteo es **verificable contra `b2g --help`**:
+La superficie mapea 1:1 el ciclo (*más es menos*); el conteo es **verificable contra `b2g --help`** (12
+comandos de nivel superior, ni uno más):
 
 - **10 verbos del ciclo:** `init`, `seed`, `chain`, `curate` (grupo), `build`, `read` (grupo),
   `export`, `snapshot` (grupo), `status`, `validate`. (El par EXPORT/SNAPSHOT cuenta como uno; ADR 0037.)
@@ -49,9 +50,14 @@ La superficie mapea 1:1 el ciclo (*más es menos*); el conteo es **verificable c
   del envelope usa la **ruta completa** (`"read list"`).
 - **2 comandos meta** fuera del set de 10 (no son pasos del ciclo; ni FSM ni workspace):
   **`skill add`** (ADR 0039) y **`schema`** (ADR 0045 #260, ver §`schema`).
-- **Aliases deprecados** (vivos con aviso a stderr, retiro **0.11.0**): `accept`, `reject`, `filter`,
-  `inspect`, `monitor`, `networks`, `enrich`, `restore`, `resolve` (ver §Avisos de deprecación).
-  **`thesaurus` NO es alias: se retiró por completo** (su capacidad es `build --thesaurus`, #164).
+
+**Retirado en `0.12.0` (BREAKING, #207, ADR 0038 P1 ejecutado):** los **9 verbos planos deprecados**
+—`accept`, `reject`, `filter`, `inspect`, `monitor`, `networks`, `enrich`, `restore`, `resolve`— ya
+**no se registran** (invocarlos da el error estándar de Click `No such command`). Su lógica vive en las
+formas canónicas del ciclo (ver tabla en §Formas canónicas de los verbos retirados). También se
+retiraron el **entry-point legado `bib2graph`** (queda solo `b2g`), el flag **`build --corpus-scope`**
+(queda `build --scope`, default `all`) y el módulo `cli/_deprecation.py`. **`thesaurus` nunca fue
+alias: se retiró por completo** (su capacidad es `build --thesaurus`, #164).
 
 **`status`** expone el ciclo: estado actual del FSM (`SEEDED/FORAGED/FILTERED/BUILT/MONITORED`, dominio
 en `bib2graph.cycle`), `transitions_available`, `curation_available` (`accept`/`reject` siempre
@@ -77,9 +83,9 @@ mutuamente excluyentes** (exactamente uno; ninguno o más de uno → exit 1):
   `is_seed=True`/`candidate`, transiciona a `SEEDED` (o reseed → ronda++). `data = {papers_added,
   total_papers, round, reseeded}` (sin `executed_query`/`translation_report`). Falta `bibtexparser`
   (`[bibtex]`) → `DependencyError` exit 3; archivo inexistente / `.bib` mal formado → `DataError` exit 2.
-  - **`--resolve`** (solo con `--from-bib`): tras cargar, encadena la resolución DOI→`source_id` (=
-    correr `b2g resolve`) reusando el store abierto; suma `data["resolve"]`. **`--email`** se permite
-    con `--from-bib` solo junto a `--resolve` (se propaga al polite pool).
+  - **`--resolve`** (solo con `--from-bib`): tras cargar, encadena la resolución DOI→`source_id`
+    (`service/resolve.py::resolve_dois`) reusando el store abierto; suma `data["resolve"]`.
+    **`--email`** se permite con `--from-bib` solo junto a `--resolve` (se propaga al polite pool).
 
 Flags OpenAlex (**solo con `--equation`/`--spec`**): **`--max-results INT`** (default del source 200;
 muestras chicas); **`--exclude TEXT`** (repetible) = negaciones quirúrgicas inyectadas **dentro** de la
@@ -133,13 +139,15 @@ loop_state, round, enrichment}`.
   (**ISO `YYYY-MM-DD`** o atajo `90d`/`6m`/`1y`, parseado en `cli/_options.py::parse_since`). **Fuerza
   forward** y transiciona a **`MONITORED`**. `backward + --since` → exit 1; `both + --since` → la ventana
   aplica solo al tramo forward. Sin corpus/estado previo → `DataError` exit 2 (sugiere `b2g seed`). **No
-  existe estado `CHAINED`.** El alias `monitor` delega aquí.
+  existe estado `CHAINED`.** (El forrajeo incremental que antes hacía `b2g monitor` vive acá; ese verbo
+  suelto se retiró en 0.12.0.)
 
 **Enricher absorbido en `chain`/`build` (#162):** el `OpenAlexEnricher` (§3) no es verbo propio. La
 pasada **refs→DOI** corre automática en `chain`; la pasada **co-citación** (`cited_by`) corre automática
 en `build` cuando hay semillas aceptadas (no-op de red sin ellas). Por eso **`build` ya NO es
-estrictamente "sin red"** (ADR 0025 enmendado). Ambos suman `data["enrichment"]`. El alias `b2g enrich`
-corre ambas pasadas y **NO transiciona**.
+estrictamente "sin red"** (ADR 0025 enmendado). Ambos suman `data["enrichment"]`. (El ex verbo suelto
+`b2g enrich`, que corría ambas pasadas sin transicionar, se retiró en 0.12.0: usá `b2g chain` para la
+pasada refs→DOI y `b2g build` para la de co-citación.)
 
 > **`build` ya no es el único ni el primer poblador de `cited_by_id`** (ADR 0048, #270): desde que
 > `chain forward`/`both` puebla `cited_by_id` de las semillas alcanzadas, el insumo de la co-citación
@@ -168,12 +176,11 @@ VERBO:** solo **`curate filter`→`FILTERED`**; el resto transversal. **BREAKING
   total_rows}`. **`note` se ignora en apply** (advisory). Lee el CSV con `utf-8-sig`: **tolera el
   BOM UTF-8** que Excel-Windows agrega al guardar como UTF-8 (#238, política Excel-friendly de #214).
 - **`curate accept --ids ... [--by NOMBRE]`** / **`curate reject --ids ... [--by NOMBRE]`** — por ID
-  (uno-a-uno o lote). Comparten `accept_papers`/`reject_papers` con los verbos sueltos `accept`/`reject`
-  (alias deprecados).
+  (uno-a-uno o lote). Usan `accept_papers`/`reject_papers` de `service/curate.py` (fuente única).
 - **`curate filter`** (`--year-gte`/`--year-lte`, `--language`, `--type`, `--min-citations`): aplica
   inclusión/exclusión PRISMA **marcando `rejected`** (no borra) con conteo por paso. **Transiciona a
   `FILTERED`.** Comparte `filter_corpus(store_path, *, year_gte, year_lte, language, type_in,
-  min_citations, decided_at)` con el verbo suelto `filter`. **La inclusión manual gana** (ADR
+  min_citations, decided_at)` de `service/curate.py` (fuente única). **La inclusión manual gana** (ADR
   [0044](decisiones/0044-precedencia-inclusion-manual-en-curate.md)): el filtro **omite los papers
   `accepted`** (nunca los rechaza, aunque no cumplan el criterio), igual que ya omite a los `rejected`;
   solo marca `rejected` a los **no-aceptados** (`candidate` y demás) que no pasan.
@@ -185,15 +192,14 @@ opcional (default `<workspace>/exports/`).
 
 `build` tiene **dos modos**: **quick** (sin `--spec`) y **declarativo** (**`build --spec <redes.yaml>`**:
 `load_specs` con clave raíz `networks:` → `Networks.build` por red; helper único `_build_from_spec_file`).
-**Ambos transicionan a `BUILT` y sellan `networks/.corpus_hash`** (decisión D1; a diferencia del alias
-`networks`, que es transversal). Flags:
+**Ambos transicionan a `BUILT` y sellan `networks/.corpus_hash`** (decisión D1). Flags:
 
 - **`--scope [all|accepted|seeds]`** (default `all`): filtra el corpus por curación **antes** de
   proyectar (`Corpus.scoped`, §1.2). `accepted` = `is_seed` + aceptados; `seeds` = solo semillas. El
   `.corpus_hash` se sella con el corpus **filtrado**; `clusters.csv`/`decorate` reflejan ese subset.
   Scope con **0 papers** → **exit 0** + `warning` (no error). **No confundir con `NetworkSpec.scope`**
-  (§10, por-red sobre `is_seed`). **`--corpus-scope [all|accepted|seeds_only]`** = alias deprecado
-  (oculto en `--help`, vocab interno; precede a `--scope` si se pasan ambos).
+  (§10, por-red sobre `is_seed`). Es la **única** forma: el flag `--corpus-scope` (y su vocab interno
+  `seeds_only`) se retiró en 0.12.0 (#207, BREAKING).
 - **`--min-weight N`** (solo quick): descarta aristas con peso < N. Con `--spec` se usa el `min_weight`
   por-red del YAML; pasarlo junto a `--spec` emite warning y se ignora.
 - **`--thesaurus <archivo>`** (#164): aplica un thesaurus multilingüe (JSON ADR 0011) sobre
@@ -224,7 +230,8 @@ transición la define el verbo.
   OpenAlex). **Preserva la curación** (`decision`/`curation_status`/`is_seed`, D3). **Transiciona a
   `FILTERED`** (reusa la transición permisiva `filter`; válida desde cualquier estado, incluido store
   vacío). Parquet inexistente o schema no canónico → `DataError` exit 2. `data = {papers_loaded,
-  total_papers, state, round}`. El verbo suelto `restore` es alias deprecado (`command="restore"`).
+  total_papers, state, round}`. (El verbo suelto `b2g restore` se retiró en 0.12.0; su capacidad es
+  `b2g snapshot restore`.)
 
 **`read {list,stats,show,top}`** (grupo noun-verb, #156/#157): lectura pura del corpus (no transiciona).
 Lógica en `service/reads.py` (§0.1).
@@ -275,16 +282,36 @@ b2g schema --json      # envelope con el contrato legible por máquina
 b2g schema             # resumen humano: versión, exit codes y superficie (stderr)
 ```
 
-**`resolve`** (alias deprecado): resuelve los DOIs del corpus a `source_id` de OpenAlex (cierra el GAP del
-flujo BibTeX: sin `source_id`, `chain` da 0). Filtra `doi != NULL AND source_id IS NULL`, consulta
-OpenAlex (`OpenAlexSource.fetch_dois_to_openalex_ids` vía `service/resolve.py::resolve_dois`) y puebla
-`source_id`; **idempotente**, persiste con `persist_replace`. **`--email`** (polite pool). `data =
-{resolved, total_with_doi, already_resolved, total_papers}`. **NO transiciona.** Red caída → `NetworkError`
-exit 4; store bloqueado → `StoreError` exit 5. Encadenable en `seed --from-bib --resolve`.
+**Resolución DOI→`source_id`** (`seed --from-bib --resolve`, ADR 0035): resuelve los DOIs del corpus a
+`source_id` de OpenAlex (cierra el GAP del flujo BibTeX: sin `source_id`, `chain` da 0). Filtra
+`doi != NULL AND source_id IS NULL`, consulta OpenAlex
+(`OpenAlexSource.fetch_dois_to_openalex_ids` vía `service/resolve.py::resolve_dois`) y puebla
+`source_id`; **idempotente**, persiste con `persist_replace`. **`--email`** (polite pool). Suma
+`data["resolve"] = {resolved, total_with_doi, already_resolved, total_papers}`. **NO transiciona.** Red
+caída → `NetworkError` exit 4; store bloqueado → `StoreError` exit 5. (El ex verbo suelto `b2g resolve`
+se retiró en 0.12.0: su ruta única es `seed --from-bib --resolve`.)
 
-**`networks --spec` / `inspect`** (alias deprecados): `networks --spec <redes.yaml>` construye redes desde
-el YAML pero **NO transiciona ni sella `.corpus_hash`** (ad-hoc transversal) — usá `build --spec`
-(paso BUILD pleno). `inspect` lo absorben `read show` (papers) y `status` (manifest/FSM).
+### Formas canónicas de los verbos retirados
+
+Los **9 verbos planos** que existieron como alias deprecados durante 0.10.x **se retiraron en 0.12.0**
+(#207, ADR 0038 P1, BREAKING). Invocarlos hoy da el error estándar de Click (`No such command`). Su
+lógica no se perdió: vive en la superficie del ciclo (fuente única en `service/`).
+
+| Verbo retirado (0.12.0) | Forma canónica |
+|---|---|
+| `b2g accept` | `b2g curate accept` |
+| `b2g reject` | `b2g curate reject` |
+| `b2g filter` | `b2g curate filter` |
+| `b2g inspect` | `b2g read show` (papers) / `b2g status` (manifest/FSM) |
+| `b2g monitor` | `b2g chain --since` |
+| `b2g networks --spec` | `b2g build --spec` (paso BUILD pleno: transiciona y sella `.corpus_hash`) |
+| `b2g enrich` | `b2g chain` (refs→DOI) + `b2g build` (co-citación) |
+| `b2g restore` | `b2g snapshot restore` |
+| `b2g resolve` | `b2g seed --from-bib --resolve` |
+
+**Además** se retiraron el **entry-point legado `bib2graph`** (queda solo `b2g`) y el flag
+**`build --corpus-scope`** (queda `build --scope`). `thesaurus` nunca fue alias: se retiró por completo
+en su momento; su capacidad es `build --thesaurus` (#164).
 
 **`--workspace` global (OPCIONAL).** Va en el grupo `b2g`, **antes** del subcomando. **`--store` fue
 ELIMINADA** (#75, BREAKING): pasarla da el error estándar de Click (`No such option`). El modo degenerado
@@ -295,9 +322,8 @@ buscando `workspace.json`. Sin ninguno → error accionable que sugiere `b2g ini
 **Transiciones automáticas del ciclo** (ADR 0021 §F): `seed`→`SEEDED` (con estado previo = `reseed`,
 ronda++), `chain`→`FORAGED`, `chain --since`→`MONITORED`, `curate filter`→`FILTERED`, `build`→`BUILT`,
 `snapshot restore`→`FILTERED`. El resto (`read`, `export`, `snapshot create`, `status`, `validate`,
-`curate {dump,apply,accept,reject}`, los alias `enrich`/`networks`/`resolve`) **no transiciona**. El
-estado destino lo dicta `bib2graph.cycle.apply_transition` (fuente única; los comandos no hardcodean el
-destino).
+`curate {dump,apply,accept,reject}`, `skill`, `schema`) **no transiciona**. El estado destino lo dicta
+`bib2graph.cycle.apply_transition` (fuente única; los comandos no hardcodean el destino).
 
 **Envelope JSON común y versionado** (ADR 0021 §C): en modo `--json`, cada subcomando emite **un objeto
 JSON** con `schema="1"`:
@@ -384,45 +410,16 @@ Aparece **siempre** en `build` (incl. early-return de corpus vacío), `snapshot 
 **ausente** en `read list`/`read stats`/`read show`. Lo calcula la función pura
 `service.maturity.compute_maturity(corpus, *, scope, empty_network_kinds)` (§0).
 
-### Avisos de deprecación (ADR [0038](decisiones/0038-destino-verbos-huerfanos-0037.md) P1)
+### Verbos deprecados retirados (histórico, ADR [0038](decisiones/0038-destino-verbos-huerfanos-0037.md) P1)
 
-La consolidación 0.10.0 retira solapamientos **sin romper de una**: los nombres viejos siguen
-funcionando durante 0.10.x con un **aviso de deprecación**, y **se eliminan en 0.11.0** (criterio por
-versión, no fecha). El helper único es `cli/_deprecation.py::emit_deprecation`.
+Durante 0.10.x, la consolidación del 0037 dejó vivos —con aviso de deprecación a stderr— los 9 verbos
+planos que solapaban con la superficie del ciclo. **Ese periodo terminó: en 0.12.0 (#207, BREAKING) los
+9 aliases, el entry-point legado `bib2graph`, el flag `build --corpus-scope` y el módulo
+`cli/_deprecation.py` se retiraron por completo.** Ya no hay aliases vivos ni avisos de deprecación:
+invocar un verbo retirado da el error estándar de Click (`No such command`).
 
-**Formato canónico** (exacto):
-
-```text
-AVISO: '<viejo>' está deprecado y se eliminará en 0.11.0; usá '<nuevo>'.
-```
-
-- **Canal: stderr SIEMPRE** (modo humano y modo `--json`), nunca stdout — preserva el stdout puro de
-  una línea-envelope (#151). En `--json`, el mismo mensaje se propaga además al **`warnings[]`
-  top-level** del envelope (no a `data`), enhebrado vía `build_envelope(..., warnings=[msg])`.
-- **No cambia el contrato:** el alias delega en la misma lógica de servicio (fuente única) y conserva
-  su `command`/envelope; `schema="1"`, exit codes y FSM intactos.
-
-**Los 9 verbos deprecados** (alias vivo con aviso → forma canónica):
-
-| Alias deprecado | Forma canónica |
-|---|---|
-| `b2g accept` | `b2g curate accept` |
-| `b2g reject` | `b2g curate reject` |
-| `b2g filter` | `b2g curate filter` |
-| `b2g inspect` | `b2g read show` (papers) / `b2g status` (manifest/FSM) |
-| `b2g monitor` | `b2g chain --since` |
-| `b2g networks` | `b2g build --spec` |
-| `b2g enrich` | `b2g chain` (refs→DOI) + `b2g build` (co-citación) |
-| `b2g restore` | `b2g snapshot restore` |
-| `b2g resolve` | `b2g seed --resolve` |
-
-**Además** (mismo corte 0.11.0):
-
-- **Entry-point `bib2graph` → `b2g`** (`main_bib2graph_alias` emite el aviso y delega en `main`).
-- **Opción `build --corpus-scope` → `build --scope`** (deprecación de **flag**, oculta en `--help`;
-  el vocab viejo `seeds_only` sigue aceptado y tiene precedencia si se pasan ambos).
-
-**`thesaurus` NO está en esta lista:** se **retiró por completo** (sin alias). Su capacidad vive como
+El mapeo de cada verbo retirado a su forma canónica vive en **§Formas canónicas de los verbos
+retirados** (arriba). `thesaurus` nunca fue alias: se retiró por completo; su capacidad es
 `b2g build --thesaurus <archivo>` (#164, ver §`build`).
 
 ---
@@ -747,8 +744,8 @@ class Corpus:
         OR `curation_status == 'accepted'`; `'seeds_only'` = `is_seed == True`. Scope inválido →
         `ValueError` accionable. Determinista: dos llamadas con el mismo scope dan corpora con el
         mismo `corpus_hash` (subset estable). `'all'` reusa el backend; los otros materializan el
-        filtro en un `InMemoryBackend`. Lo usa `b2g build --scope` (vocab CLI `seeds`→`seeds_only`;
-        alias deprecado `--corpus-scope` usa este vocab interno) para sellar el hash del
+        filtro en un `InMemoryBackend`. Lo usa `b2g build --scope` (vocab CLI `seeds`→`seeds_only`
+        internamente) para sellar el hash del
         corpus FILTRADO. Issue #56 / #159. **NO confundir con `NetworkSpec.scope`** (§10): aquel es un
         eje por-red (`full`/`seeds_only`) sobre `is_seed`; `scoped()` filtra el corpus entero por
         curación antes de proyectar."""
@@ -1032,8 +1029,8 @@ queda opt-in para **resolver `references` a DOI** y el **segundo nivel de fetch*
 ≡ citantes compartidos) que habilita la **co-citación end-to-end**. Vive en el **núcleo sobre OpenAlex**
 (ADR [0025](decisiones/0025-enricher-cocitacion-openalex.md)), **no** en `[s2]` (reservado para un
 futuro `SemanticScholarEnricher`). **No se invoca por verbo propio** (#162): la pasada refs→DOI corre
-automática en `chain` y la de co-citación en `build` (helper único `cli/_enrich.py::enrich_corpus`); el
-verbo `b2g enrich` sobrevive como alias deprecado.
+automática en `chain` y la de co-citación en `build` (helper único `cli/_enrich.py::enrich_corpus`). El
+ex verbo suelto `b2g enrich` se retiró en 0.12.0.
 
 ```python
 @runtime_checkable
@@ -1159,7 +1156,7 @@ columna `round`); las transiciones son **permisivas** (ADR 0016: no se bloquea n
 es de **primera clase** (loop-back a `SEEDED` + ronda++, acumula sobre lo curado); `seed.py` lo cablea
 cuando hay estado previo. **Fuente única de verdad:** `chain`/`filter`/`build` derivan su destino de
 `apply_transition`, no de un literal. **`MONITORED`** es **alcanzable** vía **`b2g chain --since`**
-(#158, forrajeo incremental; el alias deprecado `b2g monitor` delega), que dispara
+(#158, forrajeo incremental; el ex verbo `b2g monitor` se retiró en 0.12.0), que dispara
 `apply_transition(state, "monitor", round)` (paso 8 del ciclo).
 El comando `b2g status` consume `loop_state()`/`loop_round()`/`available_transitions()` y expone
 `curation_available`/`round` (ver §convenciones CLI).

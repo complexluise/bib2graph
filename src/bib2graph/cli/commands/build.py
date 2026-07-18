@@ -43,7 +43,6 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
-from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, handle_errors
@@ -579,17 +578,6 @@ def run_build(
     ),
 )
 @click.option(
-    "--corpus-scope",
-    "corpus_scope_deprecated",
-    type=click.Choice(["all", "accepted", "seeds_only"]),
-    default=None,
-    hidden=True,
-    help=(
-        "DEPRECATED (cierra en 0.11.0): usar --scope. "
-        "Acepta los valores antiguos all|accepted|seeds_only."
-    ),
-)
-@click.option(
     "--spec",
     "spec_path",
     type=click.Path(exists=True, dir_okay=False),
@@ -646,7 +634,6 @@ def build_cmd(
     ctx: click.Context,
     out_dir: str | None,
     scope: str,
-    corpus_scope_deprecated: str | None,
     spec_path: str | None,
     min_weight: int,
     max_citing: int | None,
@@ -667,18 +654,8 @@ def build_cmd(
     if effective_out_dir is None:
         effective_out_dir = ws.networks_dir
 
-    corpus_scope_dep_msg: str | None = None
-    if corpus_scope_deprecated is not None:
-        corpus_scope_dep_msg = emit_deprecation(
-            "b2g build --corpus-scope", "b2g build --scope"
-        )
-        # El vocab deprecado (all|accepted|seeds_only) ya es el vocab interno.
-        # Preservamos el mismo token para scope_cli_token (compat pre-0.10.0).
-        internal_scope = corpus_scope_deprecated
-        cli_token: str = corpus_scope_deprecated
-    else:
-        internal_scope = _map_scope(scope)
-        cli_token = scope
+    internal_scope = _map_scope(scope)
+    cli_token = scope
 
     # FIX 1a — footgun: --min-weight se ignora en modo spec.
     # Avisar explícitamente para no perder la intención del usuario en silencio.
@@ -706,8 +683,6 @@ def build_cmd(
     if json_mode(json_output):
         all_warnings: list[str] = list(data.get("warnings") or [])
         all_warnings.extend(workspace_walkup_warning(ws))
-        if corpus_scope_dep_msg is not None:
-            all_warnings.append(corpus_scope_dep_msg)
         envelope = build_envelope(
             command="build",
             ok=True,

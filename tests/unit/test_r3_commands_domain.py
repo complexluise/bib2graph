@@ -180,9 +180,9 @@ def test_estado_persistido_es_dictado_por_cycle(
         ):
             run_chain(store_path, transport=_make_noop_transport())
     elif action == "filter":
-        from bib2graph.cli.commands.filter import run_filter
+        from bib2graph.service.curate import filter_corpus
 
-        run_filter(store_path, year_gte=2000)
+        filter_corpus(store_path, year_gte=2000)
     elif action == "build":
         from bib2graph.cli.commands.build import run_build
 

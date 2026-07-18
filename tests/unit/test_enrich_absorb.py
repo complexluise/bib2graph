@@ -8,8 +8,8 @@ Cubre las decisiones de implementación del sub-issue #162:
    aceptadas, ANTES de proyectar las redes.
 3. ``build`` es no-op (0 requests cited_by) cuando no hay seeds aceptadas;
    ``data["enrichment"]`` queda vacío ``{}``.
-4. ``enrich`` suelto sigue funcionando idéntico (delega en el helper
-   ``enrich_corpus`` de ``cli._enrich``).
+4. [Retirado #207] El verbo suelto ``enrich`` fue eliminado en 0.12.0; su
+   capacidad (``enrich_corpus`` pass_name="both") sigue cubierta abajo.
 5. ``data["enrichment"]`` es un bloque ADITIVO en chain y build:
    nunca rompe el envelope ``schema="1"``.
 6. El helper ``enrich_corpus`` soporta ``pass_name`` inválido con ``ValueError``.
@@ -418,72 +418,11 @@ def test_build_4_redes_sin_seeds_aceptadas(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 4. enrich suelto sigue funcionando idéntico
+# 4. [Retirado #207] El verbo suelto 'enrich' (cli.commands.enrich) fue
+#    eliminado en 0.12.0 (ADR 0038 P1). Su capacidad —enrich_corpus(pass_name=
+#    "both")— sigue viva y cubierta por test_enrich_corpus_both_tiene_todas_
+#    las_claves (sección 7) y por la absorción en chain/build (secciones 1-3).
 # ---------------------------------------------------------------------------
-
-
-def test_enrich_suelto_sigue_funcionando(tmp_path: Path) -> None:
-    """``run_enrich`` (alias) delega en el helper y produce el mismo resultado."""
-    from bib2graph.cli.commands.enrich import run_enrich
-
-    rows = [
-        _row(
-            "P1",
-            source_id="W100",
-            is_seed=True,
-            curation_status=CurationStatus.ACCEPTED,
-            references_id=["W999"],
-        )
-    ]
-    db_path = _store_with_corpus(tmp_path, rows)
-
-    citing = [_citing_work("C1", ["W100"])]
-    transport, _ = _make_counting_transport(
-        doi_map={"W999": "10.1000/ref"},
-        citing_works=citing,
-    )
-
-    data = run_enrich(db_path, transport=transport)
-
-    # Claves estables del contrato original
-    assert "refs_resolved" in data
-    assert "refs_total_unique" in data
-    assert "citing_new" in data
-    assert "citing_targets" in data
-    assert "total_papers" in data
-    assert isinstance(data["refs_resolved"], int)
-    assert isinstance(data["total_papers"], int)
-
-
-def test_enrich_suelto_claves_numericas(tmp_path: Path) -> None:
-    """``run_enrich`` retorna exactamente las 5 claves requeridas (contrato original)."""
-    from bib2graph.cli.commands.enrich import run_enrich
-    from bib2graph.stores.duckdb import DuckDBStore
-
-    rows = [_row("P1", references_id=["W111"])]
-    db_path = tmp_path / "e.duckdb"
-    store = DuckDBStore(db_path)
-    store.persist(_corpus_from_rows(rows))
-    store.close()
-
-    transport = _make_doi_transport({"W111": "10.1000/xyz"})
-    data = run_enrich(db_path, transport=transport)
-
-    required = {
-        "refs_resolved",
-        "refs_total_unique",
-        "citing_new",
-        "citing_targets",
-        "total_papers",
-    }
-    assert required.issubset(data.keys()), (
-        f"Faltan claves en data: {required - set(data.keys())}"
-    )
-    assert data["total_papers"] == 1
-    assert data["refs_resolved"] == 1
-    assert data["refs_total_unique"] == 1
-    assert data["citing_new"] == 0  # sin seeds aceptadas → 0
-    assert data["citing_targets"] == 0
 
 
 # ---------------------------------------------------------------------------

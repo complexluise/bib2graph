@@ -238,8 +238,8 @@ def test_restore_corpus_queda_deduplicado(tmp_path: Path) -> None:
     El manifest no se persiste en DuckDB; el contrato observable es que
     la variante orto-cercana desaparece del corpus persistido.
     """
-    from bib2graph.cli.commands.restore import run_restore
     from bib2graph.constants import Col
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     rows = [
@@ -266,8 +266,8 @@ def test_restore_corpus_queda_deduplicado(tmp_path: Path) -> None:
 
 def test_restore_keywords_similares_colapsan(tmp_path: Path) -> None:
     """Tras restore, keywords casi-iguales colapsan en keywords_id."""
-    from bib2graph.cli.commands.restore import run_restore
     from bib2graph.constants import Col
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     rows = [
@@ -331,7 +331,7 @@ def test_reingesta_no_infla_corpus(tmp_path: Path) -> None:
     persist_replace es idempotente: dos restore sucesivos del mismo
     parquet dejan el mismo número de papers.
     """
-    from bib2graph.cli.commands.restore import run_restore
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     rows = [_make_corpus_row(id="P1"), _make_corpus_row(id="P2")]
@@ -575,8 +575,8 @@ def test_seed_seed_cross_biblioteca_colapsa_autores(tmp_path: Path) -> None:
     variante nueva (john smith en P2) en la segunda ingesta, ya que el dedup
     ahora opera sobre el corpus COMPLETO merged.
     """
-    from bib2graph.cli.commands.restore import run_restore
     from bib2graph.constants import Col
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -611,8 +611,8 @@ def test_seed_chain_cross_biblioteca_colapsa_keywords(tmp_path: Path) -> None:
     segunda vía restore con paper distinto. El dedup cross-biblioteca
     debe colapsar keywords similares entre papers distintos.
     """
-    from bib2graph.cli.commands.restore import run_restore
     from bib2graph.constants import Col
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -652,9 +652,9 @@ def test_seed_openalex_cross_biblioteca_colapsa_autores(tmp_path: Path) -> None:
     Verifica que la ruta seed (OpenAlex mock) también aplica dedup
     cross-biblioteca al mergear con lo existente.
     """
-    from bib2graph.cli.commands.restore import run_restore
     from bib2graph.cli.commands.seed import run_seed
     from bib2graph.constants import Col
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -712,8 +712,8 @@ def test_thesaurus_remapeo_no_acumula_canonicos(tmp_path: Path) -> None:
     import json as _json
 
     from bib2graph.cli.commands.build import run_build
-    from bib2graph.cli.commands.restore import run_restore
     from bib2graph.constants import Col
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
