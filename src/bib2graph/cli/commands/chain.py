@@ -17,7 +17,12 @@ from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, UsageError, handle_errors
 from bib2graph.cli._ingest import normalize_and_dedup
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import open_store, resolve_library_path
+from bib2graph.cli._store import (
+    open_store,
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 
 
 # Función núcleo (testeable, sin Click)
@@ -363,7 +368,8 @@ def chain_cmd(
     """
     from bib2graph.cli._options import parse_since
 
-    store_path = resolve_library_path(ctx.obj)
+    ws = resolve_workspace(ctx.obj)
+    store_path = ws.library_path
 
     # Parsear --since en la frontera (R2/ADR 0017): el reloj se fija aquí.
     since: date | None = None
@@ -381,13 +387,16 @@ def chain_cmd(
         since=since,
     )
 
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
+
     if json_mode(json_output):
         envelope = build_envelope(
             command="chain",
             ok=True,
             data=data,
             exit_code=0,
-            warnings=data.get("warnings", []),
+            warnings=list(data.get("warnings", [])) + workspace_walkup_warning(ws),
         )
         emit(envelope)
     elif preview:

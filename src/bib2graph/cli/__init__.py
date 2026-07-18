@@ -7,13 +7,15 @@ Entry points en ``pyproject.toml``:
     b2g      = "bib2graph.cli:main"
     bib2graph = "bib2graph.cli:main_bib2graph_alias"  # deprecado, #165
 
-Superficie (ADR 0037/0038/0040): 10 verbos del ciclo + ``skill`` (meta) +
-9 aliases deprecados. En total se registran 16 subcomandos planos + 4 grupos.
+Superficie (ADR 0037/0038/0040/0045): 10 verbos del ciclo + ``skill``/``schema``
+(meta) + 9 aliases deprecados. En total se registran 17 subcomandos planos + 4
+grupos.
 
 Verbos del ciclo (10) — planos: init, seed, chain, build, export, status,
     validate; grupos (abajo): read, curate, snapshot.
-Meta (1): skill — distribución de la skill de Claude Code (ADR 0039), fuera
-    de los 10 del ciclo.
+Meta (2): skill — distribución de la skill de Claude Code (ADR 0039); schema
+    — introspección versionada del contrato (envelope/exit codes, ADR 0045
+    #260). Ninguno de los dos transiciona la FSM ni cuenta como verbo del ciclo.
 Aliases deprecados (9) — la ventana de retrocompat cierra en 0.11.0 (ADR 0037/0038):
     accept→curate accept, reject→curate reject, filter→curate filter,
     enrich→chain/build, inspect→read show (#156), monitor→chain --since,
@@ -72,6 +74,7 @@ from bib2graph.cli.commands.read import read_grp
 from bib2graph.cli.commands.reject import reject_cmd
 from bib2graph.cli.commands.resolve import resolve_cmd
 from bib2graph.cli.commands.restore import restore_cmd
+from bib2graph.cli.commands.schema import schema_cmd
 from bib2graph.cli.commands.seed import seed_cmd
 from bib2graph.cli.commands.skill import skill_grp
 from bib2graph.cli.commands.snapshot import snapshot_grp
@@ -123,7 +126,7 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
 
     Verbos del ciclo (ADR 0037): init, seed, chain, build, export, status,
     validate, read [list|stats|show|top], curate [dump|apply|accept|reject|filter],
-    snapshot [create|restore]. Meta: skill [add] (Epic #188).
+    snapshot [create|restore]. Meta: skill [add] (Epic #188), schema (ADR 0045 #260).
     Aliases deprecados (cierran en 0.11.0, ADR 0038): accept, reject, filter,
     enrich, monitor, inspect, networks, resolve, restore.
 
@@ -157,6 +160,7 @@ b2g.add_command(restore_cmd)
 b2g.add_command(resolve_cmd)
 b2g.add_command(read_grp)
 b2g.add_command(skill_grp)
+b2g.add_command(schema_cmd)
 
 
 def main() -> int:

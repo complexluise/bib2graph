@@ -19,7 +19,12 @@ from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import open_store, resolve_library_path
+from bib2graph.cli._store import (
+    open_store,
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 from bib2graph.constants import Col
 
 
@@ -128,8 +133,11 @@ def inspect_cmd(
     """
     new_cmd = "b2g read show" if paper_id else "b2g status"
     dep_msg = emit_deprecation("b2g inspect", new_cmd)
-    store_path = resolve_library_path(ctx.obj)
-    data = run_inspect(store_path, paper_id=paper_id)
+    ws = resolve_workspace(ctx.obj)
+    data = run_inspect(ws.library_path, paper_id=paper_id)
+
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -137,7 +145,7 @@ def inspect_cmd(
             ok=True,
             data=data,
             exit_code=0,
-            warnings=[dep_msg],
+            warnings=[dep_msg, *workspace_walkup_warning(ws)],
         )
         emit(envelope)
     else:

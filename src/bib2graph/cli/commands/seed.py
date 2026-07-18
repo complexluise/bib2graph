@@ -38,7 +38,12 @@ from bib2graph.cli._errors import (
 )
 from bib2graph.cli._ingest import normalize_and_dedup
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import open_store, resolve_library_path
+from bib2graph.cli._store import (
+    open_store,
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 
 # Función núcleo: siembra desde OpenAlex (testeable, sin Click)
 
@@ -474,16 +479,20 @@ def seed_cmd(
                 "Para resolver DOIs de un corpus existente, usá b2g resolve."
             )
 
-    store_path = resolve_library_path(ctx.obj)
+    ws = resolve_workspace(ctx.obj)
+    store_path = ws.library_path
+    ws_warnings = workspace_walkup_warning(ws)
 
     if bib_path is not None:
         data = run_seed_from_bib(store_path, bib_path, resolve=do_resolve, email=email)
+        data["workspace"] = workspace_echo(ws)
         if json_mode(json_output):
             envelope = build_envelope(
                 command="seed",
                 ok=True,
                 data=data,
                 exit_code=0,
+                warnings=ws_warnings or None,
             )
             emit(envelope)
         else:
@@ -515,13 +524,14 @@ def seed_cmd(
             min_year=spec.min_year,
             max_year=spec.max_year,
         )
+        data["workspace"] = workspace_echo(ws)
         if json_mode(json_output):
             envelope = build_envelope(
                 command="seed",
                 ok=True,
                 data=data,
                 exit_code=0,
-                warnings=data.get("translation_report", []),
+                warnings=list(data.get("translation_report", [])) + ws_warnings,
             )
             emit(envelope)
         else:
@@ -544,6 +554,7 @@ def seed_cmd(
         min_year=min_year,
         max_year=max_year,
     )
+    data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -551,7 +562,7 @@ def seed_cmd(
             ok=True,
             data=data,
             exit_code=0,
-            warnings=data.get("translation_report", []),
+            warnings=list(data.get("translation_report", [])) + ws_warnings,
         )
         emit(envelope)
     else:

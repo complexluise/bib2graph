@@ -71,17 +71,30 @@ def _emit_error_envelope(
     error_code: str,
     message: str,
     json_mode: bool,
+    *,
+    subcode: str | None = None,
 ) -> None:
-    """Emite el envelope de error si está en modo JSON; en modo humano, imprime texto."""
+    """Emite el envelope de error si está en modo JSON; en modo humano, imprime texto.
+
+    Args:
+        subcode: Subcódigo opcional del error (ADR 0045 #258), poblado solo
+            para ``NETWORK_ERROR``/exit 4 (``RATE_LIMITED``/``UPSTREAM_TIMEOUT``).
+            ``None`` para todo lo demás — no se agrega al dict de error para
+            no ensuciar el envelope con una clave ``null`` en casos no-red.
+    """
     if json_mode:
         from bib2graph.cli._envelope import build_envelope, emit
+
+        error: dict[str, str | None] = {"code": error_code, "message": message}
+        if subcode is not None:
+            error["subcode"] = subcode
 
         envelope = build_envelope(
             command=command,
             ok=False,
             data={},
             exit_code=exit_code,
-            error={"code": error_code, "message": message},
+            error=error,
         )
         emit(envelope)
     else:
@@ -107,6 +120,14 @@ def handle_errors(command: str) -> Callable[[F], F]:
     R5: la rama muerta del ``if isinstance(exc, StoreLockedError)`` / ``else``
     se eliminó: ambas ramas hacían exactamente lo mismo (exit 5).
 
+    ADR 0045 (#258) — grieta 3a: si la excepción capturada es ``NetworkError``
+    con ``.subcode`` seteado (``RATE_LIMITED``/``UPSTREAM_TIMEOUT``), se
+    propaga a ``error.subcode`` en el envelope. Para ``httpx.HTTPStatusError``
+    no traducido explícitamente por el source, se deriva el subcode del
+    ``response.status_code`` cuando está disponible (429/504); para
+    ``httpx.TimeoutException`` (sin respuesta), se asume ``UPSTREAM_TIMEOUT``.
+    En cualquier otro caso, ``subcode`` queda ``None`` (aditivo, no rompe).
+
     Args:
         command: Nombre del subcomando (para el envelope).
 
@@ -123,8 +144,14 @@ def handle_errors(command: str) -> Callable[[F], F]:
             try:
                 return func(*args, **kwargs)
             except B2GError as exc:
+                subcode = getattr(exc, "subcode", None)
                 _emit_error_envelope(
-                    command, exc.exit_code, exc.code, exc.message, json_mode
+                    command,
+                    exc.exit_code,
+                    exc.code,
+                    exc.message,
+                    json_mode,
+                    subcode=subcode,
                 )
                 sys.exit(exc.exit_code)
             except OSError as exc:
@@ -142,9 +169,44 @@ def handle_errors(command: str) -> Callable[[F], F]:
                     f"Error de red ({type(exc).__name__}): {exc}. "
                     "Verificá tu conexión a internet y reintentá."
                 )
-                _emit_error_envelope(command, 4, "NETWORK_ERROR", msg, json_mode)
+                _emit_error_envelope(
+                    command,
+                    4,
+                    "NETWORK_ERROR",
+                    msg,
+                    json_mode,
+                    subcode=_subcode_for_http_error(exc),
+                )
                 sys.exit(4)
 
         return wrapper  # type: ignore[return-value]
 
     return decorator
+
+
+def _subcode_for_http_error(exc: httpx.HTTPError) -> str | None:
+    """Deriva ``error.subcode`` (ADR 0045 #258) de una ``httpx.HTTPError`` cruda.
+
+    Cubre el caso de un ``httpx.HTTPStatusError``/``httpx.TimeoutException``
+    que llega a ``handle_errors`` sin haber sido traducido explícitamente a
+    ``NetworkError`` por el source (p. ej. un source de terceros, o un 5xx
+    no cubierto por el retry de OpenAlex). No inventa información: si no hay
+    ``response`` con status HTTP tipado y no es un timeout, devuelve ``None``.
+
+    Args:
+        exc: La excepción ``httpx.HTTPError`` capturada.
+
+    Returns:
+        ``RATE_LIMITED``/``UPSTREAM_TIMEOUT`` cuando se puede derivar,
+        ``None`` en cualquier otro caso.
+    """
+    from bib2graph.service.errors import subcode_for_status
+
+    response = getattr(exc, "response", None)
+    if response is not None:
+        status_code = getattr(response, "status_code", None)
+        if status_code is not None:
+            return subcode_for_status(int(status_code))
+    if isinstance(exc, httpx.TimeoutException):
+        return "UPSTREAM_TIMEOUT"
+    return None

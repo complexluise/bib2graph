@@ -26,7 +26,11 @@ from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import resolve_library_path
+from bib2graph.cli._store import (
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 
 
 def run_accept(
@@ -86,8 +90,11 @@ def accept_cmd(
     cualquier estado del lazo (Nota 05 §4, ADR 0016 enmendado R3).
     """
     dep_msg = emit_deprecation("b2g accept", "b2g curate accept")
-    store_path = resolve_library_path(ctx.obj)
-    data = run_accept(store_path, list(ids), by=by)
+    ws = resolve_workspace(ctx.obj)
+    data = run_accept(ws.library_path, list(ids), by=by)
+
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -95,7 +102,7 @@ def accept_cmd(
             ok=True,
             data=data,
             exit_code=0,
-            warnings=[dep_msg],
+            warnings=[dep_msg, *workspace_walkup_warning(ws)],
         )
         emit(envelope)
     else:

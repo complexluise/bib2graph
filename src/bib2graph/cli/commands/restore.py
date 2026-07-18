@@ -36,7 +36,11 @@ from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import resolve_library_path
+from bib2graph.cli._store import (
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 
 # Re-exportado para backward compat con tests que importan desde este módulo.
 from bib2graph.service.snapshot import run_restore
@@ -82,10 +86,13 @@ def restore_cmd(
     Alternativa canónica (ADR 0038): b2g snapshot restore --from-corpus ...
     """
     dep_msg = emit_deprecation("b2g restore", "b2g snapshot restore")
-    store_path = resolve_library_path(ctx.obj)
+    ws = resolve_workspace(ctx.obj)
     # R2/ADR 0017: el reloj se inyecta en la frontera CLI.
     decided_at = datetime.now(UTC)
-    data = run_restore(store_path, corpus_path, decided_at=decided_at)
+    data = run_restore(ws.library_path, corpus_path, decided_at=decided_at)
+
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -93,7 +100,7 @@ def restore_cmd(
             ok=True,
             data=data,
             exit_code=0,
-            warnings=[dep_msg],
+            warnings=[dep_msg, *workspace_walkup_warning(ws)],
         )
         emit(envelope)
     else:

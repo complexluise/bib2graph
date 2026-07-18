@@ -55,10 +55,50 @@ class DependencyError(B2GError):
 
 
 class NetworkError(B2GError):
-    """Error de red: httpx.HTTPError / timeout (exit 4)."""
+    """Error de red: httpx.HTTPError / timeout (exit 4).
+
+    ADR 0045 (#258) — grieta 3a: transporta opcionalmente un ``subcode`` que
+    distingue el status HTTP subyacente cuando se conoce, para que el
+    envelope de error lo exponga en ``error.subcode`` (campo aditivo,
+    ``code``/``exit_code`` no cambian):
+
+    - ``RATE_LIMITED``: el upstream devolvió 429 (transitorio, reintentable
+      con backoff).
+    - ``UPSTREAM_TIMEOUT``: el upstream devolvió 504 o hizo timeout (no
+      reintentable sin cambiar la petición).
+
+    ``subcode=None`` (default) para errores de red sin status HTTP tipado
+    (p. ej. ``httpx.ConnectError`` sin respuesta).
+    """
 
     exit_code = 4
     code = "NETWORK_ERROR"
+
+    def __init__(self, message: str, *, subcode: str | None = None) -> None:
+        super().__init__(message)
+        self.subcode = subcode
+
+
+#: Valores válidos de ``NetworkError.subcode`` (ADR 0045 #258).
+RATE_LIMITED = "RATE_LIMITED"
+UPSTREAM_TIMEOUT = "UPSTREAM_TIMEOUT"
+
+
+def subcode_for_status(status_code: int) -> str | None:
+    """Mapea un status HTTP a un ``NetworkError.subcode`` tipado (ADR 0045).
+
+    Args:
+        status_code: Código de status HTTP de la respuesta upstream.
+
+    Returns:
+        ``RATE_LIMITED`` para 429, ``UPSTREAM_TIMEOUT`` para 504, ``None``
+        para cualquier otro status (no tipado).
+    """
+    if status_code == 429:
+        return RATE_LIMITED
+    if status_code == 504:
+        return UPSTREAM_TIMEOUT
+    return None
 
 
 class StoreError(B2GError):

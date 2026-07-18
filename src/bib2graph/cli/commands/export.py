@@ -20,7 +20,11 @@ import click
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import resolve_workspace
+from bib2graph.cli._store import (
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 
 
 def run_export(
@@ -162,12 +166,16 @@ def export_cmd(
         networks_dir=ws.networks_dir,
     )
 
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
+
     if json_mode(json_output):
         envelope = build_envelope(
             command="export",
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:

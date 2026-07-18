@@ -1,6 +1,8 @@
 # 0045 — Cerrar las tres grietas agent-native del 0043 como una sola decisión aditiva: `error.subcode`, eco del workspace resuelto y `b2g schema`
 
-- **Estado:** Propuesta
+- **Estado:** Propuesta · **Implementada en 0.12.0** (#258/#259/#260, aditivo, sin bump de contrato;
+  `error.subcode`, `data.workspace` universal + warning de walk-up, comando meta `b2g schema` — ver
+  `docs/API.md` §Envelope y §`schema`).
 - **Fecha:** 2026-07-18
 - **Decidido por:** mixto. La decisión de fondo —**abordar ahora las tres grietas que el
   [0043](0043-posicionamiento-agent-native-cli.md) dejó como roadmap, juntas, como un solo

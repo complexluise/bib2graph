@@ -52,7 +52,11 @@ import click
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import resolve_library_path, resolve_workspace
+from bib2graph.cli._store import (
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 from bib2graph.service.curate import (
     CSV_COLUMNS,
     CSV_REQUIRED_COLUMNS,
@@ -150,12 +154,16 @@ def dump_cmd(
 
     data = run_curate_dump(store_path, out_path=out_path, scope=scope)
 
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
+
     if json_mode(json_output):
         envelope = build_envelope(
             command="curate dump",
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:
@@ -199,12 +207,16 @@ def apply_cmd(
     now = datetime.now(UTC)
     data = run_curate_from_csv(store_path, csv_file, by=by, decided_at=now)
 
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
+
     if json_mode(json_output):
         envelope = build_envelope(
             command="curate apply",
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:
@@ -251,9 +263,12 @@ def curate_accept_cmd(
     """
     from bib2graph.service.curate import accept_papers
 
-    store_path = resolve_library_path(ctx.obj)
+    ws = resolve_workspace(ctx.obj)
     now = datetime.now(UTC)
-    data = accept_papers(store_path, list(ids), by=by, decided_at=now)
+    data = accept_papers(ws.library_path, list(ids), by=by, decided_at=now)
+
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -261,6 +276,7 @@ def curate_accept_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:
@@ -297,9 +313,12 @@ def curate_reject_cmd(
     """
     from bib2graph.service.curate import reject_papers
 
-    store_path = resolve_library_path(ctx.obj)
+    ws = resolve_workspace(ctx.obj)
     now = datetime.now(UTC)
-    data = reject_papers(store_path, list(ids), by=by, decided_at=now)
+    data = reject_papers(ws.library_path, list(ids), by=by, decided_at=now)
+
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -307,6 +326,7 @@ def curate_reject_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:
@@ -355,11 +375,11 @@ def curate_filter_cmd(
     """
     from bib2graph.service.curate import filter_corpus
 
-    store_path = resolve_library_path(ctx.obj)
+    ws = resolve_workspace(ctx.obj)
     # R2: el reloj se inyecta en la frontera CLI (ADR 0017 enmendado).
     now = datetime.now(UTC)
     data = filter_corpus(
-        store_path,
+        ws.library_path,
         year_gte=year_gte,
         year_lte=year_lte,
         language=list(language) if language else None,
@@ -368,12 +388,16 @@ def curate_filter_cmd(
         decided_at=now,
     )
 
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
+
     if json_mode(json_output):
         envelope = build_envelope(
             command="curate filter",
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:

@@ -15,7 +15,12 @@ import click
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, StoreError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import open_store_readonly, resolve_library_path
+from bib2graph.cli._store import (
+    open_store_readonly,
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 from bib2graph.constants import Col, CurationStatus
 
 
@@ -112,8 +117,11 @@ def validate_cmd(
 
     Exit 0: válido. Exit 2: datos inválidos. Exit 5: store corrupto.
     """
-    store_path = resolve_library_path(ctx.obj)
-    data = run_validate(store_path)
+    ws = resolve_workspace(ctx.obj)
+    data = run_validate(ws.library_path)
+
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -121,6 +129,7 @@ def validate_cmd(
             ok=True,
             data=data,
             exit_code=0,
+            warnings=workspace_walkup_warning(ws) or None,
         )
         emit(envelope)
     else:

@@ -39,7 +39,12 @@ from bib2graph.cli._deprecation import emit_deprecation
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
 from bib2graph.cli._options import json_mode, json_option
-from bib2graph.cli._store import open_store, resolve_workspace
+from bib2graph.cli._store import (
+    open_store,
+    resolve_workspace,
+    workspace_echo,
+    workspace_walkup_warning,
+)
 from bib2graph.cli.commands.build import _build_from_spec_file, _write_artifacts
 
 
@@ -133,13 +138,16 @@ def networks_cmd(
 
     data = run_networks(ws.library_path, spec_path, out_dir=effective_out_dir)
 
+    # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
+    data["workspace"] = workspace_echo(ws)
+
     if json_mode(json_output):
         envelope = build_envelope(
             command="networks",
             ok=True,
             data=data,
             exit_code=0,
-            warnings=[dep_msg],
+            warnings=[dep_msg, *workspace_walkup_warning(ws)],
         )
         emit(envelope)
     else:
