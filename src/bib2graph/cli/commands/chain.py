@@ -44,9 +44,9 @@ def run_chain(
     Cuando ``preview=True``, estima el crecimiento potencial **sin fetchear**
     ni transicionar el estado del corpus.  La estimación backward es exacta
     (desde ``references_id``); la forward es exacta si el corpus tiene
-    ``cited_by_id`` poblado (pasó por ``b2g enrich`` o un ``chain forward``
-    previo, ADR 0048), o indica que se requiere fetch si ``cited_by_id``
-    está vacío.
+    ``cited_by_id`` poblado (por un ``chain forward`` previo o la pasada
+    cited_by de ``build``, ADR 0048), o indica que se requiere fetch si
+    ``cited_by_id`` está vacío.
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
@@ -345,8 +345,8 @@ def _run_chain_preview(
     help=(
         "Estima el crecimiento potencial SIN fetchear ni modificar el corpus "
         "(dry-run).  Backward: exacto desde references_id.  Forward: exacto "
-        "si el corpus tiene cited_by_id (requiere enrich previo), si no, "
-        "indica que se necesita fetch."
+        "si el corpus tiene cited_by_id (poblado por un chain forward previo), "
+        "si no, indica que se necesita fetch."
     ),
 )
 @click.option(

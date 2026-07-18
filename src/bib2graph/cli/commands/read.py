@@ -302,8 +302,9 @@ def top_cmd(
                    descendente.  Default: bibliographic_coupling (robusto en
                    one-shot frío, no requiere enrich previo).
       cocitation — top N pares de co-citación por peso, SIEMPRE desde la red
-                   cocitation (requiere 'b2g enrich' previo para tener
-                   cited_by_id).  Si la red está vacía → bloque vacío con
+                   cocitation (requiere cited_by_id poblado: por un
+                   'b2g chain --direction forward' previo o la pasada cited_by
+                   de 'b2g build').  Si la red está vacía → bloque vacío con
                    reason/fix_command (honest-empty, exit 0).
 
     No requiere 'b2g build' previo: recomputa en tiempo de lectura.
