@@ -14,6 +14,12 @@ Esta guía es una receta para llegar a una ecuación acotada, testeada, sin ruid
     - Toma: 30 minutos de escritura + testing
     - Herramienta: lápiz/papel, OpenAlex (o bib2graph), un agente opcional
 
+!!! tip "Antes de sembrar: API key de OpenAlex"
+    Cuando pases de testear la ecuación a sembrar con `b2g seed`, conviene tener configurada tu
+    **API key de OpenAlex** (`OPENALEX_API_KEY`) y pasar `--email` para el polite pool — sin eso, el
+    tier gratis se agota y aparecen errores `429`. Cómo hacerlo:
+    [Quickstart → conseguí tu API key](../getting-started/quickstart.md#antes-de-empezar-consegui-tu-api-key-de-openalex).
+
 ---
 
 ## Antes de empezar: afina tu pregunta
