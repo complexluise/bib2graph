@@ -11,8 +11,11 @@ Casos cubiertos (docs/ROADMAP — Hito 9 DoD):
    producida por Networks.build(corpus, spec_desde_yaml_con_defaults) tiene los
    mismos nodos/aristas que Networks.quick(corpus)[coupling].
 5. No-regresión resolution=1.0 ≡ comportamiento actual (default).
-6. Subcomando b2g networks --spec end-to-end con CliRunner: corre, escribe
-   artefactos, NO transiciona el CycleState, envelope JSON correcto.
+6. Subcomando b2g build --spec end-to-end con CliRunner: corre, escribe
+   artefactos, envelope JSON correcto.  (El verbo suelto ``b2g networks`` —
+   que era transversal, no transicionaba el FSM— fue retirado en 0.12.0,
+   #207, ADR 0038 P1; la cobertura de que ``build --spec`` SÍ transiciona
+   vive en test_build_absorber_networks.py, D1 del ADR 0037.)
 
 Marcador: ``unit`` (sin red ni I/O externo; DuckDB en tmp_path).
 Fecha de fixtures: 2026-06-17.
@@ -364,13 +367,19 @@ def test_resolution_ignorado_en_greedy_modularity() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 6. Subcomando b2g networks --spec end-to-end (CliRunner)
+# 6. Subcomando b2g build --spec end-to-end (CliRunner)
+#
+# El verbo suelto 'b2g networks' fue retirado en 0.12.0 (#207, ADR 0038 P1);
+# su forma canónica es 'b2g build --spec'. A diferencia del ex-'networks'
+# (transversal, no transicionaba el FSM), 'build --spec' SÍ transiciona a
+# BUILT y sella corpus_hash (D1, ADR 0037/0038) — esa cobertura vive en
+# test_build_absorber_networks.py (TestD1BuildSpecTransiciona).
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_networks_cmd_escribe_artefactos(tmp_path: Path) -> None:
-    """b2g networks --spec corre, escribe artefactos y devuelve exit 0."""
+def test_build_spec_cmd_escribe_artefactos(tmp_path: Path) -> None:
+    """b2g build --spec corre, escribe artefactos y devuelve exit 0."""
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
@@ -392,7 +401,7 @@ def test_networks_cmd_escribe_artefactos(tmp_path: Path) -> None:
         [
             "--workspace",
             str(ws_dir),
-            "networks",
+            "build",
             "--spec",
             str(spec_file),
             "--out-dir",
@@ -407,57 +416,8 @@ def test_networks_cmd_escribe_artefactos(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_networks_cmd_no_transiciona_cycle_state(tmp_path: Path) -> None:
-    """b2g networks --spec NO transiciona el CycleState del lazo.
-
-    A diferencia de ``b2g build``, el subcomando ``networks`` es transversal
-    al lazo bibliométrico: no modifica el estado del ciclo FSM.
-    """
-    from click.testing import CliRunner
-
-    from bib2graph.cli import b2g
-    from bib2graph.stores.duckdb import DuckDBStore
-    from bib2graph.workspace import Workspace
-
-    ws_dir = tmp_path / "ws"
-    ws = Workspace.init(ws_dir, "test")
-    _seed_store(ws.library_path)
-
-    # Capturar el estado antes
-    store_before = DuckDBStore(ws.library_path)
-    state_before = store_before.backend.loop_state()
-
-    yaml_content = "networks:\n  - kind: bibliographic_coupling\n"
-    spec_file = tmp_path / "redes.yaml"
-    spec_file.write_text(yaml_content, encoding="utf-8")
-
-    out_dir = tmp_path / "output_nets"
-
-    runner = CliRunner()
-    result = runner.invoke(
-        b2g,
-        [
-            "--workspace",
-            str(ws_dir),
-            "networks",
-            "--spec",
-            str(spec_file),
-            "--out-dir",
-            str(out_dir),
-        ],
-    )
-
-    assert result.exit_code == 0, f"Salida inesperada: {result.output}"
-
-    # El CycleState no debe haber cambiado
-    store_after = DuckDBStore(ws.library_path)
-    state_after = store_after.backend.loop_state()
-    assert state_after == state_before
-
-
-@pytest.mark.unit
-def test_networks_cmd_json_envelope_correcto(tmp_path: Path) -> None:
-    """b2g networks --spec --json emite envelope con schema='1' y claves de build."""
+def test_build_spec_cmd_json_envelope_correcto(tmp_path: Path) -> None:
+    """b2g build --spec --json emite envelope con schema='1' y claves de build."""
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
@@ -479,7 +439,7 @@ def test_networks_cmd_json_envelope_correcto(tmp_path: Path) -> None:
         [
             "--workspace",
             str(ws_dir),
-            "networks",
+            "build",
             "--spec",
             str(spec_file),
             "--out-dir",
@@ -489,12 +449,11 @@ def test_networks_cmd_json_envelope_correcto(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0, f"Salida inesperada: {result.output}"
-    # Usar result.stdout porque b2g networks emite aviso de deprecación a stderr (#165).
     envelope = json.loads(result.stdout)
 
     assert envelope["schema"] == "1"
     assert envelope["ok"] is True
-    assert envelope["command"] == "networks"
+    assert envelope["command"] == "build"
     assert envelope["exit_code"] == 0
     assert "networks_built" in envelope["data"]
     assert "artifacts_dir" in envelope["data"]
@@ -503,8 +462,8 @@ def test_networks_cmd_json_envelope_correcto(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_networks_cmd_yaml_invalido_emite_data_error(tmp_path: Path) -> None:
-    """b2g networks --spec con YAML inválido emite DataError (exit 2) en JSON."""
+def test_build_spec_cmd_yaml_invalido_emite_data_error(tmp_path: Path) -> None:
+    """b2g build --spec con YAML inválido emite DataError (exit 2) en JSON."""
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
@@ -525,7 +484,7 @@ def test_networks_cmd_yaml_invalido_emite_data_error(tmp_path: Path) -> None:
         [
             "--workspace",
             str(ws_dir),
-            "networks",
+            "build",
             "--spec",
             str(spec_file),
             "--json",
@@ -533,7 +492,6 @@ def test_networks_cmd_yaml_invalido_emite_data_error(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 2  # DataError → exit 2
-    # Usar result.stdout porque b2g networks emite aviso de deprecación a stderr (#165).
     envelope = json.loads(result.stdout)
     assert envelope["ok"] is False
     assert envelope["error"] is not None

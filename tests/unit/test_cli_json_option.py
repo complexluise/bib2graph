@@ -142,22 +142,25 @@ def _assert_one_json_line(stdout: str, *, schema: str = "1") -> dict:
 # Comandos y sus argumentos mínimos para pasar la validación de Click.
 # Todos fallarán en el interior (no hay workspace) → handle_errors →
 # envelope de error (ok=False) → una línea en stdout.
+#
+# Los 9 verbos planos deprecados (accept, reject, filter, inspect, enrich,
+# monitor, networks, resolve, restore) fueron retirados en 0.12.0 (#207, ADR
+# 0038 P1); sus formas canónicas (curate accept/reject/filter, read show/
+# status, chain/build, chain --since, build --spec, seed --resolve, snapshot
+# restore) ya están cubiertas por las entradas de abajo.
 _CMDS_NO_WORKSPACE: list[list[str]] = [
     ["status", "--json"],
     ["validate", "--json"],
-    ["inspect", "--json"],
+    ["read", "show", "--id", "DUMMY_ID", "--json"],
     ["build", "--json"],
     ["export", "--json"],
     ["snapshot", "create", "--json"],
     ["chain", "--json"],
-    ["filter", "--json"],
-    ["enrich", "--json"],
-    ["monitor", "--json"],
-    ["resolve", "--json"],
-    ["accept", "--ids", "DUMMY_ID", "--json"],
-    ["reject", "--ids", "DUMMY_ID", "--json"],
+    ["curate", "filter", "--json"],
+    ["curate", "accept", "--ids", "DUMMY_ID", "--json"],
+    ["curate", "reject", "--ids", "DUMMY_ID", "--json"],
     ["curate", "dump", "--json"],
-    ["restore", "--from-corpus", "nonexistent.parquet", "--json"],
+    ["snapshot", "restore", "--from-corpus", "nonexistent.parquet", "--json"],
     ["seed", "--equation", "test query", "--json"],
 ]
 

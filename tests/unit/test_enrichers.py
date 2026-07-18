@@ -1,4 +1,4 @@
-"""Tests unitarios del Hito 8a — ``OpenAlexEnricher`` y ``run_enrich``.
+"""Tests unitarios del Hito 8a — ``OpenAlexEnricher`` y el helper ``enrich_corpus``.
 
 Todos los tests de red usan ``httpx.MockTransport`` (sin red real en CI).
 
@@ -9,9 +9,13 @@ Casos cubiertos:
 3. Batching: corpus con >100 references únicas dispara >1 request.
 4. Refs no resueltas → None en esa posición (no pierde el paper, no desalinea).
 5. Corpus sin references → 0 resueltas, sin error.
-6. ``run_enrich``: contrato del dict de salida (claves estables).
-7. ``run_enrich``: red caída → propaga ``httpx.ConnectError`` (exit 4 vía
-   ``@handle_errors``).
+6. ``cli._enrich.enrich_corpus`` (pass_name="refs_doi") vía store: contrato del
+   dict de métricas (claves estables). El verbo suelto ``b2g enrich`` (y su
+   función núcleo ``cli.commands.enrich.run_enrich``, que delegaba en este
+   mismo helper) fue retirado en 0.12.0 (#207, ADR 0038 P1); estos tests
+   ejercen la misma ruta de I/O (abrir store, enriquecer, persistir) que
+   ``run_enrich`` usaba internamente.
+7. Red caída → propaga ``httpx.ConnectError`` (exit 4 vía ``@handle_errors``).
 8. ``Enricher`` Protocol: ``OpenAlexEnricher`` satisface el protocolo.
 """
 
@@ -164,6 +168,40 @@ def _make_enricher(transport: httpx.BaseTransport) -> Any:
 
     source = OpenAlexSource(email="test@example.com", transport=transport)
     return OpenAlexEnricher(source)
+
+
+def _run_enrich_via_store(
+    store_path: Path, *, transport: httpx.BaseTransport
+) -> dict[str, Any]:
+    """Replica el camino de I/O que usaba el ex-``run_enrich`` (retirado #207).
+
+    Abre el store, enriquece en memoria con ``cli._enrich.enrich_corpus``
+    (pass_name="both", misma fuente única que ``chain``/``build`` usan) y
+    persiste — el mismo camino que ``cli.commands.enrich.run_enrich`` recorría
+    antes de su retiro en 0.12.0 (ADR 0038 P1).
+    """
+    from bib2graph.cli._enrich import enrich_corpus
+    from bib2graph.sources.openalex import OpenAlexSource
+    from bib2graph.stores.duckdb import DuckDBStore
+
+    store = DuckDBStore(store_path)
+    try:
+        corpus = store.load()
+        source = OpenAlexSource(transport=transport)
+        enriched, metrics = enrich_corpus(corpus, source, pass_name="both")
+        store.persist(enriched)
+        store.backend.persist_enricher_refs(enriched.manifest.enrichers)
+        total_papers = len(enriched)
+    finally:
+        store.close()
+
+    return {
+        "refs_resolved": metrics.get("refs_resolved", 0),
+        "refs_total_unique": metrics.get("refs_total_unique", 0),
+        "citing_new": metrics.get("citing_new", 0),
+        "citing_targets": metrics.get("citing_targets", 0),
+        "total_papers": total_papers,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -388,15 +426,14 @@ def test_enrich_corpus_sin_references_no_falla() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 6. run_enrich: contrato del dict de salida (claves estables)
+# 6. enrich_corpus vía store: contrato del dict de salida (claves estables)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_run_enrich_devuelve_claves_esperadas(tmp_path: Path) -> None:
-    """``run_enrich`` devuelve dict con ``refs_resolved``, ``refs_total_unique``,
-    ``total_papers``."""
-    from bib2graph.cli.commands.enrich import run_enrich
+    """El camino de I/O de enrich devuelve dict con ``refs_resolved``,
+    ``refs_total_unique``, ``total_papers``."""
     from bib2graph.stores.duckdb import DuckDBStore
 
     doi_map = {"W1111111": "10.1000/paper1"}
@@ -407,7 +444,7 @@ def test_run_enrich_devuelve_claves_esperadas(tmp_path: Path) -> None:
     store.persist(corpus)
 
     transport = _make_dois_transport(doi_map)
-    data = run_enrich(tmp_path / "test.duckdb", transport=transport)
+    data = _run_enrich_via_store(tmp_path / "test.duckdb", transport=transport)
 
     assert "refs_resolved" in data
     assert "refs_total_unique" in data
@@ -420,8 +457,7 @@ def test_run_enrich_devuelve_claves_esperadas(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_run_enrich_corpus_sin_references(tmp_path: Path) -> None:
-    """``run_enrich`` con corpus sin referencias devuelve 0 resueltas, sin error."""
-    from bib2graph.cli.commands.enrich import run_enrich
+    """Corpus sin referencias → el camino de I/O de enrich devuelve 0 resueltas, sin error."""
     from bib2graph.stores.duckdb import DuckDBStore
 
     rows = [_make_row(id="P1", references_id=None)]
@@ -431,7 +467,7 @@ def test_run_enrich_corpus_sin_references(tmp_path: Path) -> None:
     store.persist(corpus)
 
     transport, call_counter = _make_counting_transport({})
-    data = run_enrich(tmp_path / "test.duckdb", transport=transport)
+    data = _run_enrich_via_store(tmp_path / "test.duckdb", transport=transport)
 
     assert data["refs_resolved"] == 0
     assert data["refs_total_unique"] == 0
@@ -439,14 +475,13 @@ def test_run_enrich_corpus_sin_references(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 7. run_enrich: red caída → propaga httpx.ConnectError (exit 4 vía @handle_errors)
+# 7. Red caída → propaga httpx.ConnectError (exit 4 vía @handle_errors)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_run_enrich_red_caida_propaga_error(tmp_path: Path) -> None:
-    """``run_enrich`` con red caída propaga ``httpx.ConnectError`` (exit 4)."""
-    from bib2graph.cli.commands.enrich import run_enrich
+    """El camino de I/O de enrich con red caída propaga ``httpx.ConnectError`` (exit 4)."""
     from bib2graph.stores.duckdb import DuckDBStore
 
     rows = [_make_row(id="P1", references_id=["W1111111"])]
@@ -456,7 +491,9 @@ def test_run_enrich_red_caida_propaga_error(tmp_path: Path) -> None:
     store.persist(corpus)
 
     with pytest.raises(httpx.ConnectError):
-        run_enrich(tmp_path / "test.duckdb", transport=_make_error_transport())
+        _run_enrich_via_store(
+            tmp_path / "test.duckdb", transport=_make_error_transport()
+        )
 
 
 # ---------------------------------------------------------------------------

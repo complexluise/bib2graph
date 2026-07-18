@@ -284,9 +284,10 @@ def _run_chain_preview(
     if growth.forward_requires_fetch:
         warnings.append(
             "El crecimiento forward no puede estimarse sin red: el corpus no tiene "
-            "``cited_by_id`` poblado.  Ejecutá ``b2g enrich`` primero para obtener "
-            "una estimación local, o ejecutá ``b2g chain`` sin ``--preview`` para "
-            "traer los citantes directamente."
+            "``cited_by_id`` poblado.  Ejecutá ``b2g build`` primero para obtener "
+            "una estimación local (puebla cited_by_id de las semillas aceptadas), "
+            "o ejecutá ``b2g chain`` sin ``--preview`` para traer los citantes "
+            "directamente."
         )
 
     return {

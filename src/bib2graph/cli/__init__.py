@@ -3,29 +3,36 @@
 Arma el grupo Click principal, registra los subcomandos planos y los grupos
 noun-verb, y expone ``main()`` como entry point del paquete.
 
-Entry points en ``pyproject.toml``:
-    b2g      = "bib2graph.cli:main"
-    bib2graph = "bib2graph.cli:main_bib2graph_alias"  # deprecado, #165
+Entry point en ``pyproject.toml``:
+    b2g = "bib2graph.cli:main"
 
-Superficie (ADR 0037/0038/0040/0045): 10 verbos del ciclo + ``skill``/``schema``
-(meta) + 9 aliases deprecados. En total se registran 17 subcomandos planos + 4
-grupos.
+Superficie (ADR 0037/0038/0040/0045, retiro #207): **10 verbos del ciclo +
+``skill``/``schema`` (meta) = 12 registros exactos.** Los 9 aliases deprecados,
+el entry-point legado ``bib2graph`` y el flag ``build --corpus-scope`` se
+retiraron en 0.12.0 (ADR 0038 P1, ejecutado tarde — la ventana cerraba
+nominalmente en 0.11.0).
 
 Verbos del ciclo (10) — planos: init, seed, chain, build, export, status,
     validate; grupos (abajo): read, curate, snapshot.
 Meta (2): skill — distribución de la skill de Claude Code (ADR 0039); schema
     — introspección versionada del contrato (envelope/exit codes, ADR 0045
     #260). Ninguno de los dos transiciona la FSM ni cuenta como verbo del ciclo.
-Aliases deprecados (9) — la ventana de retrocompat cierra en 0.11.0 (ADR 0037/0038):
-    accept→curate accept, reject→curate reject, filter→curate filter,
-    enrich→chain/build, inspect→read show (#156), monitor→chain --since,
-    networks→build --spec, resolve→seed --resolve, restore→snapshot restore.
-    (``gui`` fue RETIRADO de la librería por el ADR 0040; ya no se registra.)
 
-Grupos noun-verb (4):
+RETIRADO en 0.12.0 (#207, ADR 0038): los 9 verbos planos deprecados
+    (accept, reject, filter, enrich, monitor, inspect, networks, resolve,
+    restore) ya no se registran; invocarlos da el error estándar de Click
+    ("No such command"). Sus formas canónicas: curate accept/reject/filter,
+    chain/build (enrich), chain --since (monitor), read show / status
+    (inspect), build --spec (networks), seed --resolve (resolve), snapshot
+    restore (restore). (``gui`` fue RETIRADO de la librería por el ADR 0040;
+    ya no se registra.)
+
+Grupos noun-verb (3):
     read     [list|stats|show|top] — lecturas read-only del corpus (#156/#157).
     curate   [dump|apply|accept|reject|filter] — curación en lote (#155).
     snapshot [create|restore] — fotos selladas y rehidratación (#163, ADR 0038).
+
+Meta grupo (1):
     skill    [add] — instala la skill de bib2graph para Claude (Epic #188).
 
 Cada subcomando lleva:
@@ -41,8 +48,8 @@ ADR 0029 — resolución ambiente:
   de Click ("No such option"). El modo degenerado (.duckdb suelto) ya no existe.
 
 ADR 0038 — snapshot como grupo noun-verb:
-  ``snapshot`` es ahora un grupo ``{create, restore}`` (BREAKING).
-  ``b2g restore`` se mantiene como shim intacto (#165 retirará el alias).
+  ``snapshot`` es ahora un grupo ``{create, restore}`` (BREAKING desde 0.10.x).
+  El verbo suelto ``b2g restore`` se retiró en 0.12.0 (#207).
 
 R5 — UTF-8 en la frontera:
   ``main()`` fuerza ``sys.stdout``/``sys.stderr`` a UTF-8 antes de que Click
@@ -58,22 +65,12 @@ import sys
 
 import click
 
-from bib2graph.cli._deprecation import emit_deprecation
-from bib2graph.cli.commands.accept import accept_cmd
 from bib2graph.cli.commands.build import build_cmd
 from bib2graph.cli.commands.chain import chain_cmd
 from bib2graph.cli.commands.curate import curate_grp
-from bib2graph.cli.commands.enrich import enrich_cmd
 from bib2graph.cli.commands.export import export_cmd
-from bib2graph.cli.commands.filter import filter_cmd
 from bib2graph.cli.commands.init import init_cmd
-from bib2graph.cli.commands.inspect import inspect_cmd
-from bib2graph.cli.commands.monitor import monitor_cmd
-from bib2graph.cli.commands.networks import networks_cmd
 from bib2graph.cli.commands.read import read_grp
-from bib2graph.cli.commands.reject import reject_cmd
-from bib2graph.cli.commands.resolve import resolve_cmd
-from bib2graph.cli.commands.restore import restore_cmd
 from bib2graph.cli.commands.schema import schema_cmd
 from bib2graph.cli.commands.seed import seed_cmd
 from bib2graph.cli.commands.skill import skill_grp
@@ -127,8 +124,6 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
     Verbos del ciclo (ADR 0037): init, seed, chain, build, export, status,
     validate, read [list|stats|show|top], curate [dump|apply|accept|reject|filter],
     snapshot [create|restore]. Meta: skill [add] (Epic #188), schema (ADR 0045 #260).
-    Aliases deprecados (cierran en 0.11.0, ADR 0038): accept, reject, filter,
-    enrich, monitor, inspect, networks, resolve, restore.
 
     Ejemplo:
         b2g init mi-investigacion
@@ -140,24 +135,16 @@ def b2g(ctx: click.Context, workspace: str | None) -> None:
     ctx.obj["workspace"] = workspace
 
 
+# Superficie final (#207, ADR 0038): 10 verbos del ciclo + skill + schema = 12.
 b2g.add_command(init_cmd)
 b2g.add_command(seed_cmd)
 b2g.add_command(chain_cmd)
-b2g.add_command(filter_cmd)
 b2g.add_command(build_cmd)
-b2g.add_command(enrich_cmd)
-b2g.add_command(monitor_cmd)
 b2g.add_command(export_cmd)
 b2g.add_command(snapshot_grp)
 b2g.add_command(status_cmd)
-b2g.add_command(inspect_cmd)
 b2g.add_command(validate_cmd)
-b2g.add_command(accept_cmd)
-b2g.add_command(reject_cmd)
 b2g.add_command(curate_grp)
-b2g.add_command(networks_cmd)
-b2g.add_command(restore_cmd)
-b2g.add_command(resolve_cmd)
 b2g.add_command(read_grp)
 b2g.add_command(skill_grp)
 b2g.add_command(schema_cmd)
@@ -190,23 +177,3 @@ def main() -> int:
         return 1
     except SystemExit as exc:
         return int(exc.code) if exc.code is not None else 0
-
-
-def main_bib2graph_alias() -> int:
-    """Entry point del ejecutable legado ``bib2graph`` (alias deprecado, #165).
-
-    Emite el aviso de deprecación a stderr y delega en ``main()``.
-
-    DEPRECADO: el ejecutable canónico es ``b2g``.  Este alias se retira en 0.11.0
-    (ADR 0038, #165).
-
-    Returns:
-        Exit code del proceso (0 éxito, 1-5 error según ADR 0010).
-    """
-    _force_utf8()
-    emit_deprecation(
-        "bib2graph",
-        "b2g",
-        removed_in="0.11.0",
-    )
-    return main()

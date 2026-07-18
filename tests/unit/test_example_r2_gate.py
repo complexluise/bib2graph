@@ -257,9 +257,9 @@ def test_run_restore_desde_parquet_ejemplo(tmp_path: Path) -> None:
     """
     import pyarrow.parquet as pq
 
-    from bib2graph.cli.commands.restore import run_restore
     from bib2graph.cycle import CycleState
     from bib2graph.schemas import CORPUS_SCHEMA
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     # Slice de 10 filas del parquet (no toda la tabla de 137)

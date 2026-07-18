@@ -79,7 +79,7 @@ def _make_minimal_thesaurus(canonical: str, aliases: list[str]) -> dict[str, Any
 
 def _setup_store(tmp_path: pathlib.Path) -> pathlib.Path:
     """Crea un store con corpus basico (deep learning + machine learning)."""
-    from bib2graph.cli.commands.restore import run_restore
+    from bib2graph.service.snapshot import run_restore
 
     store_path = tmp_path / "lib.duckdb"
     rows = [
@@ -153,7 +153,7 @@ def test_build_thesaurus_retorna_stats(tmp_path: pathlib.Path) -> None:
 def test_build_sin_thesaurus_funciona_normal(tmp_path: pathlib.Path) -> None:
     """Sin --thesaurus, run_build no aplica thesaurus y retorna data thesaurus = None."""
     from bib2graph.cli.commands.build import run_build
-    from bib2graph.cli.commands.restore import run_restore
+    from bib2graph.service.snapshot import run_restore
 
     store_path = tmp_path / "lib.duckdb"
     rows = [_row(id="P1", title="Paper A", keywords_raw=["ecology"])]
@@ -196,7 +196,7 @@ def test_build_thesaurus_json_envelope(tmp_path: pathlib.Path) -> None:
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
-    from bib2graph.cli.commands.restore import run_restore
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.workspace import Workspace
 
     ws_dir = tmp_path / "ws"
@@ -243,7 +243,7 @@ def test_build_thesaurus_inexistente_error(tmp_path: pathlib.Path) -> None:
     from click.testing import CliRunner
 
     from bib2graph.cli import b2g
-    from bib2graph.cli.commands.restore import run_restore
+    from bib2graph.service.snapshot import run_restore
     from bib2graph.workspace import Workspace
 
     ws_dir = tmp_path / "ws"

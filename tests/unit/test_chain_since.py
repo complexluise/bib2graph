@@ -7,7 +7,9 @@ Verifica:
 4. --since + direction=both -> forzado a forward (sin error).
 5. new_candidates reportado en el envelope (campo aditivo).
 6. Guarda corpus vacio cuando fsm_action="monitor".
-7. run_monitor suelto sigue funcionando igual (delega en run_chain).
+7. run_chain(direction="forward", _fsm_action="monitor") — ruta única del ex
+   verbo suelto ``b2g monitor`` (retirado en 0.12.0, #207, ADR 0038 P1); la
+   forma canónica es ``b2g chain --since``.
 8. stdout puro: envelope una sola linea JSON (schema="1").
 
 Marcador: unit (DuckDB en tmp_path, red mockeada con httpx.MockTransport).
@@ -509,26 +511,35 @@ class TestChainSinceGuardaCorpusVacio:
 
 
 # ---------------------------------------------------------------------------
-# 7. run_monitor suelto delega en run_chain y sigue funcionando
+# 7. run_chain(direction="forward", _fsm_action="monitor") — ex verbo monitor
+#
+# El verbo suelto 'b2g monitor' fue retirado en 0.12.0 (#207, ADR 0038 P1);
+# su forma canónica es 'b2g chain --since'.  Estos tests verifican la ruta
+# de código que el shim retirado ejercía: run_chain con _fsm_action="monitor"
+# forzado explícitamente (sin pasar por --since), que sigue siendo la
+# implementación interna que monitor.py delegaba.
 # ---------------------------------------------------------------------------
 
 
-class TestMonitorDelegaEnChain:
-    """run_monitor suelto sigue funcionando igual (delega en run_chain)."""
+class TestMonitorViaRunChain:
+    """run_chain(_fsm_action='monitor') sigue funcionando igual que el ex-shim."""
 
     def test_monitor_encuentra_nuevos_y_transiciona_a_monitored(
         self, tmp_path: Path
     ) -> None:
-        """run_monitor mergea 1 citante nuevo y transiciona a MONITORED."""
-        from bib2graph.cli.commands.monitor import run_monitor
+        """run_chain(_fsm_action='monitor') mergea 1 citante nuevo y transiciona."""
+        from bib2graph.cli.commands.chain import run_chain
         from bib2graph.cycle import CycleState
         from bib2graph.stores.duckdb import DuckDBStore
 
         store_path = tmp_path / "monitor.duckdb"
         _seed_store(store_path)
 
-        data = run_monitor(
-            store_path, transport=_make_citing_transport([_CITING_NEW_WORK])
+        data = run_chain(
+            store_path,
+            direction="forward",
+            transport=_make_citing_transport([_CITING_NEW_WORK]),
+            _fsm_action="monitor",
         )
 
         store = DuckDBStore(store_path)
@@ -541,15 +552,20 @@ class TestMonitorDelegaEnChain:
         assert data["total_papers"] == 3
 
     def test_monitor_sin_nuevos_transiciona_a_monitored(self, tmp_path: Path) -> None:
-        """run_monitor con 0 citantes igual transiciona a MONITORED."""
-        from bib2graph.cli.commands.monitor import run_monitor
+        """run_chain(_fsm_action='monitor') con 0 citantes igual transiciona."""
+        from bib2graph.cli.commands.chain import run_chain
         from bib2graph.cycle import CycleState
         from bib2graph.stores.duckdb import DuckDBStore
 
         store_path = tmp_path / "monitor_empty.duckdb"
         _seed_store(store_path)
 
-        data = run_monitor(store_path, transport=_make_empty_transport())
+        data = run_chain(
+            store_path,
+            direction="forward",
+            transport=_make_empty_transport(),
+            _fsm_action="monitor",
+        )
 
         assert data["new_candidates"] == 0
         assert data["loop_state"] == "MONITORED"
@@ -559,21 +575,26 @@ class TestMonitorDelegaEnChain:
         store.close()
 
     def test_monitor_sin_estado_previo_lanza_data_error(self, tmp_path: Path) -> None:
-        """run_monitor sin estado previo -> DataError accionable."""
+        """run_chain(_fsm_action='monitor') sin estado previo -> DataError accionable."""
         from bib2graph.cli._errors import DataError
-        from bib2graph.cli.commands.monitor import run_monitor
+        from bib2graph.cli.commands.chain import run_chain
         from bib2graph.stores.duckdb import DuckDBStore
 
         store_path = tmp_path / "empty.duckdb"
         DuckDBStore(store_path)
 
         with pytest.raises(DataError, match="b2g seed"):
-            run_monitor(store_path, transport=_make_empty_transport())
+            run_chain(
+                store_path,
+                direction="forward",
+                transport=_make_empty_transport(),
+                _fsm_action="monitor",
+            )
 
     def test_monitor_corpus_vacio_lanza_data_error(self, tmp_path: Path) -> None:
-        """run_monitor con corpus vacio -> DataError accionable."""
+        """run_chain(_fsm_action='monitor') con corpus vacio -> DataError accionable."""
         from bib2graph.cli._errors import DataError
-        from bib2graph.cli.commands.monitor import run_monitor
+        from bib2graph.cli.commands.chain import run_chain
         from bib2graph.cycle import CycleState
         from bib2graph.stores.duckdb import DuckDBStore
 
@@ -583,19 +604,29 @@ class TestMonitorDelegaEnChain:
         store.close()
 
         with pytest.raises(DataError, match="b2g seed"):
-            run_monitor(store_path, transport=_make_empty_transport())
+            run_chain(
+                store_path,
+                direction="forward",
+                transport=_make_empty_transport(),
+                _fsm_action="monitor",
+            )
 
     def test_monitor_envelope_json_schema_1(self, tmp_path: Path) -> None:
-        """El envelope de monitor incluye schema='1' y los campos canonicos."""
+        """El envelope de chain(_fsm_action='monitor') incluye schema='1'."""
         from bib2graph.cli._envelope import build_envelope
-        from bib2graph.cli.commands.monitor import run_monitor
+        from bib2graph.cli.commands.chain import run_chain
 
         store_path = tmp_path / "env.duckdb"
         _seed_store(store_path)
 
-        data = run_monitor(store_path, transport=_make_empty_transport())
+        data = run_chain(
+            store_path,
+            direction="forward",
+            transport=_make_empty_transport(),
+            _fsm_action="monitor",
+        )
         envelope = build_envelope(
-            command="monitor",
+            command="chain",
             ok=True,
             data=data,
             exit_code=0,
@@ -603,7 +634,7 @@ class TestMonitorDelegaEnChain:
 
         assert envelope["schema"] == "1"
         assert envelope["ok"] is True
-        assert envelope["command"] == "monitor"
+        assert envelope["command"] == "chain"
         assert envelope["exit_code"] == 0
         assert "new_candidates" in envelope["data"]
         assert "total_papers" in envelope["data"]

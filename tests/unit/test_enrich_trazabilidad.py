@@ -1,13 +1,20 @@
 """Tests de trazabilidad de enriquecimiento — issue #141.
 
 Verifica que:
-1. Tras ``run_enrich``, ``manifest.enrichers`` persiste en el store y se
-   recupera en el próximo ``store.load()`` (no queda ``[]`` vacío).
+1. Tras ``run_build`` (pasada cited_by con seeds aceptadas), ``manifest.enrichers``
+   persiste en el store y se recupera en el próximo ``store.load()`` (no queda
+   ``[]`` vacío).
 2. Los params del ``EnricherRef`` persisten con los valores calculados.
-3. Re-aplicar ``run_enrich`` (idempotencia) reemplaza las refs anteriores
+3. Re-aplicar la pasada cited_by (idempotencia) reemplaza las refs anteriores
    en vez de acumularlas indefinidamente.
 4. El flujo ``chain`` (refs_doi) + ``build`` (cited_by) acumula ambos
    ``EnricherRef`` en el manifest tras la segunda carga.
+
+Nota (#207, ADR 0038 P1): el verbo suelto ``b2g enrich`` (y su función núcleo
+``cli.commands.enrich.run_enrich``) fue retirado en 0.12.0. La pasada cited_by
+que ejercían estos tests vive ahora en ``run_build`` (dispara automáticamente
+cuando hay seeds aceptadas) — mismo camino de persistencia
+(``store.backend.persist_enricher_refs``), fuente única.
 
 Marcador: ``unit`` (DuckDB en ``tmp_path``, sin red real; transports mockeados).
 """
@@ -142,13 +149,13 @@ def _make_cited_by_transport(
 
 
 # ---------------------------------------------------------------------------
-# 1. manifest.enrichers persiste tras run_enrich
+# 1. manifest.enrichers persiste tras run_build (pasada cited_by automática)
 # ---------------------------------------------------------------------------
 
 
-def test_manifest_enrichers_persiste_tras_run_enrich(tmp_path: Path) -> None:
-    """Tras run_enrich, manifest.enrichers no queda vacío en la siguiente carga."""
-    from bib2graph.cli.commands.enrich import run_enrich
+def test_manifest_enrichers_persiste_tras_run_build(tmp_path: Path) -> None:
+    """Tras run_build (seeds aceptadas), manifest.enrichers no queda vacío."""
+    from bib2graph.cli.commands.build import run_build
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -158,7 +165,11 @@ def test_manifest_enrichers_persiste_tras_run_enrich(tmp_path: Path) -> None:
     )
 
     citing_works = [_citing_work("C1", ["W100"])]
-    run_enrich(store_path, transport=_make_cited_by_transport(citing_works))
+    run_build(
+        store_path,
+        out_dir=tmp_path / "networks",
+        transport=_make_cited_by_transport(citing_works),
+    )
 
     # Reabrir el store en instancia nueva y verificar que manifest.enrichers sobrevivió
     store = DuckDBStore(store_path)
@@ -166,7 +177,7 @@ def test_manifest_enrichers_persiste_tras_run_enrich(tmp_path: Path) -> None:
     store.close()
 
     assert len(corpus.manifest.enrichers) >= 1, (
-        "manifest.enrichers debe tener al menos 1 EnricherRef tras run_enrich"
+        "manifest.enrichers debe tener al menos 1 EnricherRef tras run_build"
     )
 
 
@@ -177,7 +188,7 @@ def test_manifest_enrichers_persiste_tras_run_enrich(tmp_path: Path) -> None:
 
 def test_manifest_enrichers_params_persisten(tmp_path: Path) -> None:
     """Los params del EnricherRef persisten correctamente en el store."""
-    from bib2graph.cli.commands.enrich import run_enrich
+    from bib2graph.cli.commands.build import run_build
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -187,7 +198,11 @@ def test_manifest_enrichers_params_persisten(tmp_path: Path) -> None:
     )
 
     citing_works = [_citing_work("C1", ["W100"])]
-    run_enrich(store_path, transport=_make_cited_by_transport(citing_works))
+    run_build(
+        store_path,
+        out_dir=tmp_path / "networks",
+        transport=_make_cited_by_transport(citing_works),
+    )
 
     # Reabrir el store y verificar que los params del EnricherRef son correctos
     store = DuckDBStore(store_path)
@@ -198,7 +213,7 @@ def test_manifest_enrichers_params_persisten(tmp_path: Path) -> None:
 
     # Pasada cited_by debe registrarse con sus params
     assert "openalex_cited_by" in enrichers_by_name, (
-        "Debe existir EnricherRef 'openalex_cited_by' tras run_enrich"
+        "Debe existir EnricherRef 'openalex_cited_by' tras run_build"
     )
     cb_ref = enrichers_by_name["openalex_cited_by"]
     assert "resolved" in cb_ref.params, (
@@ -210,13 +225,13 @@ def test_manifest_enrichers_params_persisten(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 3. Idempotencia: re-aplicar run_enrich reemplaza, no acumula
+# 3. Idempotencia: re-aplicar run_build reemplaza, no acumula
 # ---------------------------------------------------------------------------
 
 
 def test_manifest_enrichers_idempotente_no_acumula(tmp_path: Path) -> None:
-    """Re-aplicar run_enrich reemplaza los EnricherRef, no los duplica."""
-    from bib2graph.cli.commands.enrich import run_enrich
+    """Re-aplicar run_build (pasada cited_by) reemplaza los EnricherRef, no los duplica."""
+    from bib2graph.cli.commands.build import run_build
     from bib2graph.stores.duckdb import DuckDBStore
 
     store_path = tmp_path / "test.duckdb"
@@ -228,9 +243,10 @@ def test_manifest_enrichers_idempotente_no_acumula(tmp_path: Path) -> None:
     transport = _make_cited_by_transport([_citing_work("C1", ["W100"])])
 
     # Dos ejecuciones sucesivas
-    run_enrich(store_path, transport=transport)
-    run_enrich(
+    run_build(store_path, out_dir=tmp_path / "networks1", transport=transport)
+    run_build(
         store_path,
+        out_dir=tmp_path / "networks2",
         transport=_make_cited_by_transport([_citing_work("C1", ["W100"])]),
     )
 
