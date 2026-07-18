@@ -11,6 +11,41 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.12.0](https://github.com/complexluise/bib2graph/compare/v0.11.0...v0.12.0) (2026-07-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** se eliminan los 9 aliases deprecados, el entry-point `bib2graph` y el flag `build --corpus-scope`. Usá las formas canónicas (curate/chain --since/build --spec/read show/seed --resolve/snapshot restore) y el entry-point `b2g`.
+
+### Features
+
+* **cli:** 3 grietas agent-native — error.subcode, eco workspace, b2g schema ([#275](https://github.com/complexluise/bib2graph/issues/275)) ([9b4c82b](https://github.com/complexluise/bib2graph/commit/9b4c82bfc1a7e566a40271f6017f7d7cbebf6b52)), closes [#258](https://github.com/complexluise/bib2graph/issues/258) [#259](https://github.com/complexluise/bib2graph/issues/259) [#260](https://github.com/complexluise/bib2graph/issues/260)
+* **cli:** poda de la superficie CLI — 10 verbos + skill + schema (BREAKING, [#207](https://github.com/complexluise/bib2graph/issues/207)) ([#279](https://github.com/complexluise/bib2graph/issues/279)) ([84fb7a4](https://github.com/complexluise/bib2graph/commit/84fb7a4c3d15339eaf82a21c2659c563fba8c679))
+* **export,skill:** CSV URL/i18n ([#203](https://github.com/complexluise/bib2graph/issues/203)) + skill --provider ([#193](https://github.com/complexluise/bib2graph/issues/193)) ([#281](https://github.com/complexluise/bib2graph/issues/281)) ([2854402](https://github.com/complexluise/bib2graph/commit/2854402c1a801686d62a172fa28c1c40579ddaa0))
+
+
+### Bug Fixes
+
+* **chain:** cerrar el lazo — backward count real + forward puebla cited_by_id (ADR 0048) ([#277](https://github.com/complexluise/bib2graph/issues/277)) ([682dcea](https://github.com/complexluise/bib2graph/commit/682dceaa18cd338fb8fa31269945c26a3f3d0ee4))
+* **curate:** filter no rechaza papers accepted (ADR 0044, [#233](https://github.com/complexluise/bib2graph/issues/233)) ([f208609](https://github.com/complexluise/bib2graph/commit/f208609eb23c46a27dd793c6f5db9840119dabf2))
+
+
+### Documentation
+
+* **adr:** 0045 — paraguas de las 3 grietas agent-native del 0043 ([#272](https://github.com/complexluise/bib2graph/issues/272)) ([6c99f04](https://github.com/complexluise/bib2graph/commit/6c99f040892e85eea8c65f5f2ff4f8c768f5d055))
+* **adr:** 0046 — distribución de la skill agnóstica del proveedor (enmienda 0039) ([#276](https://github.com/complexluise/bib2graph/issues/276)) ([c079eb3](https://github.com/complexluise/bib2graph/commit/c079eb361828917c2dbaa22fc01cde08d383df8f))
+* **adr:** 0047 — frontera de alcance bib2graph vs producto (gradúa Nota 22) ([#273](https://github.com/complexluise/bib2graph/issues/273)) ([377a874](https://github.com/complexluise/bib2graph/commit/377a8743215d1be5e6ce1500bd69bacd785aed32))
+* **adr:** 0048 — camino único de co-citación (chain forward puebla cited_by_id) ([#274](https://github.com/complexluise/bib2graph/issues/274)) ([486cb03](https://github.com/complexluise/bib2graph/commit/486cb032fad1968e3984aaac690a34f8ae59a857))
+* **cli:** corrige help stale que citaba 'b2g enrich' (retirado por [#207](https://github.com/complexluise/bib2graph/issues/207)) ([#284](https://github.com/complexluise/bib2graph/issues/284)) ([8536773](https://github.com/complexluise/bib2graph/commit/8536773ed15fd7dc3cb3608a1b62e754112ae02e))
+* **mkdocs:** API navegable por temas + navegación y UX enriquecidas ([#267](https://github.com/complexluise/bib2graph/issues/267)) ([82e451b](https://github.com/complexluise/bib2graph/commit/82e451be70a9205eae6e637b592c38f5bad0a3e4))
+* **mkdocs:** limpiar enlaces rotos del sitio (87→10 warnings) ([b5cc25e](https://github.com/complexluise/bib2graph/commit/b5cc25e0703a48fd24cc1b16c3b635642da6a488))
+* **notas:** 29 — backlog, sinergias y plan 0.12.0 ([7226b49](https://github.com/complexluise/bib2graph/commit/7226b49206c333a70bb7ebc8c1e6e050efd3123b))
+* **notas:** publicar notas 29 (jubilar debate a Discussions), 30 (paper JOSS) y 31 (feedback bib2graph) ([aeddf1f](https://github.com/complexluise/bib2graph/commit/aeddf1fd9f5475fbbaa1ce0dd4002ce8ff69be7a))
+* **openalex:** documentar el paso de la API key de OpenAlex ([#124](https://github.com/complexluise/bib2graph/issues/124)) ([#278](https://github.com/complexluise/bib2graph/issues/278)) ([7c6f50e](https://github.com/complexluise/bib2graph/commit/7c6f50e6a8acbbfea29e487ff2decfa679c26056))
+* quickstart "5 pasos" + posicionamiento antídoto-sesgo + limpieza de internals ([#280](https://github.com/complexluise/bib2graph/issues/280)) ([cc99dea](https://github.com/complexluise/bib2graph/commit/cc99dea5c2fbc124c2575c34d2d3a3b6070da630)), closes [#187](https://github.com/complexluise/bib2graph/issues/187) [#264](https://github.com/complexluise/bib2graph/issues/264)
+* reestructurar tutoriales (claude-code -&gt; primer-mapa) y guías (5 acotadas) ([36ca98c](https://github.com/complexluise/bib2graph/commit/36ca98c4e6b61a07d9bf1c77d14bd4c5291eb722))
+
 ## [0.11.0](https://github.com/complexluise/bib2graph/compare/v0.10.2...v0.11.0) (2026-07-01)
 
 
