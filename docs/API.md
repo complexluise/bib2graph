@@ -90,6 +90,23 @@ muestras chicas); **`--exclude TEXT`** (repetible) = negaciones quirúrgicas iny
 OpenAlex con `--from-bib` → exit 1** (salvo `--email` junto a `--resolve`). **No existe
 `seed --from-corpus`** (rehidratar un parquet curado es `snapshot restore`).
 
+**Credenciales de OpenAlex (`seed`/`chain`/`build`; ADR [0012](decisiones/0012-openalex-credenciales.md)).**
+Dos credenciales, ambas **inyectadas**, ninguna obligatoria:
+
+- **API key** — env **`OPENALEX_API_KEY`** (no hay flag `--api-key` en los verbos vivos: es un
+  secreto, entra solo por entorno para no aparecer en el envelope `--json`). Precedencia:
+  **argumento `api_key=` (solo Python) > env `OPENALEX_API_KEY` > ausencia ⇒ polite pool**. Con key se
+  manda como header **`Authorization: Bearer <key>`**. Sube el rate limit (relevante con el modelo de
+  créditos de OpenAlex 2026, #124). **Sin key el `Source` no rompe:** corre en polite pool con menor
+  límite (sin degradación de resultados, solo de velocidad).
+- **`--email` (polite pool)** — no es secreto (identificador de cortesía); viaja como **`mailto`** en la
+  query y mueve las peticiones al *polite pool* (límite más generoso que el anónimo).
+
+Un **429** (rate limit agotado tras retry/backoff) aflora como **`NetworkError`** (exit 4) con mensaje
+accionable (declarar `--email` / configurar la key) y **`error.subcode = "RATE_LIMITED"`** en el envelope
+`--json` (grieta 3a, ADR [0045](decisiones/0045-cerrar-tres-grietas-agent-native.md) #258); análogamente
+un 504 agotado da `error.subcode = "UPSTREAM_TIMEOUT"`. Ver `error.subcode` en §Envelope.
+
 **`chain`** (paso CHAIN): expande el corpus con candidatos rankeados por *information scent*
 (forward/backward batcheado, §5). **`--direction [backward|forward|both]`** (default `both`),
 **`--depth`** (solo 1), **`--max-candidates`**, **`--max-citing`** (presupuesto de citantes por semilla
@@ -927,7 +944,7 @@ def load_equation_spec(path: str | Path) -> EquationSpec:
 
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
-| `OpenAlexSource` | **v1** | **Referencia/backbone**, sobre `httpx`. Entrega mínimo + enriquecimiento (refs inline + afiliaciones per-autor + instituciones; `cited_by_id` lo puebla el chaining/Enricher, no el seed). Traducción **passthrough**: envuelve la ecuación en `title_and_abstract.search:(...)` y **reporta** los límites WoS (NEAR/comodín/tags) sin traducirlos. Flag `native=True` (query cruda). **Negaciones (`exclude`):** cada `AND NOT "<término>"` se inyecta **dentro** de la única expresión `search:((query) AND NOT "<término>")` (campo no repetido; el filtro de año queda como predicado separado por coma, fuera del `search`) y se reporta en el `translation_report`; ignorado con `native`. Credenciales inyectadas (arg → `OPENALEX_API_KEY` → `~/.openalex/credentials` → polite pool; ADR 0012). Cursor paging con tope `max_results` (default 200). Puebla `Manifest.openalex_version` (ADR 0017). `transport` inyectable (tests sin red). Un **429** (rate limit del pool anónimo) en `seed()` → `NetworkError` (exit 4) con mensaje **accionable**: declarar `--email` mueve la petición al polite pool (remedio primario); api_key opcional (ADR 0012, #210). |
+| `OpenAlexSource` | **v1** | **Referencia/backbone**, sobre `httpx`. Entrega mínimo + enriquecimiento (refs inline + afiliaciones per-autor + instituciones; `cited_by_id` lo puebla el chaining/Enricher, no el seed). Traducción **passthrough**: envuelve la ecuación en `title_and_abstract.search:(...)` y **reporta** los límites WoS (NEAR/comodín/tags) sin traducirlos. Flag `native=True` (query cruda). **Negaciones (`exclude`):** cada `AND NOT "<término>"` se inyecta **dentro** de la única expresión `search:((query) AND NOT "<término>")` (campo no repetido; el filtro de año queda como predicado separado por coma, fuera del `search`) y se reporta en el `translation_report`; ignorado con `native`. Credenciales inyectadas: la **api_key** se resuelve `arg` → env `OPENALEX_API_KEY` → ausencia ⇒ polite pool (ADR 0012); con key viaja en el header `Authorization: Bearer <key>`. El **email** (arg `email=`/`--email`) viaja como `mailto` en la query (polite pool). Sin key el source **no rompe**: corre en polite pool, solo con menor límite. Cursor paging con tope `max_results` (default 200). Puebla `Manifest.openalex_version` (ADR 0017). `transport` inyectable (tests sin red). Un **429** (rate limit del pool anónimo) en `seed()` → `NetworkError` (exit 4) con mensaje **accionable**: declarar `--email` mueve la petición al polite pool (remedio primario); api_key opcional (ADR 0012, #210). |
 | `BibtexSource` | **v1, secundaria** | Sembrar desde *pearls* vía `load()`. Extra **`[bibtex]`** (import perezoso de `bibtexparser`); acceso defensivo (campos faltantes sin `KeyError`). Mínimo universal. `seed()` lanza `NotImplementedError`. `.bib` con error grave → `ValueError`; sin entradas válidas → `UserWarning` (no no-op silencioso). Carga bulk con `from_arrow`. |
 | `ScieloSource` / `RedalycSource` / `LaReferenciaSource` | futuro | Fuentes regionales, mínimo universal. Declaradas, no implementadas (ADR 0018). |
 | `RisSource` / `CsvSource` | futuro | No implementados. |

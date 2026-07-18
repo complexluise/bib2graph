@@ -70,8 +70,14 @@ Responde:
 
 ```bash
 cd tu-sota
-b2g chain --depth 1 --limit 100
+b2g chain --depth 1 --limit 100 --email tu@correo.org
 ```
+
+!!! tip "API key de OpenAlex"
+    El forrajeo hace **muchas** peticiones a OpenAlex (una tanda por semilla), así que es donde más
+    rápido chocás con el rate limit. Configurá tu **API key** (`OPENALEX_API_KEY`) y pasá `--email`
+    para el polite pool antes de forrajear un corpus grande. Cómo conseguirla y configurarla:
+    [Quickstart → conseguí tu API key](../getting-started/quickstart.md#antes-de-empezar-consegui-tu-api-key-de-openalex).
 
 **Opciones:**
 
