@@ -546,16 +546,12 @@ class OpenAlexSource:
         equation_id = f"eq-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}"
         fetched_at = datetime.now(UTC).isoformat()
 
-        try:
-            works, openalex_version = self._fetch_all(executed_query)
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 429:
-                raise NetworkError(_MSG_RATE_LIMIT_429, subcode="RATE_LIMITED") from exc
-            if exc.response.status_code == 504:
-                raise NetworkError(
-                    _MSG_UPSTREAM_TIMEOUT_504, subcode="UPSTREAM_TIMEOUT"
-                ) from exc
-            raise
+        # #287 fricción #3: seed reintenta ante 429/5xx con backoff (mismo camino
+        # que el forward chaining).  Sin esto, cada 429 obligaba al agente a un
+        # ciclo manual de detección + sleep + reintento.  _fetch_all_with_retry
+        # traduce 429/504 a NetworkError con subcode; otros HTTPStatusError se
+        # propagan crudos y los envuelve el handler de la CLI.
+        works, openalex_version = self._fetch_all_with_retry(executed_query)
 
         # R5: bulk-load — construir tabla Arrow de una vez en vez de N add_paper/clone.
         rows = [

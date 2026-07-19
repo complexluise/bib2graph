@@ -788,16 +788,26 @@ def test_translate_exclude_strip_comillas_internas() -> None:
 
 
 @pytest.mark.unit
-def test_seed_429_levanta_network_error_accionable() -> None:
-    """Un 429 de OpenAlex en seed() lanza NetworkError con mensaje accionable.
+def test_seed_429_levanta_network_error_accionable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Un 429 persistente en seed() lanza NetworkError con mensaje accionable.
 
-    Sin email declarado → pool anónimo → 429. El error debe mencionar email
-    y polite pool como remedio primario (no un HTTPStatusError pelado).
+    Sin email declarado → pool anónimo → 429. Tras agotar los reintentos
+    (#287 fricción #3), el error debe mencionar email y polite pool como
+    remedio primario (no un HTTPStatusError pelado).
     Referencia: ADR 0012.
     """
+    import bib2graph.sources.openalex as openalex_mod
     from bib2graph.service.errors import NetworkError
 
+    monkeypatch.setattr(openalex_mod.time, "sleep", lambda _s: None)  # sin delays
+
+    calls = 0
+
     def handler_429(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
         return httpx.Response(429, text="Too Many Requests")
 
     transport = httpx.MockTransport(handler_429)
@@ -806,6 +816,9 @@ def test_seed_429_levanta_network_error_accionable() -> None:
     with pytest.raises(NetworkError) as exc_info:
         source.seed("ecological exchange")
 
+    # Reintentó antes de rendirse (no falló a la primera).
+    assert calls >= 2
+
     msg = str(exc_info.value)
     assert "429" in msg
     assert "email" in msg.lower()
@@ -813,6 +826,51 @@ def test_seed_429_levanta_network_error_accionable() -> None:
     assert "OPENALEX_API_KEY" in msg
     assert "ADR 0012" in msg
     assert "api_key" in msg  # la api_key se nombra como opcional en el mensaje
+
+
+@pytest.mark.unit
+def test_seed_429_transitorio_se_recupera_con_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#287 fricción #3: un 429 transitorio en seed() se reintenta y tiene éxito.
+
+    El primer request devuelve 429; el segundo, 200. El agente NO tiene que
+    detectar el 429, dormir y reintentar a mano: seed() lo hace solo.
+    """
+    import bib2graph.sources.openalex as openalex_mod
+
+    monkeypatch.setattr(openalex_mod.time, "sleep", lambda _s: None)  # sin delays
+
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(429, text="Too Many Requests")
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": "https://openalex.org/W1",
+                        "doi": "https://doi.org/10.1/x",
+                        "title": "Recovered paper",
+                        "publication_year": 2021,
+                    }
+                ],
+                "meta": {"next_cursor": None},
+            },
+            headers={"x-openalex-api-version": "test"},
+        )
+
+    transport = httpx.MockTransport(handler)
+    source = OpenAlexSource(transport=transport)
+
+    result = source.seed("ecological exchange")
+
+    assert calls == 2  # 429 → reintento → 200
+    assert len(result.corpus) == 1
 
 
 @pytest.mark.unit
