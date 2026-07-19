@@ -417,6 +417,57 @@ def test_build_4_redes_sin_seeds_aceptadas(tmp_path: Path) -> None:
     )
 
 
+def test_build_hint_cocitacion_apunta_a_chain_forward(tmp_path: Path) -> None:
+    """#287 fricción #5: sin seeds aceptadas y sin cited_by_id, build avisa el
+    camino de ADR 0048 (chain forward) en vez de forzar aceptar en masa."""
+    from bib2graph.cli.commands.build import run_build
+
+    rows = [
+        _row("P1", is_seed=True, curation_status=CurationStatus.CANDIDATE),
+        _row("P2", is_seed=True, curation_status=CurationStatus.CANDIDATE),
+    ]
+    db_path = _store_with_corpus(tmp_path, rows)
+    out_dir = tmp_path / "networks"
+
+    transport, _counters = _make_counting_transport()
+    data = run_build(db_path, out_dir=out_dir, corpus_scope="all", transport=transport)
+
+    hints = " ".join(data["warnings"])
+    assert "chain forward" in hints, (
+        f"Debe apuntar a `chain forward` (ADR 0048); warnings={data['warnings']!r}"
+    )
+
+
+def test_build_sin_hint_cuando_cited_by_ya_poblado(tmp_path: Path) -> None:
+    """Si un chain forward previo pobló cited_by_id, no aparece el hint de #5."""
+    from bib2graph.cli.commands.build import run_build
+
+    rows = [
+        _row(
+            "P1",
+            is_seed=True,
+            curation_status=CurationStatus.CANDIDATE,
+            cited_by_id=["W9999"],
+        ),
+        _row(
+            "P2",
+            is_seed=True,
+            curation_status=CurationStatus.CANDIDATE,
+            cited_by_id=["W9999"],
+        ),
+    ]
+    db_path = _store_with_corpus(tmp_path, rows)
+    out_dir = tmp_path / "networks"
+
+    transport, _counters = _make_counting_transport()
+    data = run_build(db_path, out_dir=out_dir, corpus_scope="all", transport=transport)
+
+    hints = " ".join(data["warnings"])
+    assert "chain forward" not in hints, (
+        f"Con cited_by_id poblado no debe sugerir chain forward; got {data['warnings']!r}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # 4. [Retirado #207] El verbo suelto 'enrich' (cli.commands.enrich) fue
 #    eliminado en 0.12.0 (ADR 0038 P1). Su capacidad —enrich_corpus(pass_name=

@@ -77,7 +77,10 @@ la carpeta ya es workspace → `WorkspaceExistsError`. **NO transiciona.** `data
 **`seed`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)): **TRES modos
 mutuamente excluyentes** (exactamente uno; ninguno o más de uno → exit 1):
 
-- **`--equation '<texto>'`** — ecuación cruda (modo OpenAlex directo, con red).
+- **`--equation '<texto>'`** — ecuación cruda (modo OpenAlex directo, con red). Los **términos se
+  combinan en AND** dentro de la única expresión `title_and_abstract.search:(...)`: **más términos ⇒
+  menos resultados** (el `--help` del flag lo explicita, ADR 0049 #287, para que un agente que obtiene
+  0 papers sepa aflojar la ecuación en vez de agregarle términos).
 - **`--spec equation.yaml`** — la misma siembra parametrizada por un YAML versionable (clave raíz
   `equation:`, modelo `EquationSpec`, §2; paridad 1:1 flag ⇄ campo).
 - **`--from-bib <archivo.bib>`** — siembra desde BibTeX local **sin red** (`BibtexSource.load`);
@@ -97,6 +100,16 @@ muestras chicas); **`--exclude TEXT`** (repetible) = negaciones quirúrgicas iny
 OpenAlex con `--from-bib` → exit 1** (salvo `--email` junto a `--resolve`). **No existe
 `seed --from-corpus`** (rehidratar un parquet curado es `snapshot restore`).
 
+- **`--preview`** (dry-run, ADR 0049 #287): traduce la ecuación y **muestra la query de OpenAlex**
+  (`title_and_abstract.search:(...)`) **SIN fetchear ni tocar el corpus** — la forma barata de ver a
+  qué se traduce una ecuación antes de gastar red o cuota. **Solo válido con `--equation`/`--spec`**
+  (con `--from-bib` → `UsageError` exit 1: no hay traducción que previsualizar). **Corta antes de
+  resolver workspace** → funciona **sin workspace** (no requiere `b2g init`; no transiciona la FSM).
+  En `--json` emite el envelope estándar con **`data.preview = true`**, **`data.executed_query`** (la
+  query exacta) y **`data.translation_report`** (mapeos limpios/aproximados/descartados + negaciones);
+  **no** trae `papers_added`/`total_papers` (nada se materializó). Es el análogo de `chain --preview`
+  para el paso SEED.
+
 **Credenciales de OpenAlex (`seed`/`chain`/`build`; ADR [0012](decisiones/0012-openalex-credenciales.md)).**
 Dos credenciales, ambas **inyectadas**, ninguna obligatoria:
 
@@ -109,10 +122,14 @@ Dos credenciales, ambas **inyectadas**, ninguna obligatoria:
 - **`--email` (polite pool)** — no es secreto (identificador de cortesía); viaja como **`mailto`** en la
   query y mueve las peticiones al *polite pool* (límite más generoso que el anónimo).
 
-Un **429** (rate limit agotado tras retry/backoff) aflora como **`NetworkError`** (exit 4) con mensaje
-accionable (declarar `--email` / configurar la key) y **`error.subcode = "RATE_LIMITED"`** en el envelope
-`--json` (grieta 3a, ADR [0045](decisiones/0045-cerrar-tres-grietas-agent-native.md) #258); análogamente
-un 504 agotado da `error.subcode = "UPSTREAM_TIMEOUT"`. Ver `error.subcode` en §Envelope.
+Ante **429/5xx**, `seed` **reintenta con backoff exponencial** (3 intentos, el **mismo camino** que el
+forrajeo forward; ADR 0049 #287): antes `seed` fallaba a la primera con un `429`; ahora sólo aflora el
+error **al agotar** los reintentos. Sin cambio de contrato: **mismos exit codes** al agotar y **mismo
+mensaje accionable** (ADR [0012](decisiones/0012-openalex-credenciales.md)). Un **429** agotado tras
+retry/backoff aflora como **`NetworkError`** (exit 4) con mensaje accionable (declarar `--email` /
+configurar la key) y **`error.subcode = "RATE_LIMITED"`** en el envelope `--json` (grieta 3a, ADR
+[0045](decisiones/0045-cerrar-tres-grietas-agent-native.md) #258); análogamente un 504 agotado da
+`error.subcode = "UPSTREAM_TIMEOUT"`. Ver `error.subcode` en §Envelope.
 
 **`chain`** (paso CHAIN): expande el corpus con candidatos rankeados por *information scent*
 (forward/backward batcheado, §5). **`--direction [backward|forward|both]`** (default `both`),
@@ -176,8 +193,14 @@ VERBO:** solo **`curate filter`→`FILTERED`**; el resto transversal. **BREAKING
   aviso (no no-op silencioso). `data = {accepted_count, rejected_count, skipped_count, not_found_count,
   total_rows}`. **`note` se ignora en apply** (advisory). Lee el CSV con `utf-8-sig`: **tolera el
   BOM UTF-8** que Excel-Windows agrega al guardar como UTF-8 (#238, política Excel-friendly de #214).
-- **`curate accept --ids ... [--by NOMBRE]`** / **`curate reject --ids ... [--by NOMBRE]`** — por ID
-  (uno-a-uno o lote). Usan `accept_papers`/`reject_papers` de `service/curate.py` (fuente única).
+- **`curate accept --ids ... [--by NOMBRE]`** / **`curate reject --ids ... [--by NOMBRE]`** — por
+  identificador (uno-a-uno o lote). **Cada `--ids` acepta las tres formas: id interno, DOI crudo o
+  `source_id`** (ADR 0049 #287), con la **misma prioridad que `read show`: id > doi > source_id** (ADR
+  [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)). La resolución vive en el helper
+  compartido `service/_identity.py::resolve_idents`, reusado por `curate` y por `read.get_paper` (fuente
+  única de identidad). Si algún identificador no resuelve, el error **lista los no resueltos** y aclara
+  que se aceptan las tres formas. Usan `accept_papers`/`reject_papers` de `service/curate.py` (fuente
+  única de curación).
 - **`curate filter`** (`--year-gte`/`--year-lte`, `--language`, `--type`, `--min-citations`): aplica
   inclusión/exclusión PRISMA **marcando `rejected`** (no borra) con conteo por paso. **Transiciona a
   `FILTERED`.** Comparte `filter_corpus(store_path, *, year_gte, year_lte, language, type_in,
@@ -215,7 +238,11 @@ redes de paper** (`bibliographic_coupling`, `cocitation`) con comunidades (las d
 autor/institución/keyword devuelven `[]` y omiten el archivo, por diseño). **Diagnóstico de red-vacía:**
 `build` reusa `predict_build_preview` (la **misma** fuente que `status`, no-divergencia por-corpus) y lo
 emite en `data["empty_networks"]` (lista de `{kind, reason, fix_command}`, separada de `data["warnings"]`
-corpus-level). **`--json.data`:** `networks_built`, `artifacts_dir`, `corpus_hash`, `scope` (token CLI),
+corpus-level). **Hint de co-citación → `chain forward`** (ADR 0049 #287): si hay **semillas pero ninguna
+aceptada** y `cited_by_id` está vacío, `build` agrega un `warning` que apunta a **`b2g chain forward`**
+para poblar `cited_by_id` (camino de ADR 0048) **sin** aceptar en masa —en vez de forzar aceptar todos
+los candidatos sólo para computar la red—. Es **sólo descubribilidad**: el gate del enricher **no
+cambia** (la pasada 8b de co-citación sigue atada a `accepted`, ADR 0025). **`--json.data`:** `networks_built`, `artifacts_dir`, `corpus_hash`, `scope` (token CLI),
 `corpus_scope` (vocab interno, backward-compat), `networks` (con `clusters_csv` condicional), `warnings`,
 `empty_networks`, `maturity` (ver Apéndice), `enrichment`, `thesaurus` (si se pasó `--thesaurus`).
 
@@ -243,8 +270,9 @@ Lógica en `service/reads.py` (§0.1).
 - **`read stats --group-by {status,year,is_seed}`** (default `status`): conteos agrupados. `data =
   {group_by, total, groups: [{key, count}]}`. `--group-by` inválido → exit 1 (UsageError de `Choice`).
 - **`read show --id <ID>`**: delega en `get_paper` (resuelve **id | doi | source_id**, prioridad
-  id>doi>source_id, ADR 0036). `data` = la fila completa del corpus (~14 campos). `--id` sin match →
-  `DataError` exit 2.
+  id>doi>source_id, ADR 0036, vía el helper compartido `service/_identity.py::resolve_idents` —**misma**
+  resolución que `curate accept`/`reject`, ADR 0049). `data` = la fila completa del corpus (~14 campos).
+  `--id` sin match → `DataError` exit 2.
 - **`read top`** — la **salida de investigación**: dos bloques sobre redes recomputadas en lectura (**no
   requiere `build`**). **`--top N`/`-n`** (default 10), **`--kind`** (`Choice` sobre los 5 `NetworkKind`,
   **default `bibliographic_coupling`** porque es robusto en el one-shot frío: no necesita
