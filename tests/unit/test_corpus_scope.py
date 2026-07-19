@@ -229,7 +229,9 @@ def test_run_build_default_scope_all_usa_corpus_completo(tmp_path: Path) -> None
 
     assert data["corpus_scope"] == "all"
     assert data["networks_built"] >= 1
-    assert data["warnings"] == []
+    # Semillas candidate sin cited_by_id → build sugiere `chain forward` para la
+    # cocitación (#287 #5). Es el único warning esperado en este escenario.
+    assert all("chain forward" in w for w in data["warnings"])
 
 
 # ---------------------------------------------------------------------------

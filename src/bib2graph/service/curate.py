@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from bib2graph.constants import Col, CurationStatus
+from bib2graph.service._identity import resolve_idents
 from bib2graph.service.errors import DataError, StoreError
 
 # Constantes CSV — fuente canónica (exportadas desde cli/ para compat)
@@ -523,15 +524,16 @@ def accept_papers(
     try:
         corpus = store.load()
 
-        existing_ids = {str(r["id"]) for r in corpus.to_arrow().to_pylist()}
-        missing = [id_ for id_ in ids if id_ not in existing_ids]
+        rows = corpus.to_arrow().to_pylist()
+        resolved_ids, missing = resolve_idents(rows, ids)
         if missing:
             raise DataError(
                 f"IDs no encontrados en el corpus: {missing}. "
-                "Verificá los ids con 'b2g read list' o 'b2g status'."
+                "Verificá los ids con 'b2g read list' o 'b2g status'. "
+                "curate acepta id interno, DOI o source_id (igual que 'read show')."
             )
 
-        updated = corpus.accept(ids, by=by, decided_at=decided_at)
+        updated = corpus.accept(resolved_ids, by=by, decided_at=decided_at)
         updated_backend_close = getattr(updated._backend, "close", None)
         store.persist(updated)
     finally:
@@ -540,8 +542,8 @@ def accept_papers(
         store.close()
 
     return {
-        "accepted_count": len(ids),
-        "ids": ids,
+        "accepted_count": len(resolved_ids),
+        "ids": resolved_ids,
     }
 
 
@@ -576,15 +578,16 @@ def reject_papers(
     try:
         corpus = store.load()
 
-        existing_ids = {str(r["id"]) for r in corpus.to_arrow().to_pylist()}
-        missing = [id_ for id_ in ids if id_ not in existing_ids]
+        rows = corpus.to_arrow().to_pylist()
+        resolved_ids, missing = resolve_idents(rows, ids)
         if missing:
             raise DataError(
                 f"IDs no encontrados en el corpus: {missing}. "
-                "Verificá los ids con 'b2g read list' o 'b2g status'."
+                "Verificá los ids con 'b2g read list' o 'b2g status'. "
+                "curate acepta id interno, DOI o source_id (igual que 'read show')."
             )
 
-        updated = corpus.reject(ids, by=by, decided_at=decided_at)
+        updated = corpus.reject(resolved_ids, by=by, decided_at=decided_at)
         updated_backend_close = getattr(updated._backend, "close", None)
         store.persist(updated)
     finally:
@@ -593,8 +596,8 @@ def reject_papers(
         store.close()
 
     return {
-        "rejected_count": len(ids),
-        "ids": ids,
+        "rejected_count": len(resolved_ids),
+        "ids": resolved_ids,
     }
 
 

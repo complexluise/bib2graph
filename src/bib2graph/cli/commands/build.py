@@ -405,12 +405,30 @@ def run_build(
             # #141: persistir EnricherRef (cited_by) para que manifest.enrichers sobreviva.
             store.backend.persist_enricher_refs(corpus_full.manifest.enrichers)
 
+        # #287 fricción #5: si hay semillas pero ninguna aceptada y cited_by_id
+        # está vacío, la red de cocitación saldrá vacía y el gate (accepted,
+        # ADR 0025) empujaba a aceptar en masa —un acto de juicio científico—
+        # solo para computar. En vez de eso apuntamos al camino de ADR 0048:
+        # `chain forward` puebla cited_by_id sin depender de la curación.
+        _has_seeds = any(row.get(Col.IS_SEED) for row in _rows)
+        _any_cited_by = any(row.get(Col.CITED_BY_ID) for row in _rows)
+        cocitation_hint: str | None = None
+        if _has_seeds and not _has_accepted_seeds and not _any_cited_by:
+            cocitation_hint = (
+                "Red de cocitación vacía: no hay semillas aceptadas, así que la "
+                "pasada cited_by se saltó. Poblá la cocitación SIN aceptar en masa "
+                "con `b2g chain forward` (puebla cited_by_id, ADR 0048); o aceptá "
+                "semillas con `b2g curate accept` si querés la pasada de build."
+            )
+
         # Filtrar el corpus según el scope ANTES de construir redes (#56).
         # El corpus filtrado también es el que se pasa a _write_artifacts para que
         # clusters.csv cuadre con los nodos del grafo (sin drift).
         corpus = corpus_full.scoped(corpus_scope)
 
         build_warnings: list[str] = []
+        if cocitation_hint is not None:
+            build_warnings.append(cocitation_hint)
         if len(corpus) == 0:
             msg = (
                 f"scope='{corpus_scope}' dejó 0 papers; "

@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from bib2graph.constants import Col, NetworkKind, doi_to_url
+from bib2graph.service._identity import resolve_ident_to_row
 from bib2graph.service.errors import DataError, StoreError
 
 if TYPE_CHECKING:
@@ -217,33 +218,13 @@ def get_paper(ws: Workspace, ident: str) -> dict[str, Any]:
 
     rows = table.to_pylist()
 
-    # Prioridad: id > doi > source_id (ADR 0036)
-    matching_by_id = [r for r in rows if str(r.get(Col.ID)) == ident]
-    if matching_by_id:
-        matching = matching_by_id
-    else:
-        matching_by_doi = [
-            r
-            for r in rows
-            if r.get(Col.DOI) is not None and str(r.get(Col.DOI)) == ident
-        ]
-        if matching_by_doi:
-            matching = matching_by_doi
-        else:
-            matching = [
-                r
-                for r in rows
-                if r.get(Col.SOURCE_ID) is not None
-                and str(r.get(Col.SOURCE_ID)) == ident
-            ]
-
-    if not matching:
+    # Prioridad: id > doi > source_id (ADR 0036) — resolución compartida con curate.
+    row = resolve_ident_to_row(rows, ident)
+    if row is None:
         raise DataError(
             f"Paper '{ident}' no encontrado en el corpus. "
             "Verificá el id con 'b2g read list' o 'b2g status'."
         )
-
-    row = matching[0]
 
     provenance_raw = row.get(Col.PROVENANCE)
     provenance: list[Any] = []

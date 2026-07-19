@@ -303,6 +303,48 @@ def run_seed_from_bib(
     return seed_result
 
 
+def preview_seed_query(
+    equation: str,
+    *,
+    native: bool = False,
+    exclude: list[str] | None = None,
+    min_year: int | None = None,
+    max_year: int | None = None,
+) -> dict[str, Any]:
+    """Traduce la ecuación a la query de OpenAlex SIN fetchear ni tocar el corpus.
+
+    #287 fricción #2: la semántica AND de ``--equation`` era opaca hasta gastar
+    la llamada (el eco ``Query ejecutada:`` llegaba después). Este preview
+    (dry-run) devuelve la query ejecutada y el reporte de traducción para que un
+    agente razone la ecuación antes de consumir cuota del rate limit.
+
+    Función pura: solo traduce (``_translate``); no abre store ni hace red.
+
+    Returns:
+        Dict con ``preview=True``, ``executed_query`` y ``translation_report``.
+
+    Raises:
+        DataError: Si la ecuación está vacía.
+    """
+    from bib2graph.sources.openalex import _translate
+
+    if not equation or not equation.strip():
+        raise DataError("La ecuación de búsqueda no puede estar vacía.")
+
+    executed_query, translation_report = _translate(
+        equation,
+        native=native,
+        exclude=exclude,
+        min_year=min_year,
+        max_year=max_year,
+    )
+    return {
+        "preview": True,
+        "executed_query": executed_query,
+        "translation_report": translation_report,
+    }
+
+
 # Comando Click
 
 
@@ -311,7 +353,12 @@ def run_seed_from_bib(
     "--equation",
     "equation",
     default=None,
-    help="Ecuación de búsqueda bibliográfica (modo OpenAlex directo).",
+    help=(
+        "Ecuación de búsqueda bibliográfica (modo OpenAlex directo). Los términos "
+        "se combinan en AND dentro de title_and_abstract.search: agregar términos "
+        "REDUCE los resultados. Usá --preview para ver la query sin gastar la "
+        "llamada, o --exclude para AND NOT."
+    ),
 )
 @click.option(
     "--spec",
@@ -390,6 +437,17 @@ def run_seed_from_bib(
         "(solo con --from-bib; resuelve automáticamente en la misma invocación)."
     ),
 )
+@click.option(
+    "--preview",
+    "preview",
+    is_flag=True,
+    default=False,
+    help=(
+        "Muestra la query que se ejecutaría en OpenAlex SIN fetchear ni tocar el "
+        "corpus (dry-run; solo con --equation/--spec). Sirve para razonar la "
+        "ecuación —los términos van en AND— antes de gastar la llamada."
+    ),
+)
 @json_option
 @click.pass_context
 @handle_errors("seed")
@@ -405,6 +463,7 @@ def seed_cmd(
     min_year: int | None,
     max_year: int | None,
     do_resolve: bool,
+    preview: bool,
     json_output: bool,
 ) -> None:
     """Siembra el corpus. Exactamente uno de los tres modos es requerido.
@@ -479,6 +538,57 @@ def seed_cmd(
                 "Para un corpus existente, corré b2g seed --from-bib <archivo> --resolve "
                 "de nuevo (idempotente: solo resuelve los DOIs pendientes)."
             )
+
+    # #287 fricción #2: --preview traduce y muestra la query sin fetchear ni
+    # tocar el corpus (dry-run). Corta antes de resolver workspace: es puro.
+    if preview:
+        if bib_path is not None:
+            raise UsageError(
+                "--preview no aplica a --from-bib (no hay query que traducir). "
+                "Usalo con --equation o --spec."
+            )
+        if spec_path is not None:
+            from bib2graph.sources.equation import load_equation_spec
+
+            try:
+                spec = load_equation_spec(spec_path)
+            except (ValueError, FileNotFoundError) as exc:
+                raise DataError(str(exc)) from exc
+            data = preview_seed_query(
+                spec.query,
+                native=spec.native,
+                exclude=spec.exclude if spec.exclude else None,
+                min_year=spec.min_year,
+                max_year=spec.max_year,
+            )
+        else:
+            data = preview_seed_query(
+                equation,  # type: ignore[arg-type]  # equation is not None here
+                native=native,
+                exclude=list(exclude) if exclude else None,
+                min_year=min_year,
+                max_year=max_year,
+            )
+        if json_mode(json_output):
+            envelope = build_envelope(
+                command="seed",
+                ok=True,
+                data=data,
+                exit_code=0,
+                warnings=list(data.get("translation_report", [])) or None,
+            )
+            emit(envelope)
+        else:
+            emit_human(f"[preview] Query que se ejecutaría: {data['executed_query']}")
+            emit_human(
+                "[preview] Los términos van en AND: agregar términos reduce los "
+                "resultados. No se fetcheó nada ni se tocó el corpus."
+            )
+            if data.get("translation_report"):
+                emit_human("Advertencias de traducción:")
+                for w in data["translation_report"]:
+                    emit_human(f"  - {w}")
+        return
 
     ws = resolve_workspace(ctx.obj)
     store_path = ws.library_path
