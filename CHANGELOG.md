@@ -11,6 +11,13 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.13.0](https://github.com/complexluise/bib2graph/compare/v0.12.0...v0.13.0) (2026-07-19)
+
+
+### Features
+
+* **287:** fricciones agente-native — curate multi-id, seed --preview, seed retry, build cocitation hint (0.13.0) ([#288](https://github.com/complexluise/bib2graph/issues/288)) ([#289](https://github.com/complexluise/bib2graph/issues/289)) ([ab46301](https://github.com/complexluise/bib2graph/commit/ab46301e2eef52a492e60f1998c80310d91f76ea))
+
 ## [0.12.0](https://github.com/complexluise/bib2graph/compare/v0.11.0...v0.12.0) (2026-07-18)
 
 
