@@ -967,7 +967,7 @@ class TabularBackend(Protocol):
     def add_referenced_refs(self, ref_ids: list[str], *, cycle_round: int) -> "TabularBackend": ...
         # Registra IDs observados (idempotente por existencia de `ref_id`; observed_at = now() del backend).
     def referenced_refs_count(self) -> int: ...    # nº de IDs observados distintos
-    def referenced_refs(self) -> pa.Table: ...     # los IDs observados (ref_id, cycle_round, observed_at)
+    def referenced_refs(self) -> list[str]: ...    # los ref_id observados, en orden de inserción
 
     # ADR 0050 D1: tabla hermana `equations` (objeto ecuación de 1ª clase; FUERA del corpus_hash,
     # como referenced_but_not_fetched). Firmas y schema en §1.5.
