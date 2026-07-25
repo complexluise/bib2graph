@@ -24,6 +24,14 @@ R2 (ADR 0017 enmendado):
   ``clock: Callable`` porque (a) simplifica la firma, (b) los tests
   inyectan el timestamp exacto sin construir closures, y (c) mantiene
   ergonomía para uso como librería (sin argumento → fallback razonable).
+
+ADR 0050 (D1/D3):
+- ``build_equation_metadata``: helper puro compartido por ``InMemoryBackend``
+  y ``DuckDBBackend`` para poblar la metadata de schema Arrow en
+  ``to_arrow()`` (``equation_hash``/``equation_hash_algo``/
+  ``equation_expression``/``equation_id``). Política congelada: 1 ecuación
+  → metadata presente; 0 o >1 → metadata ausente + warning (no mentir un
+  hash que el consumidor programático no podría verificar).
 """
 
 from __future__ import annotations
@@ -91,6 +99,54 @@ def compute_corpus_hash(table: pa.Table) -> str:
         normalized.append(norm_row)
     serialized = json.dumps(normalized, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(serialized.encode()).hexdigest()
+
+
+def build_equation_metadata(
+    equations: list[dict[str, object]],
+) -> tuple[dict[bytes, bytes], str | None]:
+    """Construye la metadata de schema Arrow para ``equation_hash`` (ADR 0050 D3).
+
+    Regla congelada (resolución del PO, 2026-07-25): exactamente **una**
+    ecuación en la tabla lateral ``equations`` → la metadata incluye
+    ``equation_hash``/``equation_hash_algo``/``equation_expression``/
+    ``equation_id``. **Cero o múltiples** ecuaciones → la metadata se omite
+    por completo y se devuelve un ``warning`` (nunca se inventa un hash que
+    el consumidor programático no podría verificar).
+
+    Normalización EXACTA del hash (contrato de verificación del consumidor):
+    ``sha256(raw_query.strip().encode("utf-8")).hexdigest()``. Solo
+    ``str.strip()`` — nada de lower/NFC/colapsar espacios internos.
+
+    Args:
+        equations: Filas de la tabla lateral ``equations`` (cada dict con
+            al menos las claves ``equation_id`` y ``raw_query``).
+
+    Returns:
+        Tupla ``(metadata, warning)``: ``metadata`` es un dict ``bytes→bytes``
+        listo para ``pa.schema(...).with_metadata(...)`` (vacío si no aplica
+        la regla de 1 ecuación); ``warning`` es un mensaje accionable cuando
+        la metadata se omitió, o ``None`` cuando se pobló.
+    """
+    if len(equations) != 1:
+        warning = (
+            f"equation_hash omitido: el corpus tiene {len(equations)} ecuación(es) "
+            "registrada(s) en la tabla 'equations' (se requiere exactamente 1 para "
+            "emitir un equation_hash verificable)."
+        )
+        return {}, warning
+
+    eq = equations[0]
+    raw_query = str(eq.get("raw_query") or "")
+    equation_id = str(eq.get("equation_id") or "")
+    normalized = raw_query.strip()
+    equation_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    metadata = {
+        b"equation_hash": equation_hash.encode("utf-8"),
+        b"equation_hash_algo": b"sha256",
+        b"equation_expression": raw_query.encode("utf-8"),
+        b"equation_id": equation_id.encode("utf-8"),
+    }
+    return metadata, None
 
 
 def _parse_provenance(provenance_json: str | None) -> list[dict[str, object]]:
@@ -360,6 +416,7 @@ class InMemoryBackend:
         *,
         referenced_refs: list[str] | None = None,
         external_ids: dict[tuple[str, str], str] | None = None,
+        equations: list[dict[str, object]] | None = None,
     ) -> None:
         """Constructor interno.
 
@@ -372,24 +429,43 @@ class InMemoryBackend:
             external_ids: Diccionario ``{(paper_id, engine): id}`` con los IDs
                 externos registrados (ADR 0036 opción C).  Lateral al corpus:
                 no entra en CORPUS_SCHEMA ni en corpus_hash.
+            equations: Lista de dicts de la tabla lateral ``equations``
+                (ADR 0050 D1).  Lateral al corpus: no entra en CORPUS_SCHEMA
+                ni en corpus_hash.
         """
         self._table = table
         # #54: IDs backward observados, en orden de inserción, sin duplicados.
         self._referenced_refs: list[str] = list(referenced_refs or [])
         # ADR 0036: IDs externos por (paper_id, engine).  PK lógica (paper_id, engine).
         self._external_ids: dict[tuple[str, str], str] = dict(external_ids or {})
+        # ADR 0050 (D1): ecuaciones persistidas, en orden de inserción; PK equation_id.
+        self._equations: list[dict[str, object]] = list(equations or [])
 
     # ------------------------------------------------------------------
     # TabularBackend protocol
     # ------------------------------------------------------------------
 
     def to_arrow(self) -> pa.Table:
-        """Devuelve la tabla Arrow interna.
+        """Devuelve la tabla Arrow interna, con metadata de ecuación (ADR 0050 D3).
+
+        Puebla la metadata del schema Arrow con ``equation_hash`` cuando hay
+        exactamente una ecuación registrada en la tabla lateral ``equations``.
+        Con 0 o >1 ecuaciones, la metadata se omite silenciosamente aquí (no
+        se inventa un hash no verificable); ``build_equation_metadata`` sigue
+        disponible para que el punto de consumo real (p. ej. el comando de
+        export) emita el ``warning`` accionable al usuario en el momento en
+        que corresponde — no en cada llamada interna de ``to_arrow()`` del
+        pipeline (que ocurre docenas de veces por invocación y no es un
+        evento visible al usuario).
 
         Returns:
-            Tabla Arrow con el schema canónico.
+            Tabla Arrow con el schema canónico y la metadata de schema
+            poblada (o no) según la regla de D3.
         """
-        return self._table
+        metadata, _warning = build_equation_metadata(self._equations)
+        if not metadata:
+            return self._table
+        return self._table.replace_schema_metadata(metadata)
 
     def add_paper(self, row: dict[str, object]) -> InMemoryBackend:
         """Agrega una fila al backend y devuelve una nueva instancia.
@@ -406,6 +482,7 @@ class InMemoryBackend:
             _rows_to_table(existing),
             referenced_refs=self._referenced_refs,
             external_ids=self._external_ids,
+            equations=self._equations,
         )
 
     def merge(self, other_table: pa.Table) -> InMemoryBackend:
@@ -445,6 +522,7 @@ class InMemoryBackend:
             _rows_to_table(result_rows),
             referenced_refs=self._referenced_refs,
             external_ids=self._external_ids,
+            equations=self._equations,
         )
 
     def apply_curation(
@@ -480,6 +558,7 @@ class InMemoryBackend:
             _rows_to_table(updated),
             referenced_refs=self._referenced_refs,
             external_ids=self._external_ids,
+            equations=self._equations,
         )
 
     def filter_view(self, view: Literal["seeds", "candidates", "accepted"]) -> pa.Table:
@@ -609,3 +688,54 @@ class InMemoryBackend:
             (pid, engine, ext_id)
             for (pid, engine), ext_id in self._external_ids.items()
         ]
+
+    # Extensiones: equations (ADR 0050 D1)
+
+    def persist_equation(
+        self,
+        equation_id: str,
+        *,
+        engine: str,
+        raw_query: str,
+        params_json: str,
+        label: str | None = None,
+        created_at: str | None = None,
+    ) -> None:
+        """Persiste (upsert) una ecuación en la tabla lateral en memoria.
+
+        Idempotente: si ``equation_id`` ya existe, reemplaza la fila
+        (misma posición en la lista, preserva el orden de primera aparición).
+
+        Args:
+            equation_id: PK de la ecuación.
+            engine: Motor que ejecutó la búsqueda.
+            raw_query: Ecuación cruda tal como la escribió el usuario.
+            params_json: JSON string con los parámetros de la ecuación.
+            label: Etiqueta humana opcional.
+            created_at: Timestamp ISO8601 UTC.  Si es ``None``, se usa
+                ``datetime.now(UTC)`` como fallback.
+        """
+        resolved_at = (
+            created_at if created_at is not None else datetime.now(UTC).isoformat()
+        )
+        row: dict[str, object] = {
+            "equation_id": equation_id,
+            "engine": engine,
+            "raw_query": raw_query,
+            "params_json": params_json,
+            "label": label,
+            "created_at": resolved_at,
+        }
+        for i, existing in enumerate(self._equations):
+            if existing.get("equation_id") == equation_id:
+                self._equations[i] = row
+                return
+        self._equations.append(row)
+
+    def load_equations(self) -> list[dict[str, object]]:
+        """Devuelve todas las ecuaciones persistidas, en orden de inserción.
+
+        Returns:
+            Lista de dicts (copia defensiva) con las ecuaciones registradas.
+        """
+        return [dict(eq) for eq in self._equations]

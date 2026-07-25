@@ -22,6 +22,7 @@ Para cargar un corpus curado desde un parquet sin red, usá ``b2g snapshot resto
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -145,6 +146,18 @@ def run_seed(
         merged_backend_close = getattr(merged._backend, "close", None)
         store.persist_replace(merged_deduped)
         store.backend.set_loop_state(new_state, cycle_round=new_round)
+
+        # ADR 0050 (D1): persistir la ecuación en la tabla lateral ``equations``
+        # de la biblioteca viva (antes solo se sellaba en el manifest del
+        # snapshot; ver `Corpus.snapshot`). Idempotente por `equation_id` (PK).
+        for eq_ref in result.corpus.manifest.equations:
+            store.backend.persist_equation(
+                eq_ref.equation_id,
+                engine=eq_ref.engine or "openalex",
+                raw_query=str(eq_ref.params.get("raw_query", equation)),
+                params_json=json.dumps(eq_ref.params, ensure_ascii=False),
+                created_at=eq_ref.created_at,
+            )
     finally:
         # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
         # para evitar segfault en Linux ante llamadas consecutivas al mismo archivo.
