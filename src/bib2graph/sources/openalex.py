@@ -544,7 +544,8 @@ class OpenAlexSource:
             query, native=native, exclude=exclude, min_year=min_year, max_year=max_year
         )
         equation_id = f"eq-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}"
-        fetched_at = datetime.now(UTC).isoformat()
+        created_at = datetime.now(UTC).isoformat()
+        fetched_at = created_at
 
         # #287 fricción #3: seed reintenta ante 429/5xx con backoff (mismo camino
         # que el forward chaining).  Sin esto, cada 429 obligaba al agente a un
@@ -568,7 +569,22 @@ class OpenAlexSource:
             )
         corpus = Corpus.from_arrow(table)
 
-        # Actualizar Manifest con openalex_version y ecuación (ADR 0017)
+        # Actualizar Manifest con openalex_version y ecuación (ADR 0017; D1 ADR 0050)
+        # ``params`` es el superconjunto de parámetros de la ecuación (ADR 0050 D1):
+        # ``raw_query`` es la ecuación CRUDA (``query``, el argumento del usuario,
+        # ANTES de traducir) — es lo que Atalaya confirma y hashea (D3). La
+        # ``executed_query`` (traducida a filtros OpenAlex) queda en params para
+        # auditoría, no para el hash (ver ADR 0050 §Alternativas descartadas).
+        equation_params: dict[str, object] = {
+            "raw_query": query,
+            "exclude": exclude or [],
+            "max_results": self._max_results,
+            "native": native,
+            "min_year": min_year,
+            "max_year": max_year,
+            "executed_query": executed_query,
+            "translation_report": translation_report,
+        }
         updated_manifest = corpus.manifest.model_copy(
             update={
                 "openalex_version": openalex_version,
@@ -577,6 +593,9 @@ class OpenAlexSource:
                         equation_id=equation_id,
                         query=executed_query,
                         translation_report=translation_report,
+                        engine="openalex",
+                        params=equation_params,
+                        created_at=created_at,
                     )
                 ],
             }

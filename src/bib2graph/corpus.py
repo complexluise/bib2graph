@@ -124,11 +124,34 @@ def _rows_with_ids(rows: list[dict[str, object]]) -> list[dict[str, object]]:
 
 
 class EquationRef(BaseModel):
-    """Referencia a una ecuación de búsqueda ejecutada."""
+    """Referencia a una ecuación de búsqueda ejecutada.
+
+    ADR 0050 (D1): se extiende con ``engine``/``params``/``created_at`` para
+    persistirse en la tabla lateral ``equations`` del store vivo (no solo
+    sellarse en el ``Manifest`` del snapshot). ``query`` sigue siendo la
+    query EJECUTADA (traducida) por retrocompat con el uso histórico de este
+    campo; la ecuación CRUDA vive en ``params["raw_query"]`` (superconjunto,
+    ver ``params_json`` de la tabla ``equations``).
+
+    Fields:
+        equation_id: PK, formato ``eq-<YYYYMMDDTHHMMSS>`` (seed).
+        query: Query ejecutada (traducida) — campo histórico.
+        translation_report: Reporte de traducción (histórico).
+        engine: Motor que ejecutó la búsqueda (``'openalex'``; futuro
+            ``'s2'``/``'crossref'``). ``None`` si no aplica (compat).
+        params: Superconjunto de parámetros de la ecuación — incluye
+            ``raw_query``, ``exclude``, ``max_results``, ``native``,
+            ``min_year``, ``max_year``, ``executed_query``. Vacío por
+            defecto (compat con construcciones existentes).
+        created_at: Sello ISO8601 UTC de creación de la ecuación, o ``None``.
+    """
 
     equation_id: str
     query: str
     translation_report: list[str] = Field(default_factory=list)
+    engine: str | None = None
+    params: dict[str, object] = Field(default_factory=dict)
+    created_at: str | None = None
 
 
 class ChainingParams(BaseModel):
