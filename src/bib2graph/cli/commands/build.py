@@ -47,6 +47,7 @@ from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._scope import map_scope as _map_scope
 from bib2graph.cli._store import (
     open_store,
     resolve_workspace,
@@ -57,23 +58,6 @@ from bib2graph.cli._store import (
 if TYPE_CHECKING:
     from bib2graph.corpus import Corpus
     from bib2graph.networks.spec import NetworkArtifact
-
-
-def _map_scope(scope: str) -> str:
-    """Mapea el vocab de ``--scope`` (CLI) al vocab interno de ``corpus.scoped()``.
-
-    ``--scope`` usa ``seeds`` (forma corta), mientras que ``corpus.scoped()``
-    espera ``seeds_only``.  Los demás valores son idénticos en ambos vocabs.
-
-    Args:
-        scope: Valor del flag ``--scope`` (``all`` | ``accepted`` | ``seeds``).
-
-    Returns:
-        Vocabulario interno: ``all`` | ``accepted`` | ``seeds_only``.
-    """
-    if scope == "seeds":
-        return "seeds_only"
-    return scope
 
 
 # Helper compartido: carga de specs YAML + construcción de artefactos

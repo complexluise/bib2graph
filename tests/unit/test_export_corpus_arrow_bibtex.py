@@ -95,6 +95,26 @@ def _init_workspace(tmp_path: Path, name: str = "ws") -> Any:
     return Workspace.init(ws_dir, name)
 
 
+def _persist_equations(store_path: Path, equation_ids: list[str]) -> None:
+    """Persiste N ecuaciones (tabla lateral ``equations``, ADR 0050 D1) en el store.
+
+    Args:
+        store_path: Ruta al archivo ``.duckdb``.
+        equation_ids: IDs de ecuación a persistir (0, 1 o varios).
+    """
+    from bib2graph.stores.duckdb import DuckDBStore
+
+    store = DuckDBStore(store_path)
+    for eq_id in equation_ids:
+        store.backend.persist_equation(
+            eq_id,
+            engine="openalex",
+            raw_query=f"query for {eq_id}",
+            params_json="{}",
+        )
+    store.close()
+
+
 def _mixed_rows() -> list[dict[str, Any]]:
     """3 papers: 2 semillas (1 aceptada, 1 candidata) + 1 no-semilla aceptado."""
     return [
@@ -289,6 +309,120 @@ class TestExportFormatArrow:
         data = json.loads(result.output)["data"]
         assert Path(data["out_dir"]) == ws.exports_dir
         assert (ws.exports_dir / "corpus.arrow").exists()
+
+
+# ---------------------------------------------------------------------------
+# 1b. --format arrow — warning de equation_hash omitido (ADR 0050 D3, #291/#292)
+# ---------------------------------------------------------------------------
+
+
+class TestExportArrowEquationHashWarning:
+    """El comando ``export`` es el punto de consumo real de
+    ``build_equation_metadata``: ``to_arrow()`` puebla ``equation_hash`` en la
+    metadata del schema cuando hay exactamente 1 ecuación, pero descarta el
+    warning a propósito (no ruidoso para llamadas internas). El comando debe
+    recuperar ese warning y propagarlo en el envelope cuando hay 0 o >1
+    ecuaciones registradas."""
+
+    def test_cero_ecuaciones_emite_warning_en_envelope(self, tmp_path: Path) -> None:
+        """0 ecuaciones registradas -> warning de equation_hash omitido en --json."""
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(ws.library_path, _mixed_rows())
+        # Sin persistir ninguna ecuación.
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "arrow", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        warnings_list = envelope.get("warnings") or []
+        assert any("equation_hash" in w and "0 ecuaci" in w for w in warnings_list)
+
+        import pyarrow.feather as feather
+
+        arrow_path = Path(envelope["data"]["files_written"][0])
+        reread = feather.read_table(str(arrow_path))
+        metadata = reread.schema.metadata or {}
+        assert b"equation_hash" not in metadata
+
+    def test_multiples_ecuaciones_emite_warning_en_envelope(
+        self, tmp_path: Path
+    ) -> None:
+        """>1 ecuaciones registradas -> warning de equation_hash omitido en --json."""
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(ws.library_path, _mixed_rows())
+        _persist_equations(ws.library_path, ["eq-1", "eq-2"])
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "arrow", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        warnings_list = envelope.get("warnings") or []
+        assert any("equation_hash" in w and "2 ecuaci" in w for w in warnings_list)
+
+        import pyarrow.feather as feather
+
+        arrow_path = Path(envelope["data"]["files_written"][0])
+        reread = feather.read_table(str(arrow_path))
+        metadata = reread.schema.metadata or {}
+        assert b"equation_hash" not in metadata
+
+    def test_una_ecuacion_no_hay_warning_y_hash_presente(self, tmp_path: Path) -> None:
+        """1 ecuación registrada -> sin warning; el .arrow trae equation_hash."""
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(ws.library_path, _mixed_rows())
+        _persist_equations(ws.library_path, ["eq-1"])
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "arrow", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        warnings_list = envelope.get("warnings") or []
+        assert not any("equation_hash" in w for w in warnings_list)
+
+        import pyarrow.feather as feather
+
+        arrow_path = Path(envelope["data"]["files_written"][0])
+        reread = feather.read_table(str(arrow_path))
+        metadata = reread.schema.metadata or {}
+        assert metadata.get(b"equation_hash") is not None
+
+    def test_bibtex_no_calcula_ni_advierte_equation_hash(self, tmp_path: Path) -> None:
+        """--format bibtex NO necesita el warning: no embebe equation_hash."""
+        pytest.importorskip("bibtexparser")
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(ws.library_path, _mixed_rows())
+        # Sin ecuaciones -- si bibtex disparara el mismo chequeo, advertiría.
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "bibtex", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        warnings_list = envelope.get("warnings") or []
+        assert not any("equation_hash" in w for w in warnings_list)
 
 
 # ---------------------------------------------------------------------------
