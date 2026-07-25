@@ -223,7 +223,7 @@ formatos nuevos** al `--format` existente (`graphml`/`csv`): **NO es un verbo nu
 - **`--format arrow`** → escribe **`corpus.arrow`** = **Feather / Arrow IPC** (**no** parquet), vía
   `ArrowExporter` (`exporters/arrow.py`), que solo serializa `Corpus.scoped(scope).to_arrow()` **tal
   cual** (no toca schema ni metadata). La metadata de ecuación + `equation_hash` (§1.6) **viaja dentro**
-  del Feather → **archivo autoverificable** que Atalaya sube y valida. Es un artefacto **distinto de
+  del Feather → **archivo autoverificable** que el consumidor programático sube y valida. Es un artefacto **distinto de
   `snapshot create`** (parquet + `manifest.json`, reproducibilidad interna): no se solapan.
 - **`--format bibtex`** → escribe **`corpus.bib`** parseable, vía `BibtexExporter`
   (`exporters/bibtex.py`; extra **`[bibtex]`** — import perezoso de `bibtexparser`, falta → exit 3).
@@ -817,7 +817,7 @@ class Corpus:
         `equation_expression`/`equation_id` cuando hay exactamente 1 ecuación en la tabla `equations`
         (§1.5/§1.6). Con 0 o >1 ecuaciones la metadata se omite (silenciosa acá; el warning lo emite
         el punto de consumo). El schema de columnas + el dominio de `curation_status` son contrato con
-        consumidores externos (Atalaya, §1.7)."""
+        consumidores externos (el consumidor programático, §1.7)."""
     def seeds(self) -> pa.Table:        """Vista is_seed == True."""
     def candidates(self) -> pa.Table:   """Vista curation_status == 'candidate'."""
     def accepted(self) -> pa.Table:     """Vista curation_status == 'accepted' (la biblioteca curada)."""
@@ -999,7 +999,7 @@ equivalente en `InMemoryBackend`. Schema de la tabla `equations` (PK `equation_i
 |---|---|---|---|
 | `equation_id` | `string` (**PK**) | no | formato `eq-<YYYYMMDDTHHMMSS>` (seed); mismo que hoy en `provenance`. Estable. |
 | `engine` | `string` | no | motor que ejecutó la búsqueda (`openalex`; futuro `s2`/`crossref`). |
-| `raw_query` | `string` | no | la ecuación **cruda** tal como la escribió el usuario (`EquationSpec.query` / `--equation`), **antes** de traducir a filtros OpenAlex. Es lo que Atalaya confirma y hashea (§1.6). |
+| `raw_query` | `string` | no | la ecuación **cruda** tal como la escribió el usuario (`EquationSpec.query` / `--equation`), **antes** de traducir a filtros OpenAlex. Es lo que el consumidor programático confirma y hashea (§1.6). |
 | `params_json` | `string` (JSON) | no (default `'{}'`) | superconjunto de `EquationRef` + los flags de `seed`: `{exclude, max_results, native, min_year, max_year, executed_query, translation_report}`. |
 | `label` | `string \| null` | sí | etiqueta humana opcional. |
 | `created_at` | `string` (ISO8601 UTC) | no | sello de creación de la ecuación. |
@@ -1051,7 +1051,7 @@ el ADR, implementación después): el `equation_id` string sigue **tal cual** (i
 `provenance` no gana el campo `source_kind`, `chaining_hop` no se toca, y **no hay migración ni parser de
 compat** en 0.14.0. Cuando D2 aterrice, se documentará el evento `provenance` con `source_kind`.
 
-### 1.6 Metadata del schema Arrow — `equation_hash` (ADR 0050 D3, v1) — contrato con Atalaya
+### 1.6 Metadata del schema Arrow — `equation_hash` (ADR 0050 D3, v1) — contrato con el consumidor programático
 
 `to_arrow()` (§1.2) puebla la **metadata del schema Arrow** (`pa.schema(...).with_metadata({...})`,
 bytes→bytes) con la ligadura ecuación↔corpus, **cuando hay exactamente una ecuación** en la tabla
@@ -1064,7 +1064,7 @@ bytes→bytes) con la ligadura ecuación↔corpus, **cuando hay exactamente una 
 | `equation_expression` | la ecuación **cruda** (`raw_query`), para trazabilidad. |
 | `equation_id` | la FK (`eq-…`), para cruzar con la tabla `equations` (§1.5). |
 
-**Normalización canónica del hash — `strip()` puro, CONGELADO (contrato de Atalaya, su ADR 0008).** Se
+**Normalización canónica del hash — `strip()` puro, CONGELADO (contrato de verificación del consumidor).** Se
 hashea la ecuación **cruda** (`raw_query` = lo que el usuario escribió, **antes** de traducir a filtros
 OpenAlex):
 
@@ -1074,52 +1074,56 @@ equation_hash = hashlib.sha256(raw_query.strip().encode("utf-8")).hexdigest()
 
 Es decir: **solo `str.strip()`** (elimina espacios al inicio/final) → codificar en **UTF-8** →
 **SHA-256** → **hexdigest en minúsculas**. **NO** colapsa espacios internos, **NO** cambia mayúsculas,
-**NO** normaliza comillas ni Unicode (NFC/NFKC). Esta definición es **exactamente** la de Atalaya ADR
-0008 y **se congela**: una vez que Atalaya empiece a verificar, cambiar la normalización rompería la
-verificación (por eso `equation_hash_algo` deja versionar el algoritmo para evoluciones controladas).
+**NO** normaliza comillas ni Unicode (NFC/NFKC). Esta definición es **exactamente** la del contrato de
+verificación del consumidor y **se congela**: una vez que el consumidor programático empiece a verificar,
+cambiar la normalización rompería la verificación (por eso `equation_hash_algo` deja versionar el
+algoritmo para evoluciones controladas).
 
 - **Regla 1-ecuación → presente / 0-o-N → omitida** (congelada, ADR 0050 D3). Exactamente **una**
   ecuación en `equations` → la metadata (`equation_hash`/`equation_hash_algo`/`equation_expression`/
   `equation_id`) se puebla. **Cero o múltiples** ecuaciones → la metadata se **omite por completo** y
   `build_equation_metadata` devuelve un **`warning`** accionable. **Nunca se inventa un hash** para 0 o
-  >1 ecuaciones (fallar suave y honesto, no mentir un hash que Atalaya no podría verificar). El helper
-  puro `build_equation_metadata(equations) -> tuple[dict[bytes, bytes], str | None]`
+  >1 ecuaciones (fallar suave y honesto, no mentir un hash que el consumidor programático no podría
+  verificar). El helper puro `build_equation_metadata(equations) -> tuple[dict[bytes, bytes], str | None]`
   (`bib2graph.backends.memory`) implementa la regla; `to_arrow()` lo aplica silenciosamente (el
   `warning` lo emite el punto de consumo, p. ej. `b2g export --format arrow`).
-- **Contrato a FUTURO, no bloqueante.** La verificación por hash **aún no está implementada del lado
-  Atalaya** (su ADR 0008 en estado Propuesta). bib2graph emite el hash bien (strip exacto) para dejar la
-  ligadura lista **para cuando** Atalaya la active; su ausencia no frena nada.
+- **Contrato a FUTURO, no bloqueante.** La verificación por hash **aún no está implementada del lado del
+  consumidor** (su contrato de verificación en estado Propuesta). bib2graph emite el hash bien (strip
+  exacto) para dejar la ligadura lista **para cuando** el consumidor programático la active; su ausencia
+  no frena nada.
 
-> **El schema de columnas de `to_arrow()` (los 19 nombres+tipos que Atalaya lee) y el dominio de
-> `curation_status` (`candidate | accepted | rejected`) son CONTRATO con consumidores externos** — ver
-> §1.7. La metadata de ecuación (D1/D3) es **aditiva**: no toca esas columnas.
+> **El schema de columnas de `to_arrow()` (los 19 nombres+tipos que el consumidor programático lee) y el
+> dominio de `curation_status` (`candidate | accepted | rejected`) son CONTRATO con consumidores
+> externos** — ver §1.7. La metadata de ecuación (D1/D3) es **aditiva**: no toca esas columnas.
 
-### 1.7 Contrato con consumidores externos (Atalaya) — schema del Arrow congelado
+### 1.7 Contrato con consumidores externos — schema del Arrow congelado
 
-**Atalaya** carga corpus reales subiendo el **Arrow que produce `to_arrow()`** (Feather de `b2g export
---format arrow`, §CLI). Su ingest impone un **constraint DURO** sobre el schema (ADR 0050 §Constraints
-de Atalaya): estos dos elementos son **contrato con consumidores externos y no se cambian sin coordinar
+Un **consumidor programático** carga corpus reales subiendo el **Arrow que produce `to_arrow()`**
+(Feather de `b2g export --format arrow`, §CLI). Un usuario programático que integra el Arrow de bib2graph
+reportó que su ingest impone un **constraint DURO** sobre el schema (ADR 0050 §Constraints del consumidor
+programático): estos dos elementos son **contrato con consumidores externos y no se cambian sin coordinar
 cross-repo**:
 
-1. **El schema de columnas del Arrow — los 19 nombres+tipos load-bearing que Atalaya lee**
-   (`INGESTED_COLUMNS`): `id`, `doi`, `source_id`, `references_id`, `references_doi`, `title`, `year`,
-   `abstract`, `source`, `curation_status`, `is_seed`, `provenance`, `authors_raw`, `authors_id`,
+1. **El schema de columnas del Arrow — los 19 nombres+tipos load-bearing que el consumidor programático
+   lee** (`INGESTED_COLUMNS`): `id`, `doi`, `source_id`, `references_id`, `references_doi`, `title`,
+   `year`, `abstract`, `source`, `curation_status`, `is_seed`, `provenance`, `authors_raw`, `authors_id`,
    `authors_affiliations`, `keywords_raw`, `keywords_id`, `institutions_raw`, `institutions_id`.
-   `source_id`/`references_id` deben seguir siendo ids OpenAlex del **mismo namespace** (`W…`): Atalaya
-   joinea `references_id` de un paper contra `source_id` de otro para armar el grafo de citas. Un
-   rename/retipo los vuelve **invisibles sin error** (rompe en silencio).
-2. **El dominio de `curation_status` — exactamente `candidate | accepted | rejected`**. El ingest de
-   Atalaya hace `.exclude(rejected)`; renombrar un estado filtra mal los papers rechazados.
+   `source_id`/`references_id` deben seguir siendo ids OpenAlex del **mismo namespace** (`W…`): el
+   consumidor programático joinea `references_id` de un paper contra `source_id` de otro para armar el
+   grafo de citas. Un rename/retipo los vuelve **invisibles sin error** (rompe en silencio).
+2. **El dominio de `curation_status` — exactamente `candidate | accepted | rejected`**. El ingest del
+   consumidor programático hace `.exclude(rejected)`; renombrar un estado filtra mal los papers rechazados.
 
 **Regla: aditivo es seguro; renombrar/retipar/estrechar NO.** **Agregar** columnas nuevas a
-`CORPUS_SCHEMA` o metadata nueva al schema (como `equation_hash`, D3) es **100% seguro** — Atalaya
-ignora todo lo que no está en `INGESTED_COLUMNS` y toda metadata que no consume. **Renombrar, retipar o
-estrechar el dominio** sobre lo que Atalaya lee **rompe la carga** (varios rompen en silencio).
+`CORPUS_SCHEMA` o metadata nueva al schema (como `equation_hash`, D3) es **100% seguro** — el consumidor
+programático ignora todo lo que no está en `INGESTED_COLUMNS` y toda metadata que no consume. **Renombrar,
+retipar o estrechar el dominio** sobre lo que el consumidor programático lee **rompe la carga** (varios
+rompen en silencio).
 
 Esto lo blinda el **test guardarraíl `tests/unit/test_arrow_schema_contract.py`** (#296, ya en dev): una
 **copia congelada** de los 19 nombres+tipos + el dominio de `curation_status`, que falla si alguien
 renombra/retipa una columna load-bearing o cambia el dominio. Agregar columnas nuevas lo deja pasar
-(verificado). Referencia normativa: **ADR 0050 §Constraints de Atalaya**.
+(verificado). Referencia normativa: **ADR 0050 §Constraints del consumidor programático**.
 
 ---
 
@@ -1773,7 +1777,7 @@ class ArrowExporter:         # v1 — `corpus.arrow` (Feather / Arrow IPC)
     def export(self, table: pa.Table, out_path: str | Path) -> Path: ...
         # Serializa la tabla TAL CUAL con pyarrow.feather.write_feather: NO toca schema ni metadata.
         # La metadata de ecuación + equation_hash (§1.6) ya viene en el schema de to_arrow() y viaja
-        # dentro del Feather (archivo autoverificable para Atalaya).
+        # dentro del Feather (archivo autoverificable para el consumidor programático).
 
 class BibtexExporter:        # v1 — `corpus.bib` (BibTeX). Extra [bibtex] (bibtexparser, import perezoso).
     def export(self, table: pa.Table, out_path: str | Path) -> Path: ...
@@ -1978,7 +1982,7 @@ b2g curate apply curacion.csv                     # aplica accepted/rejected en 
 b2g build --max-citing 50 --email tu@correo.org   # → BUILT; co-citación (cited_by) sobre las aceptadas
 b2g read top --kind bibliographic_coupling        # salida de investigación (nodos centrales + co-citación)
 b2g export --format graphml                        # serializa networks/ a exports/
-b2g export --format arrow --scope accepted         # corpus.arrow (Feather autoverificable, p/ Atalaya)
+b2g export --format arrow --scope accepted         # corpus.arrow (Feather autoverificable, p/ consumidor programático)
 b2g export --format bibtex                          # corpus.bib (BibTeX, entry-type inferido)
 b2g snapshot create                                # foto reproducible (parquet + manifest.json)
 b2g status                                         # CycleState + round + curation_available + workspace
