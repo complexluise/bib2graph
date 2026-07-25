@@ -3,7 +3,7 @@
 Implementa ``ArrowExporter`` según ADR 0050 D4. Serializa la tabla que
 ``Corpus.to_arrow()`` produce (schema + metadata ya poblados por la
 proyección) a un único archivo ``.arrow`` (Arrow IPC / Feather),
-autoverificable para consumidores externos (Atalaya).
+autoverificable para consumidores externos (un consumidor programático).
 
 Es un artefacto DISTINTO de ``snapshot create`` (parquet + manifest.json,
 reproducibilidad interna, ADR 0017/0030): este exportador NO toca el
