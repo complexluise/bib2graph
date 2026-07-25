@@ -75,6 +75,9 @@ Las releases las maneja [`release-please`](https://github.com/googleapis/release
 2. `release-please` abre/actualiza un PR de release con:
    - `CHANGELOG.md` actualizado (sección nueva con Added/Changed/Fixed/...).
    - Bump de versión en `pyproject.toml`.
+   - `uv.lock` sincronizado con ese bump: como `release-please` no conoce el lockfile,
+     el job `sync-lockfile` corre `uv lock` sobre la rama del PR de release y empuja el
+     lockfile ahí (sin esto el campo de versión del lockfile driftaba un release por vez, #294).
 3. Revisás el PR de release. Si está bien, lo mergeás.
 4. Al mergear, se taggea `vX.Y.Z` y se crea el **GitHub Release**.
 
