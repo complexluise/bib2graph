@@ -1,0 +1,3 @@
+# uv.lock es autogenerado con finales de línea LF. Fijarlo evita que un `uv lock`/`uv sync`
+# en Windows lo reescriba a CRLF y ensucie el diff (warning "LF will be replaced by CRLF").
+uv.lock text eol=lf

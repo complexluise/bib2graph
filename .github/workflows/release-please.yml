@@ -18,6 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
+      # PR de release recién abierto/actualizado (JSON con headBranchName, number, …).
+      # Vacío cuando no hay PR pendiente. Lo consume `sync-lockfile`.
+      pr: ${{ steps.release.outputs.pr }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -33,6 +36,38 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # Sincroniza uv.lock DENTRO del PR de release. release-please (release-type: python)
+  # bumpea pyproject.toml/CHANGELOG pero NO conoce uv.lock; sin esto el campo de versión
+  # del paquete raíz en el lockfile drifta un release por vez (#294). Corre `uv lock` sobre
+  # la rama del PR de release y empuja el lockfile ahí, para que bump y lock viajen juntos.
+  sync-lockfile:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.pr != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - name: Sincroniza uv.lock con el bump de versión y push
+        run: |
+          uv lock
+          if git diff --quiet -- uv.lock; then
+            echo "uv.lock ya estaba sincronizado; nada que empujar."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uv.lock
+          git commit -m "chore(release): sincroniza uv.lock con el bump de versión"
+          git push
 
   # Publica a PyPI SOLO cuando release-please efectivamente cortó un Release.
   # Corre en el MISMO workflow run (el push a main al mergear el release PR), así que
