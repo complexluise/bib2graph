@@ -1,7 +1,15 @@
 """cli.commands.export — Subcomando ``b2g export``.
 
-Serializa los artefactos de build al formato pedido.
-NO transiciona el CycleState.
+Serializa artefactos al formato pedido. NO transiciona el CycleState.
+
+Dos familias de formato (ADR 0050 D4, issue #293):
+  - **Redes de build** (``graphml``/``csv``, ya existentes): releen
+    ``<workspace>/networks/<kind>/network.graphml`` — ya vienen scopeados
+    de ``b2g build --scope``; ``--scope`` de este comando se **ignora** para
+    estos formatos (con un warning si se pasa explícito).
+  - **Corpus** (``arrow``/``bibtex``, nuevos): serializan
+    ``corpus.scoped(scope).to_arrow()`` — ``--scope`` de este comando SÍ
+    aplica (vocab CLI ``seeds`` → ``seeds_only``, igual que ``build``).
 
 ADR 0029 — workspace:
   El directorio de salida es ``<workspace>/exports/`` por defecto.
@@ -12,6 +20,7 @@ ADR 0029 — workspace:
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any, Literal
 
@@ -21,37 +30,57 @@ from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._store import (
+    open_store_readonly,
     resolve_workspace,
     workspace_echo,
     workspace_walkup_warning,
 )
 
+#: Formatos que serializan artefactos de build (redes); ignoran ``--scope``.
+_NETWORK_FORMATS = frozenset({"graphml", "csv"})
+#: Formatos que serializan el corpus; respetan ``--scope`` (ADR 0050 D4).
+_CORPUS_FORMATS = frozenset({"arrow", "bibtex"})
 
-def run_export(
-    store_path: str | Path,
-    *,
-    format: Literal["graphml", "csv"] = "graphml",
-    out_dir: str | Path,
-    networks_dir: str | Path | None = None,
-) -> dict[str, Any]:
-    """Relee artefactos de build y los serializa al formato pedido.
 
-    Lee los GraphML de ``<store_dir>/networks/<kind>/network.graphml``
-    (o el directorio dado) y exporta al formato pedido.
+def _map_scope(scope: str) -> str:
+    """Mapea el vocab de ``--scope`` (CLI) al vocab interno de ``corpus.scoped()``.
+
+    Mismo mapeo que ``cli.commands.build._map_scope`` (``seeds`` → ``seeds_only``).
 
     Args:
-        store_path: Ruta al archivo ``.duckdb``.
-        format: Formato de salida (``graphml`` o ``csv``).
+        scope: Valor del flag ``--scope`` (``all`` | ``accepted`` | ``seeds``).
+
+    Returns:
+        Vocabulario interno: ``all`` | ``accepted`` | ``seeds_only``.
+    """
+    if scope == "seeds":
+        return "seeds_only"
+    return scope
+
+
+def _export_networks(
+    format: str,
+    *,
+    out_dir: str | Path,
+    networks_dir: str | Path | None,
+    store_path: str | Path,
+) -> dict[str, Any]:
+    """Relee artefactos de build (redes) y los serializa a GraphML o CSV.
+
+    Args:
+        format: ``"graphml"`` o ``"csv"``.
         out_dir: Directorio de salida para los archivos exportados.
         networks_dir: Directorio base de artefactos de build (default:
             ``<store_dir>/networks/``).
+        store_path: Ruta al archivo ``.duckdb`` (para derivar el default de
+            ``networks_dir`` si no se pasa explícito).
 
     Returns:
-        Dict con ``format``, ``files_written`` y lista de archivos.
+        Dict con ``format``, ``out_dir``, ``files_written`` y
+        ``networks_exported``.
 
     Raises:
         DataError: Si no hay artefactos de build disponibles.
-        StoreError: Si el store está bloqueado.
     """
     import networkx as nx
 
@@ -122,14 +151,158 @@ def run_export(
     }
 
 
+def _export_corpus(
+    format: str,
+    *,
+    out_dir: str | Path,
+    store_path: str | Path,
+    scope: str,
+) -> dict[str, Any]:
+    """Serializa el corpus (scopeado) a Arrow (Feather) o BibTeX.
+
+    Args:
+        format: ``"arrow"`` o ``"bibtex"``.
+        out_dir: Directorio de salida para el archivo exportado.
+        store_path: Ruta al archivo ``.duckdb``.
+        scope: Vocab interno de scope (``all``/``accepted``/``seeds_only``).
+
+    Returns:
+        Dict con ``format``, ``out_dir``, ``files_written`` y ``rows_exported``.
+
+    Raises:
+        ImportError: Si falta ``bibtexparser`` (formato ``bibtex``, extra
+            ``[bibtex]``).
+    """
+    from bib2graph.exporters.arrow import ArrowExporter
+    from bib2graph.exporters.bibtex import BibtexExporter
+
+    store = open_store_readonly(store_path)
+    try:
+        corpus = store.load().scoped(scope)
+        # Materializar la tabla ANTES de cerrar el store: para scope='all',
+        # corpus.scoped() devuelve el mismo Corpus respaldado por el
+        # DuckDBBackend vivo (lazy); to_arrow() debe correr con la conexión
+        # todavía abierta.
+        table = corpus.to_arrow()
+    finally:
+        store.close()
+
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    if format == "arrow":
+        dest = out_path / "corpus.arrow"
+        ArrowExporter().export(table, dest)
+    elif format == "bibtex":
+        dest = out_path / "corpus.bib"
+        BibtexExporter().export(table, dest)
+    else:
+        raise DataError(f"Formato '{format}' no reconocido. Usá 'arrow' o 'bibtex'.")
+
+    return {
+        "format": format,
+        "out_dir": str(out_path),
+        "files_written": [str(dest)],
+        "rows_exported": table.num_rows,
+    }
+
+
+def run_export(
+    store_path: str | Path,
+    *,
+    format: Literal["graphml", "csv", "arrow", "bibtex"] = "graphml",
+    out_dir: str | Path,
+    networks_dir: str | Path | None = None,
+    scope: str = "all",
+    scope_explicit: bool = False,
+) -> dict[str, Any]:
+    """Serializa artefactos al formato pedido.
+
+    Para ``graphml``/``csv`` relee los artefactos de build de
+    ``<store_dir>/networks/<kind>/network.graphml`` (``scope`` se ignora:
+    esos artefactos ya vienen scopeados de ``b2g build --scope``).
+
+    Para ``arrow``/``bibtex`` (ADR 0050 D4) serializa
+    ``corpus.scoped(scope).to_arrow()`` del store vivo — ``scope`` sí aplica.
+
+    Args:
+        store_path: Ruta al archivo ``.duckdb``.
+        format: Formato de salida (``graphml``, ``csv``, ``arrow`` o
+            ``bibtex``).
+        out_dir: Directorio de salida para los archivos exportados.
+        networks_dir: Directorio base de artefactos de build (solo
+            ``graphml``/``csv``; default: ``<store_dir>/networks/``).
+        scope: Vocab interno de scope (``all``/``accepted``/``seeds_only``).
+            Solo aplica a ``arrow``/``bibtex`` (ADR 0050 D4).
+        scope_explicit: ``True`` si el caller pasó ``--scope`` explícito en
+            la CLI. Se usa para emitir el warning de scope-ignorado cuando
+            ``format`` es de red y el usuario igual pasó ``--scope``.
+
+    Returns:
+        Dict con ``format``, ``out_dir``, ``files_written`` y, según la
+        familia de formato, ``networks_exported`` (redes) o ``rows_exported``
+        (corpus). Incluye ``warnings`` (lista, puede ser vacía).
+
+    Raises:
+        DataError: Si no hay artefactos de build disponibles (redes) o el
+            formato no se reconoce.
+        StoreError: Si el store está bloqueado.
+        ImportError: Si falta ``bibtexparser`` (formato ``bibtex``).
+    """
+    warnings: list[str] = []
+
+    if format in _NETWORK_FORMATS:
+        if scope_explicit:
+            warnings.append(
+                f"--scope se ignora con --format {format}: las redes de build ya "
+                "vienen scopeadas por 'b2g build --scope'. --scope solo aplica a "
+                "--format arrow|bibtex (ADR 0050 D4)."
+            )
+        data = _export_networks(
+            format,
+            out_dir=out_dir,
+            networks_dir=networks_dir,
+            store_path=store_path,
+        )
+    elif format in _CORPUS_FORMATS:
+        data = _export_corpus(
+            format,
+            out_dir=out_dir,
+            store_path=store_path,
+            scope=scope,
+        )
+    else:
+        raise DataError(
+            f"Formato '{format}' no reconocido. Usá 'graphml', 'csv', 'arrow' o 'bibtex'."
+        )
+
+    data["warnings"] = warnings
+    return data
+
+
 @click.command("export")
 @click.option(
     "--format",
     "fmt",
-    type=click.Choice(["graphml", "csv"]),
+    type=click.Choice(["graphml", "csv", "arrow", "bibtex"]),
     default="graphml",
     show_default=True,
-    help="Formato de salida.",
+    help=(
+        "Formato de salida. 'graphml'/'csv' serializan redes de build; "
+        "'arrow'/'bibtex' serializan el CORPUS (ADR 0050 D4)."
+    ),
+)
+@click.option(
+    "--scope",
+    "scope",
+    type=click.Choice(["all", "accepted", "seeds"]),
+    default=None,
+    help=(
+        "Filtra el corpus antes de exportar. Solo aplica a --format arrow|bibtex "
+        "(ADR 0050 D4); se IGNORA con --format graphml|csv (esas redes ya vienen "
+        "scopeadas por 'b2g build --scope'). 'all' = corpus completo (default); "
+        "'accepted' = semillas + aceptados; 'seeds' = solo semillas."
+    ),
 )
 @click.option(
     "--out-dir",
@@ -145,12 +318,18 @@ def run_export(
 def export_cmd(
     ctx: click.Context,
     fmt: str,
+    scope: str | None,
     out_dir: str | None,
     json_output: bool,
 ) -> None:
-    """Serializa artefactos de build al formato pedido (GraphML o CSV).
+    """Serializa artefactos al formato pedido.
 
     No transiciona el CycleState.
+
+    - 'graphml'/'csv': re-emiten las redes de build (ya scopeadas por
+      ``b2g build --scope``).
+    - 'arrow'/'bibtex' (ADR 0050 D4): serializan el CORPUS del store vivo,
+      scopeado por ``--scope`` de este comando.
 
     El directorio de salida por defecto es ``<workspace>/exports/``.
     Con ``--out-dir`` se puede especificar un directorio alternativo.
@@ -159,27 +338,39 @@ def export_cmd(
     ws = resolve_workspace(ctx.obj)
     effective_out_dir: Path = Path(out_dir) if out_dir is not None else ws.exports_dir
 
+    scope_explicit = scope is not None
+    internal_scope = _map_scope(scope) if scope is not None else "all"
+
     data = run_export(
         ws.library_path,
         format=fmt,  # type: ignore[arg-type]
         out_dir=effective_out_dir,
         networks_dir=ws.networks_dir,
+        scope=internal_scope,
+        scope_explicit=scope_explicit,
     )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
 
     if json_mode(json_output):
+        all_warnings: list[str] = list(data.get("warnings") or [])
+        all_warnings.extend(workspace_walkup_warning(ws))
         envelope = build_envelope(
             command="export",
             ok=True,
             data=data,
             exit_code=0,
-            warnings=workspace_walkup_warning(ws) or None,
+            warnings=all_warnings or None,
         )
         emit(envelope)
     else:
-        emit_human(f"Exportados {data['networks_exported']} redes en formato {fmt}")
+        for w in data.get("warnings", []):
+            print(f"ADVERTENCIA: {w}", file=sys.stderr)
+        if "networks_exported" in data:
+            emit_human(f"Exportados {data['networks_exported']} redes en formato {fmt}")
+        else:
+            emit_human(f"Exportadas {data['rows_exported']} filas en formato {fmt}")
         emit_human(f"Directorio: {data['out_dir']}")
         for f in data["files_written"]:
             emit_human(f"  {f}")
