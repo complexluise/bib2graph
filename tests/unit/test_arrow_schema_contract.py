@@ -1,22 +1,24 @@
 """Contrato de schema del Arrow que produce ``Corpus.to_arrow()`` (#296).
 
-Atalaya (repo aparte, ADR 0050 §Constraints de Atalaya) **consume el Arrow**
-que exporta bib2graph: nombres de columna, tipos y — para ``curation_status``
-— el dominio de valores exacto. Si algo de eso cambia sin coordinar (rename,
-cambio de tipo, o un valor nuevo/distinto en ``curation_status``), Atalaya se
-rompe **en silencio** del otro lado (peor caso: el grafo de citas pierde
-aristas porque ``source_id``/``references_id`` dejan de joinear).
+Un consumidor programático (ADR 0050 §Constraints del consumidor programático)
+**consume el Arrow** que exporta bib2graph: nombres de columna, tipos y — para
+``curation_status`` — el dominio de valores exacto. Si algo de eso cambia sin
+coordinar (rename, cambio de tipo, o un valor nuevo/distinto en
+``curation_status``), el consumidor programático se rompe **en silencio** del
+otro lado (peor caso: el grafo de citas pierde aristas porque
+``source_id``/``references_id`` dejan de joinear).
 
 Este test es el guardarraíl: congela la superficie load-bearing (golden
 schema) para que ese tipo de cambio rompa el CI de **bib2graph**, ruidoso y
-temprano, en vez de romper Atalaya sin que nadie se entere. Un fallo acá
-significa: coordiná el cambio con Atalaya antes de mergear (ver #296 y
-ADR 0050).
+temprano, en vez de romper al consumidor programático sin que nadie se entere.
+Un fallo acá significa: coordiná el cambio con el consumidor programático antes
+de mergear (ver #296 y ADR 0050).
 
 Diseño deliberado: el test NO congela el conjunto completo de columnas de
-``CORPUS_SCHEMA``, solo el subconjunto que Atalaya efectivamente lee (la
-"superficie a congelar" de #296). Agregar columnas nuevas a ``CORPUS_SCHEMA``
-es libre y NO debe romper este test (verificado explícitamente más abajo).
+``CORPUS_SCHEMA``, solo el subconjunto que el consumidor programático
+efectivamente lee (la "superficie a congelar" de #296). Agregar columnas nuevas
+a ``CORPUS_SCHEMA`` es libre y NO debe romper este test (verificado
+explícitamente más abajo).
 
 Marcador: ``unit`` (sin red, sin I/O) — default del repo.
 """
@@ -33,19 +35,20 @@ from bib2graph.schemas import CORPUS_SCHEMA
 _LIST_STR = pa.list_(pa.string())
 
 # ---------------------------------------------------------------------------
-# Golden schema — superficie load-bearing para Atalaya (#296)
+# Golden schema — superficie load-bearing para el consumidor programático (#296)
 # ---------------------------------------------------------------------------
 #
 # Nombre de columna -> tipo pyarrow esperado. Derivado de CORPUS_SCHEMA en
 # schemas.py (la fuente canónica); este dict es una copia congelada de SOLO
-# las columnas que Atalaya lee, no de las 23 columnas de CORPUS_SCHEMA.
+# las columnas que el consumidor programático lee, no de las 23 columnas de
+# CORPUS_SCHEMA.
 #
 # Todas las columnas listadas en el issue #296 ("INGESTED_COLUMNS") existen
 # hoy en CORPUS_SCHEMA — no hay columnas "futuras" pendientes que comentar.
 GOLDEN_ARROW_SCHEMA: dict[str, pa.DataType] = {
     # Identificadores — source_id/references_id deben ser el MISMO namespace
-    # (ids OpenAlex "W..."): el grafo de citas de Atalaya joinea
-    # references_id de un paper contra source_id de otro.
+    # (ids OpenAlex "W..."): el grafo de citas del consumidor programático
+    # joinea references_id de un paper contra source_id de otro.
     Col.ID: pa.string(),
     Col.DOI: pa.string(),
     Col.SOURCE_ID: pa.string(),
@@ -72,8 +75,8 @@ GOLDEN_ARROW_SCHEMA: dict[str, pa.DataType] = {
     Col.INSTITUTIONS_ID: _LIST_STR,
 }
 
-# Dominio exacto de curation_status que Atalaya espera (constraint duro del
-# lado Postgres: check-constraint sobre estos tres valores).
+# Dominio exacto de curation_status que el consumidor programático espera
+# (constraint duro del lado Postgres: check-constraint sobre estos tres valores).
 GOLDEN_CURATION_STATUS_DOMAIN = frozenset({"candidate", "accepted", "rejected"})
 
 
@@ -116,7 +119,7 @@ def corpus_de_prueba() -> Corpus:
 
 
 class TestArrowSchemaContract:
-    """Congela nombre + tipo de las columnas que Atalaya lee del Arrow."""
+    """Congela nombre + tipo de las columnas que el consumidor programático lee del Arrow."""
 
     def test_golden_columns_present_with_exact_name_and_type(
         self, corpus_de_prueba: Corpus
@@ -135,7 +138,7 @@ class TestArrowSchemaContract:
             if col_name not in actual_fields:
                 errores.append(
                     f"Columna '{col_name}' AUSENTE en el Arrow exportado "
-                    f"(¿renombrada o eliminada? Atalaya la consume — "
+                    f"(¿renombrada o eliminada? el consumidor programático la consume — "
                     f"coordinar antes de romper, ver #296/ADR 0050)."
                 )
                 continue
@@ -144,7 +147,7 @@ class TestArrowSchemaContract:
                 errores.append(
                     f"Columna '{col_name}' cambió de tipo: se esperaba "
                     f"{expected_type!s}, se encontró {actual_type!s}. "
-                    f"Atalaya asume el tipo anterior — coordinar antes de "
+                    f"el consumidor programático asume el tipo anterior — coordinar antes de "
                     f"romper (ver #296/ADR 0050)."
                 )
 
@@ -163,7 +166,7 @@ class TestArrowSchemaContract:
         assert actual_domain == GOLDEN_CURATION_STATUS_DOMAIN, (
             f"Dominio de CurationStatus cambió: se esperaba "
             f"{sorted(GOLDEN_CURATION_STATUS_DOMAIN)}, se encontró "
-            f"{sorted(actual_domain)}. Atalaya tiene un check-constraint "
+            f"{sorted(actual_domain)}. El consumidor programático tiene un check-constraint "
             f"sobre estos valores exactos — coordinar antes de romper "
             f"(ver #296/ADR 0050)."
         )
@@ -199,7 +202,7 @@ class TestArrowSchemaContract:
         """
         table = corpus_de_prueba.to_arrow()
         tabla_con_columna_nueva = table.append_column(
-            "future_atalaya_field", pa.array([None], type=pa.string())
+            "future_consumer_field", pa.array([None], type=pa.string())
         )
         actual_fields = {f.name: f.type for f in tabla_con_columna_nueva.schema}
 
@@ -209,7 +212,7 @@ class TestArrowSchemaContract:
         for col_name, expected_type in GOLDEN_ARROW_SCHEMA.items():
             assert col_name in actual_fields
             assert actual_fields[col_name].equals(expected_type)
-        assert "future_atalaya_field" in actual_fields, (
+        assert "future_consumer_field" in actual_fields, (
             "La columna nueva debería seguir presente (no se descarta)."
         )
 
