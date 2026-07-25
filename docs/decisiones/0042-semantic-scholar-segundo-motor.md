@@ -46,7 +46,7 @@ gratuita) que **cambian la ecuación** respecto de OpenAlex:
   `paperId` se puede registrar en `external_ids(engine="semanticscholar")`.
 
 > Nota de frontera (PO): la **licencia de los datos** del proveedor no es criterio de bib2graph (es
-> del consumidor, Atalaya). Este ADR es solo contrato técnico; el motor es agnóstico a la fuente.
+> del consumidor programático). Este ADR es solo contrato técnico; el motor es agnóstico a la fuente.
 
 ## Decisión
 
