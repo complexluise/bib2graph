@@ -212,7 +212,40 @@ VERBO:** solo **`curate filter`→`FILTERED`**; el resto transversal. **BREAKING
 **`build` y `export` separados** (ADR 0021 §B). `build` computa `Networks.quick` (4-5 redes) y escribe
 a `<workspace>/networks/<kind>/` (transiciona a `BUILT`); `export --format graphml|csv` **relee** esos
 artefactos (`ws.networks_dir`) y los serializa (sin transición). **`export --out-dir`** override
-opcional (default `<workspace>/exports/`).
+opcional (default `<workspace>/exports/`, = `ws.exports_dir`).
+
+**`export --format arrow|bibtex` — serializa el CORPUS** (ADR
+[0050](decisiones/0050-contrato-export-corpus-arrow-bibtex-ecuacion.md) D4, #293). `export` gana **dos
+formatos nuevos** al `--format` existente (`graphml`/`csv`): **NO es un verbo nuevo** (respeta la poda de
+10 verbos; `export`/`snapshot` = un verbo) y **no transiciona** la FSM. A diferencia de `graphml`/`csv`
+(que serializan **redes de build** releyendo `networks/`), estos serializan el **corpus** del store vivo:
+
+- **`--format arrow`** → escribe **`corpus.arrow`** = **Feather / Arrow IPC** (**no** parquet), vía
+  `ArrowExporter` (`exporters/arrow.py`), que solo serializa `Corpus.scoped(scope).to_arrow()` **tal
+  cual** (no toca schema ni metadata). La metadata de ecuación + `equation_hash` (§1.6) **viaja dentro**
+  del Feather → **archivo autoverificable** que Atalaya sube y valida. Es un artefacto **distinto de
+  `snapshot create`** (parquet + `manifest.json`, reproducibilidad interna): no se solapan.
+- **`--format bibtex`** → escribe **`corpus.bib`** parseable, vía `BibtexExporter`
+  (`exporters/bibtex.py`; extra **`[bibtex]`** — import perezoso de `bibtexparser`, falta → exit 3).
+  **Defaults del MVP (ADR 0050 D4, congelados):** entry-type **inferido** con **`@article`** default
+  (heurística mínima: `booktitle`/sin `journal` → `@inproceedings`); **citekey = el `id` interno** del
+  paper (`doi:…`/`src:…`/`tt:…`, estable y sin colisiones), el DOI va como **campo** (`doi = {…}` +
+  `url = https://doi.org/<doi>`); campos mínimos universales `title`, `author` (` and `-joined),
+  `year`, `doi`, `journal` (= venue/`source`), `url` — **`keywords`/`abstract` fuera del MVP**; scope =
+  el corpus **scopeado por `--scope`**, **sin** filtrar por "metadata suficiente" (las entradas
+  incompletas se emiten con los campos que haya, no se descartan).
+
+**`--scope [all|accepted|seeds]`** (default `all`; `Choice`): filtra el corpus **antes** de serializar,
+reusando `Corpus.scoped(scope)` (vocab CLI `seeds`→`seeds_only`; §1.2). **Solo aplica a los formatos de
+CORPUS (`arrow`/`bibtex`).** Con `graphml`/`csv` **se IGNORA** (esas redes ya vienen scopeadas por `b2g
+build --scope`); si se pasa `--scope` explícito con un formato de red, `export` emite un **`warning`**
+accionable (no error). `--scope` es propio de `export` — es distinto del `build --scope` de §build.
+
+**Envelope `--json`** (aditivo, `schema="1"` intacto): `data = {format, out_dir, files_written,
+warnings, workspace}` **más una clave según la familia** — **`rows_exported`** (nº de filas del corpus)
+para `arrow`/`bibtex`, **`networks_exported`** (nº de redes) para `graphml`/`csv`. **Son claves
+distintas, NO unificadas:** el consumidor sabe por cuál mira qué familia exportó. `--out-dir` override
+(default `ws.exports_dir`).
 
 `build` tiene **dos modos**: **quick** (sin `--spec`) y **declarativo** (**`build --spec <redes.yaml>`**:
 `load_specs` con clave raíz `networks:` → `Networks.build` por red; helper único `_build_from_spec_file`).
@@ -779,7 +812,12 @@ class Corpus:
         Falla ruidoso si el schema no coincide."""
 
     def to_arrow(self) -> pa.Table:
-        """Materializa el contenido del backend como pa.Table. Puente a los proyectores puros."""
+        """Materializa el contenido del backend como pa.Table. Puente a los proyectores puros.
+        ADR 0050 D3: puebla la METADATA del schema Arrow con `equation_hash`/`equation_hash_algo`/
+        `equation_expression`/`equation_id` cuando hay exactamente 1 ecuación en la tabla `equations`
+        (§1.5/§1.6). Con 0 o >1 ecuaciones la metadata se omite (silenciosa acá; el warning lo emite
+        el punto de consumo). El schema de columnas + el dominio de `curation_status` son contrato con
+        consumidores externos (Atalaya, §1.7)."""
     def seeds(self) -> pa.Table:        """Vista is_seed == True."""
     def candidates(self) -> pa.Table:   """Vista curation_status == 'candidate'."""
     def accepted(self) -> pa.Table:     """Vista curation_status == 'accepted' (la biblioteca curada)."""
@@ -861,6 +899,10 @@ class Manifest(BaseModel):
     # Con default — D5
     openalex_version: str | None = None          # versión/fecha del snapshot de OpenAlex usado
     equations: list[EquationRef] = []            # ecuaciones + query OpenAlex ejecutada + reporte de traducción
+                                                  # EquationRef vive en `bib2graph.corpus` (NO en `schemas`).
+                                                  # ADR 0050 D1: extendida con engine/params/created_at;
+                                                  # además se PERSISTE en la tabla `equations` del store vivo
+                                                  # (§1.5), no solo se sella en el snapshot.
     chaining: ChainingParams | None = None       # profundidad, topes, dirección
     preprocessors: list[PreprocRef] = []         # normalize + thesaurus aplicados
     filters: list[FilterStep] = []               # criterios incl/excl con conteos (flujo PRISMA)
@@ -926,6 +968,13 @@ class TabularBackend(Protocol):
         # Registra IDs observados (idempotente por existencia de `ref_id`; observed_at = now() del backend).
     def referenced_refs_count(self) -> int: ...    # nº de IDs observados distintos
     def referenced_refs(self) -> pa.Table: ...     # los IDs observados (ref_id, cycle_round, observed_at)
+
+    # ADR 0050 D1: tabla hermana `equations` (objeto ecuación de 1ª clase; FUERA del corpus_hash,
+    # como referenced_but_not_fetched). Firmas y schema en §1.5.
+    def persist_equation(self, equation_id: str, *, engine: str, raw_query: str,
+                         params_json: str, label: str | None = None,
+                         created_at: str | None = None) -> None: ...   # upsert idempotente por equation_id
+    def load_equations(self) -> list[dict[str, object]]: ...           # filas persistidas, orden de inserción
 ```
 
 | Implementación | Estado | Notas |
@@ -937,6 +986,140 @@ class TabularBackend(Protocol):
 TabularBackend, InMemoryBackend`). El contrato D1/D2/D3 se verifica con una **suite parametrizada
 por backend** (`tests/unit/test_backends.py`), ahora parametrizada **también con `DuckDBBackend`**
 (Hito 3, construido): el backend SQL cumple los mismos invariantes que el InMemory.
+
+### 1.5 Objeto/tabla `equations` — la ecuación como objeto de 1ª clase (ADR 0050 D1, v1)
+
+La ecuación de búsqueda **se persiste como objeto de 1ª clase** en el store vivo (ADR
+[0050](decisiones/0050-contrato-export-corpus-arrow-bibtex-ecuacion.md) D1, 0.14.0), no solo como el
+`equation_id` string suelto dentro del JSON de `provenance`. Es una **tabla hermana** del backend
+(análoga a `loop_state_log`/`referenced_but_not_fetched`): SQL en `DuckDBBackend`, estructura
+equivalente en `InMemoryBackend`. Schema de la tabla `equations` (PK `equation_id`):
+
+| Campo | Tipo | Nullable | Notas |
+|---|---|---|---|
+| `equation_id` | `string` (**PK**) | no | formato `eq-<YYYYMMDDTHHMMSS>` (seed); mismo que hoy en `provenance`. Estable. |
+| `engine` | `string` | no | motor que ejecutó la búsqueda (`openalex`; futuro `s2`/`crossref`). |
+| `raw_query` | `string` | no | la ecuación **cruda** tal como la escribió el usuario (`EquationSpec.query` / `--equation`), **antes** de traducir a filtros OpenAlex. Es lo que Atalaya confirma y hashea (§1.6). |
+| `params_json` | `string` (JSON) | no (default `'{}'`) | superconjunto de `EquationRef` + los flags de `seed`: `{exclude, max_results, native, min_year, max_year, executed_query, translation_report}`. |
+| `label` | `string \| null` | sí | etiqueta humana opcional. |
+| `created_at` | `string` (ISO8601 UTC) | no | sello de creación de la ecuación. |
+
+- **`provenance.equation_id` es una FK / denormalización** a `equations.equation_id`. **La tabla
+  `equations` es la fuente de verdad; el `equation_id` string en `provenance` es cache/denormalización.**
+  Retrocompat total: los consumidores que solo leen `provenance.equation_id` **no rompen** (el string
+  sigue ahí, incluidos los `chaining:*` — su desambiguación con `source_kind` es 0.15.0, ver abajo).
+- **Se persiste al sembrar.** `b2g seed --equation`/`--spec` escribe una fila en `equations` en la
+  biblioteca viva (`store.backend.persist_equation(...)`, idempotente por `equation_id` PK: `INSERT OR
+  REPLACE` en DuckDB, upsert por posición en InMemory). El `raw_query` que se persiste es la ecuación
+  cruda; `params_json` serializa `EquationRef.params`.
+- **El chaining NO crea filas en `equations`** (un citante forrajeado no vino de una ecuación).
+
+**`EquationRef`** (`bib2graph.corpus`, **NO** `schemas`) es la vista Python de esta fila, reusada en el
+`Manifest` del snapshot (§1.3). ADR 0050 D1 la **extiende** (aditivo, retrocompat):
+
+```python
+class EquationRef(BaseModel):
+    """Referencia a una ecuación ejecutada. Vive en bib2graph.corpus (ADR 0030 + 0050 D1).
+    Se sella en Manifest.equations (snapshot) Y se persiste en la tabla `equations` (store vivo)."""
+    equation_id: str                                    # PK, `eq-<YYYYMMDDTHHMMSS>` (seed)
+    query: str                                          # query EJECUTADA (traducida) — campo histórico
+    translation_report: list[str] = Field(default_factory=list)
+    engine: str | None = None                           # ADR 0050: motor (`openalex`; futuro s2/crossref)
+    params: dict[str, object] = Field(default_factory=dict)  # ADR 0050: raw_query, exclude, max_results,
+                                                        # native, min_year, max_year, executed_query
+    created_at: str | None = None                       # ADR 0050: sello ISO8601 UTC
+```
+
+> **`query` = query traducida (histórico); la ecuación CRUDA vive en `params["raw_query"]`** (= la
+> columna `raw_query` de la tabla y lo que se hashea, §1.6). No se confunden: `query` mantiene el uso
+> histórico del campo; `raw_query` es lo que el usuario escribió.
+
+**Métodos del backend (aditivos al Protocol `TabularBackend`, §1.4):**
+
+```python
+def persist_equation(self, equation_id: str, *, engine: str, raw_query: str,
+                     params_json: str, label: str | None = None,
+                     created_at: str | None = None) -> None: ...
+    # Upsert idempotente por equation_id (PK). created_at=None → datetime.now(UTC).
+def load_equations(self) -> list[dict[str, object]]: ...
+    # Filas persistidas (equation_id, engine, raw_query, params_json, label, created_at),
+    # en orden de inserción. Copia defensiva.
+```
+
+**D2 (`source_kind`/`hop`) NO está en 0.14.0.** ADR 0050 **difiere D2 a 0.15.0** (diseño congelado en
+el ADR, implementación después): el `equation_id` string sigue **tal cual** (incluidos los `chaining:*`),
+`provenance` no gana el campo `source_kind`, `chaining_hop` no se toca, y **no hay migración ni parser de
+compat** en 0.14.0. Cuando D2 aterrice, se documentará el evento `provenance` con `source_kind`.
+
+### 1.6 Metadata del schema Arrow — `equation_hash` (ADR 0050 D3, v1) — contrato con Atalaya
+
+`to_arrow()` (§1.2) puebla la **metadata del schema Arrow** (`pa.schema(...).with_metadata({...})`,
+bytes→bytes) con la ligadura ecuación↔corpus, **cuando hay exactamente una ecuación** en la tabla
+`equations` (§1.5). Claves (bytes UTF-8):
+
+| Clave | Valor |
+|---|---|
+| `equation_hash` | SHA-256 (hex, **minúsculas**) de la ecuación cruda normalizada (ver abajo). |
+| `equation_hash_algo` | `"sha256"` (constante; explícito para versionar el algoritmo del digest). |
+| `equation_expression` | la ecuación **cruda** (`raw_query`), para trazabilidad. |
+| `equation_id` | la FK (`eq-…`), para cruzar con la tabla `equations` (§1.5). |
+
+**Normalización canónica del hash — `strip()` puro, CONGELADO (contrato de Atalaya, su ADR 0008).** Se
+hashea la ecuación **cruda** (`raw_query` = lo que el usuario escribió, **antes** de traducir a filtros
+OpenAlex):
+
+```python
+equation_hash = hashlib.sha256(raw_query.strip().encode("utf-8")).hexdigest()
+```
+
+Es decir: **solo `str.strip()`** (elimina espacios al inicio/final) → codificar en **UTF-8** →
+**SHA-256** → **hexdigest en minúsculas**. **NO** colapsa espacios internos, **NO** cambia mayúsculas,
+**NO** normaliza comillas ni Unicode (NFC/NFKC). Esta definición es **exactamente** la de Atalaya ADR
+0008 y **se congela**: una vez que Atalaya empiece a verificar, cambiar la normalización rompería la
+verificación (por eso `equation_hash_algo` deja versionar el algoritmo para evoluciones controladas).
+
+- **Regla 1-ecuación → presente / 0-o-N → omitida** (congelada, ADR 0050 D3). Exactamente **una**
+  ecuación en `equations` → la metadata (`equation_hash`/`equation_hash_algo`/`equation_expression`/
+  `equation_id`) se puebla. **Cero o múltiples** ecuaciones → la metadata se **omite por completo** y
+  `build_equation_metadata` devuelve un **`warning`** accionable. **Nunca se inventa un hash** para 0 o
+  >1 ecuaciones (fallar suave y honesto, no mentir un hash que Atalaya no podría verificar). El helper
+  puro `build_equation_metadata(equations) -> tuple[dict[bytes, bytes], str | None]`
+  (`bib2graph.backends.memory`) implementa la regla; `to_arrow()` lo aplica silenciosamente (el
+  `warning` lo emite el punto de consumo, p. ej. `b2g export --format arrow`).
+- **Contrato a FUTURO, no bloqueante.** La verificación por hash **aún no está implementada del lado
+  Atalaya** (su ADR 0008 en estado Propuesta). bib2graph emite el hash bien (strip exacto) para dejar la
+  ligadura lista **para cuando** Atalaya la active; su ausencia no frena nada.
+
+> **El schema de columnas de `to_arrow()` (los 19 nombres+tipos que Atalaya lee) y el dominio de
+> `curation_status` (`candidate | accepted | rejected`) son CONTRATO con consumidores externos** — ver
+> §1.7. La metadata de ecuación (D1/D3) es **aditiva**: no toca esas columnas.
+
+### 1.7 Contrato con consumidores externos (Atalaya) — schema del Arrow congelado
+
+**Atalaya** carga corpus reales subiendo el **Arrow que produce `to_arrow()`** (Feather de `b2g export
+--format arrow`, §CLI). Su ingest impone un **constraint DURO** sobre el schema (ADR 0050 §Constraints
+de Atalaya): estos dos elementos son **contrato con consumidores externos y no se cambian sin coordinar
+cross-repo**:
+
+1. **El schema de columnas del Arrow — los 19 nombres+tipos load-bearing que Atalaya lee**
+   (`INGESTED_COLUMNS`): `id`, `doi`, `source_id`, `references_id`, `references_doi`, `title`, `year`,
+   `abstract`, `source`, `curation_status`, `is_seed`, `provenance`, `authors_raw`, `authors_id`,
+   `authors_affiliations`, `keywords_raw`, `keywords_id`, `institutions_raw`, `institutions_id`.
+   `source_id`/`references_id` deben seguir siendo ids OpenAlex del **mismo namespace** (`W…`): Atalaya
+   joinea `references_id` de un paper contra `source_id` de otro para armar el grafo de citas. Un
+   rename/retipo los vuelve **invisibles sin error** (rompe en silencio).
+2. **El dominio de `curation_status` — exactamente `candidate | accepted | rejected`**. El ingest de
+   Atalaya hace `.exclude(rejected)`; renombrar un estado filtra mal los papers rechazados.
+
+**Regla: aditivo es seguro; renombrar/retipar/estrechar NO.** **Agregar** columnas nuevas a
+`CORPUS_SCHEMA` o metadata nueva al schema (como `equation_hash`, D3) es **100% seguro** — Atalaya
+ignora todo lo que no está en `INGESTED_COLUMNS` y toda metadata que no consume. **Renombrar, retipar o
+estrechar el dominio** sobre lo que Atalaya lee **rompe la carga** (varios rompen en silencio).
+
+Esto lo blinda el **test guardarraíl `tests/unit/test_arrow_schema_contract.py`** (#296, ya en dev): una
+**copia congelada** de los 19 nombres+tipos + el dominio de `curation_status`, que falla si alguien
+renombra/retipa una columna load-bearing o cambia el dominio. Agregar columnas nuevas lo deja pasar
+(verificado). Referencia normativa: **ADR 0050 §Constraints de Atalaya**.
 
 ---
 
@@ -1574,12 +1757,29 @@ class QualityThresholds(BaseModel):
 
 ## 9. Núcleo — `Exporter`
 
+Dos familias de exportador: **de red** (serializan un `nx.Graph` de build) y **de corpus** (serializan
+la tabla Arrow del corpus). Los consume `b2g export --format …` (§CLI, ADR 0050 D4).
+
 ```python
+# --- Exportadores de RED (build → networks/) ---
 class Exporter(Protocol):
     def export(self, g: nx.Graph, results: dict, out_dir: str) -> None: ...
 
 class GraphMLExporter: ...   # v1 — para Gephi / VOSviewer / Cytoscape
 class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
+
+# --- Exportadores de CORPUS (ADR 0050 D4, v1) — serializan Corpus.scoped(scope).to_arrow() ---
+class ArrowExporter:         # v1 — `corpus.arrow` (Feather / Arrow IPC)
+    def export(self, table: pa.Table, out_path: str | Path) -> Path: ...
+        # Serializa la tabla TAL CUAL con pyarrow.feather.write_feather: NO toca schema ni metadata.
+        # La metadata de ecuación + equation_hash (§1.6) ya viene en el schema de to_arrow() y viaja
+        # dentro del Feather (archivo autoverificable para Atalaya).
+
+class BibtexExporter:        # v1 — `corpus.bib` (BibTeX). Extra [bibtex] (bibtexparser, import perezoso).
+    def export(self, table: pa.Table, out_path: str | Path) -> Path: ...
+        # entry-type inferido (@article default); citekey = id interno; DOI como campo; campos mínimos
+        # universales title/author/year/doi/journal/url (ADR 0050 D4; ver §CLI export). ImportError si
+        # falta bibtexparser → exit 3.
 ```
 
 **Notas de contrato** (Hito 2, ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md), D5):
@@ -1778,6 +1978,8 @@ b2g curate apply curacion.csv                     # aplica accepted/rejected en 
 b2g build --max-citing 50 --email tu@correo.org   # → BUILT; co-citación (cited_by) sobre las aceptadas
 b2g read top --kind bibliographic_coupling        # salida de investigación (nodos centrales + co-citación)
 b2g export --format graphml                        # serializa networks/ a exports/
+b2g export --format arrow --scope accepted         # corpus.arrow (Feather autoverificable, p/ Atalaya)
+b2g export --format bibtex                          # corpus.bib (BibTeX, entry-type inferido)
 b2g snapshot create                                # foto reproducible (parquet + manifest.json)
 b2g status                                         # CycleState + round + curation_available + workspace
 ```
