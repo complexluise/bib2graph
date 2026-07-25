@@ -31,7 +31,7 @@ ADR 0050 (D1/D3):
   ``to_arrow()`` (``equation_hash``/``equation_hash_algo``/
   ``equation_expression``/``equation_id``). Política congelada: 1 ecuación
   → metadata presente; 0 o >1 → metadata ausente + warning (no mentir un
-  hash que Atalaya no podría verificar).
+  hash que el consumidor programático no podría verificar).
 """
 
 from __future__ import annotations
@@ -111,9 +111,9 @@ def build_equation_metadata(
     ``equation_hash``/``equation_hash_algo``/``equation_expression``/
     ``equation_id``. **Cero o múltiples** ecuaciones → la metadata se omite
     por completo y se devuelve un ``warning`` (nunca se inventa un hash que
-    Atalaya no podría verificar).
+    el consumidor programático no podría verificar).
 
-    Normalización EXACTA del hash (contrato con Atalaya, su ADR 0008):
+    Normalización EXACTA del hash (contrato de verificación del consumidor):
     ``sha256(raw_query.strip().encode("utf-8")).hexdigest()``. Solo
     ``str.strip()`` — nada de lower/NFC/colapsar espacios internos.
 

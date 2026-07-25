@@ -572,7 +572,7 @@ class OpenAlexSource:
         # Actualizar Manifest con openalex_version y ecuación (ADR 0017; D1 ADR 0050)
         # ``params`` es el superconjunto de parámetros de la ecuación (ADR 0050 D1):
         # ``raw_query`` es la ecuación CRUDA (``query``, el argumento del usuario,
-        # ANTES de traducir) — es lo que Atalaya confirma y hashea (D3). La
+        # ANTES de traducir) — es lo que el consumidor programático confirma y hashea (D3). La
         # ``executed_query`` (traducida a filtros OpenAlex) queda en params para
         # auditoría, no para el hash (ver ADR 0050 §Alternativas descartadas).
         equation_params: dict[str, object] = {

@@ -80,7 +80,7 @@ def test_build_equation_metadata_hash_correcto_una_ecuacion() -> None:
 @pytest.mark.unit
 def test_build_equation_metadata_strip_puro_no_colapsa_espacios_internos() -> None:
     """Normalización EXACTA: solo ``strip()`` — espacios al borde se eliminan,
-    los internos NO se colapsan (contrato bit a bit con Atalaya ADR 0008)."""
+    los internos NO se colapsan (contrato bit a bit con el consumidor programático)."""
     raw_query = "   ecological   debt   "
     expected_hash = hashlib.sha256(b"ecological   debt").hexdigest()
 
@@ -200,7 +200,7 @@ def test_to_arrow_no_altera_columnas_del_schema_canonico(
     backend_factory: BackendFactory,
 ) -> None:
     """La metadata es ADITIVA: las columnas/tipos de CORPUS_SCHEMA no cambian
-    (constraint duro de Atalaya, ADR 0050 §Constraints — agregar sí, renombrar/
+    (constraint duro del consumidor programático, ADR 0050 §Constraints — agregar sí, renombrar/
     estrechar/re-tipar NO)."""
     backend = backend_factory(_empty_table())
     backend.persist_equation("eq-1", engine="openalex", raw_query="a", params_json="{}")

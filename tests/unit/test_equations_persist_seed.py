@@ -86,8 +86,9 @@ def test_run_seed_persiste_ecuacion_en_tabla_lateral(tmp_path: Path) -> None:
 def test_run_seed_equation_hash_reproducible_desde_raw_query(tmp_path: Path) -> None:
     """El ``equation_hash`` de ``to_arrow()`` es reproducible desde la ecuación cruda.
 
-    Cierra el contrato Atalaya (ADR 0008): Atalaya recomputa el hash desde la
-    ecuación confirmada por el usuario y lo compara con el embebido en el Arrow.
+    Cierra el contrato de verificación del consumidor: el consumidor programático
+    recomputa el hash desde la ecuación confirmada por el usuario y lo compara con
+    el embebido en el Arrow.
     """
     from bib2graph.cli.commands.seed import run_seed
     from bib2graph.stores.duckdb import DuckDBStore
