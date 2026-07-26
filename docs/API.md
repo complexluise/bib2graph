@@ -294,8 +294,10 @@ transición la define el verbo.
   schema_version, maturity}`.
 - **`snapshot restore --from-corpus <parquet>`** (= ex verbo plano `restore`): **rehidrata un corpus ya
   curado SIN red** (lee con `CORPUS_SCHEMA`, `Corpus.from_arrow`, merge+dedup+persist; cero llamadas a
-  OpenAlex). **Preserva la curación** (`decision`/`curation_status`/`is_seed`, D3). **Transiciona a
-  `FILTERED`** (reusa la transición permisiva `filter`; válida desde cualquier estado, incluido store
+  OpenAlex). **Preserva la curación** (`decision`/`curation_status`/`is_seed`, D3) y **reconstruye la
+  tabla `equations`** (D1, ADR 0050) desde el `manifest.json` **hermano** del parquet si existe —graceful:
+  sin manifest hermano (o `equations` ausente) → 0 ecuaciones, sin error—, cerrando el round-trip de
+  procedencia con `snapshot create`. **Transiciona a `FILTERED`** (reusa la transición permisiva `filter`; válida desde cualquier estado, incluido store
   vacío). Parquet inexistente o schema no canónico → `DataError` exit 2. `data = {papers_loaded,
   total_papers, state, round}`. (El verbo suelto `b2g restore` se retiró en 0.12.0; su capacidad es
   `b2g snapshot restore`.)
