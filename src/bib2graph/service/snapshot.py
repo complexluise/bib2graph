@@ -19,13 +19,72 @@ el shim ``b2g restore`` también delega acá (fuente única — ADR 0038 §163).
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bib2graph.preprocessors.pipeline import normalize_and_dedup
 from bib2graph.service.errors import DataError
 from bib2graph.service.store import open_store as _open_store
+
+if TYPE_CHECKING:
+    from bib2graph.stores.duckdb import DuckDBStore
+
+
+def _restore_equations_from_sibling_manifest(
+    store: DuckDBStore, corpus_path: Path
+) -> None:
+    """Reconstruye la tabla lateral ``equations`` desde el manifest hermano.
+
+    ``snapshot create`` escribe ``corpus.parquet`` y ``manifest.json`` en el
+    MISMO directorio (ver ``Corpus.snapshot``): el manifest sella
+    ``equations`` (lista de ``EquationRef``), pero el parquet NO las lleva
+    (son laterales al ``CORPUS_SCHEMA`` — R2/ADR 0017). Este helper busca ese
+    ``manifest.json`` hermano y, si existe y declara ecuaciones, las
+    re-persiste vía ``backend.persist_equation`` — mismo mapeo de campos que
+    ``run_seed`` (``cli/commands/seed.py``): ``engine`` (fallback
+    ``"openalex"``), ``raw_query`` desde ``params["raw_query"]`` (fallback al
+    ``query`` histórico si el manifest no tiene ese campo), ``params_json``
+    con el dict ``params`` completo serializado, y ``created_at``.
+
+    Idempotente (``persist_equation`` hace upsert por ``equation_id`` — PK),
+    así que restaurar el mismo snapshot dos veces no duplica filas.
+
+    Graceful: si no hay ``manifest.json`` hermano (parquet curado externo
+    suelto, sin snapshot de bib2graph detrás) o el manifest no declara
+    ``equations``, no hace nada — no reconstruye ecuaciones, no lanza.
+
+    Args:
+        store: Store destino ya abierto (con el corpus mergeado persistido).
+        corpus_path: Ruta al parquet pasado a ``run_restore``
+            (``--from-corpus``); el manifest se busca en su mismo directorio.
+    """
+    manifest_path = corpus_path.parent / "manifest.json"
+    if not manifest_path.exists():
+        return
+
+    try:
+        manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        # Manifest hermano corrupto/ilegible: graceful, no reconstruye equations.
+        return
+
+    equations = manifest_data.get("equations") or []
+    for eq in equations:
+        params = eq.get("params") or {}
+        raw_query = params.get("raw_query", eq.get("query"))
+        if raw_query is None:
+            # EquationRef sin query recuperable (manifest degenerado): salteala,
+            # no hay valor no-nulo aceptable para la columna NOT NULL.
+            continue
+        store.backend.persist_equation(
+            str(eq["equation_id"]),
+            engine=str(eq.get("engine") or "openalex"),
+            raw_query=str(raw_query),
+            params_json=json.dumps(params, ensure_ascii=False),
+            created_at=eq.get("created_at"),
+        )
 
 
 def run_snapshot(
@@ -81,6 +140,21 @@ def run_restore(
     Preserva las columnas de curación del parquet
     (``decision`` / ``curation_status`` / ``is_seed``): el merge de ``Corpus``
     respeta el ``curation_status`` más reciente (D3 del merge).
+
+    QA 0.14.0 (hallazgo #1 continuado, ADR 0050 D1): si existe un
+    ``manifest.json`` hermano del parquet (mismo directorio, producido por
+    ``snapshot create``) y declara ``equations``, cada una se re-persiste en
+    la tabla lateral ``equations`` del store destino vía
+    ``backend.persist_equation`` — mismo mapeo de campos que usa ``run_seed``
+    (``cli/commands/seed.py``) al sembrar: ``params["raw_query"]`` (fallback al
+    ``query`` histórico si el manifest es más viejo y no tiene ese campo) y
+    ``params`` completo serializado a ``params_json``. Sin esto, un
+    ``snapshot restore`` recuperaba las filas del corpus pero
+    ``backend.load_equations()`` quedaba en 0 (las ecuaciones solo viven en
+    el manifest, no en el parquet — la tabla ``equations`` es lateral al
+    ``CORPUS_SCHEMA``, R2/ADR 0017). Es **graceful**: si no hay manifest
+    hermano (p.ej. un parquet curado externo suelto) o no declara
+    ``equations``, restore no reconstruye nada — 0 ecuaciones, sin excepción.
 
     No instancia ``OpenAlexSource``, no hace requests.  Es el camino offline
     para rehidratar un corpus curado exportado con ``b2g snapshot create``.
@@ -161,6 +235,8 @@ def run_restore(
         merged_backend_close = getattr(merged_deduped._backend, "close", None)
         store.persist_replace(merged_deduped)
         store.backend.set_loop_state(new_state, cycle_round=new_round)
+
+        _restore_equations_from_sibling_manifest(store, resolved)
     finally:
         # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
         # para evitar segfault en Linux ante llamadas consecutivas al mismo archivo.
