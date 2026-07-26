@@ -11,6 +11,12 @@ R3: el mapa honesto del lazo (ADR 0016 enmendado).  Muestra:
 - contador de ronda,
 - conteos por curation_status.
 
+QA 0.14.0 (hallazgo #2, ADR 0050 D1): las ecuaciones registradas en la tabla
+lateral ``equations`` eran invisibles salvo inspeccionando la metadata del
+``.arrow`` exportado. ``status`` ahora las expone (``data["equations"]`` en
+JSON, sección "Ecuaciones registradas" en modo humano) sin agregar un verbo
+nuevo (ADR 0037, poda a 10 verbos): es información de estado, no una acción.
+
 ADR 0029 (aditivo): el envelope incluye ``workspace`` con el workspace
 resuelto (root, source) para que el agente sepa de dónde salió la biblioteca.
 Mantiene ``schema="1"`` (campos nuevos son aditivos, no rompen agentes).
@@ -66,7 +72,9 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
     Returns:
         Dict con ``loop_state``, ``transitions_available``, ``curation_available``,
         ``round``, ``counts_by_status``, ``total_papers``, ``next_best_action``,
-        ``readiness``, ``build_preview``.
+        ``readiness``, ``build_preview``, ``equations`` (lista de dicts con
+        ``equation_id``, ``raw_query``, ``engine``, ``created_at``; ``[]`` si el
+        store no tiene ecuaciones registradas, sin romper — hallazgo #2 QA 0.14.0).
 
     Raises:
         StoreError: Si el store está bloqueado.
@@ -111,6 +119,21 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
     action = next_best_action(loop_state)
 
     build_prev = predict_build_preview(corpus)
+
+    # QA 0.14.0 (hallazgo #2, ADR 0050 D1): exponer las ecuaciones registradas
+    # en la tabla lateral ``equations`` — hoy invisibles salvo en la metadata
+    # del .arrow exportado. Se lee directo de ``load_equations()`` (no del
+    # manifest reconstruido) para reflejar la tabla lateral tal cual está en
+    # disco, independiente del fix del hallazgo #1.
+    equations = [
+        {
+            "equation_id": eq["equation_id"],
+            "raw_query": eq["raw_query"],
+            "engine": eq["engine"],
+            "created_at": eq["created_at"],
+        }
+        for eq in store.backend.load_equations()
+    ]
 
     # readiness: si el próximo paso va a DAR FRUTO (no solo si está permitido).
     # Caso crítico "build": ready si al menos 1 red no sería vacía.
@@ -165,6 +188,7 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
         "next_best_action": action,
         "readiness": readiness,
         "build_preview": build_prev,
+        "equations": equations,
     }
 
 
@@ -265,5 +289,11 @@ def status_cmd(
                 if entry["would_be_empty"] and entry["reason"]:
                     line += f" — {entry['reason']} → {entry['fix_command']}"
                 emit_human(line)
+        equations = data.get("equations", [])
+        emit_human(f"Ecuaciones registradas ({len(equations)}):")
+        for eq in equations:
+            raw_query = str(eq["raw_query"])
+            recortado = raw_query if len(raw_query) <= 60 else raw_query[:57] + "..."
+            emit_human(f"  {eq['equation_id']} · {recortado} · {eq['engine']}")
         for w in warnings:
             print(f"AVISO: {w}", file=sys.stderr)

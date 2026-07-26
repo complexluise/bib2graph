@@ -426,6 +426,90 @@ class TestExportArrowEquationHashWarning:
 
 
 # ---------------------------------------------------------------------------
+# 1c. QA 0.14.0 (hallazgo #3): el warning de equation_hash NO se duplica
+# entre data.warnings y el warnings top-level del envelope.
+# ---------------------------------------------------------------------------
+
+
+class TestExportWarningNoDuplicado:
+    """El envelope tiene UN solo canal canónico de warnings (el top-level,
+    ADR 0021 §C). Antes ``data`` (que ya traía su propia clave ``warnings``
+    para el aviso de equation_hash omitido) se pasaba entero al envelope Y
+    las mismas warnings se copiaban también al top-level, duplicando el
+    texto en ambos lugares."""
+
+    def test_equation_hash_warning_aparece_una_sola_vez(self, tmp_path: Path) -> None:
+        """2 ecuaciones -> el warning de equation_hash aparece EXACTAMENTE 1 vez."""
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(ws.library_path, _mixed_rows())
+        _persist_equations(ws.library_path, ["eq-1", "eq-2"])
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "arrow", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+
+        # No duplicado en data: la clave "warnings" no debe sobrevivir en data
+        # (el canal canónico es SOLO el top-level).
+        assert "warnings" not in envelope["data"]
+
+        top_level_warnings = envelope.get("warnings") or []
+        equation_hash_warnings = [w for w in top_level_warnings if "equation_hash" in w]
+        assert len(equation_hash_warnings) == 1, (
+            f"El warning de equation_hash debe aparecer 1 sola vez, "
+            f"apareció {len(equation_hash_warnings)} veces: {equation_hash_warnings}"
+        )
+
+    def test_scope_ignorado_warning_tampoco_se_duplica(self, tmp_path: Path) -> None:
+        """El warning de scope-ignorado (graphml/csv) tampoco se duplica."""
+        from bib2graph.cli import b2g
+        from bib2graph.cli.commands.build import run_build
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(
+            ws.library_path,
+            [
+                _row("doi:p1", references_id=["R1", "R2"]),
+                _row("doi:p2", references_id=["R1", "R3"]),
+            ],
+        )
+        run_build(ws.library_path, out_dir=ws.networks_dir)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            [
+                "--workspace",
+                str(ws.root),
+                "export",
+                "--format",
+                "graphml",
+                "--scope",
+                "seeds",
+                "--json",
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+
+        assert "warnings" not in envelope["data"]
+
+        top_level_warnings = envelope.get("warnings") or []
+        scope_warnings = [w for w in top_level_warnings if "--scope" in w]
+        assert len(scope_warnings) == 1, (
+            f"El warning de --scope debe aparecer 1 sola vez, "
+            f"apareció {len(scope_warnings)} veces: {scope_warnings}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # 2. --format bibtex
 # ---------------------------------------------------------------------------
 

@@ -141,3 +141,131 @@ def test_run_seed_reseed_con_nueva_ecuacion_acumula_en_equations(
     assert raw_queries <= {"ecology", "environmental justice"}
     # La última ecuación sembrada siempre debe estar presente (nunca se pierde).
     assert "environmental justice" in raw_queries
+
+
+# ---------------------------------------------------------------------------
+# QA 0.14.0 hallazgo #1: DuckDBStore.load() reconstruye manifest.equations
+# desde la tabla lateral ``equations`` (antes solo reconstruía filters/enrichers).
+# ---------------------------------------------------------------------------
+
+
+def test_load_reconstruye_manifest_equations_desde_tabla_lateral(
+    tmp_path: Path,
+) -> None:
+    """Cargar el store en un ``Corpus`` NUEVO refleja las ecuaciones sembradas.
+
+    Bug confirmado en QA: tras sembrar, ``backend.load_equations()`` devuelve
+    las filas, pero ``corpus.manifest.equations`` (del ``Corpus`` recién
+    cargado en una sesión nueva) quedaba en ``[]`` — la reconstrucción de
+    filters/enrichers existía, la de equations no.
+    """
+    from bib2graph.cli.commands.seed import run_seed
+    from bib2graph.stores.duckdb import DuckDBStore
+
+    store_path = tmp_path / "test.duckdb"
+    run_seed(store_path, "unequal exchange", transport=_make_mock_transport())
+
+    # Sesión NUEVA: instancia de store distinta, simula reabrir el archivo.
+    store = DuckDBStore(store_path)
+    try:
+        corpus = store.load()
+    finally:
+        store.close()
+
+    assert len(corpus.manifest.equations) == 1
+    eq_ref = corpus.manifest.equations[0]
+    assert eq_ref.equation_id.startswith("eq-")
+    assert eq_ref.engine == "openalex"
+    assert eq_ref.params.get("raw_query") == "unequal exchange"
+    assert eq_ref.created_at
+
+
+def test_load_reconstruye_manifest_equations_con_dos_ecuaciones(
+    tmp_path: Path,
+) -> None:
+    """Dos siembras (ecuaciones distintas) reconstruyen 2 ``EquationRef``."""
+    from bib2graph.cli.commands.seed import run_seed
+    from bib2graph.stores.duckdb import DuckDBStore
+
+    store_path = tmp_path / "test.duckdb"
+    run_seed(store_path, "ecology", transport=_make_mock_transport())
+    run_seed(store_path, "environmental justice", transport=_make_mock_transport())
+
+    store = DuckDBStore(store_path)
+    try:
+        corpus = store.load()
+    finally:
+        store.close()
+
+    # Puede colapsar a 1 fila si ambas siembras caen en el mismo segundo
+    # (mismo equation_id, ver test de arriba); el invariante es que refleja
+    # exactamente lo que hay en la tabla lateral.
+    store2 = DuckDBStore(store_path)
+    try:
+        raw_equations = store2.backend.load_equations()
+    finally:
+        store2.close()
+
+    assert len(corpus.manifest.equations) == len(raw_equations)
+    raw_queries_manifest = {
+        eq.params.get("raw_query") for eq in corpus.manifest.equations
+    }
+    raw_queries_table = {eq["raw_query"] for eq in raw_equations}
+    assert raw_queries_manifest == raw_queries_table
+
+
+def test_snapshot_create_sella_ecuaciones_no_vacio(tmp_path: Path) -> None:
+    """``snapshot create`` sella ``equations`` en ``manifest.json`` (no vacío).
+
+    Cierra el bug de punta a punta: antes, el snapshot sellaba
+    ``"equations": []`` en ``manifest.json`` pese a haber ecuaciones
+    registradas en la biblioteca viva.
+    """
+    import json as _json
+
+    from bib2graph.cli.commands.seed import run_seed
+    from bib2graph.service.snapshot import run_snapshot
+    from bib2graph.stores.duckdb import DuckDBStore
+
+    store_path = tmp_path / "test.duckdb"
+    run_seed(store_path, "unequal exchange", transport=_make_mock_transport())
+
+    snap_dir = tmp_path / "snap"
+    run_snapshot(store_path, out_dir=snap_dir)
+
+    manifest_path = snap_dir / "manifest.json"
+    assert manifest_path.exists()
+    manifest_data = _json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest_data["equations"], (
+        "manifest.json debe sellar las ecuaciones registradas (no vacío)"
+    )
+    assert manifest_data["equations"][0]["params"]["raw_query"] == "unequal exchange"
+
+    # DuckDBStore usado directo (no vía run_seed) para verificar además que
+    # el manifest reconstruido en memoria coincide con lo sellado en disco.
+    store = DuckDBStore(store_path)
+    try:
+        corpus = store.load()
+    finally:
+        store.close()
+    assert len(corpus.manifest.equations) == len(manifest_data["equations"])
+
+
+def test_load_store_sin_tabla_equations_no_rompe(tmp_path: Path) -> None:
+    """Store sin ecuaciones registradas → ``manifest.equations == []`` sin excepción.
+
+    Cubre retrocompat: la tabla ``equations`` se crea siempre con
+    ``CREATE TABLE IF NOT EXISTS`` al abrir el ``DuckDBBackend`` (incluso en
+    stores viejos pre-ADR 0050 D1), así que ``load_equations()`` nunca lanza
+    por tabla ausente — simplemente no hay filas.
+    """
+    from bib2graph.stores.duckdb import DuckDBStore
+
+    store_path = tmp_path / "empty.duckdb"
+    store = DuckDBStore(store_path)
+    try:
+        corpus = store.load()
+    finally:
+        store.close()
+
+    assert corpus.manifest.equations == []

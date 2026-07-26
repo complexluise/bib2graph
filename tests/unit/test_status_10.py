@@ -864,3 +864,138 @@ class TestContratoEnvelope:
         assert envelope["data"]["next_best_action"] == "build"
         assert envelope["data"]["readiness"]["ready"] is True
         assert len(envelope["data"]["build_preview"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# QA 0.14.0 hallazgo #2: b2g status expone las ecuaciones registradas
+# (tabla lateral ``equations``, ADR 0050 D1) — antes invisibles.
+# ---------------------------------------------------------------------------
+
+
+class TestStatusExponeEquations:
+    """``run_status`` incluye ``equations`` leído de ``backend.load_equations()``."""
+
+    def test_status_sin_ecuaciones_da_lista_vacia(self, tmp_path: Path) -> None:
+        """Store sin ecuaciones registradas → equations=[] sin romper."""
+        from bib2graph.cli.commands.status import run_status
+
+        store_path = tmp_path / "test.duckdb"
+        _seed_store(store_path, [_row("P1")])
+
+        data = run_status(store_path)
+
+        assert data["equations"] == []
+
+    def test_status_con_ecuaciones_las_expone_en_data(self, tmp_path: Path) -> None:
+        """Ecuaciones persistidas aparecen en data['equations'] con sus campos."""
+        from bib2graph.cli.commands.status import run_status
+        from bib2graph.stores.duckdb import DuckDBStore
+
+        store_path = tmp_path / "test.duckdb"
+        _seed_store(store_path, [_row("P1")])
+
+        store = DuckDBStore(store_path)
+        try:
+            store.backend.persist_equation(
+                "eq-20260101T000000",
+                engine="openalex",
+                raw_query="unequal exchange",
+                params_json='{"raw_query": "unequal exchange"}',
+                created_at="2026-01-01T00:00:00+00:00",
+            )
+            store.backend.persist_equation(
+                "eq-20260102T000000",
+                engine="openalex",
+                raw_query="ecological debt",
+                params_json='{"raw_query": "ecological debt"}',
+                created_at="2026-01-02T00:00:00+00:00",
+            )
+        finally:
+            store.close()
+
+        data = run_status(store_path)
+
+        assert len(data["equations"]) == 2
+        equation_ids = {eq["equation_id"] for eq in data["equations"]}
+        assert equation_ids == {"eq-20260101T000000", "eq-20260102T000000"}
+        first = next(
+            eq for eq in data["equations"] if eq["equation_id"] == "eq-20260101T000000"
+        )
+        assert first["raw_query"] == "unequal exchange"
+        assert first["engine"] == "openalex"
+        assert first["created_at"] == "2026-01-01T00:00:00+00:00"
+
+    def _init_workspace_with_equation(self, tmp_path: Path, *, seeded: bool) -> Path:
+        """Crea un workspace (ADR 0029), sembra una fila y opcionalmente 1 ecuación."""
+        from bib2graph.stores.duckdb import DuckDBStore
+        from bib2graph.workspace import Workspace
+
+        ws_root = tmp_path / "ws"
+        ws = Workspace.init(ws_root, name="test")
+
+        _seed_store(ws.library_path, [_row("P1")])
+
+        if seeded:
+            store = DuckDBStore(ws.library_path)
+            try:
+                store.backend.persist_equation(
+                    "eq-20260101T000000",
+                    engine="openalex",
+                    raw_query="unequal exchange",
+                    params_json="{}",
+                    created_at="2026-01-01T00:00:00+00:00",
+                )
+            finally:
+                store.close()
+
+        return ws_root
+
+    def test_status_json_envelope_incluye_equations(self, tmp_path: Path) -> None:
+        """``status --json`` expone ``data.equations`` vía el CLI runner."""
+        import json as _json
+
+        from click.testing import CliRunner
+
+        from bib2graph.cli import b2g
+
+        ws_root = self._init_workspace_with_equation(tmp_path, seeded=True)
+
+        runner = CliRunner()
+        result = runner.invoke(b2g, ["--workspace", str(ws_root), "status", "--json"])
+
+        assert result.exit_code == 0, result.output
+        envelope = _json.loads(result.output)
+        assert "equations" in envelope["data"]
+        assert len(envelope["data"]["equations"]) == 1
+        assert envelope["data"]["equations"][0]["raw_query"] == "unequal exchange"
+
+    def test_status_humano_lista_ecuaciones_registradas(self, tmp_path: Path) -> None:
+        """Modo humano imprime la sección 'Ecuaciones registradas (N):'."""
+        from click.testing import CliRunner
+
+        from bib2graph.cli import b2g
+
+        ws_root = self._init_workspace_with_equation(tmp_path, seeded=True)
+
+        runner = CliRunner()
+        result = runner.invoke(b2g, ["--workspace", str(ws_root), "status"])
+
+        assert result.exit_code == 0, result.output
+        assert "Ecuaciones registradas (1):" in result.output
+        assert "eq-20260101T000000" in result.output
+        assert "unequal exchange" in result.output
+        assert "openalex" in result.output
+
+    def test_status_humano_sin_ecuaciones_muestra_cero(self, tmp_path: Path) -> None:
+        """Store sin ecuaciones → sección igual aparece con conteo 0, sin romper."""
+        from click.testing import CliRunner
+
+        from bib2graph.cli import b2g
+
+        ws_root = self._init_workspace_with_equation(tmp_path, seeded=False)
+
+        runner = CliRunner()
+        result = runner.invoke(b2g, ["--workspace", str(ws_root), "status"])
+
+        assert result.exit_code == 0, result.output
+        assert "Ecuaciones registradas (0):" in result.output

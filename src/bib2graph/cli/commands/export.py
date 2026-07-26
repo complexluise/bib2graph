@@ -279,7 +279,12 @@ def run_export(
         )
 
     # Fusionar (no pisar): _export_corpus ya puede traer sus propios warnings
-    # (p. ej. equation_hash omitido, ADR 0050 D3) en data["warnings"].
+    # (p. ej. equation_hash omitido, ADR 0050 D3) en data["warnings"]. Este
+    # dict es el contrato de ``run_export`` (usado directo en tests, sin
+    # pasar por el envelope) — mantiene ``data["warnings"]`` como fuente única
+    # de verdad para callers no-CLI. QA 0.14.0 (hallazgo #3): es el caller CLI
+    # (``export_cmd``) quien debe evitar duplicarlas al construir el envelope
+    # (ver ahí: se extraen de ``data`` en vez de copiarse a un canal aparte).
     data["warnings"] = warnings + list(data.get("warnings") or [])
     return data
 
@@ -357,8 +362,17 @@ def export_cmd(
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
 
+    # QA 0.14.0 (hallazgo #3): el envelope tiene UN solo canal canónico de
+    # warnings — el ``warnings`` top-level (ADR 0021 §C). Antes ``data``
+    # (con su propia clave ``warnings``, p. ej. el aviso de equation_hash
+    # omitido, ADR 0050 D3) se pasaba completo como ``data=data`` Y además
+    # se copiaban las mismas warnings al top-level, duplicando el texto en
+    # ``data.warnings`` y en ``warnings``. Se extraen (``pop``, no ``get``)
+    # de ``data`` para que sobrevivan en un solo lugar.
+    data_warnings: list[str] = list(data.pop("warnings", None) or [])
+
     if json_mode(json_output):
-        all_warnings: list[str] = list(data.get("warnings") or [])
+        all_warnings: list[str] = list(data_warnings)
         all_warnings.extend(workspace_walkup_warning(ws))
         envelope = build_envelope(
             command="export",
@@ -369,7 +383,7 @@ def export_cmd(
         )
         emit(envelope)
     else:
-        for w in data.get("warnings", []):
+        for w in data_warnings:
             print(f"ADVERTENCIA: {w}", file=sys.stderr)
         if "networks_exported" in data:
             emit_human(f"Exportados {data['networks_exported']} redes en formato {fmt}")
