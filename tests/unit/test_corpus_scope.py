@@ -105,6 +105,27 @@ _P4 = _make_row(id="P4", is_seed=False, curation_status="rejected")
 
 
 # ---------------------------------------------------------------------------
+# Corpus de prueba (issue #307): las 6 combinaciones is_seed x curation_status
+# relevantes para verificar que 'accepted' excluye rejected SIEMPRE, incluso
+# si la fila es semilla.
+#
+#  SC: seed + candidate      → entra en accepted (por ser seed, no rejected)
+#  SA: seed + accepted       → entra en accepted
+#  SR: seed + rejected       → NO entra en accepted (issue #307: antes sí entraba)
+#  NA: no-seed + accepted    → entra en accepted
+#  NR: no-seed + rejected    → NO entra en accepted
+#  NC: no-seed + candidate   → NO entra en accepted
+# ---------------------------------------------------------------------------
+
+_SC = _make_row(id="SC", is_seed=True, curation_status="candidate")
+_SA = _make_row(id="SA", is_seed=True, curation_status="accepted")
+_SR = _make_row(id="SR", is_seed=True, curation_status="rejected")
+_NA = _make_row(id="NA", is_seed=False, curation_status="accepted")
+_NR = _make_row(id="NR", is_seed=False, curation_status="rejected")
+_NC = _make_row(id="NC", is_seed=False, curation_status="candidate")
+
+
+# ---------------------------------------------------------------------------
 # 1. scoped('all') — corpus completo
 # ---------------------------------------------------------------------------
 
@@ -164,6 +185,76 @@ def test_scoped_accepted_excluye_candidate_y_rejected() -> None:
 
 
 # ---------------------------------------------------------------------------
+# 3b. Issue #307 — scoped('accepted') excluye rejected AUNQUE sea semilla.
+#
+# Bug original: scoped('accepted') era `is_seed OR curation_status == 'accepted'`,
+# sin excluir explícitamente 'rejected'. Como la mayoría de un corpus suele ser
+# seed-heavy, rechazar una semilla no se reflejaba en el scope 'accepted'.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_scoped_accepted_excluye_seed_rejected() -> None:
+    """scoped('accepted') NO incluye una semilla rechazada (issue #307).
+
+    Cubre las 6 combinaciones is_seed x curation_status: SC, SA, NA deben
+    quedar; SR, NR, NC deben quedar afuera (SR es el caso del bug: antes
+    entraba por ser semilla, ahora se excluye por estar rejected).
+    """
+    corpus = _make_corpus(_SC, _SA, _SR, _NA, _NR, _NC)
+
+    resultado = corpus.scoped("accepted")
+
+    ids = {r["id"] for r in resultado.to_arrow().to_pylist()}
+    assert ids == {"SC", "SA", "NA"}
+    assert "SR" not in ids, "semilla rechazada no debe aparecer en scope accepted"
+    assert "NR" not in ids
+    assert "NC" not in ids
+    assert len(resultado) == 3
+
+
+@pytest.mark.unit
+def test_scoped_all_incluye_rejected() -> None:
+    """scoped('all') sigue incluyendo rejected (es 'todo', sin filtrar)."""
+    corpus = _make_corpus(_SC, _SA, _SR, _NA, _NR, _NC)
+
+    resultado = corpus.scoped("all")
+
+    ids = {r["id"] for r in resultado.to_arrow().to_pylist()}
+    assert ids == {"SC", "SA", "SR", "NA", "NR", "NC"}
+    assert len(resultado) == 6
+
+
+@pytest.mark.unit
+def test_scoped_accepted_repro_issue_307_filter_rechaza_n_export_resta_n() -> None:
+    """Repro del issue #307: rechazar N semillas debe restar N del export accepted.
+
+    Escenario original de QA: corpus seed-heavy donde `curate filter` rechaza
+    una porción de las semillas (p.ej. por año). El export `--scope accepted`
+    debe reflejar la resta: total - N, no el total completo.
+    """
+    total_seeds = 10
+    n_rechazadas = 4
+    rows = [
+        _make_row(
+            id=f"S{i}",
+            is_seed=True,
+            curation_status="rejected" if i < n_rechazadas else "candidate",
+        )
+        for i in range(total_seeds)
+    ]
+    corpus = _make_corpus(*rows)
+
+    resultado = corpus.scoped("accepted")
+
+    assert len(corpus) == total_seeds
+    assert len(resultado) == total_seeds - n_rechazadas
+    ids_rechazadas = {f"S{i}" for i in range(n_rechazadas)}
+    ids_resultado = {r["id"] for r in resultado.to_arrow().to_pylist()}
+    assert ids_rechazadas.isdisjoint(ids_resultado)
+
+
+# ---------------------------------------------------------------------------
 # 4. Pureza — no muta el original; hash estable
 # ---------------------------------------------------------------------------
 
@@ -190,6 +281,23 @@ def test_scoped_hash_estable_entre_dos_llamadas() -> None:
     hash1 = compute_corpus_hash(r1.to_arrow())
     hash2 = compute_corpus_hash(r2.to_arrow())
     assert hash1 == hash2
+
+
+@pytest.mark.unit
+def test_scoped_accepted_hash_estable_con_seed_rejected() -> None:
+    """Determinismo (issue #307): la nueva lógica con exclusión de rejected
+    sigue siendo una vista pura — mismo scope, mismo hash, entre dos llamadas.
+    """
+    corpus = _make_corpus(_SC, _SA, _SR, _NA, _NR, _NC)
+
+    r1 = corpus.scoped("accepted")
+    r2 = corpus.scoped("accepted")
+
+    hash1 = compute_corpus_hash(r1.to_arrow())
+    hash2 = compute_corpus_hash(r2.to_arrow())
+    assert hash1 == hash2
+    # El original no fue mutado por ninguna de las dos llamadas.
+    assert len(corpus) == 6
 
 
 # ---------------------------------------------------------------------------

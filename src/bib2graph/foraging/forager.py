@@ -53,11 +53,13 @@ import pyarrow as pa
 
 from bib2graph.constants import Col
 from bib2graph.corpus import Corpus, _rows_with_ids
-from bib2graph.foraging.base import Direction, GrowthPreview, RankedCandidates
-from bib2graph.foraging.scent import (
-    compute_backward_scent,
-    rank_candidates,
+from bib2graph.foraging.base import (
+    CallBudget,
+    Direction,
+    GrowthPreview,
+    RankedCandidates,
 )
+from bib2graph.foraging.scent import rank_candidates
 from bib2graph.schemas import CORPUS_SCHEMA
 from bib2graph.sources.openalex import _work_to_row
 
@@ -72,8 +74,12 @@ def _make_empty_corpus() -> Corpus:
     )
 
 
-def _extract_seed_ids(corpus_rows: list[dict[str, Any]]) -> list[str]:
-    """Extrae los source_id de todas las semillas del corpus.
+def _extract_seed_ids(
+    corpus_rows: list[dict[str, Any]],
+    *,
+    origin_ids: set[str] | None = None,
+) -> list[str]:
+    """Extrae los source_id de las semillas del corpus (opcionalmente acotadas).
 
     El forward chaining corre antes de la curación (ciclo: SEEDED → FORAGED
     → curación); las semillas nacen con ``curation_status="candidate"`` y el
@@ -86,25 +92,44 @@ def _extract_seed_ids(corpus_rows: list[dict[str, Any]]) -> list[str]:
 
     Args:
         corpus_rows: Filas del corpus como dicts.
+        origin_ids: Si se pasa (#309, ``chain --ids``/``--top``/``--scope``),
+            acota el resultado a las semillas cuyo ``id`` o ``source_id`` esté
+            en este set — la unidad escopada del forrajeo.  ``None`` (default)
+            preserva el comportamiento actual: todas las semillas.
 
     Returns:
-        Lista de source_ids (IDs del motor de extracción) de las semillas,
-        en orden de aparición (determinista).
+        Lista de source_ids (IDs del motor de extracción) de las semillas
+        (acotadas por ``origin_ids`` si se pasó), en orden de aparición
+        (determinista).
     """
     result: list[str] = []
     for row in corpus_rows:
-        if row.get(Col.IS_SEED) and row.get(Col.SOURCE_ID):
-            result.append(str(row[Col.SOURCE_ID]))
+        if not (row.get(Col.IS_SEED) and row.get(Col.SOURCE_ID)):
+            continue
+        if origin_ids is not None:
+            row_id = row.get(Col.ID)
+            row_source_id = row.get(Col.SOURCE_ID)
+            if str(row_id) not in origin_ids and str(row_source_id) not in origin_ids:
+                continue
+        result.append(str(row[Col.SOURCE_ID]))
     return result
 
 
 def _estimate_forward_from_cited_by_detail(
     corpus_rows: list[dict[str, Any]],
+    origin_rows: list[dict[str, Any]] | None = None,
 ) -> tuple[int, bool, int]:
     """Versión de diagnóstico que devuelve también el total sin cap.
 
     Args:
-        corpus_rows: Filas del corpus como dicts (``to_pylist()``).
+        corpus_rows: Filas del corpus completo como dicts (``to_pylist()``).
+            Se usa para construir ``corpus_ids`` (exclusión de candidatos ya
+            presentes) — SIEMPRE el corpus completo, sin importar el scoping,
+            para no re-proponer papers que ya están en cualquier parte del
+            corpus.
+        origin_rows: Filas de origen (#309, unidad escopada): solo se cuenta
+            el ``cited_by_id`` de estas filas.  ``None`` (default) = usa
+            ``corpus_rows`` completo (comportamiento actual sin cambios).
 
     Returns:
         Tupla ``(count_capped_placeholder, available, total_uncapped)``
@@ -120,9 +145,10 @@ def _estimate_forward_from_cited_by_detail(
         if source_id_val:
             corpus_ids.add(str(source_id_val))
 
+    rows_for_cited_by = origin_rows if origin_rows is not None else corpus_rows
     candidate_ids: set[str] = set()
     has_cited_by_data = False
-    for row in corpus_rows:
+    for row in rows_for_cited_by:
         cited_by = row.get(Col.CITED_BY_ID)
         if not cited_by or not isinstance(cited_by, list):
             continue
@@ -136,6 +162,78 @@ def _estimate_forward_from_cited_by_detail(
 
     total = len(candidate_ids)
     return total, True, total
+
+
+def _filter_rows_to_origin(
+    corpus_rows: list[dict[str, Any]],
+    origin_ids: set[str] | None,
+) -> list[dict[str, Any]]:
+    """Filtra filas del corpus a las que son "origen" del chaining (#309).
+
+    Una fila es origen si su ``id`` o ``source_id`` está en ``origin_ids``.
+    Vista pura, no muta ``corpus_rows``.
+
+    Args:
+        corpus_rows: Filas del corpus completo.
+        origin_ids: Set de ids/source_ids a los que acotar.  ``None`` =
+            sin acotar (devuelve ``corpus_rows`` tal cual — comportamiento
+            actual, todas las filas son origen).
+
+    Returns:
+        Subconjunto de ``corpus_rows`` cuyo id o source_id está en
+        ``origin_ids``, o ``corpus_rows`` completo si ``origin_ids`` es
+        ``None``.
+    """
+    if origin_ids is None:
+        return corpus_rows
+    result = []
+    for row in corpus_rows:
+        row_id = row.get(Col.ID)
+        row_source_id = row.get(Col.SOURCE_ID)
+        if str(row_id) in origin_ids or str(row_source_id) in origin_ids:
+            result.append(row)
+    return result
+
+
+def _compute_backward_scent_scoped(
+    corpus_rows: list[dict[str, Any]],
+    origin_rows: list[dict[str, Any]],
+) -> dict[str, float]:
+    """Como ``compute_backward_scent`` pero solo cuenta referencias de ``origin_rows``.
+
+    Reimplementa el cuerpo de ``compute_backward_scent`` (en vez de acotar su
+    entrada directamente) porque la exclusión de candidatos ya presentes debe
+    hacerse contra el **corpus completo** (``corpus_rows``), no solo contra las
+    filas origen — de lo contrario un candidato que ya está en el corpus, pero
+    fuera del subconjunto escopeado, se re-propondría como si fuera nuevo.
+
+    Args:
+        corpus_rows: Filas del corpus completo (para la exclusión).
+        origin_rows: Filas origen (#309): solo estas cuentan como fuente de
+            ``references_id`` para el scent backward.
+
+    Returns:
+        Dict ``{candidate_id: score}`` igual que ``compute_backward_scent``,
+        pero el score solo cuenta papers-origen que referencian al candidato.
+    """
+    from bib2graph.networks.projectors import collect_item_to_papers
+
+    corpus_ids: set[str] = set()
+    for row in corpus_rows:
+        id_val = row.get(Col.ID)
+        source_id_val = row.get(Col.SOURCE_ID)
+        if id_val:
+            corpus_ids.add(str(id_val))
+        if source_id_val:
+            corpus_ids.add(str(source_id_val))
+
+    ref_to_papers = collect_item_to_papers(origin_rows, Col.ID, Col.REFERENCES_ID)
+
+    return {
+        ref_id: float(len(set(papers)))
+        for ref_id, papers in ref_to_papers.items()
+        if ref_id not in corpus_ids
+    }
 
 
 class Forager:
@@ -163,6 +261,12 @@ class Forager:
         max_candidates: Tope de candidatos en el ranking; ``None`` = sin límite.
         max_citing_per_paper: Presupuesto de citantes por semilla en el forward
             chaining; ``None`` = sin tope.
+        origin_ids: Unidad escopada (#309): si no es ``None``, acota los
+            "papers origen" del chaining (semillas forward, base backward) a
+            este set de ids/source_ids.  ``None`` = comportamiento actual sin
+            cambios (todas las semillas/todo el corpus).
+        call_budget: Tope de llamadas HTTP compartido con el ``source`` (#309,
+            ``chain --budget N``).  ``None`` = sin tope (default).
     """
 
     def __init__(
@@ -172,6 +276,8 @@ class Forager:
         depth: int = 1,
         max_candidates: int | None = None,
         max_citing_per_paper: int | None = 50,
+        origin_ids: set[str] | None = None,
+        call_budget: CallBudget | None = None,
     ) -> None:
         """Inicializa el Forager.
 
@@ -184,6 +290,14 @@ class Forager:
             max_citing_per_paper: Presupuesto de citantes por semilla para el
                 forward chaining.  Default 50 (acota el fetch por semilla, no
                 solo trunca el resultado).  Pasar ``None`` para sin tope.
+            origin_ids: Unidad escopada del forrajeo (#309): acota qué
+                papers cuentan como origen (semillas forward / base backward)
+                a este set de ``id``/``source_id``.  ``None`` (default) =
+                comportamiento actual: todas las semillas.
+            call_budget: ``CallBudget`` compartido para topar llamadas HTTP
+                (#309, ``chain --budget N``).  Al agotarse, el forward
+                chaining para limpio SIN reintentar y devuelve lo
+                materializado hasta ese punto.  ``None`` (default) = sin tope.
 
         Raises:
             NotImplementedError: Si ``depth > 1``.
@@ -197,6 +311,8 @@ class Forager:
         self._depth = depth
         self._max_candidates = max_candidates
         self._max_citing_per_paper = max_citing_per_paper
+        self._origin_ids = origin_ids
+        self._call_budget = call_budget
 
     def preview(
         self,
@@ -218,6 +334,12 @@ class Forager:
             forward no es estimable sin red; ``forward_requires_fetch=True``
             y ``by_direction["forward"]`` vale ``0``.
 
+        Si el ``Forager`` se construyó con ``origin_ids`` (#309, unidad
+        escopada de ``chain --ids``/``--top``/``--scope``), la estimación se
+        acota a los papers origen indicados: backward cuenta solo las
+        ``references_id`` de esos papers; forward cuenta solo el
+        ``cited_by_id`` de esas semillas.
+
         NO muta el corpus de entrada.
 
         Args:
@@ -230,13 +352,14 @@ class Forager:
             refleja solo el crecimiento estimable localmente (backward).
         """
         rows = corpus.to_arrow().to_pylist()
+        origin_rows = _filter_rows_to_origin(rows, self._origin_ids)
         by_direction: dict[str, int] = {}
         forward_requires_fetch = False
         forward_from_cited_by = False
         capped_by_max = False
 
         if direction in ("backward", "both"):
-            bwd_uncapped = compute_backward_scent(rows)
+            bwd_uncapped = _compute_backward_scent_scoped(rows, origin_rows)
             bwd_total = len(bwd_uncapped)
             if self._max_candidates is not None and bwd_total > self._max_candidates:
                 by_direction["backward"] = self._max_candidates
@@ -245,7 +368,9 @@ class Forager:
                 by_direction["backward"] = bwd_total
 
         if direction in ("forward", "both"):
-            fwd_total, fwd_local, _ = _estimate_forward_from_cited_by_detail(rows)
+            fwd_total, fwd_local, _ = _estimate_forward_from_cited_by_detail(
+                rows, origin_rows
+            )
             if fwd_local:
                 # cited_by_id disponible localmente: estimación sin red.
                 if (
@@ -301,6 +426,15 @@ class Forager:
         - ``ranking``: candidatos backward + forward rankeados por scent.
         - ``observed_refs``: IDs backward observados (no en corpus, tabla auxiliar).
 
+        Si el ``Forager`` se construyó con ``origin_ids`` (#309, unidad
+        escopada de ``chain --ids``/``--top``/``--scope``), solo esos papers
+        cuentan como origen: backward solo mira sus ``references_id``; forward
+        solo consulta citantes de esas semillas (menos llamadas HTTP).  Si el
+        ``Forager`` se construyó con ``call_budget`` (``chain --budget N``),
+        el forward chaining para limpio (sin reintentar) al agotarlo y
+        ``RankedCandidates.budget_stopped`` queda en ``True`` con lo
+        materializado hasta ese punto.
+
         NO muta el corpus de entrada.
 
         Args:
@@ -311,6 +445,7 @@ class Forager:
             ``RankedCandidates`` con candidatos, ranking y observed_refs.
         """
         rows = corpus.to_arrow().to_pylist()
+        origin_rows = _filter_rows_to_origin(rows, self._origin_ids)
         fetched_at = datetime.now(UTC).isoformat()
 
         combined_scent: dict[str, float] = {}
@@ -324,7 +459,7 @@ class Forager:
         seed_cited_by_updates: dict[str, dict[str, Any]] = {}
 
         if direction in ("backward", "both"):
-            bwd_scent = compute_backward_scent(rows)
+            bwd_scent = _compute_backward_scent_scoped(rows, origin_rows)
             for ref_id, scent_val in bwd_scent.items():
                 combined_scent[ref_id] = combined_scent.get(ref_id, 0.0) + scent_val
                 bwd_observed.add(ref_id)
@@ -387,6 +522,10 @@ class Forager:
             corpus=candidates_corpus,
             ranking=ranking,
             observed_refs=observed_refs,
+            budget_used=self._call_budget.used if self._call_budget else 0,
+            budget_stopped=(
+                self._call_budget.exhausted if self._call_budget else False
+            ),
         )
 
     # Helpers internos
@@ -429,6 +568,13 @@ class Forager:
         idempotente con la semilla ya persistida.  El ``CoCitationProjector``
         (ADR 0014, no se toca) consume ``cited_by_id`` como insumo.
 
+        Si ``self._origin_ids`` no es ``None`` (#309, ``chain --ids``/``--top``/
+        ``--scope``), solo se consultan citantes de esas semillas — menos
+        llamadas HTTP, no solo menos candidatos materializados.  Si
+        ``self._call_budget`` no es ``None`` y el source acepta el kwarg
+        ``call_budget`` (p. ej. ``OpenAlexSource``), se lo pasa para que el
+        fetch pare limpio (sin reintentar) al agotarse.
+
         Args:
             corpus_rows: Filas del corpus actual.
             fetched_at: Timestamp ISO del fetch.
@@ -451,9 +597,15 @@ class Forager:
                 "OpenAlexSource o un source con ese método."
             )
 
-        # Alcance: todas las semillas (is_seed=True); el chaining precede a la curación
-        seed_ids = _extract_seed_ids(corpus_rows)
+        # Alcance: todas las semillas (is_seed=True), o el subconjunto escopeado
+        # por --ids/--top/--scope (#309); el chaining precede a la curación.
+        seed_ids = _extract_seed_ids(corpus_rows, origin_ids=self._origin_ids)
         if not seed_ids:
+            return {}, {}, {}
+
+        # Guardia de budget agotado ANTES de la primera llamada (#309): si ya
+        # no queda presupuesto, no se hace ningún fetch adicional.
+        if self._call_budget is not None and self._call_budget.exhausted:
             return {}, {}, {}
 
         # Se incluye source_id porque los IDs de motor (W… de OpenAlex) aparecen
@@ -473,6 +625,25 @@ class Forager:
         citing_dict: dict[str, list[str]]
         works_map: dict[str, dict[str, Any]]
 
+        # kwargs opcionales, solo se agregan si tienen valor (#309: call_budget
+        # se pasa únicamente si el source lo soporta — inspect.signature evita
+        # romper mocks/sources de terceros que no conocen el parámetro).
+        import inspect
+
+        _extra_kw: dict[str, Any] = {}
+        if since is not None:
+            _extra_kw["since"] = since
+        _fetch_method = (
+            self._source.fetch_citing_batch_with_works
+            if use_with_works
+            else self._source.fetch_citing_batch
+        )
+        if (
+            self._call_budget is not None
+            and "call_budget" in inspect.signature(_fetch_method).parameters
+        ):
+            _extra_kw["call_budget"] = self._call_budget
+
         try:
             from tqdm import tqdm as _tqdm
 
@@ -482,26 +653,24 @@ class Forager:
                 unit="lote",
                 leave=False,
             ) as pbar:
-                _since_kw = {"since": since} if since is not None else {}
                 if use_with_works:
                     citing_dict, works_map = self._source.fetch_citing_batch_with_works(
-                        seed_ids, max_per_paper=self._max_citing_per_paper, **_since_kw
+                        seed_ids, max_per_paper=self._max_citing_per_paper, **_extra_kw
                     )
                 else:
                     citing_dict = self._source.fetch_citing_batch(
-                        seed_ids, max_per_paper=self._max_citing_per_paper, **_since_kw
+                        seed_ids, max_per_paper=self._max_citing_per_paper, **_extra_kw
                     )
                     works_map = {}
                 pbar.update(1)
         except ImportError:
-            _since_kw = {"since": since} if since is not None else {}
             if use_with_works:
                 citing_dict, works_map = self._source.fetch_citing_batch_with_works(
-                    seed_ids, max_per_paper=self._max_citing_per_paper, **_since_kw
+                    seed_ids, max_per_paper=self._max_citing_per_paper, **_extra_kw
                 )
             else:
                 citing_dict = self._source.fetch_citing_batch(
-                    seed_ids, max_per_paper=self._max_citing_per_paper, **_since_kw
+                    seed_ids, max_per_paper=self._max_citing_per_paper, **_extra_kw
                 )
                 works_map = {}
 

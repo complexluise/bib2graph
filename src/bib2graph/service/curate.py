@@ -10,6 +10,17 @@ Operaciones de curación paper-a-paper (G3 original):
   - ``reject_papers`` — marca ids como ``rejected``.
   - ``curate_paper`` — wrapper de un solo paper.
 
+Selector declarativo (#308 — curación masiva sin enumerar ids):
+  - ``select_ids_by_predicate`` — resuelve un subconjunto del corpus por
+    ``query`` (mismo criterio que ``read list --query``, título substring
+    case-insensitive) y/o metadata (``year_gte/lte``, ``language``,
+    ``type_in``, ``min_citations`` — misma semántica que ``curate filter``,
+    reusando ``filters.prisma.FilterCriterion``/``passes_all``).
+    ``accept_papers``/``reject_papers`` aceptan estos mismos parámetros: el
+    conjunto afectado es la UNIÓN de ``ids`` explícitos y los que matchean
+    el selector (si no se da ningún criterio de selector, se usa solo
+    ``ids``, comportamiento previo sin cambios).
+
 Operaciones en lote (subidas desde cli/ en #155):
   - ``run_curate_dump`` — exporta corpus a CSV para revisión offline.
   - ``run_curate_from_csv`` — reimporta decisiones desde CSV.
@@ -491,32 +502,150 @@ def filter_corpus(
     }
 
 
+def select_ids_by_predicate(
+    rows: list[dict[str, Any]],
+    *,
+    query: str | None = None,
+    year_gte: int | None = None,
+    year_lte: int | None = None,
+    language: list[str] | None = None,
+    type_in: list[str] | None = None,
+    min_citations: int | None = None,
+) -> list[str]:
+    """Resuelve los ids del corpus que matchean un selector declarativo (#308).
+
+    Selector = ``query`` (substring case-insensitive en título, mismo
+    criterio que ``service.reads.list_papers``/``read list --query``) Y/O
+    criterios de metadata (misma semántica que ``curate filter``, reusando
+    ``filters.prisma.FilterCriterion``/``passes_all``). Todos los criterios
+    presentes se combinan con AND lógico.
+
+    Args:
+        rows: Filas del corpus (``corpus.to_arrow().to_pylist()``).
+        query: Substring a buscar en el título, case-insensitive.
+        year_gte: Año >= este valor.
+        year_lte: Año <= este valor.
+        language: Códigos de idioma a incluir.
+        type_in: Áreas de investigación a incluir.
+        min_citations: Mínimo de citantes (``len(cited_by_id) >= valor``).
+
+    Returns:
+        Lista de ``Col.ID`` (como str) de las filas que matchean TODOS los
+        criterios dados. Si no se da ningún criterio, devuelve ``[]`` (un
+        selector vacío no selecciona todo el corpus implícitamente).
+    """
+    from bib2graph.filters.prisma import FilterCriterion, passes_all
+
+    criteria: list[FilterCriterion] = []
+    if year_gte is not None:
+        criteria.append(FilterCriterion(field="year", op="gte", value=year_gte))
+    if year_lte is not None:
+        criteria.append(FilterCriterion(field="year", op="lte", value=year_lte))
+    if language:
+        criteria.append(FilterCriterion(field="language", op="in", value=language))
+    if type_in:
+        criteria.append(FilterCriterion(field="type", op="in", value=type_in))
+    if min_citations is not None:
+        criteria.append(
+            FilterCriterion(field="min_citations", op="gte", value=min_citations)
+        )
+
+    if query is None and not criteria:
+        return []
+
+    matched: list[str] = []
+    for row in rows:
+        if query is not None:
+            title_val = str(row.get(Col.TITLE) or "")
+            if query.lower() not in title_val.lower():
+                continue
+        if not passes_all(row, criteria):
+            continue
+        matched.append(str(row.get(Col.ID)))
+
+    return matched
+
+
+def _has_selector(
+    *,
+    query: str | None,
+    year_gte: int | None,
+    year_lte: int | None,
+    language: list[str] | None,
+    type_in: list[str] | None,
+    min_citations: int | None,
+) -> bool:
+    """``True`` si al menos un criterio de selector fue provisto."""
+    return not (
+        query is None
+        and year_gte is None
+        and year_lte is None
+        and not language
+        and not type_in
+        and min_citations is None
+    )
+
+
 def accept_papers(
     store_path: str | Path,
     ids: list[str],
     *,
     by: str = "api",
     decided_at: datetime | None = None,
+    query: str | None = None,
+    year_gte: int | None = None,
+    year_lte: int | None = None,
+    language: list[str] | None = None,
+    type_in: list[str] | None = None,
+    min_citations: int | None = None,
 ) -> dict[str, Any]:
     """Marca los papers dados como ``accepted`` y persiste.
 
-    Verifica que todos los ids existan en el corpus antes de operar.
+    El conjunto afectado es la UNIÓN de ``ids`` explícitos (resueltos por id
+    interno, DOI o source_id) y los ids que matchean el selector declarativo
+    (``query``/``year_gte``/``year_lte``/``language``/``type_in``/
+    ``min_citations`` — #308). Si no se especifica ningún criterio de
+    selector, el comportamiento es idéntico al previo (solo ``ids``).
+
+    Verifica que todos los ``ids`` explícitos existan en el corpus antes de
+    operar; los ids resueltos por selector nunca fallan por "no encontrado"
+    (se derivan del corpus mismo).
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
-        ids: Lista de ids a aceptar.
+        ids: Lista de ids a aceptar (puede ser vacía si se usa selector).
         by: Identificador de quien decide (default: ``"api"``).
         decided_at: Timestamp inyectado por el llamador (R2/ADR 0017).
+        query: Substring de título (selector, ver ``select_ids_by_predicate``).
+        year_gte: Selector — año >= valor.
+        year_lte: Selector — año <= valor.
+        language: Selector — códigos de idioma a incluir.
+        type_in: Selector — áreas de investigación a incluir.
+        min_citations: Selector — mínimo de citantes.
 
     Returns:
-        Dict con ``accepted_count``, ``ids``.
+        Dict con ``accepted_count``, ``ids`` (todos los ids afectados,
+        ordenados) y ``selector_matched_count`` (cuántos vinieron del
+        selector, 0 si no se usó).
 
     Raises:
-        DataError: Si la lista está vacía o algún id no existe.
+        DataError: Si no hay ``ids`` ni selector, o algún id explícito no existe.
         StoreError: Si el store está bloqueado.
     """
-    if not ids:
-        raise DataError("Debés especificar al menos un ID.")
+    selector_active = _has_selector(
+        query=query,
+        year_gte=year_gte,
+        year_lte=year_lte,
+        language=language,
+        type_in=type_in,
+        min_citations=min_citations,
+    )
+    if not ids and not selector_active:
+        raise DataError(
+            "Debés especificar al menos un ID (--ids) o un criterio de "
+            "selector (--query, --year-gte, --year-lte, --language, --type, "
+            "--min-citations)."
+        )
 
     path = Path(store_path)
     updated_backend_close = None
@@ -525,15 +654,32 @@ def accept_papers(
         corpus = store.load()
 
         rows = corpus.to_arrow().to_pylist()
-        resolved_ids, missing = resolve_idents(rows, ids)
-        if missing:
-            raise DataError(
-                f"IDs no encontrados en el corpus: {missing}. "
-                "Verificá los ids con 'b2g read list' o 'b2g status'. "
-                "curate acepta id interno, DOI o source_id (igual que 'read show')."
+
+        resolved_ids: list[str] = []
+        if ids:
+            resolved_ids, missing = resolve_idents(rows, ids)
+            if missing:
+                raise DataError(
+                    f"IDs no encontrados en el corpus: {missing}. "
+                    "Verificá los ids con 'b2g read list' o 'b2g status'. "
+                    "curate acepta id interno, DOI o source_id (igual que 'read show')."
+                )
+
+        selector_ids: list[str] = []
+        if selector_active:
+            selector_ids = select_ids_by_predicate(
+                rows,
+                query=query,
+                year_gte=year_gte,
+                year_lte=year_lte,
+                language=language,
+                type_in=type_in,
+                min_citations=min_citations,
             )
 
-        updated = corpus.accept(resolved_ids, by=by, decided_at=decided_at)
+        all_ids = sorted(set(resolved_ids) | set(selector_ids))
+
+        updated = corpus.accept(all_ids, by=by, decided_at=decided_at)
         updated_backend_close = getattr(updated._backend, "close", None)
         store.persist(updated)
     finally:
@@ -542,8 +688,9 @@ def accept_papers(
         store.close()
 
     return {
-        "accepted_count": len(resolved_ids),
-        "ids": resolved_ids,
+        "accepted_count": len(all_ids),
+        "ids": all_ids,
+        "selector_matched_count": len(selector_ids),
     }
 
 
@@ -553,24 +700,56 @@ def reject_papers(
     *,
     by: str = "api",
     decided_at: datetime | None = None,
+    query: str | None = None,
+    year_gte: int | None = None,
+    year_lte: int | None = None,
+    language: list[str] | None = None,
+    type_in: list[str] | None = None,
+    min_citations: int | None = None,
 ) -> dict[str, Any]:
     """Marca los papers dados como ``rejected`` y persiste.
 
+    El conjunto afectado es la UNIÓN de ``ids`` explícitos (resueltos por id
+    interno, DOI o source_id) y los ids que matchean el selector declarativo
+    (``query``/``year_gte``/``year_lte``/``language``/``type_in``/
+    ``min_citations`` — #308). Si no se especifica ningún criterio de
+    selector, el comportamiento es idéntico al previo (solo ``ids``).
+
     Args:
         store_path: Ruta al archivo ``.duckdb``.
-        ids: Lista de ids a rechazar.
+        ids: Lista de ids a rechazar (puede ser vacía si se usa selector).
         by: Identificador de quien decide (default: ``"api"``).
         decided_at: Timestamp inyectado por el llamador (R2/ADR 0017).
+        query: Substring de título (selector, ver ``select_ids_by_predicate``).
+        year_gte: Selector — año >= valor.
+        year_lte: Selector — año <= valor.
+        language: Selector — códigos de idioma a incluir.
+        type_in: Selector — áreas de investigación a incluir.
+        min_citations: Selector — mínimo de citantes.
 
     Returns:
-        Dict con ``rejected_count``, ``ids``.
+        Dict con ``rejected_count``, ``ids`` (todos los ids afectados,
+        ordenados) y ``selector_matched_count`` (cuántos vinieron del
+        selector, 0 si no se usó).
 
     Raises:
-        DataError: Si la lista está vacía o algún id no existe.
+        DataError: Si no hay ``ids`` ni selector, o algún id explícito no existe.
         StoreError: Si el store está bloqueado.
     """
-    if not ids:
-        raise DataError("Debés especificar al menos un ID.")
+    selector_active = _has_selector(
+        query=query,
+        year_gte=year_gte,
+        year_lte=year_lte,
+        language=language,
+        type_in=type_in,
+        min_citations=min_citations,
+    )
+    if not ids and not selector_active:
+        raise DataError(
+            "Debés especificar al menos un ID (--ids) o un criterio de "
+            "selector (--query, --year-gte, --year-lte, --language, --type, "
+            "--min-citations)."
+        )
 
     path = Path(store_path)
     updated_backend_close = None
@@ -579,15 +758,32 @@ def reject_papers(
         corpus = store.load()
 
         rows = corpus.to_arrow().to_pylist()
-        resolved_ids, missing = resolve_idents(rows, ids)
-        if missing:
-            raise DataError(
-                f"IDs no encontrados en el corpus: {missing}. "
-                "Verificá los ids con 'b2g read list' o 'b2g status'. "
-                "curate acepta id interno, DOI o source_id (igual que 'read show')."
+
+        resolved_ids: list[str] = []
+        if ids:
+            resolved_ids, missing = resolve_idents(rows, ids)
+            if missing:
+                raise DataError(
+                    f"IDs no encontrados en el corpus: {missing}. "
+                    "Verificá los ids con 'b2g read list' o 'b2g status'. "
+                    "curate acepta id interno, DOI o source_id (igual que 'read show')."
+                )
+
+        selector_ids: list[str] = []
+        if selector_active:
+            selector_ids = select_ids_by_predicate(
+                rows,
+                query=query,
+                year_gte=year_gte,
+                year_lte=year_lte,
+                language=language,
+                type_in=type_in,
+                min_citations=min_citations,
             )
 
-        updated = corpus.reject(resolved_ids, by=by, decided_at=decided_at)
+        all_ids = sorted(set(resolved_ids) | set(selector_ids))
+
+        updated = corpus.reject(all_ids, by=by, decided_at=decided_at)
         updated_backend_close = getattr(updated._backend, "close", None)
         store.persist(updated)
     finally:
@@ -596,8 +792,9 @@ def reject_papers(
         store.close()
 
     return {
-        "rejected_count": len(resolved_ids),
-        "ids": resolved_ids,
+        "rejected_count": len(all_ids),
+        "ids": all_ids,
+        "selector_matched_count": len(selector_ids),
     }
 
 

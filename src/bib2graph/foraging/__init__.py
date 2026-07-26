@@ -12,10 +12,16 @@ Ver docs/API.md §5 y ADR 0020/0022.
 
 from __future__ import annotations
 
-from bib2graph.foraging.base import Direction, GrowthPreview, RankedCandidates
+from bib2graph.foraging.base import (
+    CallBudget,
+    Direction,
+    GrowthPreview,
+    RankedCandidates,
+)
 from bib2graph.foraging.forager import Forager
 
 __all__ = [
+    "CallBudget",
     "Direction",
     "Forager",
     "GrowthPreview",

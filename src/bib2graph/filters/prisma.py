@@ -137,6 +137,23 @@ def _passes(row: dict[str, object], criterion: FilterCriterion) -> bool:
     )
 
 
+def passes_all(row: dict[str, object], criteria: list[FilterCriterion]) -> bool:
+    """Devuelve ``True`` si ``row`` cumple TODOS los criterios (AND lógico).
+
+    Wrapper público de ``_passes`` para reuso fuera de este módulo (p. ej.
+    ``service.curate`` en la curación masiva declarativa, #308), evitando
+    reimplementar la semántica de cada campo/operador.
+
+    Args:
+        row: Fila del corpus como dict.
+        criteria: Lista de criterios; lista vacía → ``True`` (sin filtro).
+
+    Returns:
+        ``True`` si la fila cumple todos los criterios.
+    """
+    return all(_passes(row, criterion) for criterion in criteria)
+
+
 def _count_not_rejected(corpus: Corpus) -> int:
     """Cuenta los papers que NO están rechazados (candidate + accepted).
 
