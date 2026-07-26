@@ -29,6 +29,7 @@ import click
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._scope import map_scope as _map_scope
 from bib2graph.cli._store import (
     open_store_readonly,
     resolve_workspace,
@@ -40,22 +41,6 @@ from bib2graph.cli._store import (
 _NETWORK_FORMATS = frozenset({"graphml", "csv"})
 #: Formatos que serializan el corpus; respetan ``--scope`` (ADR 0050 D4).
 _CORPUS_FORMATS = frozenset({"arrow", "bibtex"})
-
-
-def _map_scope(scope: str) -> str:
-    """Mapea el vocab de ``--scope`` (CLI) al vocab interno de ``corpus.scoped()``.
-
-    Mismo mapeo que ``cli.commands.build._map_scope`` (``seeds`` → ``seeds_only``).
-
-    Args:
-        scope: Valor del flag ``--scope`` (``all`` | ``accepted`` | ``seeds``).
-
-    Returns:
-        Vocabulario interno: ``all`` | ``accepted`` | ``seeds_only``.
-    """
-    if scope == "seeds":
-        return "seeds_only"
-    return scope
 
 
 def _export_networks(
@@ -167,14 +152,22 @@ def _export_corpus(
         scope: Vocab interno de scope (``all``/``accepted``/``seeds_only``).
 
     Returns:
-        Dict con ``format``, ``out_dir``, ``files_written`` y ``rows_exported``.
+        Dict con ``format``, ``out_dir``, ``files_written``, ``rows_exported``
+        y ``warnings`` (lista, puede ser vacía). Para ``format == "arrow"``
+        incluye el warning accionable de ``build_equation_metadata`` cuando el
+        corpus tiene 0 o >1 ecuaciones registradas (ADR 0050 D3): el
+        ``equation_hash`` se omite en ese caso y el usuario debe saberlo, en
+        vez de descubrirlo en silencio al inspeccionar el ``.arrow``.
 
     Raises:
         ImportError: Si falta ``bibtexparser`` (formato ``bibtex``, extra
             ``[bibtex]``).
     """
+    from bib2graph.backends.memory import build_equation_metadata
     from bib2graph.exporters.arrow import ArrowExporter
     from bib2graph.exporters.bibtex import BibtexExporter
+
+    corpus_warnings: list[str] = []
 
     store = open_store_readonly(store_path)
     try:
@@ -184,6 +177,14 @@ def _export_corpus(
         # DuckDBBackend vivo (lazy); to_arrow() debe correr con la conexión
         # todavía abierta.
         table = corpus.to_arrow()
+        if format == "arrow":
+            # to_arrow() ya puebla equation_hash en la metadata cuando aplica
+            # (ADR 0050 D3), pero descarta el warning ahí a propósito (no es
+            # ruidoso para llamadas internas). Este es el punto de consumo
+            # real visible al usuario: propagamos el warning si corresponde.
+            _metadata, warning = build_equation_metadata(store.backend.load_equations())
+            if warning is not None:
+                corpus_warnings.append(warning)
     finally:
         store.close()
 
@@ -204,6 +205,7 @@ def _export_corpus(
         "out_dir": str(out_path),
         "files_written": [str(dest)],
         "rows_exported": table.num_rows,
+        "warnings": corpus_warnings,
     }
 
 
@@ -276,7 +278,14 @@ def run_export(
             f"Formato '{format}' no reconocido. Usá 'graphml', 'csv', 'arrow' o 'bibtex'."
         )
 
-    data["warnings"] = warnings
+    # Fusionar (no pisar): _export_corpus ya puede traer sus propios warnings
+    # (p. ej. equation_hash omitido, ADR 0050 D3) en data["warnings"]. Este
+    # dict es el contrato de ``run_export`` (usado directo en tests, sin
+    # pasar por el envelope) — mantiene ``data["warnings"]`` como fuente única
+    # de verdad para callers no-CLI. QA 0.14.0 (hallazgo #3): es el caller CLI
+    # (``export_cmd``) quien debe evitar duplicarlas al construir el envelope
+    # (ver ahí: se extraen de ``data`` en vez de copiarse a un canal aparte).
+    data["warnings"] = warnings + list(data.get("warnings") or [])
     return data
 
 
@@ -353,8 +362,17 @@ def export_cmd(
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
 
+    # QA 0.14.0 (hallazgo #3): el envelope tiene UN solo canal canónico de
+    # warnings — el ``warnings`` top-level (ADR 0021 §C). Antes ``data``
+    # (con su propia clave ``warnings``, p. ej. el aviso de equation_hash
+    # omitido, ADR 0050 D3) se pasaba completo como ``data=data`` Y además
+    # se copiaban las mismas warnings al top-level, duplicando el texto en
+    # ``data.warnings`` y en ``warnings``. Se extraen (``pop``, no ``get``)
+    # de ``data`` para que sobrevivan en un solo lugar.
+    data_warnings: list[str] = list(data.pop("warnings", None) or [])
+
     if json_mode(json_output):
-        all_warnings: list[str] = list(data.get("warnings") or [])
+        all_warnings: list[str] = list(data_warnings)
         all_warnings.extend(workspace_walkup_warning(ws))
         envelope = build_envelope(
             command="export",
@@ -365,7 +383,7 @@ def export_cmd(
         )
         emit(envelope)
     else:
-        for w in data.get("warnings", []):
+        for w in data_warnings:
             print(f"ADVERTENCIA: {w}", file=sys.stderr)
         if "networks_exported" in data:
             emit_human(f"Exportados {data['networks_exported']} redes en formato {fmt}")
