@@ -34,6 +34,7 @@ import pyarrow as pa
 
 from bib2graph.constants import Col, CurationStatus
 from bib2graph.corpus import Corpus, EquationRef, _rows_with_ids
+from bib2graph.foraging.base import CallBudget
 from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
 from bib2graph.service.errors import NetworkError
 
@@ -991,6 +992,7 @@ class OpenAlexSource:
         *,
         max_per_paper: int | None = None,
         since: date | None = None,
+        call_budget: CallBudget | None = None,
     ) -> tuple[dict[str, list[str]], dict[str, dict[str, Any]]]:
         """Núcleo compartido de paginación y atribución para los citantes en lote.
 
@@ -1007,6 +1009,11 @@ class OpenAlexSource:
             since: Filtrar citantes publicados desde esta fecha
                 (``from_publication_date:YYYY-MM-DD`` en OpenAlex).  ``None``
                 = sin filtro de fecha.
+            call_budget: Tope de llamadas HTTP (#309, ``chain --budget N``).
+                Antes de cada página se chequea ``call_budget.exhausted``: si
+                ya está agotado, se **para limpio, sin reintentar** (ni
+                siquiera se intenta la llamada) y se devuelve lo acumulado
+                hasta ese punto.  ``None`` = sin tope (comportamiento actual).
 
         Returns:
             Tupla ``(attribution, works_map)`` donde:
@@ -1032,6 +1039,10 @@ class OpenAlexSource:
                 filter_str += f",from_publication_date:{since.isoformat()}"
 
             cursor: str = "*"
+            # #309: bandera de corte por budget agotado — el volcado del lote
+            # (parcial hasta este punto) sigue ocurriendo abajo del ``with``;
+            # solo se detiene la iteración de MÁS lotes tras este.
+            budget_hit = False
             with self._client() as client:
                 while True:
                     if max_per_paper is not None and all(
@@ -1039,9 +1050,31 @@ class OpenAlexSource:
                     ):
                         break
 
-                    page_works = self._fetch_page_with_retry(
-                        client, filter_str, cursor=cursor
-                    )
+                    # Guardarraíl anti-footgun: si el budget ya está agotado,
+                    # parar limpio ANTES de la llamada (ni siquiera se
+                    # intenta, y por ende nunca se reintenta ante 429).
+                    if call_budget is not None and call_budget.exhausted:
+                        budget_hit = True
+                        break
+
+                    try:
+                        page_works = self._fetch_page_with_retry(
+                            client,
+                            filter_str,
+                            cursor=cursor,
+                            call_budget=call_budget,
+                        )
+                    except httpx.HTTPStatusError:
+                        # #309: si el budget se agotó a mitad de un fallo
+                        # retryable (429/5xx), _fetch_page_with_retry deja de
+                        # reintentar y propaga — acá se traduce en "parar
+                        # limpio, reportar parcial" en vez de tumbar el
+                        # comando entero (el 429 "normal", con budget
+                        # disponible, sigue reintentando como siempre).
+                        if call_budget is not None and call_budget.exhausted:
+                            budget_hit = True
+                            break
+                        raise
                     if page_works is None:
                         break  # pragma: no cover
 
@@ -1068,6 +1101,9 @@ class OpenAlexSource:
 
                     if not next_cursor or not works_list:
                         break
+                    if call_budget is not None and call_budget.exhausted:
+                        budget_hit = True
+                        break
                     cursor = next_cursor
 
             for tid in lote:
@@ -1078,6 +1114,9 @@ class OpenAlexSource:
                 else:
                     result[tid] = sorted(merged)
 
+            if budget_hit:
+                break
+
         return result, works_map
 
     def fetch_citing_batch(
@@ -1086,6 +1125,7 @@ class OpenAlexSource:
         *,
         max_per_paper: int | None = None,
         since: date | None = None,
+        call_budget: CallBudget | None = None,
     ) -> dict[str, list[str]]:
         """Trae en lote los citantes de varios papers usando ``cites:W1|W2|...``.
 
@@ -1113,6 +1153,8 @@ class OpenAlexSource:
             max_per_paper: Presupuesto máximo de citantes a recolectar por semilla.
                 ``None`` = sin tope (pagina todo).  Acota el fetch: cuando todas
                 las semillas del lote alcanzan el tope, se detiene la paginación.
+            call_budget: Tope de llamadas HTTP (#309, ``chain --budget N``).
+                ``None`` = sin tope.
 
         Returns:
             Dict ``{seed_id: [citer_id, ...]}``.  Los citantes de cada semilla
@@ -1124,7 +1166,10 @@ class OpenAlexSource:
             return {}
         normalized = [_oa_id_short(i) or i for i in ids]
         attribution, _ = self._fetch_citing_pages(
-            normalized, max_per_paper=max_per_paper, since=since
+            normalized,
+            max_per_paper=max_per_paper,
+            since=since,
+            call_budget=call_budget,
         )
         return attribution
 
@@ -1134,6 +1179,7 @@ class OpenAlexSource:
         *,
         max_per_paper: int | None = None,
         since: date | None = None,
+        call_budget: CallBudget | None = None,
     ) -> tuple[dict[str, list[str]], dict[str, dict[str, Any]]]:
         """Como ``fetch_citing_batch`` pero conserva los objetos JSON completos.
 
@@ -1151,6 +1197,10 @@ class OpenAlexSource:
                 Se normalizan a ID corto internamente.
             max_per_paper: Presupuesto máximo de citantes por semilla.
                 ``None`` = sin tope.
+            call_budget: Tope de llamadas HTTP (#309, ``chain --budget N``).
+                Al agotarse, la paginación **para limpio sin reintentar** y
+                devuelve la atribución/works acumulados hasta ese punto.
+                ``None`` = sin tope (comportamiento actual).
 
         Returns:
             Tupla ``(attribution, works_map)``. ``attribution`` es
@@ -1165,7 +1215,10 @@ class OpenAlexSource:
             return {}, {}
         normalized = [_oa_id_short(i) or i for i in ids]
         return self._fetch_citing_pages(
-            normalized, max_per_paper=max_per_paper, since=since
+            normalized,
+            max_per_paper=max_per_paper,
+            since=since,
+            call_budget=call_budget,
         )
 
     def _fetch_page_with_retry(
@@ -1175,17 +1228,31 @@ class OpenAlexSource:
         *,
         cursor: str,
         per_page: int = 100,
+        call_budget: CallBudget | None = None,
     ) -> tuple[list[dict[str, Any]], str | None] | None:
         """Recupera una página de works con retry/backoff ante 429/5xx.
 
         Comparte la lógica de retry de ``_RETRY_MAX_ATTEMPTS`` y
         ``_RETRY_BACKOFF_BASE`` sin reimplementar el bucle de backoff.
 
+        **Guardarraíl de budget (#309):** cada llamada HTTP (incluidos los
+        reintentos) se registra en ``call_budget.record_call()`` si se pasa
+        uno.  Si tras un fallo retryable (429/5xx) el budget queda agotado,
+        **NO se reintenta** (ni se duerme el backoff): se propaga la
+        excepción inmediatamente para que el llamador la vea como "se acabó
+        el presupuesto a mitad de una página" en vez de seguir insistiendo.
+        La guardia principal (no llamar más allá del budget) vive en
+        ``_fetch_citing_pages``, que chequea ``call_budget.exhausted`` ANTES
+        de cada llamada a este método; esta guardia interna cubre el caso
+        borde de agotarse el budget en un reintento a mitad de una llamada
+        ya iniciada.
+
         Args:
             client: Cliente httpx ya abierto (reutilizado para conexión persistente).
             filter_str: Valor del parámetro ``filter`` de la API.
             cursor: Cursor de paginación (``"*"`` para la primera página).
             per_page: Tamaño de página (máx. 100 en OpenAlex).
+            call_budget: Tope de llamadas HTTP (#309).  ``None`` = sin tope.
 
         Returns:
             Tupla ``(works, next_cursor)`` si la página se obtuvo correctamente,
@@ -1193,18 +1260,23 @@ class OpenAlexSource:
             porque re-raise al agotar reintentos).
 
         Raises:
-            NetworkError: Si se agotan los reintentos con 429 o 504 (#306: mismo
-                tratamiento — mensaje accionable y ``subcode`` tipado — que
+            NetworkError: Si se agotan los reintentos con 429 o 504, con mensaje
+                accionable y ``subcode`` tipado (#306: mismo tratamiento que
                 ``_fetch_all_with_retry``; este método es el camino que usa el
                 batch citing de ``chain --direction forward``, que antes dejaba
-                escapar el ``httpx.HTTPStatusError`` crudo y terminaba
-                reportado como "error de conexión" genérico por el CLI).
+                escapar el ``httpx.HTTPStatusError`` crudo y terminaba reportado
+                como "error de conexión" genérico por el CLI).
             httpx.HTTPStatusError: Si se agotan los reintentos con otro código
-                retryable (5xx distinto de 504) o el status no es retryable.
+                retryable (5xx distinto de 504), si el status no es retryable, o
+                si el budget (#309) se agota tras un fallo retryable —caso que
+                ``_fetch_citing_pages`` captura para parar limpio (parcial), sin
+                reintentar ni llegar al CLI—.
         """
         last_exc: httpx.HTTPStatusError | None = None
         for attempt in range(_RETRY_MAX_ATTEMPTS):
             try:
+                if call_budget is not None:
+                    call_budget.record_call()
                 resp = client.get(
                     "/works",
                     params={
@@ -1223,6 +1295,14 @@ class OpenAlexSource:
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code in _RETRY_STATUS_CODES:
                     last_exc = exc
+                    # #309: budget agotado a mitad de un fallo retryable →
+                    # parar limpio, SIN dormir el backoff ni reintentar.  Se
+                    # re-raisea el httpx.HTTPStatusError crudo a propósito:
+                    # ``_fetch_citing_pages`` lo captura para convertirlo en una
+                    # parada limpia con resultado parcial (budget_stopped=True),
+                    # sin llegar al CLI (por eso NO se traduce a NetworkError acá).
+                    if call_budget is not None and call_budget.exhausted:
+                        raise
                     wait = _RETRY_BACKOFF_BASE * (2**attempt)
                     time.sleep(wait)
                 else:

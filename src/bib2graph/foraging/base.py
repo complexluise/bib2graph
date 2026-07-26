@@ -1,6 +1,6 @@
 """foraging.base — tipos de datos del forrajeo.
 
-Define ``Direction``, ``GrowthPreview`` y ``RankedCandidates``.
+Define ``Direction``, ``GrowthPreview``, ``RankedCandidates`` y ``CallBudget``.
 
 ``RankedCandidates`` necesita ``arbitrary_types_allowed`` porque ``Corpus``
 no es un ``BaseModel`` de Pydantic.
@@ -17,6 +17,39 @@ from pydantic import BaseModel, ConfigDict
 from bib2graph.corpus import Corpus
 
 Direction = Literal["backward", "forward", "both"]
+
+
+class CallBudget:
+    """Tope mutable de llamadas HTTP a OpenAlex, compartido por referencia (#309).
+
+    Guardarraíl anti-footgun: ``chain --budget N`` limita cuántas llamadas a
+    la API se hacen durante un forward chaining.  Al llegar al tope, quien
+    consulta ``exhausted`` **debe parar limpio, sin reintentar** — ni el
+    retry/backoff ante 429/5xx (``OpenAlexSource._fetch_page_with_retry``) ni
+    una página adicional de paginación por cursor.
+
+    Se pasa por referencia (mismo objeto) entre ``Forager`` y ``OpenAlexSource``
+    para que ambos vean el mismo contador sin acoplarlos por herencia ni
+    parámetros posicionales adicionales en cada método de fetch.
+
+    Attributes:
+        limit: Tope de llamadas HTTP permitidas.  ``None`` = sin tope (default,
+            comportamiento actual sin cambios).
+        used: Llamadas HTTP realizadas hasta el momento.
+    """
+
+    def __init__(self, limit: int | None) -> None:
+        self.limit = limit
+        self.used = 0
+
+    @property
+    def exhausted(self) -> bool:
+        """``True`` si se alcanzó (o superó) el tope de llamadas."""
+        return self.limit is not None and self.used >= self.limit
+
+    def record_call(self) -> None:
+        """Registra una llamada HTTP realizada (incrementa ``used``)."""
+        self.used += 1
 
 
 class GrowthPreview(BaseModel):
@@ -96,6 +129,12 @@ class RankedCandidates(BaseModel):
             los candidatos backward que se persisten en la tabla auxiliar
             ``referenced_but_not_fetched`` por el comando CLI, no en el corpus.
             Vacío en chaining puramente forward.
+        budget_used: Llamadas HTTP realizadas cuando ``chain --budget N`` está
+            activo (#309).  ``0`` si no se pasó ``call_budget`` al ``Forager``.
+        budget_stopped: ``True`` si el chaining se detuvo tempranamente por
+            agotar ``call_budget`` (parada limpia, sin reintentar) — el
+            resultado es parcial pero consistente.  ``False`` en el
+            comportamiento normal (sin budget o budget no alcanzado).
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -103,3 +142,5 @@ class RankedCandidates(BaseModel):
     corpus: Corpus
     ranking: list[tuple[str, float]]
     observed_refs: list[str] = []
+    budget_used: int = 0
+    budget_stopped: bool = False
