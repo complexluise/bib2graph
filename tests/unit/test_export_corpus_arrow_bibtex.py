@@ -95,6 +95,26 @@ def _init_workspace(tmp_path: Path, name: str = "ws") -> Any:
     return Workspace.init(ws_dir, name)
 
 
+def _persist_equations(store_path: Path, equation_ids: list[str]) -> None:
+    """Persiste N ecuaciones (tabla lateral ``equations``, ADR 0050 D1) en el store.
+
+    Args:
+        store_path: Ruta al archivo ``.duckdb``.
+        equation_ids: IDs de ecuación a persistir (0, 1 o varios).
+    """
+    from bib2graph.stores.duckdb import DuckDBStore
+
+    store = DuckDBStore(store_path)
+    for eq_id in equation_ids:
+        store.backend.persist_equation(
+            eq_id,
+            engine="openalex",
+            raw_query=f"query for {eq_id}",
+            params_json="{}",
+        )
+    store.close()
+
+
 def _mixed_rows() -> list[dict[str, Any]]:
     """3 papers: 2 semillas (1 aceptada, 1 candidata) + 1 no-semilla aceptado."""
     return [
@@ -292,6 +312,204 @@ class TestExportFormatArrow:
 
 
 # ---------------------------------------------------------------------------
+# 1b. --format arrow — warning de equation_hash omitido (ADR 0050 D3, #291/#292)
+# ---------------------------------------------------------------------------
+
+
+class TestExportArrowEquationHashWarning:
+    """El comando ``export`` es el punto de consumo real de
+    ``build_equation_metadata``: ``to_arrow()`` puebla ``equation_hash`` en la
+    metadata del schema cuando hay exactamente 1 ecuación, pero descarta el
+    warning a propósito (no ruidoso para llamadas internas). El comando debe
+    recuperar ese warning y propagarlo en el envelope cuando hay 0 o >1
+    ecuaciones registradas."""
+
+    def test_cero_ecuaciones_emite_warning_en_envelope(self, tmp_path: Path) -> None:
+        """0 ecuaciones registradas -> warning de equation_hash omitido en --json."""
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(ws.library_path, _mixed_rows())
+        # Sin persistir ninguna ecuación.
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "arrow", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        warnings_list = envelope.get("warnings") or []
+        assert any("equation_hash" in w and "0 ecuaci" in w for w in warnings_list)
+
+        import pyarrow.feather as feather
+
+        arrow_path = Path(envelope["data"]["files_written"][0])
+        reread = feather.read_table(str(arrow_path))
+        metadata = reread.schema.metadata or {}
+        assert b"equation_hash" not in metadata
+
+    def test_multiples_ecuaciones_emite_warning_en_envelope(
+        self, tmp_path: Path
+    ) -> None:
+        """>1 ecuaciones registradas -> warning de equation_hash omitido en --json."""
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(ws.library_path, _mixed_rows())
+        _persist_equations(ws.library_path, ["eq-1", "eq-2"])
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "arrow", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        warnings_list = envelope.get("warnings") or []
+        assert any("equation_hash" in w and "2 ecuaci" in w for w in warnings_list)
+
+        import pyarrow.feather as feather
+
+        arrow_path = Path(envelope["data"]["files_written"][0])
+        reread = feather.read_table(str(arrow_path))
+        metadata = reread.schema.metadata or {}
+        assert b"equation_hash" not in metadata
+
+    def test_una_ecuacion_no_hay_warning_y_hash_presente(self, tmp_path: Path) -> None:
+        """1 ecuación registrada -> sin warning; el .arrow trae equation_hash."""
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(ws.library_path, _mixed_rows())
+        _persist_equations(ws.library_path, ["eq-1"])
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "arrow", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        warnings_list = envelope.get("warnings") or []
+        assert not any("equation_hash" in w for w in warnings_list)
+
+        import pyarrow.feather as feather
+
+        arrow_path = Path(envelope["data"]["files_written"][0])
+        reread = feather.read_table(str(arrow_path))
+        metadata = reread.schema.metadata or {}
+        assert metadata.get(b"equation_hash") is not None
+
+    def test_bibtex_no_calcula_ni_advierte_equation_hash(self, tmp_path: Path) -> None:
+        """--format bibtex NO necesita el warning: no embebe equation_hash."""
+        pytest.importorskip("bibtexparser")
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(ws.library_path, _mixed_rows())
+        # Sin ecuaciones -- si bibtex disparara el mismo chequeo, advertiría.
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "bibtex", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        warnings_list = envelope.get("warnings") or []
+        assert not any("equation_hash" in w for w in warnings_list)
+
+
+# ---------------------------------------------------------------------------
+# 1c. QA 0.14.0 (hallazgo #3): el warning de equation_hash NO se duplica
+# entre data.warnings y el warnings top-level del envelope.
+# ---------------------------------------------------------------------------
+
+
+class TestExportWarningNoDuplicado:
+    """El envelope tiene UN solo canal canónico de warnings (el top-level,
+    ADR 0021 §C). Antes ``data`` (que ya traía su propia clave ``warnings``
+    para el aviso de equation_hash omitido) se pasaba entero al envelope Y
+    las mismas warnings se copiaban también al top-level, duplicando el
+    texto en ambos lugares."""
+
+    def test_equation_hash_warning_aparece_una_sola_vez(self, tmp_path: Path) -> None:
+        """2 ecuaciones -> el warning de equation_hash aparece EXACTAMENTE 1 vez."""
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(ws.library_path, _mixed_rows())
+        _persist_equations(ws.library_path, ["eq-1", "eq-2"])
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "arrow", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+
+        # No duplicado en data: la clave "warnings" no debe sobrevivir en data
+        # (el canal canónico es SOLO el top-level).
+        assert "warnings" not in envelope["data"]
+
+        top_level_warnings = envelope.get("warnings") or []
+        equation_hash_warnings = [w for w in top_level_warnings if "equation_hash" in w]
+        assert len(equation_hash_warnings) == 1, (
+            f"El warning de equation_hash debe aparecer 1 sola vez, "
+            f"apareció {len(equation_hash_warnings)} veces: {equation_hash_warnings}"
+        )
+
+    def test_scope_ignorado_warning_tampoco_se_duplica(self, tmp_path: Path) -> None:
+        """El warning de scope-ignorado (graphml/csv) tampoco se duplica."""
+        from bib2graph.cli import b2g
+        from bib2graph.cli.commands.build import run_build
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(
+            ws.library_path,
+            [
+                _row("doi:p1", references_id=["R1", "R2"]),
+                _row("doi:p2", references_id=["R1", "R3"]),
+            ],
+        )
+        run_build(ws.library_path, out_dir=ws.networks_dir)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            [
+                "--workspace",
+                str(ws.root),
+                "export",
+                "--format",
+                "graphml",
+                "--scope",
+                "seeds",
+                "--json",
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+
+        assert "warnings" not in envelope["data"]
+
+        top_level_warnings = envelope.get("warnings") or []
+        scope_warnings = [w for w in top_level_warnings if "--scope" in w]
+        assert len(scope_warnings) == 1, (
+            f"El warning de --scope debe aparecer 1 sola vez, "
+            f"apareció {len(scope_warnings)} veces: {scope_warnings}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # 2. --format bibtex
 # ---------------------------------------------------------------------------
 
@@ -435,6 +653,168 @@ class TestExportFormatBibtex:
         bib_path = Path(data["files_written"][0])
         parsed = bibtexparser.loads(bib_path.read_text(encoding="utf-8"))
         assert len(parsed.entries) == 2
+
+
+# ---------------------------------------------------------------------------
+# 2b. Deuda de cobertura 0.14.0: corpus vacío / scope sin filas.
+# ---------------------------------------------------------------------------
+
+
+class TestExportCorpusVacioOScopeSinFilas:
+    """Bordes no cubiertos: store sin papers, y ``--scope`` que da 0 filas.
+
+    Ninguno de los dos casos debe crashear: ``export`` produce un artefacto
+    válido (schema presente en arrow; .bib vacío parseable) con 0 filas,
+    exit 0 y envelope ok.
+    """
+
+    def test_arrow_corpus_vacio_produce_arrow_valido_0_filas(
+        self, tmp_path: Path
+    ) -> None:
+        """Store sin papers -> --format arrow no crashea; .arrow con 0 filas."""
+        from bib2graph.cli import b2g
+        from bib2graph.stores.duckdb import DuckDBStore
+
+        ws = _init_workspace(tmp_path)
+        # Store inicializado (DDL creado) pero sin persistir ningún paper:
+        # abrir y cerrar basta para materializar el archivo .duckdb vacío.
+        store = DuckDBStore(ws.library_path)
+        store.close()
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "arrow", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        data = envelope["data"]
+        assert data["rows_exported"] == 0
+
+        import pyarrow.feather as feather
+
+        arrow_path = Path(data["files_written"][0])
+        assert arrow_path.exists()
+        reread = feather.read_table(str(arrow_path))
+        assert set(reread.schema.names) == set(CORPUS_SCHEMA.names)
+        assert reread.num_rows == 0
+
+    def test_bibtex_corpus_vacio_produce_bib_valido_0_entradas(
+        self, tmp_path: Path
+    ) -> None:
+        """Store sin papers -> --format bibtex no crashea; .bib vacío parseable."""
+        pytest.importorskip("bibtexparser")
+        from bib2graph.cli import b2g
+        from bib2graph.stores.duckdb import DuckDBStore
+
+        ws = _init_workspace(tmp_path)
+        store = DuckDBStore(ws.library_path)
+        store.close()
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "bibtex", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        data = envelope["data"]
+        assert data["rows_exported"] == 0
+
+        import bibtexparser
+
+        bib_path = Path(data["files_written"][0])
+        assert bib_path.exists()
+        parsed = bibtexparser.loads(bib_path.read_text(encoding="utf-8"))
+        assert len(parsed.entries) == 0
+
+    def test_scope_seeds_sin_semillas_exporta_arrow_con_0_filas(
+        self, tmp_path: Path
+    ) -> None:
+        """Corpus con papers pero NINGUNO semilla + --scope seeds -> 0 filas, sin crash."""
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(
+            ws.library_path,
+            [
+                _row("doi:p1", is_seed=False, curation_status="accepted"),
+                _row("doi:p2", is_seed=False, curation_status="candidate"),
+            ],
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            [
+                "--workspace",
+                str(ws.root),
+                "export",
+                "--format",
+                "arrow",
+                "--scope",
+                "seeds",
+                "--json",
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        data = envelope["data"]
+        assert data["rows_exported"] == 0
+
+        import pyarrow.feather as feather
+
+        arrow_path = Path(data["files_written"][0])
+        reread = feather.read_table(str(arrow_path))
+        assert reread.num_rows == 0
+
+    def test_scope_seeds_sin_semillas_exporta_bibtex_con_0_entradas(
+        self, tmp_path: Path
+    ) -> None:
+        """Idem anterior pero --format bibtex: .bib vacío parseable, sin crash."""
+        pytest.importorskip("bibtexparser")
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(
+            ws.library_path,
+            [
+                _row("doi:p1", is_seed=False, curation_status="accepted"),
+            ],
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            [
+                "--workspace",
+                str(ws.root),
+                "export",
+                "--format",
+                "bibtex",
+                "--scope",
+                "seeds",
+                "--json",
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        data = envelope["data"]
+        assert data["rows_exported"] == 0
+
+        import bibtexparser
+
+        bib_path = Path(data["files_written"][0])
+        parsed = bibtexparser.loads(bib_path.read_text(encoding="utf-8"))
+        assert len(parsed.entries) == 0
 
 
 # ---------------------------------------------------------------------------

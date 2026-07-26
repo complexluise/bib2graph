@@ -301,3 +301,27 @@ cosas que el AS-BUILT explicita:
 En código se unificó el flag vía un decorador compartido `@json_option` (`cli/_options.py`, con
 `json_mode(local_flag)` que resuelve flag-o-entorno); es refactor interno, **no** cambia el contrato
 externo. Documentado en `docs/API.md` §convenciones CLI (Envelope JSON / `B2G_JSON`).
+
+## Enmienda — canal único de `warnings` en el envelope (QA 0.14.0, hallazgo #3)
+
+> Enmienda **aclaratoria** del §C. Fija una norma que el §C ya implicaba pero no escribía; **no**
+> cambia la forma del envelope ni bumpea `schema` (sigue `"1"`). Cierra un drift observado en QA: los
+> envelopes de `export` y `build` duplicaban el mismo texto de aviso en `data.warnings` **y** en el
+> `warnings` top-level.
+
+El §C define **`warnings`** como campo top-level del envelope (avisos no fatales). Esta enmienda fija
+que ese es el **único canal canónico**:
+
+- En modo `--json`, los `warnings` van **SIEMPRE** en el campo **`warnings` top-level** del envelope y
+  **NUNCA** duplicados dentro de `data`. Un consumidor mira **un solo lugar**; no hay que unir
+  `data.warnings` con `warnings`.
+- Si un servicio interno (`run_export`/`run_build`) devuelve un `data["warnings"]` propio (lo conserva
+  para sus tests unitarios), la **superficie CLI lo extrae con `pop`** —no `get`— antes de emitir, así
+  el texto sobrevive en **un** solo lugar (el top-level) y `data` no lo lleva
+  (`cli/commands/export.py`, `cli/commands/build.py`).
+- **Excepción por diseño — `data["empty_networks"]`** (`build`) **no es un warning**: es un
+  diagnóstico estructurado por-red (`{kind, reason, fix_command}`) que vive en `data`, separado del
+  canal de `warnings` (ADR 0037; ver `docs/API.md` §build). No se duplica en `warnings`.
+
+Aplica a **todos** los comandos del ciclo; los avisos ya canónicos por top-level (walk-up del cwd, ADR
+0045 #259; `networks_cache_stale` de `status`) no cambian. Documentado en `docs/API.md` §Envelope JSON.

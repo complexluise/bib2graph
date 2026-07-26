@@ -47,6 +47,7 @@ from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._scope import map_scope as _map_scope
 from bib2graph.cli._store import (
     open_store,
     resolve_workspace,
@@ -57,23 +58,6 @@ from bib2graph.cli._store import (
 if TYPE_CHECKING:
     from bib2graph.corpus import Corpus
     from bib2graph.networks.spec import NetworkArtifact
-
-
-def _map_scope(scope: str) -> str:
-    """Mapea el vocab de ``--scope`` (CLI) al vocab interno de ``corpus.scoped()``.
-
-    ``--scope`` usa ``seeds`` (forma corta), mientras que ``corpus.scoped()``
-    espera ``seeds_only``.  Los demás valores son idénticos en ambos vocabs.
-
-    Args:
-        scope: Valor del flag ``--scope`` (``all`` | ``accepted`` | ``seeds``).
-
-    Returns:
-        Vocabulario interno: ``all`` | ``accepted`` | ``seeds_only``.
-    """
-    if scope == "seeds":
-        return "seeds_only"
-    return scope
 
 
 # Helper compartido: carga de specs YAML + construcción de artefactos
@@ -698,9 +682,13 @@ def build_cmd(
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
 
+    # Canal único de warnings: viven en el top-level del envelope, NO duplicados en
+    # data (mismo criterio que export.py). run_build conserva data["warnings"] para
+    # sus tests; el pop ocurre solo en la superficie CLI, tras el retorno de run_build.
+    build_warns: list[str] = list(data.pop("warnings", None) or [])
+
     if json_mode(json_output):
-        all_warnings: list[str] = list(data.get("warnings") or [])
-        all_warnings.extend(workspace_walkup_warning(ws))
+        all_warnings: list[str] = build_warns + list(workspace_walkup_warning(ws))
         envelope = build_envelope(
             command="build",
             ok=True,
@@ -711,7 +699,7 @@ def build_cmd(
         emit(envelope)
     else:
         # Warnings van a stderr en modo humano (ADR 0021 §C; patrón de status.py).
-        for w in data.get("warnings", []):
+        for w in build_warns:
             print(f"ADVERTENCIA: {w}", file=sys.stderr)
         for en in data.get("empty_networks", []):
             fix = f" Sugerencia: {en['fix_command']}" if en.get("fix_command") else ""
