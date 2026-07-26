@@ -656,6 +656,168 @@ class TestExportFormatBibtex:
 
 
 # ---------------------------------------------------------------------------
+# 2b. Deuda de cobertura 0.14.0: corpus vacío / scope sin filas.
+# ---------------------------------------------------------------------------
+
+
+class TestExportCorpusVacioOScopeSinFilas:
+    """Bordes no cubiertos: store sin papers, y ``--scope`` que da 0 filas.
+
+    Ninguno de los dos casos debe crashear: ``export`` produce un artefacto
+    válido (schema presente en arrow; .bib vacío parseable) con 0 filas,
+    exit 0 y envelope ok.
+    """
+
+    def test_arrow_corpus_vacio_produce_arrow_valido_0_filas(
+        self, tmp_path: Path
+    ) -> None:
+        """Store sin papers -> --format arrow no crashea; .arrow con 0 filas."""
+        from bib2graph.cli import b2g
+        from bib2graph.stores.duckdb import DuckDBStore
+
+        ws = _init_workspace(tmp_path)
+        # Store inicializado (DDL creado) pero sin persistir ningún paper:
+        # abrir y cerrar basta para materializar el archivo .duckdb vacío.
+        store = DuckDBStore(ws.library_path)
+        store.close()
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "arrow", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        data = envelope["data"]
+        assert data["rows_exported"] == 0
+
+        import pyarrow.feather as feather
+
+        arrow_path = Path(data["files_written"][0])
+        assert arrow_path.exists()
+        reread = feather.read_table(str(arrow_path))
+        assert set(reread.schema.names) == set(CORPUS_SCHEMA.names)
+        assert reread.num_rows == 0
+
+    def test_bibtex_corpus_vacio_produce_bib_valido_0_entradas(
+        self, tmp_path: Path
+    ) -> None:
+        """Store sin papers -> --format bibtex no crashea; .bib vacío parseable."""
+        pytest.importorskip("bibtexparser")
+        from bib2graph.cli import b2g
+        from bib2graph.stores.duckdb import DuckDBStore
+
+        ws = _init_workspace(tmp_path)
+        store = DuckDBStore(ws.library_path)
+        store.close()
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws.root), "export", "--format", "bibtex", "--json"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        data = envelope["data"]
+        assert data["rows_exported"] == 0
+
+        import bibtexparser
+
+        bib_path = Path(data["files_written"][0])
+        assert bib_path.exists()
+        parsed = bibtexparser.loads(bib_path.read_text(encoding="utf-8"))
+        assert len(parsed.entries) == 0
+
+    def test_scope_seeds_sin_semillas_exporta_arrow_con_0_filas(
+        self, tmp_path: Path
+    ) -> None:
+        """Corpus con papers pero NINGUNO semilla + --scope seeds -> 0 filas, sin crash."""
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(
+            ws.library_path,
+            [
+                _row("doi:p1", is_seed=False, curation_status="accepted"),
+                _row("doi:p2", is_seed=False, curation_status="candidate"),
+            ],
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            [
+                "--workspace",
+                str(ws.root),
+                "export",
+                "--format",
+                "arrow",
+                "--scope",
+                "seeds",
+                "--json",
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        data = envelope["data"]
+        assert data["rows_exported"] == 0
+
+        import pyarrow.feather as feather
+
+        arrow_path = Path(data["files_written"][0])
+        reread = feather.read_table(str(arrow_path))
+        assert reread.num_rows == 0
+
+    def test_scope_seeds_sin_semillas_exporta_bibtex_con_0_entradas(
+        self, tmp_path: Path
+    ) -> None:
+        """Idem anterior pero --format bibtex: .bib vacío parseable, sin crash."""
+        pytest.importorskip("bibtexparser")
+        from bib2graph.cli import b2g
+
+        ws = _init_workspace(tmp_path)
+        _seed_store(
+            ws.library_path,
+            [
+                _row("doi:p1", is_seed=False, curation_status="accepted"),
+            ],
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            [
+                "--workspace",
+                str(ws.root),
+                "export",
+                "--format",
+                "bibtex",
+                "--scope",
+                "seeds",
+                "--json",
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        data = envelope["data"]
+        assert data["rows_exported"] == 0
+
+        import bibtexparser
+
+        bib_path = Path(data["files_written"][0])
+        parsed = bibtexparser.loads(bib_path.read_text(encoding="utf-8"))
+        assert len(parsed.entries) == 0
+
+
+# ---------------------------------------------------------------------------
 # 3. --scope ignorado (con warning) para graphml/csv
 # ---------------------------------------------------------------------------
 

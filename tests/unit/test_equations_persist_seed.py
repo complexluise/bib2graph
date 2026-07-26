@@ -269,3 +269,114 @@ def test_load_store_sin_tabla_equations_no_rompe(tmp_path: Path) -> None:
         store.close()
 
     assert corpus.manifest.equations == []
+
+
+# ---------------------------------------------------------------------------
+# Deuda de cobertura 0.14.0: ``DuckDBBackend._clone()`` preserva ``equations``.
+# ---------------------------------------------------------------------------
+
+
+def test_clone_via_add_paper_preserva_tabla_equations(tmp_path: Path) -> None:
+    """``add_paper`` dispara ``_clone()``; las ecuaciones persistidas sobreviven.
+
+    ``add_paper`` llama internamente a ``self._clone()`` antes de insertar la
+    fila nueva (ver ``DuckDBBackend.add_paper``). Este test asevera que ese
+    clonado — que copia explícitamente ``loop_state_log``,
+    ``referenced_but_not_fetched``, ``external_ids``, ``filter_log``,
+    ``enricher_log`` y ``equations`` fila por fila — efectivamente conserva
+    las ecuaciones sembradas antes de la operación, en el mismo orden
+    (``equation_id``/``raw_query``).
+    """
+    from bib2graph.backends.duckdb import DuckDBBackend
+
+    store_path = tmp_path / "clone_equations.duckdb"
+    backend = DuckDBBackend(path=store_path)
+    backend.persist_equation(
+        "eq-0001", engine="openalex", raw_query="ecology", params_json="{}"
+    )
+    backend.persist_equation(
+        "eq-0002",
+        engine="openalex",
+        raw_query="environmental justice",
+        params_json="{}",
+    )
+
+    # Dispara _clone() por la vía pública normal (add_paper clona antes de
+    # insertar). El backend devuelto es una instancia NUEVA (semántica de valor).
+    new_backend = backend.add_paper(
+        {
+            "id": "doi:new-paper",
+            "title": "New paper via add_paper",
+            "is_seed": True,
+            "curation_status": "candidate",
+        }
+    )
+
+    equations = new_backend.load_equations()
+    assert [eq["equation_id"] for eq in equations] == ["eq-0001", "eq-0002"]
+    assert [eq["raw_query"] for eq in equations] == ["ecology", "environmental justice"]
+
+    backend.close()
+    new_backend.close()
+
+
+def test_persist_replace_no_borra_tabla_equations(tmp_path: Path) -> None:
+    """``DuckDBStore.persist_replace`` (``DELETE FROM corpus``) NO toca ``equations``.
+
+    ``persist_replace`` -> ``overwrite_corpus`` hace ``DELETE FROM corpus``
+    seguido de un INSERT masivo del contenido final. La tabla lateral
+    ``equations`` (ADR 0050 D1) es una tabla HERMANA, no la tabla ``corpus``:
+    este test asevera explícitamente que el ``DELETE`` acotado a ``corpus``
+    no arrastra las ecuaciones ya registradas.
+    """
+    import pyarrow as pa
+
+    from bib2graph.corpus import Corpus
+    from bib2graph.schemas import CORPUS_SCHEMA
+    from bib2graph.stores.duckdb import DuckDBStore
+
+    store_path = tmp_path / "replace_equations.duckdb"
+    store = DuckDBStore(store_path)
+    store.backend.persist_equation(
+        "eq-0001", engine="openalex", raw_query="unequal exchange", params_json="{}"
+    )
+
+    row = {
+        "id": "doi:p1",
+        "source_id": None,
+        "doi": None,
+        "title": "Paper P1",
+        "year": 2020,
+        "abstract": None,
+        "source": None,
+        "language": None,
+        "publisher": None,
+        "research_areas": None,
+        "is_seed": True,
+        "curation_status": "candidate",
+        "provenance": None,
+        "authors_raw": None,
+        "authors_id": None,
+        "authors_affiliations": None,
+        "keywords_raw": None,
+        "keywords_id": None,
+        "institutions_raw": None,
+        "institutions_id": None,
+        "references_id": None,
+        "references_doi": None,
+        "cited_by_id": None,
+    }
+    table = pa.Table.from_pylist([row], schema=CORPUS_SCHEMA)
+    corpus = Corpus.from_arrow(table)
+
+    # persist_replace hace DELETE FROM corpus + INSERT masivo (overwrite_corpus).
+    store.persist_replace(corpus)
+
+    equations_after = store.backend.load_equations()
+    corpus_after = store.backend.to_arrow()
+    store.close()
+
+    assert len(corpus_after) == 1
+    assert len(equations_after) == 1
+    assert equations_after[0]["equation_id"] == "eq-0001"
+    assert equations_after[0]["raw_query"] == "unequal exchange"
