@@ -315,8 +315,13 @@ class Corpus:
 
         Valores de scope:
         - ``'all'``: corpus completo (sin filtrar).
-        - ``'accepted'``: ``is_seed == True`` OR ``curation_status == 'accepted'``.
-        - ``'seeds_only'``: ``is_seed == True``.
+        - ``'accepted'``: (``is_seed == True`` OR ``curation_status == 'accepted'``)
+          AND ``curation_status != 'rejected'`` (issue #307): un paper rechazado
+          queda excluido de ``accepted`` aunque sea semilla — la curación PRISMA
+          debe reflejarse en el scope "aceptado", incluso sobre semillas.
+        - ``'seeds_only'``: ``is_seed == True``. NOTA(#307): este scope NO
+          excluye rejected; una semilla rechazada sigue apareciendo acá. Ver
+          ADR pendiente del architect para evaluar si conviene alinearlo.
 
         Args:
             scope: Uno de ``'all'``, ``'accepted'``, ``'seeds_only'``.
@@ -335,6 +340,10 @@ class Corpus:
         table = self._backend.to_arrow()
 
         if scope == "seeds_only":
+            # NOTA(#307): seeds_only no excluye rejected; una semilla
+            # rechazada sigue apareciendo acá. Ver ADR pendiente del
+            # architect para evaluar si conviene alinear este scope con
+            # la exclusión que ya aplica 'accepted'.
             mask = table.column(Col.IS_SEED)
             filtered = table.filter(mask)
         elif scope == "accepted":
@@ -342,7 +351,13 @@ class Corpus:
             is_accepted_mask = pc.equal(  # type: ignore[attr-defined]
                 table.column(Col.CURATION_STATUS), CurationStatus.ACCEPTED
             )
-            mask = pc.or_(is_seed_mask, is_accepted_mask)  # type: ignore[attr-defined]
+            is_rejected_mask = pc.equal(  # type: ignore[attr-defined]
+                table.column(Col.CURATION_STATUS), CurationStatus.REJECTED
+            )
+            mask = pc.and_(  # type: ignore[attr-defined]
+                pc.or_(is_seed_mask, is_accepted_mask),  # type: ignore[attr-defined]
+                pc.invert(is_rejected_mask),  # type: ignore[attr-defined]
+            )
             filtered = table.filter(mask)
         else:
             raise ValueError(
