@@ -138,7 +138,31 @@ en forward, default 50), **`--email`**, **`--preview`** (dry-run sin red ni tran
 desde `references_id`; forward exacto solo si hay `cited_by_id`). Transiciona a **`FORAGED`** y corre
 **automática la pasada refs→DOI** (§Enricher absorbido): el `--json` suma `data["enrichment"]`. `data =
 {candidates_found, new_candidates, total_papers, direction, depth, ranking_preview, observed_refs_count,
-loop_state, round, enrichment}`.
+loop_state, round, enrichment, budget_used, budget_stopped}`.
+
+- **Forrajeo acotado — guardarraíles anti-footgun (#309, MVP aditivo).** El forrajeo forward es
+  **multiplicativo** (cada semilla dispara sus propias llamadas) y su costo es invisible hasta que ya se
+  gastó: un `chain` sin acotar sobre cientos de semillas puede agotar la cuota de OpenAlex (429
+  account-wide, recuperación de horas). Estos flags acotan y presupuestan, **todos aditivos** — los
+  **defaults NO cambian** (sin ninguno: **todas las semillas**, comportamiento previo). El flip a un
+  default seguro/acotado (`--exhaustive` como opt-in) es la [Discussion #310](https://github.com/complexluise/bib2graph/discussions/310).
+  - **Unidad escopada** (de qué papers-origen se forrajea), **mutuamente excluyentes** entre sí:
+    **`--ids`** (repetible; IDs explícitos de papers-origen, valida contra el corpus), **`--top N`**
+    (las N semillas más "centrales"), **`--scope [all|accepted|seeds]`** (reusa `Corpus.scoped`, vocab
+    CLI `seeds`→`seeds_only`). Combinar dos → `UsageError` exit 1.
+  - **`--top N` usa el nº de `references_id` como PROXY de centralidad** (**degradación documentada**):
+    ordena las semillas por `len(references_id)` desc (desempate `id` asc), no por la centralidad real
+    del acoplamiento bibliográfico sobre el grafo construido. Es puro y no requiere un `build` previo ni
+    artefactos en disco. Para la centralidad real, correr `b2g build` y pasar los IDs más centrales del
+    `metrics.json` vía `--ids`/`--scope` (`cli/commands/chain.py::_top_n_seed_ids`).
+  - **`--preview` refleja el scoping** (#309): la estimación de fanout se acota al subconjunto
+    resuelto; suma **`data["origin_count"]`** (cuántos papers-origen participan del fanout estimado).
+  - **`--budget N`** topa las **llamadas HTTP** del forward chaining; al alcanzarlo el forrajeo **para
+    limpio, sin reintentar** (nunca reintenta en loop sobre 429, complemento de #306). El resultado
+    queda **parcial pero consistente** y marcado con **`data["budget_stopped"] = true`** +
+    **`data["budget_used"]`** (llamadas realizadas). `budget_used` **no** cuenta las llamadas de la
+    pasada refs→DOI posterior (acotada, fuera de alcance del budget). Sin `--budget`: sin tope
+    (`budget_used=0`, `budget_stopped=false`). Ver `CallBudget` en §5.
 
 - **`chain forward`/`both` puebla `cited_by_id` de las semillas alcanzadas** (ADR 0048, #270): el
   forrajeo hacia adelante ya trae los citantes; con esta decisión completa además la columna
@@ -193,14 +217,31 @@ VERBO:** solo **`curate filter`→`FILTERED`**; el resto transversal. **BREAKING
   aviso (no no-op silencioso). `data = {accepted_count, rejected_count, skipped_count, not_found_count,
   total_rows}`. **`note` se ignora en apply** (advisory). Lee el CSV con `utf-8-sig`: **tolera el
   BOM UTF-8** que Excel-Windows agrega al guardar como UTF-8 (#238, política Excel-friendly de #214).
-- **`curate accept --ids ... [--by NOMBRE]`** / **`curate reject --ids ... [--by NOMBRE]`** — por
-  identificador (uno-a-uno o lote). **Cada `--ids` acepta las tres formas: id interno, DOI crudo o
-  `source_id`** (ADR 0049 #287), con la **misma prioridad que `read show`: id > doi > source_id** (ADR
-  [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)). La resolución vive en el helper
-  compartido `service/_identity.py::resolve_idents`, reusado por `curate` y por `read.get_paper` (fuente
-  única de identidad). Si algún identificador no resuelve, el error **lista los no resueltos** y aclara
-  que se aceptan las tres formas. Usan `accept_papers`/`reject_papers` de `service/curate.py` (fuente
-  única de curación).
+- **`curate accept [--ids ...] [SELECTOR] [--by NOMBRE]`** / **`curate reject [--ids ...] [SELECTOR]
+  [--by NOMBRE]`** — acepta/rechaza por **identificador** y/o por **selector declarativo** (curación
+  masiva, #308). **`--ids` ya NO es obligatorio.** **Cada `--ids` acepta las tres formas: id interno,
+  DOI crudo o `source_id`** (ADR 0049 #287), con la **misma prioridad que `read show`: id > doi >
+  source_id** (ADR [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)). La resolución
+  vive en el helper compartido `service/_identity.py::resolve_idents`, reusado por `curate` y por
+  `read.get_paper` (fuente única de identidad). Si algún identificador no resuelve, el error **lista los
+  no resueltos** y aclara que se aceptan las tres formas.
+  - **SELECTOR declarativo (#308):** **`--query`** (substring de título, case-insensitive, mismo
+    criterio que `read list --query`), **`--year-gte`**/**`--year-lte`**, **`--language`** (repetible),
+    **`--type`** (repetible), **`--min-citations`** — misma semántica que `curate filter`. El conjunto
+    afectado es la **UNIÓN** de `--ids` resueltos y lo que matchea el selector; se combinan libremente
+    (no hace falta que se solapen). **Sin `--ids` ni selector → `DataError` exit 2** (mensaje que lista
+    los criterios). Los ids resueltos por selector nunca fallan por "no encontrado" (se derivan del
+    corpus mismo).
+  - **`data = {accepted_count|rejected_count, ids, selector_matched_count}`.** `ids` = todos los ids
+    afectados (unión, ordenados); **`selector_matched_count`** = cuántos vinieron del selector (`0` si
+    no se usó). Usan `accept_papers`/`reject_papers` de `service/curate.py` (fuente única de curación).
+  - **`curate accept` por selector PUEDE revertir un `rejected` → `accepted`** —no es una
+    inconsistencia. Esto es distinto de `curate filter`, que **nunca toca** un `accepted` (ADR
+    [0044](decisiones/0044-precedencia-inclusion-manual-en-curate.md): la inclusión manual gana). La
+    asimetría es deliberada: `filter` es exclusión PRISMA automática (respeta la decisión manual
+    previa); `accept`/`reject` **son** la decisión manual explícita y por eso **sobrescriben** el estado
+    anterior, incluso vía selector. Un `curate accept --query "..."` que matchea un paper antes
+    rechazado lo re-acepta a propósito.
 - **`curate filter`** (`--year-gte`/`--year-lte`, `--language`, `--type`, `--min-citations`): aplica
   inclusión/exclusión PRISMA **marcando `rejected`** (no borra) con conteo por paso. **Transiciona a
   `FILTERED`.** Comparte `filter_corpus(store_path, *, year_gte, year_lte, language, type_in,
@@ -236,7 +277,10 @@ formatos nuevos** al `--format` existente (`graphml`/`csv`): **NO es un verbo nu
   incompletas se emiten con los campos que haya, no se descartan).
 
 **`--scope [all|accepted|seeds]`** (default `all`; `Choice`): filtra el corpus **antes** de serializar,
-reusando `Corpus.scoped(scope)` (vocab CLI `seeds`→`seeds_only`; §1.2). **Solo aplica a los formatos de
+reusando `Corpus.scoped(scope)` (vocab CLI `seeds`→`seeds_only`; §1.2). **`accepted` EXCLUYE a los
+`rejected`** aunque sean semillas (ADR [0051](decisiones/0051-scope-accepted-excluye-rejected.md), #307):
+un paper rechazado por `curate reject`/`filter` NO sale en `--scope accepted` —coincide con
+`.exclude(curation_status='rejected')` sobre el Arrow. **Solo aplica a los formatos de
 CORPUS (`arrow`/`bibtex`).** Con `graphml`/`csv` **se IGNORA** (esas redes ya vienen scopeadas por `b2g
 build --scope`); si se pasa `--scope` explícito con un formato de red, `export` emite un **`warning`**
 accionable (no error). `--scope` es propio de `export` — es distinto del `build --scope` de §build.
@@ -252,7 +296,9 @@ distintas, NO unificadas:** el consumidor sabe por cuál mira qué familia expor
 **Ambos transicionan a `BUILT` y sellan `networks/.corpus_hash`** (decisión D1). Flags:
 
 - **`--scope [all|accepted|seeds]`** (default `all`): filtra el corpus por curación **antes** de
-  proyectar (`Corpus.scoped`, §1.2). `accepted` = `is_seed` + aceptados; `seeds` = solo semillas. El
+  proyectar (`Corpus.scoped`, §1.2). `accepted` = `is_seed` + aceptados **menos los `rejected`** (ADR
+  [0051](decisiones/0051-scope-accepted-excluye-rejected.md), #307: rechazar una semilla la saca de
+  `accepted`); `seeds` = solo semillas (incluye rechazadas). El
   `.corpus_hash` se sella con el corpus **filtrado**; `clusters.csv`/`decorate` reflejan ese subset.
   Scope con **0 papers** → **exit 0** + `warning` (no error). **No confundir con `NetworkSpec.scope`**
   (§10, por-red sobre `is_seed`). Es la **única** forma: el flag `--corpus-scope` (y su vocab interno
@@ -438,6 +484,17 @@ no aplica, el campo **no aparece** (no se emite `subcode: null`). Es **aditivo**
 ```json
 { "code": "NETWORK_ERROR", "message": "…", "subcode": "RATE_LIMITED" }
 ```
+
+**Mensaje accionable del `RATE_LIMITED` (#306).** Un `429` **no** es un problema de conexión y
+*"reintentá"* es el consejo **contrario** al correcto ante un rate-limit account-wide (recuperación de
+**horas**): un agente que lo sigue al pie de la letra reintenta en loop y quema más cuota. Por eso el
+`message` de un 429 **NO** usa el genérico *"Error de red… Verificá tu conexión… reintentá"*; nombra el
+error como **rate-limit / cuota**, incluye el **`Retry-After`** si el upstream lo declaró, y sugiere
+**esperar el reset** o **reducir el alcance del forrajeo** (`chain --top N`/`--ids`, ver §5 y #309). El
+subcode `RATE_LIMITED` sigue siendo la señal para ramificar sin parsear texto; el mensaje solo deja de
+misdiagnosticar el caso humano. Aplica tanto al 429 traducido por `OpenAlexSource`
+(`sources/openalex.py::_build_rate_limit_message`) como al 429 crudo que llegue al borde CLI
+(`cli/_errors.py::_rate_limit_fallback_message`).
 
 **`data.workspace` universal + warning de walk-up (ADR 0045 #259).** Todos los comandos del ciclo que
 resuelven un workspace ecoan `data["workspace"] = {"root": <str|null>, "source": <str>}` (antes solo lo
@@ -824,14 +881,18 @@ class Corpus:
 
     def scoped(self, scope: str) -> "Corpus":
         """Vista PURA por estado de curación: devuelve un Corpus NUEVO con el subconjunto de filas
-        (no muta el original). Valores: `'all'` = corpus completo; `'accepted'` = `is_seed == True`
-        OR `curation_status == 'accepted'`; `'seeds_only'` = `is_seed == True`. Scope inválido →
+        (no muta el original). Valores: `'all'` = corpus completo; `'accepted'` =
+        `(is_seed == True OR curation_status == 'accepted') AND curation_status != 'rejected'`
+        (ADR 0051, #307: una semilla RECHAZADA queda EXCLUIDA de `accepted` aunque sea semilla —
+        rechazar refleja la curación PRISMA); `'seeds_only'` = `is_seed == True` (**NO** excluye
+        rejected: una semilla rechazada SÍ aparece — scope estructural "qué entró", numerador PRISMA;
+        decisión explícita del ADR 0051, no omisión). Scope inválido →
         `ValueError` accionable. Determinista: dos llamadas con el mismo scope dan corpora con el
         mismo `corpus_hash` (subset estable). `'all'` reusa el backend; los otros materializan el
         filtro en un `InMemoryBackend`. Lo usa `b2g build --scope` (vocab CLI `seeds`→`seeds_only`
         internamente) para sellar el hash del
-        corpus FILTRADO. Issue #56 / #159. **NO confundir con `NetworkSpec.scope`** (§10): aquel es un
-        eje por-red (`full`/`seeds_only`) sobre `is_seed`; `scoped()` filtra el corpus entero por
+        corpus FILTRADO. Issue #56 / #159 / #307. **NO confundir con `NetworkSpec.scope`** (§10): aquel
+        es un eje por-red (`full`/`seeds_only`) sobre `is_seed`; `scoped()` filtra el corpus entero por
         curación antes de proyectar."""
 
     def with_manifest(self, manifest: Manifest) -> "Corpus":
@@ -1429,11 +1490,19 @@ class Forager:
     El scent consume el primitivo de proyectores. Solo el Forager toca la red; el núcleo
     de scent es puro."""
     def __init__(self, source: Source, *, depth: int = 1, max_candidates: int | None = None,
-                 max_citing_per_paper: int = 50) -> None:
+                 max_citing_per_paper: int = 50, origin_ids: set[str] | None = None,
+                 call_budget: "CallBudget | None" = None) -> None:
         """depth=1 por defecto; depth>1 lanza NotImplementedError (futuro v0.3+).
         max_candidates = tope configurable del ranking (None = sin límite).
         max_citing_per_paper = tope de citantes POR SEMILLA en el forward batcheado (default 50;
-        acota el fetch vía fetch_citing_batch; CLI `--max-citing`). AS-BUILT #21 (2026-06-16)."""
+        acota el fetch vía fetch_citing_batch; CLI `--max-citing`). AS-BUILT #21 (2026-06-16).
+        origin_ids (#309, CLI `chain --ids`/`--top`/`--scope`): si NO es None, acota los papers-origen
+        del forrajeo a las filas cuyo `id` o `source_id` está en el set (matchea ambos). None (default)
+        = todas las semillas (comportamiento previo, sin cambios).
+        call_budget (#309, CLI `chain --budget N`): `CallBudget` compartido por referencia con el
+        `source` para topar las llamadas HTTP del forward; al agotarse, el chaining PARA limpio (sin
+        reintentar) y `RankedCandidates.budget_stopped` queda True con lo materializado hasta ese punto.
+        None = sin tope."""
 
     def preview(self, corpus: Corpus, *, direction: Direction = "both") -> "GrowthPreview":
         """'Esta expansión sumaría ~N papers' SIN traerlos. Opera SOLO localmente, SIN red.
@@ -1468,6 +1537,22 @@ class RankedCandidates(BaseModel):
                                        # max_candidates). El backward observa; el forward materializa.
                                        # b2g chain los persiste en `referenced_but_not_fetched` (§4),
                                        # fuera del corpus_hash. Materializar = diferido a #71.
+    budget_used: int = 0               # #309: llamadas HTTP realizadas cuando `chain --budget N` está
+                                       # activo. 0 si no se pasó call_budget al Forager.
+    budget_stopped: bool = False       # #309: True si el chaining se detuvo temprano por agotar el
+                                       # call_budget (parada limpia, sin reintentar) → resultado PARCIAL
+                                       # pero consistente. b2g chain avisa y sugiere re-correr acotado.
+
+class CallBudget:                      # bib2graph.foraging.CallBudget (#309, CLI `chain --budget N`)
+    """Tope mutable de llamadas HTTP a OpenAlex, COMPARTIDO POR REFERENCIA entre Forager y
+    OpenAlexSource (mismo objeto, sin acoplarlos por herencia). Guardarraíl anti-footgun: al llegar al
+    tope, quien consulta `exhausted` DEBE parar limpio, SIN reintentar —ni el retry/backoff ante 429/5xx
+    ni una página más de paginación por cursor. `limit=None` → sin tope (default)."""
+    limit: int | None                  # tope de llamadas (None = sin tope)
+    used: int                          # llamadas realizadas hasta el momento
+    @property
+    def exhausted(self) -> bool: ...    # True si used >= limit (limit no-None)
+    def record_call(self) -> None: ...  # incrementa `used`
 
 # RETIRADO (ADR 0022): `explain_candidate` y el extra `[llm]` se ELIMINAN del producto.
 # El producto no usa IA generativa. El "porqué" de un candidato lo explica la ESTRUCTURA
@@ -1491,6 +1576,12 @@ class RankedCandidates(BaseModel):
   metadata real (vía `fetch_citing_batch_with_works`, §2; cero red extra). Asimetría deliberada.
 - **`preview` y `chain` no mutan** el corpus de entrada (semántica de valor). `fetch_citing` (singular,
   con retry/backoff ante 429/5xx) sigue disponible; el forward lo consume vía la variante batcheada.
+- **Forrajeo acotado y presupuestado (#309):** `origin_ids` (unidad escopada, CLI
+  `chain --ids`/`--top`/`--scope`) y `call_budget` (`CallBudget`, CLI `chain --budget N`) son
+  **aditivos**: sin ellos, el `Forager` se comporta como antes (todas las semillas, sin tope). Al agotar
+  el `call_budget` el chaining **para limpio sin reintentar** y expone lo parcial vía
+  `RankedCandidates.budget_used`/`budget_stopped`. Ver §CLI `chain` para los defaults y la
+  [Discussion #310](https://github.com/complexluise/bib2graph/discussions/310) (flip a default acotado).
 
 ---
 
@@ -1552,7 +1643,8 @@ def apply_filters(corpus: Corpus, criteria: list[FilterCriterion]) -> tuple[Corp
   silencioso (endurece el flujo PRISMA, sin exclusiones perdidas).
 - **Símbolos públicos** (`from bib2graph import ...`): `Forager`, `GrowthPreview`, `RankedCandidates`,
   `Preprocessor`, `FilterCriterion`, `apply_filters`. `apply_filter` (singular) desde
-  `bib2graph.filters`.
+  `bib2graph.filters`. **`CallBudget`** (#309) se exporta desde **`bib2graph.foraging`** (junto a
+  `Forager`/`RankedCandidates`/`GrowthPreview`), no del top-level.
 
 ---
 
