@@ -65,8 +65,13 @@ en `bib2graph.cycle`), `transitions_available`, `curation_available` (`accept`/`
 disponibles, curación transversal), `round` (contador de ronda con `reseed`), conteos por
 `curation_status`, `workspace: {root, source}` (el bloque hoy es **universal** en los comandos del
 ciclo, ADR 0045 #259 — ver §Envelope), `networks_cache_stale: bool` (+ `warnings` accionable
-cuando la cache de `networks/` quedó obsoleta — avisa, NO regenera) y `referenced_not_fetched` (nº de
-IDs que el backward chaining observó sin materializar; §4/§5). Todos campos aditivos, `schema="1"`
+cuando la cache de `networks/` quedó obsoleta — avisa, NO regenera), `referenced_not_fetched` (nº de
+IDs que el backward chaining observó sin materializar; §4/§5) y **`equations`** (lista de las
+ecuaciones registradas en el store, leída de `backend.load_equations()`; QA 0.14.0 #2, ADR 0050 D1):
+cada entrada es `{equation_id, raw_query, engine, created_at}`; **siempre presente** (`[]` si no hay
+ecuaciones, sin romper). En modo humano se imprime la sección **"Ecuaciones registradas (N):"**. Así
+la procedencia deja de ser invisible (antes solo se veía en la metadata del `.arrow` exportado) **sin
+agregar un verbo** (es estado, no una acción — ADR 0037). Todos campos aditivos, `schema="1"`
 intacto. **`validate`** chequea la consistencia del workspace (read-only).
 
 **`init`** (ADR [0029](decisiones/0029-workspace-por-investigacion.md)): scaffold de un workspace.
@@ -242,10 +247,11 @@ build --scope`); si se pasa `--scope` explícito con un formato de red, `export`
 accionable (no error). `--scope` es propio de `export` — es distinto del `build --scope` de §build.
 
 **Envelope `--json`** (aditivo, `schema="1"` intacto): `data = {format, out_dir, files_written,
-warnings, workspace}` **más una clave según la familia** — **`rows_exported`** (nº de filas del corpus)
+workspace}` **más una clave según la familia** — **`rows_exported`** (nº de filas del corpus)
 para `arrow`/`bibtex`, **`networks_exported`** (nº de redes) para `graphml`/`csv`. **Son claves
-distintas, NO unificadas:** el consumidor sabe por cuál mira qué familia exportó. `--out-dir` override
-(default `ws.exports_dir`).
+distintas, NO unificadas:** el consumidor sabe por cuál mira qué familia exportó. Los avisos (p. ej.
+`--scope` ignorado con `graphml`/`csv`, o `equation_hash` omitido) van en el **`warnings` top-level del
+envelope, NO en `data`** (canal único, §Envelope). `--out-dir` override (default `ws.exports_dir`).
 
 `build` tiene **dos modos**: **quick** (sin `--spec`) y **declarativo** (**`build --spec <redes.yaml>`**:
 `load_specs` con clave raíz `networks:` → `Networks.build` por red; helper único `_build_from_spec_file`).
@@ -419,7 +425,17 @@ JSON** con `schema="1"`:
 }
 ```
 
-En error conocido: `ok=false`, `data={}`, `error={"code": <CODE>, "message": <accionable>}`. Los exit
+En error conocido: `ok=false`, `data={}`, `error={"code": <CODE>, "message": <accionable>}`.
+
+**Canal único de `warnings` (ADR 0021 §C, enmienda QA 0.14.0 #3).** Los avisos no fatales van
+**SIEMPRE** en el campo **`warnings` top-level** del envelope y **NUNCA** duplicados dentro de `data`:
+el consumidor mira **un solo lugar**. Aunque un servicio interno (`run_export`/`run_build`) devuelva un
+`data["warnings"]` propio (lo conserva para sus tests), la **superficie CLI lo extrae** (`pop`, no
+`get`) antes de emitir, así el texto sobrevive en un único lugar. **Excepción por diseño:**
+`data["empty_networks"]` de `build` **no** es un warning sino un diagnóstico estructurado por-red
+(`{kind, reason, fix_command}`) que vive en `data`, separado del canal `warnings` (§build).
+
+Los exit
 codes se mapean **por tipo de error** (ADR 0021 §D): `DataError`→2, `ImportError`/`DependencyError`/
 `NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5. `AttributeError` **no** se
 mapea (un bug real no se disfraza de "capacidad faltante"); la capacidad-de-source-faltante se convierte
@@ -901,8 +917,10 @@ class Manifest(BaseModel):
     equations: list[EquationRef] = []            # ecuaciones + query OpenAlex ejecutada + reporte de traducción
                                                   # EquationRef vive en `bib2graph.corpus` (NO en `schemas`).
                                                   # ADR 0050 D1: extendida con engine/params/created_at;
-                                                  # además se PERSISTE en la tabla `equations` del store vivo
-                                                  # (§1.5), no solo se sella en el snapshot.
+                                                  # se PERSISTE en la tabla `equations` del store vivo (§1.5)
+                                                  # y `DuckDBStore.load()` la RECONSTRUYE de vuelta (D1
+                                                  # completo, QA 0.14.0 #1): el snapshot sella la tabla
+                                                  # fielmente, no `[]`.
     chaining: ChainingParams | None = None       # profundidad, topes, dirección
     preprocessors: list[PreprocRef] = []         # normalize + thesaurus aplicados
     filters: list[FilterStep] = []               # criterios incl/excl con conteos (flujo PRISMA)
@@ -1013,6 +1031,12 @@ equivalente en `InMemoryBackend`. Schema de la tabla `equations` (PK `equation_i
   REPLACE` en DuckDB, upsert por posición en InMemory). El `raw_query` que se persiste es la ecuación
   cruda; `params_json` serializa `EquationRef.params`.
 - **El chaining NO crea filas en `equations`** (un citante forrajeado no vino de una ecuación).
+- **Round-trip completo (D1, QA 0.14.0 #1).** `DuckDBStore.load()` **reconstruye `manifest.equations`**
+  desde esta tabla al rehidratar (mismo patrón que `filters`/`enrichers`, ver §4 "Procedencia del
+  Manifest persistida entre cargas"). Por eso el `manifest.json` que sella `snapshot create` **refleja
+  fielmente la tabla `equations`**, no un `[]` vacío: la persistencia y la carga cierran el ciclo, la
+  procedencia sobrevive entre sesiones. (`b2g status` la expone directo de `load_equations()`, sin
+  pasar por el manifest reconstruido; ver §Convenciones CLI · `status`.)
 
 **`EquationRef`** (`bib2graph.corpus`, **NO** `schemas`) es la vista Python de esta fila, reusada en el
 `Manifest` del snapshot (§1.3). ADR 0050 D1 la **extiende** (aditivo, retrocompat):
@@ -1357,6 +1381,13 @@ los **reconstruye** al rehidratar, para que sobrevivan a un ciclo persist/load:
   `load_enricher_refs()` (#141), **mismo patrón** que `filters`: la pasada de enriquecimiento
   (`chain` refs→DOI, `build` co-citación) sella sus `EnricherRef` y `load()` los recompone, así el
   snapshot reporta qué enriquecimiento se aplicó sin re-correrlo.
+- **`manifest.equations`** ⇄ tabla **`equations`** (§1.5) — vía `DuckDBBackend.persist_equation()` /
+  `load_equations()` (QA 0.14.0 #1, ADR 0050 D1), **mismo patrón**: `seed --equation`/`--spec` sella
+  la fila y **`load()` reconstruye `manifest.equations`** al rehidratar. Así el `manifest.json` del
+  snapshot **refleja fielmente la tabla lateral `equations`** (D1 completo): antes era un bug —la
+  tabla se poblaba pero `load()` no la leía de vuelta, y un `snapshot create` posterior sellaba
+  `equations: []` pese a haber ecuaciones registradas, perdiendo la procedencia—. `load_equations()`
+  nunca lanza por tabla ausente (stores pre-D1 devuelven `[]`, retrocompat sin excepciones).
 
 **Extensiones del `DuckDBBackend`, FUERA del Protocol `Store`/`TabularBackend`** (se acceden vía
 `store.backend.…`): son específicas de DuckDB y no parte del contrato genérico:
