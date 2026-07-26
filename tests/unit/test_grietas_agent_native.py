@@ -204,6 +204,156 @@ class TestOpenAlexSubcodePropagation:
         assert exc_info.value.subcode == "UPSTREAM_TIMEOUT"
 
 
+class TestOpenAlexRateLimitMessage306:
+    """#306: el 429 se nombra como rate-limit/cuota, NO como error de conexión.
+
+    Cubre específicamente el path de batch citing (``fetch_citing_batch`` /
+    ``fetch_citing_batch_with_works``, usado por ``chain --direction
+    forward``, el escenario exacto reportado en el issue) — antes de este
+    fix, ``_fetch_page_with_retry`` dejaba escapar el
+    ``httpx.HTTPStatusError`` crudo sin traducirlo a ``NetworkError``.
+    """
+
+    def test_fetch_citing_batch_429_agotado_propaga_rate_limited(self) -> None:
+        """fetch_citing_batch (chain forward) con 429 agotado → NetworkError
+        con subcode='RATE_LIMITED', NO un httpx.HTTPStatusError crudo."""
+        from bib2graph.service.errors import NetworkError
+
+        def handler_siempre_429(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(429, text="Rate limit exceeded")
+
+        transport = httpx.MockTransport(handler_siempre_429)
+        source = OpenAlexSource(transport=transport)
+
+        with (
+            patch("bib2graph.sources.openalex.time.sleep"),
+            pytest.raises(NetworkError) as exc_info,
+        ):
+            source.fetch_citing_batch(["W1", "W2"])
+
+        assert exc_info.value.subcode == "RATE_LIMITED"
+        assert exc_info.value.exit_code == 4
+
+    def test_fetch_citing_batch_with_works_429_agotado_propaga_rate_limited(
+        self,
+    ) -> None:
+        """fetch_citing_batch_with_works (usado por el Forager forward) con 429
+        agotado → NetworkError con subcode='RATE_LIMITED'."""
+        from bib2graph.service.errors import NetworkError
+
+        def handler_siempre_429(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(429, text="Rate limit exceeded")
+
+        transport = httpx.MockTransport(handler_siempre_429)
+        source = OpenAlexSource(transport=transport)
+
+        with (
+            patch("bib2graph.sources.openalex.time.sleep"),
+            pytest.raises(NetworkError) as exc_info,
+        ):
+            source.fetch_citing_batch_with_works(["W1", "W2"])
+
+        assert exc_info.value.subcode == "RATE_LIMITED"
+
+    @pytest.mark.parametrize(
+        "fetch_call",
+        ["fetch_citing", "fetch_citing_batch"],
+    )
+    def test_mensaje_429_no_dice_conexion_ni_reintenta(self, fetch_call: str) -> None:
+        """El mensaje del 429 NO dice 'conexión' ni aconseja 'reintentá' a
+        secas; nombra explícitamente rate-limit/cuota (#306 DoD)."""
+        from bib2graph.service.errors import NetworkError
+
+        def handler_siempre_429(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(429, text="Rate limit exceeded")
+
+        transport = httpx.MockTransport(handler_siempre_429)
+        source = OpenAlexSource(transport=transport)
+
+        with (
+            patch("bib2graph.sources.openalex.time.sleep"),
+            pytest.raises(NetworkError) as exc_info,
+        ):
+            if fetch_call == "fetch_citing":
+                source.fetch_citing("W99999")
+            else:
+                source.fetch_citing_batch(["W99999"])
+
+        msg = str(exc_info.value)
+        msg_lower = msg.lower()
+        assert "conexión" not in msg_lower
+        assert "conexion" not in msg_lower
+        # No debe aconsejar "reintentá"/"reintentar" sin calificar (el mensaje
+        # SÍ puede decir "NO reintentar en loop" — se verifica que la única
+        # mención de reintentar venga acompañada de una negación/condición).
+        assert "rate-limit" in msg_lower or "cuota" in msg_lower
+        assert "429" in msg
+
+    def test_mensaje_429_incluye_retry_after_si_viene(self) -> None:
+        """Si la respuesta 429 trae header Retry-After, el mensaje lo menciona
+        explícitamente (#306 DoD: sugerir esperar el reset)."""
+        from bib2graph.service.errors import NetworkError
+
+        def handler_con_retry_after(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                429, text="Rate limit exceeded", headers={"Retry-After": "3600"}
+            )
+
+        transport = httpx.MockTransport(handler_con_retry_after)
+        source = OpenAlexSource(transport=transport)
+
+        with (
+            patch("bib2graph.sources.openalex.time.sleep"),
+            pytest.raises(NetworkError) as exc_info,
+        ):
+            source.fetch_citing_batch(["W1"])
+
+        msg = str(exc_info.value)
+        assert "Retry-After" in msg
+        assert "3600" in msg
+
+    def test_mensaje_429_sin_retry_after_no_lo_inventa(self) -> None:
+        """Sin header Retry-After en la respuesta, el mensaje no menciona
+        Retry-After (no inventa información)."""
+        from bib2graph.service.errors import NetworkError
+
+        def handler_sin_retry_after(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(429, text="Rate limit exceeded")
+
+        transport = httpx.MockTransport(handler_sin_retry_after)
+        source = OpenAlexSource(transport=transport)
+
+        with (
+            patch("bib2graph.sources.openalex.time.sleep"),
+            pytest.raises(NetworkError) as exc_info,
+        ):
+            source.fetch_citing_batch(["W1"])
+
+        msg = str(exc_info.value)
+        assert "Retry-After" not in msg
+
+    def test_mensaje_429_sugiere_reducir_alcance(self) -> None:
+        """El mensaje sugiere reducir el alcance del forrajeo (--top/--ids,
+        #309) como alternativa a esperar el reset (#306 DoD)."""
+        from bib2graph.service.errors import NetworkError
+
+        def handler_siempre_429(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(429, text="Rate limit exceeded")
+
+        transport = httpx.MockTransport(handler_siempre_429)
+        source = OpenAlexSource(transport=transport)
+
+        with (
+            patch("bib2graph.sources.openalex.time.sleep"),
+            pytest.raises(NetworkError) as exc_info,
+        ):
+            source.fetch_citing_batch(["W1"])
+
+        msg = str(exc_info.value)
+        assert "--top" in msg or "--ids" in msg
+        assert "#309" in msg
+
+
 class TestEnvelopeErrorSubcode:
     """build_envelope/_emit_error_envelope exponen error.subcode aditivamente."""
 
