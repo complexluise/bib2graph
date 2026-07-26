@@ -74,14 +74,49 @@ _RETRY_BACKOFF_BASE: float = 1.0  # segundos; duplica por cada intento
 # Mensaje accionable para 429 (pool anónimo → polite pool).
 # ADR 0012: el email mueve al polite pool (límite más generoso);
 # la api_key mejora aún más (opcional).
+#
+# #306: un 429 es rate-limit/cuota (account-wide, recuperación de horas) —
+# el mensaje NO debe mencionar "conexión" (evita el misdiagnóstico del
+# issue: un agente no debe leer esto como problema de red local) ni decir
+# "reintentá" a secas — eso induce a un agente a reintentar en loop y
+# quemar más cuota.  Se arma con ``_build_rate_limit_message`` para poder
+# incluir el ``Retry-After`` de la respuesta cuando está disponible.
 _MSG_RATE_LIMIT_429 = (
-    "OpenAlex respondió 429 (Too Many Requests): límite de tasa del pool anónimo"
-    " alcanzado. Remedio primario — declarar tu email mueve la petición al polite"
-    " pool, que tiene un límite más generoso. En el CLI: b2g seed --email"
-    " tu@email.com … En código: OpenAlexSource(email='tu@email.com')."
-    " Opcional: una api_key mejora el límite aún más"
-    " (variable de entorno OPENALEX_API_KEY). Ver ADR 0012."
+    "OpenAlex respondió 429 (Too Many Requests): rate-limit / cuota del pool"
+    " anónimo agotada. Remedio primario — declarar tu email mueve la"
+    " petición al polite pool, que tiene un límite más generoso. En el CLI:"
+    " b2g seed --email tu@email.com … En código:"
+    " OpenAlexSource(email='tu@email.com'). Opcional: una api_key mejora el"
+    " límite aún más (variable de entorno OPENALEX_API_KEY). Ver ADR 0012."
+    " Si el límite persiste, esperá el reset de cuota (evitá reintentos en"
+    " loop) o reducí el alcance del forrajeo (--top/--ids acotan cuántos"
+    " papers se piden; ver #309)."
 )
+
+
+def _build_rate_limit_message(retry_after: str | None) -> str:
+    """Arma el mensaje accionable de 429 agregando ``Retry-After`` si vino.
+
+    #306: nombra el error como rate-limit/cuota (nunca "conexión") y NO
+    aconseja reintentar sin más — si el upstream declaró un ``Retry-After``
+    (segundos o fecha HTTP), se lo menciona explícitamente para que el
+    remedio sea "esperá ese tiempo", no "reintentá ya".
+
+    Args:
+        retry_after: Valor crudo del header ``Retry-After`` de la respuesta
+            429, o ``None`` si no vino.
+
+    Returns:
+        El mensaje de ``_MSG_RATE_LIMIT_429``, con una frase adicional sobre
+        el ``Retry-After`` cuando está disponible.
+    """
+    if retry_after:
+        return (
+            f"{_MSG_RATE_LIMIT_429} OpenAlex indicó Retry-After: {retry_after}"
+            " (esperá ese tiempo antes de volver a consultar)."
+        )
+    return _MSG_RATE_LIMIT_429
+
 
 # Mensaje accionable para 504 (ADR 0045 #258): no es reintentable sin cambiar
 # la petición (a diferencia de 429), así que sugiere simplificar la query en
@@ -647,8 +682,9 @@ class OpenAlexSource:
         # Se agotaron los reintentos
         assert last_exc is not None
         if last_exc.response.status_code == 429:
+            retry_after = last_exc.response.headers.get("Retry-After")
             raise NetworkError(
-                _MSG_RATE_LIMIT_429, subcode="RATE_LIMITED"
+                _build_rate_limit_message(retry_after), subcode="RATE_LIMITED"
             ) from last_exc
         if last_exc.response.status_code == 504:
             raise NetworkError(
@@ -908,9 +944,13 @@ class OpenAlexSource:
             Lista de objetos JSON retornados por la API.
 
         Raises:
-            httpx.HTTPStatusError: Si se agotan los reintentos.
+            NetworkError: Si se agotan los reintentos con 429 o 504 (#306:
+                mensaje accionable y ``subcode`` tipado, mismo tratamiento
+                que ``_fetch_all_with_retry``).
+            httpx.HTTPStatusError: Si se agotan los reintentos con otro
+                código retryable.
         """
-        last_exc: Exception | None = None
+        last_exc: httpx.HTTPStatusError | None = None
         for attempt in range(_RETRY_MAX_ATTEMPTS):
             try:
                 with self._client() as client:
@@ -933,6 +973,16 @@ class OpenAlexSource:
                 else:
                     raise
         assert last_exc is not None
+        # #306: mismo tratamiento que _fetch_all_with_retry/_fetch_page_with_retry.
+        if last_exc.response.status_code == 429:
+            retry_after = last_exc.response.headers.get("Retry-After")
+            raise NetworkError(
+                _build_rate_limit_message(retry_after), subcode="RATE_LIMITED"
+            ) from last_exc
+        if last_exc.response.status_code == 504:
+            raise NetworkError(
+                _MSG_UPSTREAM_TIMEOUT_504, subcode="UPSTREAM_TIMEOUT"
+            ) from last_exc
         raise last_exc
 
     def _fetch_citing_pages(
@@ -1143,9 +1193,16 @@ class OpenAlexSource:
             porque re-raise al agotar reintentos).
 
         Raises:
-            httpx.HTTPStatusError: Si se agotan los reintentos.
+            NetworkError: Si se agotan los reintentos con 429 o 504 (#306: mismo
+                tratamiento — mensaje accionable y ``subcode`` tipado — que
+                ``_fetch_all_with_retry``; este método es el camino que usa el
+                batch citing de ``chain --direction forward``, que antes dejaba
+                escapar el ``httpx.HTTPStatusError`` crudo y terminaba
+                reportado como "error de conexión" genérico por el CLI).
+            httpx.HTTPStatusError: Si se agotan los reintentos con otro código
+                retryable (5xx distinto de 504) o el status no es retryable.
         """
-        last_exc: Exception | None = None
+        last_exc: httpx.HTTPStatusError | None = None
         for attempt in range(_RETRY_MAX_ATTEMPTS):
             try:
                 resp = client.get(
@@ -1171,6 +1228,22 @@ class OpenAlexSource:
                 else:
                     raise
         assert last_exc is not None
+        # #306: traducir 429/504 agotados a NetworkError accionable con
+        # subcode tipado, igual que ``_fetch_all_with_retry``.  Antes de este
+        # fix, este método (usado por el batch citing de forward chaining)
+        # dejaba escapar el httpx.HTTPStatusError crudo; el CLI lo capturaba
+        # con el except genérico de red y lo reportaba como "error de
+        # conexión... reintentá", un misdiagnóstico peligroso para un agente
+        # ante un rate-limit account-wide (induce a reintentar en loop).
+        if last_exc.response.status_code == 429:
+            retry_after = last_exc.response.headers.get("Retry-After")
+            raise NetworkError(
+                _build_rate_limit_message(retry_after), subcode="RATE_LIMITED"
+            ) from last_exc
+        if last_exc.response.status_code == 504:
+            raise NetworkError(
+                _MSG_UPSTREAM_TIMEOUT_504, subcode="UPSTREAM_TIMEOUT"
+            ) from last_exc
         raise last_exc
 
     def load(self, path: str) -> Corpus:
