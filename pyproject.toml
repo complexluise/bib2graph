@@ -64,6 +64,7 @@ dependencies = [
     # parser de specs declarativas (NetworkSpec YAML, Hito 9)
     "rapidfuzz>=3,<4",
     # dedup fuzzy determinista (core desde #88; antes extra [dedup])
+    "scipy>=1.17.1",
 ]
 
 [project.optional-dependencies]
