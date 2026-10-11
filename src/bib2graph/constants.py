@@ -173,3 +173,18 @@ LIST_COLUMNS: frozenset[str] = frozenset(
 PAPER_NETWORK_KINDS: frozenset[str] = frozenset(
     {NetworkKind.BIBLIOGRAPHIC_COUPLING, NetworkKind.COCITATION}
 )
+
+
+# Columnas de red tipada que ``exporters/arrow.py::arrow_with_network`` adhiere al
+# Arrow del corpus (ADR 0052 D1). Son proyecciones de un artefacto de build, no
+# contenido bibliográfico: ``compute_corpus_hash`` las excluye para que el mismo
+# corpus exportado con y sin red tenga el mismo ``corpus_hash`` (ADR 0052 §Constraints).
+ARROW_NETWORK_COLUMNS: frozenset[str] = frozenset(
+    {
+        "community_id",
+        "degree_weighted",
+        "intra_community_pagerank",
+        "network_edges",
+        "network_communities",
+    }
+)
