@@ -210,6 +210,10 @@ limpio y actual; el cuerpo de cada hito vive en su archivo:
 - **[04 · Lo que viene (Hitos 7–11 + costuras futuras)](04-lo-que-viene.md)** — dedup fuzzy,
   `Enricher` de co-citación, `NetworkSpec` YAML; viz (Hito 10 diferido a la GUI #34) y Zotero/Neo4j
   (Hito 11 descartado, PO 2026-06-17). **Lo que viene (hacia v1.0).**
+- **[06 · 0.15.0 (Tramo A: D2 de provenance + red tipada en el Arrow + última grieta agent-native)](06-0_15_0.md)**
+  — encuadre del cierre de contratos a v1.0: `source_kind` (ADR 0050 §D2), red tipada en el
+  Arrow del corpus (ADR 0052, secuela de 0050) y errores de Click como envelope en `--json`
+  (#283). Las grietas del ADR 0045 ya están cerradas en 0.12.0.
 - **[05 · GUI local (Hitos G1–G5)](05-gui.md)** — ⛔ **DEPRECADO: GUI retirada de la librería** (ADR
   [0040](../decisiones/0040-retiro-gui-local.md), issue
   [#190](https://github.com/complexluise/bib2graph/issues/190); supersede
