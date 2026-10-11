@@ -287,6 +287,11 @@ transiciona** la FSM. A diferencia de `graphml`/`csv` (que serializan **redes de
     accionable (`"network_type=<kind> not supported in Arrow export; use --format graphml for this
     kind"`). `cocitation` con corpus sin `cited_by_id` poblado →
     `DataError` (exit 2, accionable: "run 'b2g chain forward' / 'b2g enrich' first").
+  - **`--no-network`** (enmienda post-0.15.0 al ADR 0052 D4): exporta el Arrow **sin red** aunque haya
+    un `b2g build` previo — mismo resultado que el modo degradado (sin columnas ni metadata de red,
+    campos D5 en `null`/`0`) pero **sin warning** (es un pedido explícito). Excluyente con
+    `--network-type` explícito (`USAGE_ERROR`, exit 1). Desde Python, el equivalente es serializar
+    `corpus.to_arrow()` sin pasar por `arrow_with_network`.
 - **`--format bibtex`** → escribe **`corpus.bib`** parseable, vía `BibtexExporter`
   (`exporters/bibtex.py`; extra **`[bibtex]`** — import perezoso de `bibtexparser`, falta → exit 3).
   **Defaults del MVP (ADR 0050 D4, congelados):** entry-type **inferido** con **`@article`** default
@@ -559,11 +564,12 @@ decorador `@handle_errors` (que cubre el camino de errores de dominio) nunca los
   `exc.ctx.command.name` para el resto; `""` si no se puede determinar). `stderr` queda vacío.
 - **Modo humano** (sin flag ni env): comportamiento previo intacto — texto a `stderr` + exit 2.
 
-**Limitación documentada de Click.** Cuando el primer token inválido está **antes** de `--json` en
-argv, Click aborta el parseo y nunca alcanza el flag (p. ej. `b2g monitor --json` → Click ve `monitor`,
-lanza `NoSuchCommand`, sale con exit 2 antes de parsear `--json`). El **camino agente-native** es
-entonces `B2G_JSON=1` por entorno, que se inspecciona en `main()` antes de invocar el grupo Click
-(coherente con la enmienda `B2G_JSON` del 2026-06-27, ADR [0043](decisiones/0043-postura-agents-first.md)).
+**`--json` en argv antes del parseo (fix post-0.15.0).** Click aborta en el primer token inválido y
+nunca alcanza el `--json` del subcomando (p. ej. `b2g monitor --json`, `b2g export --json --format
+wrongformat`). Por eso `main()` busca `--json` en el **argv crudo** (hasta el separador `--`) además de
+`B2G_JSON`; ambos caminos dan el mismo envelope. Hasta 0.15.0 solo funcionaba `B2G_JSON=1` (bug B1
+reportado por la validación de Atalaya). `--json` puesto **antes** del verbo (`b2g --json monitor`) lo
+rechaza el grupo raíz: también sale como envelope, con `command="b2g"`.
 
 El interceptor vive en `cli/_click_error_handler.py` (helper puro +
 `emit_click_usage_error_envelope`) y se cablea en `main()`. El envelope tiene la misma forma que
@@ -1289,8 +1295,10 @@ renombra/retipa una columna load-bearing o cambia el dominio. Agregar columnas n
 `b2g build` sobre el corpus scopeado, en el **mismo archivo autoverificable** (sin multi-tabla ni hacks
 de Arrow IPC estándar). El cierre **asociativo** `papers.id ↔ network_edges[].neighbor_id` es exacto por
 construcción. Es **aditivo** sobre §1.6/§1.7: **no toca** los 19 nombres+tipos load-bearing del
-consumidor programático, ni el dominio de `curation_status`, ni el `corpus_hash` (las columnas de red se
-adhieren **después** del hash, en `arrow_with_network`; ADR 0052 D4).
+consumidor programático, ni el dominio de `curation_status`, ni el `corpus_hash`: `compute_corpus_hash` **excluye** las 5 columnas de red
+(`constants.ARROW_NETWORK_COLUMNS`), así que el mismo corpus exportado con y sin red da el mismo
+`corpus_hash` (ADR 0052 §Constraints; corregido post-0.15.0 — en 0.15.0 el hash de la tabla con red
+difería).
 
 #### 5 columnas nuevas en la tabla `papers`
 
