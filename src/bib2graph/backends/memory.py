@@ -44,7 +44,7 @@ from typing import Literal
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from bib2graph.constants import LIST_COLUMNS, Col, CurationStatus
+from bib2graph.constants import ARROW_NETWORK_COLUMNS, LIST_COLUMNS, Col, CurationStatus
 from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent, parse_provenance_migrated
 
 # Re-exportar LIST_COLUMNS con el alias histórico (_LIST_COLS) para que
@@ -73,7 +73,13 @@ def compute_corpus_hash(table: pa.Table) -> str:
     hash es del *qué* (contenido), no del *cuándo* (procedencia).  La
     procedencia sigue persistiendo como log append-only fuera de la identidad.
 
-    Algoritmo: convertir a lista de dicts **sin** la columna ``provenance``,
+    ADR 0052 §Constraints: las columnas de red tipada que adhiere
+    ``arrow_with_network`` (``ARROW_NETWORK_COLUMNS``) también se excluyen —
+    son proyecciones de un artefacto de build, no contenido. Así un
+    consumidor que hashea el ``.arrow`` exportado obtiene el mismo hash con y
+    sin red.
+
+    Algoritmo: convertir a lista de dicts **sin** ``provenance`` ni red,
     ordenar por ``id``, dentro de cada fila ordenar las listas de strings,
     serializar con JSON determinista y aplicar SHA-256.
 
@@ -89,8 +95,8 @@ def compute_corpus_hash(table: pa.Table) -> str:
     for row in rows:
         norm_row: dict[str, object] = {}
         for k, v in row.items():
-            if k == Col.PROVENANCE:
-                # R2: excluir provenance del hash (es auditoría, no identidad)
+            if k == Col.PROVENANCE or k in ARROW_NETWORK_COLUMNS:
+                # R2: provenance es auditoría; la red es proyección (ADR 0052)
                 continue
             if isinstance(v, list):
                 norm_row[k] = sorted(str(x) for x in v if x is not None)

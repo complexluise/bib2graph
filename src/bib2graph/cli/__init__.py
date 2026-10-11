@@ -155,6 +155,30 @@ b2g.add_command(skill_grp)
 b2g.add_command(schema_cmd)
 
 
+def _argv_requests_json(argv: list[str]) -> bool:
+    """Detecta ``--json`` en el argv crudo, antes de que Click lo parsee.
+
+    Los errores de parseo de Click (verbo inexistente, opción inexistente,
+    valor inválido de un ``Choice``) abortan **antes** de que el ``--json``
+    del subcomando llegue a parsearse, así que el flag no se puede leer del
+    contexto de Click. Lo buscamos en los tokens crudos (best-effort, hasta
+    el separador ``--``) para que ``b2g <verbo-malo> --json`` también reciba
+    el envelope (Nota 05 de Atalaya, B1 post-0.15.0).
+
+    Args:
+        argv: Argumentos de la línea de comandos sin el nombre del programa.
+
+    Returns:
+        True si ``--json`` aparece como token antes de ``--``.
+    """
+    for token in argv:
+        if token == "--":
+            return False
+        if token == "--json":
+            return True
+    return False
+
+
 def main() -> int:
     """Entry point del CLI agente-native b2g.
 
@@ -171,7 +195,8 @@ def main() -> int:
     ``NoSuchOption``, ``BadParameter``) **escapan** al cuerpo del comando
     y no pasan por ``@handle_errors``. Antes salían como texto plano a
     stderr; ahora, si el modo JSON está activo (``--json`` o env
-    ``B2G_JSON``), se re-canalizan como envelope ``schema="1"`` con
+    ``B2G_JSON``; el ``--json`` se detecta en el argv crudo porque Click
+    aborta antes de parsearlo), se re-canalizan como envelope ``schema="1"`` con
     ``error.code='USAGE_ERROR'`` para preservar el contrato de stdout
     puro / agente-native. En modo humano el comportamiento previo
     (texto a stderr + exit 2) queda intacto.
@@ -181,7 +206,7 @@ def main() -> int:
         2 para errores de parseo de Click, según el ADR 0021 §D).
     """
     _force_utf8()
-    json_active = _resolve_json_mode(False)
+    json_active = _resolve_json_mode(_argv_requests_json(sys.argv[1:]))
     try:
         b2g(standalone_mode=False)
         return 0
