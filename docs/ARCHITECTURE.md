@@ -327,16 +327,18 @@ Brocke) y reproducir**; es una **foto derivable** de una biblioteca que sigue vi
 
 La CLI es **superficie primaria**: cada subcomando con **doble salida** (humana + `--json`
 estable/versionado, también activable con `B2G_JSON=1`), **exit codes** claros (`0` éxito · `1` uso ·
-`2` datos · `3` dependencia faltante · `4` red no disponible · `5` store/snapshot corrupto),
+`2` datos (también errores de parseo de Click tras la enmienda 2026-10-11 #283, re-canalizados como
+envelope en modo JSON) · `3` dependencia faltante · `4` red no disponible · `5` store/snapshot corrupto),
 **errores accionables**, `--help` rico y **eficiencia de tokens**. **Sin estado entre invocaciones**:
 el estado vive en el `library.duckdb` del workspace, no en la sesión.
 
 El CLI es un **paquete `bib2graph.cli/`** de **3 capas**: Click (`cli/commands/<cmd>.py`: parsea flags
 y delega), funciones núcleo (`run_<cmd>(...)`: testeables sin Click) y envelope/errores
 (`cli/_envelope.py`, `cli/_errors.py`: el decorador `@handle_errors` mapea errores a exit codes por
-tipo de excepción). El contrato (envelope, jerarquía `B2GError`, mapeo error→código) vive en la **capa
-de servicios neutral** `src/bib2graph/service/` (agnóstica de transporte); el CLI es un adaptador
-delgado sobre ella.
+tipo de excepción; `cli/_click_error_handler.py` re-canaliza al envelope los errores de parseo de
+Click que escapan al cuerpo del subcomando, en modo JSON). El contrato (envelope, jerarquía
+`B2GError`, mapeo error→código) vive en la **capa de servicios neutral** `src/bib2graph/service/`
+(agnóstica de transporte); el CLI es un adaptador delgado sobre ella.
 
 **Superficie 0.10.0 — 10 verbos del ciclo + 3 grupos noun-verb + `skill`** (ADR
 [0037](decisiones/0037-superficie-cli-10-verbos-ciclo.md)/[0038](decisiones/0038-destino-verbos-huerfanos-0037.md)/[0039](decisiones/0039-skill-comando-meta-distribucion.md)).
@@ -367,8 +369,10 @@ sin pulir. Contrato vivo de la superficie en [`API.md`](API.md) §Convenciones C
 
 ```
 core         pyarrow, pydantic, networkx, click, tqdm, pyyaml,
-             duckdb, rapidfuzz, <cliente OpenAlex>      (siempre; biblioteca viva + backbone +
-                                                         dedup fuzzy determinista en ingesta)
+             duckdb, rapidfuzz, scipy, <cliente OpenAlex>      (siempre; biblioteca viva + backbone +
+                                                                dedup fuzzy determinista en ingesta +
+                                                                PageRank intra-comunidad de la red
+                                                                tipada del Arrow, ADR 0052 D3)
 [bibtex]     bibtexparser                              ─┐ siembra desde .bib (puerta primaria,
                                                         │ import perezoso)
 [zotero]     pyzotero                                   │
