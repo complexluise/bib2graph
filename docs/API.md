@@ -34,7 +34,9 @@
 El CLI `b2g` (paquete `bib2graph.cli`, **único** entry point `b2g = "bib2graph.cli:main"`) cumple el
 contrato del ADR [0021](decisiones/0021-cli-agente-native-contrato.md). Cada subcomando lleva `--json`
 (envelope estable/versionado, también activable con **`B2G_JSON=1`**, ver §Envelope JSON) y exit codes
-(`0` éxito · `1` uso · `2` datos · `3` dependencia · `4` red · `5` store/snapshot corrupto o bloqueado).
+(`0` éxito · `1` uso (B2GError `UsageError`) · `2` datos (`DataError`; también errores de parseo de
+Click tras la enmienda 2026-10-11 #283, re-canalizados como envelope en modo JSON) · `3` dependencia ·
+`4` red · `5` store/snapshot corrupto o bloqueado).
 **Sin estado entre invocaciones:** el estado vive en el `library.duckdb` del **workspace** (opción global
 **opcional** `--workspace`; `--store` fue eliminada en #75).
 
@@ -261,16 +263,30 @@ artefactos (`ws.networks_dir`) y los serializa (sin transición). **`export --ou
 opcional (default `<workspace>/exports/`, = `ws.exports_dir`).
 
 **`export --format arrow|bibtex` — serializa el CORPUS** (ADR
-[0050](decisiones/0050-contrato-export-corpus-arrow-bibtex-ecuacion.md) D4, #293). `export` gana **dos
-formatos nuevos** al `--format` existente (`graphml`/`csv`): **NO es un verbo nuevo** (respeta la poda de
-10 verbos; `export`/`snapshot` = un verbo) y **no transiciona** la FSM. A diferencia de `graphml`/`csv`
-(que serializan **redes de build** releyendo `networks/`), estos serializan el **corpus** del store vivo:
+[0050](decisiones/0050-contrato-export-corpus-arrow-bibtex-ecuacion.md) D4, #293, **extendido** por ADR
+[0052](decisiones/0052-red-tipada-en-arrow-corpus.md) #321 para embeber la red tipada cuando hay
+`b2g build` previo). `export` gana **dos formatos nuevos** al `--format` existente (`graphml`/`csv`):
+**NO es un verbo nuevo** (respeta la poda de 10 verbos; `export`/`snapshot` = un verbo) y **no
+transiciona** la FSM. A diferencia de `graphml`/`csv` (que serializan **redes de build** releyendo
+`networks/`), estos serializan el **corpus** del store vivo:
 
 - **`--format arrow`** → escribe **`corpus.arrow`** = **Feather / Arrow IPC** (**no** parquet), vía
-  `ArrowExporter` (`exporters/arrow.py`), que solo serializa `Corpus.scoped(scope).to_arrow()` **tal
-  cual** (no toca schema ni metadata). La metadata de ecuación + `equation_hash` (§1.6) **viaja dentro**
-  del Feather → **archivo autoverificable** que el consumidor programático sube y valida. Es un artefacto **distinto de
-  `snapshot create`** (parquet + `manifest.json`, reproducibilidad interna): no se solapan.
+  `ArrowExporter` (`exporters/arrow.py`). Si hay `b2g build` previo del kind pedido, la tabla se
+  extiende con la **red tipada** (columnas struct anidadas + metadata `network_type`/…; ADR 0052 D1) —
+  ver §1.8 *Red tipada en el Arrow del corpus*. Si no, la tabla se exporta sin columnas de red (modo
+  degradado honesto, ADR 0052 D4). La metadata de ecuación + `equation_hash` (§1.6) **viaja dentro**
+  del Feather → **archivo autoverificable** que el consumidor programático sube y valida. Es un
+  artefacto **distinto de `snapshot create`** (parquet + `manifest.json`, reproducibilidad interna): no
+  se solapan.
+  - **`--network-type <kind>`** (default `bibliographic_coupling`): selecciona **qué red tipada** se
+    embebe (reusa el `NetworkKind` StrEnum de `constants.py`, fuente única, ADR [0023](decisiones/0023-capa-constants-modelos-schema.md);
+    ADR 0052 D2). **Solo aplica a `--format arrow`** (no a `bibtex`/`graphml`/`csv`). **Una red por
+    Arrow** (multi-red en un mismo Arrow queda diferida a 0.16.0+). Kinds no-papers
+    (`author_collab`/`institution_collab`/`keyword_cooccurrence`): los nodos no son papers, no se pueden
+    anclar en el struct anidado → la tabla sale **sin columnas de red** y se emite un `warning`
+    accionable (`"network_type=<kind> not supported in Arrow export; use --format graphml for this
+    kind"`). `cocitation` con corpus sin `cited_by_id` poblado →
+    `DataError` (exit 2, accionable: "run 'b2g chain forward' / 'b2g enrich' first").
 - **`--format bibtex`** → escribe **`corpus.bib`** parseable, vía `BibtexExporter`
   (`exporters/bibtex.py`; extra **`[bibtex]`** — import perezoso de `bibtexparser`, falta → exit 3).
   **Defaults del MVP (ADR 0050 D4, congelados):** entry-type **inferido** con **`@article`** default
@@ -293,9 +309,13 @@ accionable (no error). `--scope` es propio de `export` — es distinto del `buil
 **Envelope `--json`** (aditivo, `schema="1"` intacto): `data = {format, out_dir, files_written,
 workspace}` **más una clave según la familia** — **`rows_exported`** (nº de filas del corpus)
 para `arrow`/`bibtex`, **`networks_exported`** (nº de redes) para `graphml`/`csv`. **Son claves
-distintas, NO unificadas:** el consumidor sabe por cuál mira qué familia exportó. Los avisos (p. ej.
-`--scope` ignorado con `graphml`/`csv`, o `equation_hash` omitido) van en el **`warnings` top-level del
-envelope, NO en `data`** (canal único, §Envelope). `--out-dir` override (default `ws.exports_dir`).
+distintas, NO unificadas:** el consumidor sabe por cuál mira qué familia exportó. **Para `--format
+arrow` se suman 7 campos aditivos del bloque de red (ADR 0052 D5)** — `network_type`,
+`network_nodes`, `network_edges`, `network_communities`, `network_modularity`, `network_type_algo`,
+`network_resolution` — todos `null`/`0` cuando no hay red embebida (modo degradado o kind no-paper);
+ver §1.8. Los avisos (p. ej. `--scope` ignorado con `graphml`/`csv`, `equation_hash` omitido, modo
+degradado, kind no-paper) van en el **`warnings` top-level del envelope, NO en `data`** (canal único,
+§Envelope). `--out-dir` override (default `ws.exports_dir`).
 
 `build` tiene **dos modos**: **quick** (sin `--spec`) y **declarativo** (**`build --spec <redes.yaml>`**:
 `load_specs` con clave raíz `networks:` → `Networks.build` por red; helper único `_build_from_spec_file`).
@@ -528,10 +548,38 @@ workspace resuelto por walk-up del cwd; usá --workspace o B2G_WORKSPACE para fi
 Los comandos meta que corren **sin** workspace (`init`, `skill`, `schema`) **no** ecoan `data.workspace`
 ni emiten este warning.
 
-**Borde: el error de uso sale SIN envelope.** Ante una opción requerida faltante, una opción desconocida
-(p. ej. `--store`) o ningún workspace resoluble, Click aborta el parseo **antes** de entrar al comando:
-mensaje de uso en **stderr** + exit 1, **sin** envelope. El envelope solo cubre errores **dentro** de la
-ejecución del comando.
+**Borde: el error de uso de Click se re-canaliza al envelope en modo JSON (enmienda 2026-10-11, #283).**
+Ante una opción requerida faltante, una opción desconocida (p. ej. `--store`) o un comando inexistente
+(`NoSuchCommand`), Click aborta el parseo **antes** de entrar al cuerpo del subcomando, así que el
+decorador `@handle_errors` (que cubre el camino de errores de dominio) nunca los ve:
+
+- **Modo JSON** (`--json` flag local **o** env `B2G_JSON` truthy): stdout recibe **una línea** envelope
+  con `schema="1"`, `ok=false`, `error.code='USAGE_ERROR'`, `error.message=<click message>`,
+  `exit_code=2`, y `command` best-effort (parseado del mensaje para `NoSuchCommand`, de
+  `exc.ctx.command.name` para el resto; `""` si no se puede determinar). `stderr` queda vacío.
+- **Modo humano** (sin flag ni env): comportamiento previo intacto — texto a `stderr` + exit 2.
+
+**Limitación documentada de Click.** Cuando el primer token inválido está **antes** de `--json` en
+argv, Click aborta el parseo y nunca alcanza el flag (p. ej. `b2g monitor --json` → Click ve `monitor`,
+lanza `NoSuchCommand`, sale con exit 2 antes de parsear `--json`). El **camino agente-native** es
+entonces `B2G_JSON=1` por entorno, que se inspecciona en `main()` antes de invocar el grupo Click
+(coherente con la enmienda `B2G_JSON` del 2026-06-27, ADR [0043](decisiones/0043-postura-agents-first.md)).
+
+El interceptor vive en `cli/_click_error_handler.py` (helper puro +
+`emit_click_usage_error_envelope`) y se cablea en `main()`. El envelope tiene la misma forma que
+cualquier error:
+
+```json
+{
+  "schema": "1",
+  "ok": false,
+  "command": "monitor",
+  "exit_code": 2,
+  "data": {},
+  "warnings": [],
+  "error": {"code": "USAGE_ERROR", "message": "No such command 'monitor'."}
+}
+```
 
 **stdout puro en modo JSON (ENFORCED, #151).** En modo JSON (por `--json` o `B2G_JSON`) stdout emite
 **exactamente una línea** (el envelope), también en el camino de error (`ok=false` → envelope en stdout).
@@ -821,7 +869,7 @@ cambia el contenedor, no el núcleo de análisis**.
 | `research_areas` | `list[string]` | — | atributos, no entidades |
 | `is_seed` | `bool` | no | `True` si entró por la ecuación/semilla; `False` si lo trajo el chaining |
 | `curation_status` | `string` | no | `candidate` / `accepted` / `rejected` (biblioteca viva) |
-| `provenance` | `string` | sí | JSON: **lista de eventos** (log append-only). Cada evento `{action, equation_id, chaining_hop, source, fetched_at, decided_by, decided_at}`. Ver nota abajo (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md)) |
+| `provenance` | `string` | sí | JSON: **lista de eventos** (log append-only). Cada evento `{action, equation_id, chaining_hop, source, fetched_at, decided_by, decided_at, source_kind}`. Ver nota abajo (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md) D4, [0050](decisiones/0050-contrato-export-corpus-arrow-bibtex-ecuacion.md) D2) |
 | `authors_raw` / `authors_id` | `list[string]` | — | nombres crudos / ids canónicos (ORCID si hay) |
 | `authors_affiliations` | `list[string]` | — | **per-autor** (de OpenAlex `authorships`); habilita geografía/asortatividad |
 | `keywords_raw` / `keywords_id` | `list[string]` | — | crudos / canónicos (post-thesaurus) |
@@ -852,12 +900,29 @@ evento tiene la forma:
   "source": "string | null",
   "fetched_at": "ISO8601 | null",
   "decided_by": "string | null",
-  "decided_at": "ISO8601 | null"
+  "decided_at": "ISO8601 | null",
+  "source_kind": "seed_equation | chaining_forward | chaining_backward | null"
 }
 ```
 
 `accept()`/`reject()` **agregan** un evento (`action='accepted'`/`'rejected'`, con `decided_by` y
 `decided_at`) sin borrar los previos. `None`/cadena vacía equivalen a "sin eventos".
+
+**`source_kind` (ADR [0050](decisiones/0050-contrato-export-corpus-arrow-bibtex-ecuacion.md) D2, 0.15.0)
+desambigua el origen semántico del evento** sin sobrecargar `equation_id`:
+
+- `"seed_equation"` — el paper entró por una ecuación de búsqueda (`equation_id="eq-…"` FK a la tabla
+  `equations`, §1.5; `chaining_hop=null`).
+- `"chaining_forward"` — citante traído por forward chaining (`equation_id=null`; `chaining_hop=1+`).
+- `"chaining_backward"` — referencia forrajeada por backward chaining (`equation_id=null`; `chaining_hop=1+`).
+- `null` — eventos que no aplican (`load` desde BibTeX, `fetched_by_id`, curación `accepted`/`rejected`).
+
+`chaining_hop` **no se renombra** (constraint del consumidor programático, §1.7). **`equation_id` deja de
+contener el prefijo `chaining:`** en escritura nueva: el campo pasa a ser FK pura a `equations.equation_id`
+o `null`. Corpus viejos con `equation_id="chaining:…"` se migran **on-read** vía
+`parse_provenance_migrated` (`bib2graph.schemas`, #320): el prefijo se traduce a `source_kind` y se
+confirma `chaining_hop`; el `equation_id` queda `null` en la vista migrada. La serialización que sale al
+parquet/Feather sigue siendo el JSON canónico del evento (Pydantic v2, orden determinista).
 
 **`id` estable y determinista** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md), D1;
 precedencia invertida por ADR [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md), D1'):
@@ -1088,12 +1153,16 @@ equivalente en `InMemoryBackend`. Schema de la tabla `equations` (PK `equation_i
 - **`provenance.equation_id` es una FK / denormalización** a `equations.equation_id`. **La tabla
   `equations` es la fuente de verdad; el `equation_id` string en `provenance` es cache/denormalización.**
   Retrocompat total: los consumidores que solo leen `provenance.equation_id` **no rompen** (el string
-  sigue ahí, incluidos los `chaining:*` — su desambiguación con `source_kind` es 0.15.0, ver abajo).
+  sigue ahí). En escritura nueva **ya no contiene el prefijo `chaining:`** — el overload se disuelve vía
+  `source_kind` (ADR [0050](decisiones/0050-contrato-export-corpus-arrow-bibtex-ecuacion.md) D2, §1.1
+  `ProvenanceEvent`). Corpus viejos con `chaining:*` se migran **on-read**
+  (`parse_provenance_migrated`, §1.1) — la escritura nueva va limpia.
 - **Se persiste al sembrar.** `b2g seed --equation`/`--spec` escribe una fila en `equations` en la
   biblioteca viva (`store.backend.persist_equation(...)`, idempotente por `equation_id` PK: `INSERT OR
   REPLACE` en DuckDB, upsert por posición en InMemory). El `raw_query` que se persiste es la ecuación
   cruda; `params_json` serializa `EquationRef.params`.
-- **El chaining NO crea filas en `equations`** (un citante forrajeado no vino de una ecuación).
+- **El chaining NO crea filas en `equations`** (un citante forrajeado no vino de una ecuación; queda
+  con `equation_id=null` + `source_kind="chaining_forward"`/`"chaining_backward"`).
 - **Round-trip completo (D1, QA 0.14.0 #1).** `DuckDBStore.load()` **reconstruye `manifest.equations`**
   desde esta tabla al rehidratar (mismo patrón que `filters`/`enrichers`, ver §4 "Procedencia del
   Manifest persistida entre cargas"). Por eso el `manifest.json` que sella `snapshot create` **refleja
@@ -1133,10 +1202,12 @@ def load_equations(self) -> list[dict[str, object]]: ...
     # en orden de inserción. Copia defensiva.
 ```
 
-**D2 (`source_kind`/`hop`) NO está en 0.14.0.** ADR 0050 **difiere D2 a 0.15.0** (diseño congelado en
-el ADR, implementación después): el `equation_id` string sigue **tal cual** (incluidos los `chaining:*`),
-`provenance` no gana el campo `source_kind`, `chaining_hop` no se toca, y **no hay migración ni parser de
-compat** en 0.14.0. Cuando D2 aterrice, se documentará el evento `provenance` con `source_kind`.
+**D2 (`source_kind`) implementado en 0.15.0 (#320).** El `ProvenanceEvent` ya lleva `source_kind`
+(§1.1) aditivo al lado de `chaining_hop`, que **no se toca** (constraint del consumidor programático,
+§1.7). Escritura nueva: `equation_id=null` + `source_kind="chaining_forward"`/`"chaining_backward"`
+para citantes; `equation_id="eq-…"` + `source_kind="seed_equation"` para semillas. **Corpus pre-D2 con
+`equation_id="chaining:…"` se migran on-read** vía `parse_provenance_migrated` (sin reescribir stores;
+el parser se mantiene en runtime, no es breaking). `corpus_hash` intacto (R2 excluye `provenance`).
 
 ### 1.6 Metadata del schema Arrow — `equation_hash` (ADR 0050 D3, v1) — contrato con el consumidor programático
 
@@ -1211,6 +1282,126 @@ Esto lo blinda el **test guardarraíl `tests/unit/test_arrow_schema_contract.py`
 **copia congelada** de los 19 nombres+tipos + el dominio de `curation_status`, que falla si alguien
 renombra/retipa una columna load-bearing o cambia el dominio. Agregar columnas nuevas lo deja pasar
 (verificado). Referencia normativa: **ADR 0050 §Constraints del consumidor programático**.
+
+### 1.8 Red tipada en el Arrow del corpus (ADR 0052, v1, #321)
+
+`b2g export --format arrow` extiende el contrato del Feather con la **red tipada** del último
+`b2g build` sobre el corpus scopeado, en el **mismo archivo autoverificable** (sin multi-tabla ni hacks
+de Arrow IPC estándar). El cierre **asociativo** `papers.id ↔ network_edges[].neighbor_id` es exacto por
+construcción. Es **aditivo** sobre §1.6/§1.7: **no toca** los 19 nombres+tipos load-bearing del
+consumidor programático, ni el dominio de `curation_status`, ni el `corpus_hash` (las columnas de red se
+adhieren **después** del hash, en `arrow_with_network`; ADR 0052 D4).
+
+#### 5 columnas nuevas en la tabla `papers`
+
+Pobladas **si y solo si** hay `NetworkArtifact` disponible del `b2g build` para el `--network-type`
+pedido. **Ausentes** (no `null`/no vacías — el Arrow no las trae; el schema no las declara) si el
+corpus no tiene red computada (modo degradado, abajo).
+
+| Columna | Tipo Arrow | Nullable | Semántica |
+|---|---|---|---|
+| `community_id` | `int64` | **no** | id de la comunidad del paper en la red. **Negativo (`-1`) = outlier/no asignado** (paper sin aristas o sin match en el grafo). |
+| `degree_weighted` | `int64` | **no** | suma de los pesos de las aristas del paper. Aislados = `0`. |
+| `intra_community_pagerank` | `float64` | **no** | PageRank del paper **dentro del subgrafo de su comunidad**, ponderado por `weight` (ADR 0052 D3). Robusto al tamaño: una comunidad de 5 nodos y una de 500 dan PageRanks comparables. **0.0** para papers sin match en el grafo. |
+| `network_edges` | `list<struct<neighbor_id: string, weight: int64>>` | **no** | aristas **salientes** del paper. `neighbor_id` = `Col.ID` canónico del vecino (`doi:…` / `src:…` / `tt:…` — la misma regla de identidad del corpus, **NO** `source_id` crudo). `weight` = peso de la arista. **Lista vacía** si el nodo está aislado. |
+| `network_communities` | `list<struct<community_id: int64, size: int64, modularity: float64>>` | **no** | partición **global** de la red, **idéntica para todos los papers** del Arrow (no es por-nodo). Lista de un solo elemento si la partición tiene 1 comunidad; vacía si `detect_communities` no corrió. `modularity` es la de Newman **de la partición entera** (misma por entrada, por consistencia de tipo). |
+
+**Cruce estable:** el `neighbor_id` de `network_edges` es el `Col.ID` (`doi:…` cuando hay DOI,
+`source_id:…` cuando no, `tt:…` cuando tampoco — la misma regla que el resto del corpus). El
+consumidor joinea con `papers.id` por igualdad exacta de string. **No** se exportan aristas con
+`source_id` crudo: el `source_id` ya está como columna de `papers` (§1.7, constraint duro del
+consumidor programático). Esta es la **decisión más contraintuitiva** del ADR 0052 pero la única que
+mantiene la coherencia con la identidad DOI-ancla del corpus (ADR [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)).
+
+#### 4 claves nuevas en la metadata del schema Arrow (aditivas sobre §1.6)
+
+`arrow_with_network` extiende la metadata con (solo si hay `NetworkArtifact`):
+
+| Clave | Valor | Cuándo |
+|---|---|---|
+| `network_type` | `"bibliographic_coupling"` \| `"cocitation"` | Una red por Arrow. **Ausente** en modo degradado. |
+| `network_type_algo` | `"louvain"` \| `"label_prop"` \| `"greedy_modularity"` | Solo presente si `network_type` está presente. Refleja el `clustering` del `NetworkSpec` del `b2g build` que produjo la red. |
+| `network_resolution` | float como string | Solo presente si `network_type` está presente. Refleja la `resolution` del `NetworkSpec`. |
+| `network_scope` | `"full"` \| `"seeds_only"` | Solo presente si `network_type` está presente. Refleja el `scope` del `NetworkSpec`. |
+
+Conviven con `equation_hash` / `equation_hash_algo` / `equation_expression` / `equation_id` de §1.6.
+La metadata es **inmutable** una vez escrita; el consumidor la lee y, si `network_type` está ausente,
+sabe que está en **modo degradado** (abajo).
+
+#### Una red por Arrow, configurable (`b2g export --network-type`, ADR 0052 D2)
+
+- **Default:** `bibliographic_coupling` (la más robusta en one-shot, la primera del `Networks.quick`).
+- **Override:** nuevo flag **`--network-type`** que reusa el `NetworkKind` StrEnum existente en
+  `bib2graph.constants` (fuente única, ADR [0023](decisiones/0023-capa-constants-modelos-schema.md)) — no se introduce literal nuevo.
+- **Kinds no-papers** (`author_collab` / `institution_collab` / `keyword_cooccurrence`): los nodos de
+  esas redes **no son papers**; el struct anidado `network_edges`/`network_communities` no aplica.
+  `arrow_with_network` rechaza esos kinds con `ValueError` y la CLI los cubre con un **`warning`**
+  accionable y exporta igual la tabla pelada (`"network_type=<kind> not supported in Arrow export;
+  use --format graphml for this kind"`). Para esos kinds, usar `--format graphml`.
+- **`PAPER_NETWORK_KINDS`** (`bib2graph.constants`, ADR 0023) es la fuente única que decide qué kinds
+  se pueden embeber: `frozenset({NetworkKind.BIBLIOGRAPHIC_COUPLING, NetworkKind.COCITATION})`.
+- **`cocitation` requiere `cited_by_id` poblado** (ADR 0052 D2). Si se pide `--network-type cocitation`
+  pero ningún paper del corpus tiene `cited_by_id` no-vacío, `b2g export` emite **`DataError` (exit 2)**
+  accionable ("run 'b2g chain forward' / 'b2g enrich' first") — no exporta un Arrow con red vacía.
+- **Multi-red en un mismo Arrow** queda **diferida a 0.16.0+** (el struct puede explotar de tamaño si
+  hay 5 redes con miles de aristas cada una; se decide bajo demanda).
+
+#### Modo degradado honesto (ADR 0052 D4)
+
+`b2g export --format arrow` sobre un corpus sin `b2g build` previo (o build que falló, o restaurado
+de un snapshot anterior al build): el Arrow se exporta **igual**, pero las **columnas de red están
+ausentes** (no `null`/no vacías — el Arrow no las trae, el schema no las declara), `network_type`
+**ausente** en metadata. El envelope `--json` lleva un `warning` top-level:
+
+```json
+{
+  "warnings": [
+    "no network computed; run 'b2g build' first to attach a typed network to the export"
+  ]
+}
+```
+
+**Exit code = `0`** (export exitoso, modo degradado documentado). El consumidor lee la **ausencia de
+`network_type` en la metadata del schema** como "esto es un corpus pelado" y obra en consecuencia.
+
+Por qué no exportamos structs vacíos con `null`/`[]`: ocuparía espacio y mentiría sobre la presencia
+de una red que no existe. La forma del Arrow cambia con y sin red; el consumidor **debe** validar la
+presencia/ausencia de las columnas de red (es la disciplina que el constraint "rompen-en-silencio" del
+§1.7 ya impone).
+
+#### Envelope `--json` aditivo para `export --format arrow` (ADR 0052 D5)
+
+`schema="1"` intacto. Se agregan al dict `data` los siguientes 7 campos **siempre** presentes en
+`--format arrow` (los otros formatos de `export` no los llevan), todos `null`/`0` cuando no hay red
+embebida:
+
+| Campo | Tipo | Semántica |
+|---|---|---|
+| `network_type` | `string` \| `null` | Refleja la metadata del Arrow. `null` en modo degradado o kind no-paper. |
+| `network_nodes` | `int` | Nº de nodos en la red (papers con al menos una arista). `0` en modo degradado. |
+| `network_edges` | `int` | Nº de aristas en la red. `0` en modo degradado. |
+| `network_communities` | `int` | Nº de comunidades detectadas. `0` en modo degradado. |
+| `network_modularity` | `float` \| `null` | Modularidad de Newman de la partición (`nx.community.modularity`). `null` en modo degradado. |
+| `network_type_algo` | `string` \| `null` | `"louvain"` \| `"label_prop"` \| `"greedy_modularity"`. `null` en modo degradado. |
+| `network_resolution` | `float` \| `null` | Resolución del `NetworkSpec`. `null` en modo degradado. |
+
+Son **informativos** (el consumidor puede sacarlos del Arrow leyendo la metadata y las columnas, pero
+tenerlos en el envelope le evita parsear el schema). El bloque `maturity` existente se mantiene intacto
+(§Envelope, #160).
+
+#### Función núcleo y dependencias
+
+- `networks/intra_community_pagerank.py::intra_community_pagerank(graph, communities, *, weight="weight")
+  -> dict[node, float]` — función pura (núcleo; sin I/O, sin red, sin duckdb). Computa PageRank
+  restringido al subgrafo de cada comunidad. Costo total O(|V| + |E|) en subgrafos disjuntos. Para
+  comunidades de 1 nodo aislado, PageRank = `1.0` por convención de `nx.pagerank`.
+- `exporters/arrow.py::arrow_with_network(table, artifact) -> pa.Table` — función pura: si
+  `artifact is None`, devuelve `table` intacta (modo degradado); si no, exige `kind ∈ PAPER_NETWORK_KINDS`,
+  adhiere las 5 columnas (con `nullable=False` enforced vía cast del schema) y extiende la metadata
+  con las 4 claves de red. No toca I/O, no muta `table`, no afecta `corpus_hash`.
+- **Dependencia nueva:** `scipy>=1.17.1` al núcleo (`[project.dependencies]`, `pyproject.toml`).
+  `nx.pagerank` lo requiere. **No** es opt-in ni `[extra]`: vive en el núcleo porque la red tipada es
+  núcleo puro.
 
 ---
 
