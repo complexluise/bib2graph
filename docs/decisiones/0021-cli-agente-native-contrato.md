@@ -439,3 +439,9 @@ El envelope para un error de Click tiene la misma forma que cualquier envelope d
 
 Implementado y verificado en #283 (commit de código + esta enmienda, 2 commits en el mismo PR).
 
+> **Corrección post-0.15.0 (2026-10-11, Nota 05 de Atalaya, B1).** El "env-only probe" de arriba
+> dejaba fuera el `--json` en argv: `b2g monitor --json` o `b2g export --json --format wrongformat`
+> salían como texto plano porque Click aborta antes de parsear el flag. `main()` ahora detecta
+> `--json` en el argv crudo (`_argv_requests_json`, hasta el separador `--`) además de `B2G_JSON`.
+> El contrato del envelope no cambia; solo llega a más casos.
+
