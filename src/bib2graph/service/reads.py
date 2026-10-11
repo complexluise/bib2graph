@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from bib2graph.constants import Col, NetworkKind, doi_to_url
+from bib2graph.schemas import parse_provenance_migrated
 from bib2graph.service._identity import resolve_ident_to_row
 from bib2graph.service.errors import DataError, StoreError
 
@@ -229,9 +230,17 @@ def get_paper(ws: Workspace, ident: str) -> dict[str, Any]:
     provenance_raw = row.get(Col.PROVENANCE)
     provenance: list[Any] = []
     if provenance_raw:
+        # ADR 0050 D2 (#320): la lectura aplica la migración on-read de
+        # corpus pre-D2 con `chaining:*` → `source_kind` poblado.
+        # `parse_provenance_migrated` es el único callsite público de la
+        # migración; también lo usa el camino de mutación
+        # (`backends/memory._parse_provenance`) y la UDF de DuckDB.  Si el
+        # JSON está corrupto devuelve un fallback string para no romper
+        # `b2g read show` — la decisión de fallar duro se delega al
+        # parseo canónico (no acá).
         try:
-            provenance = json.loads(str(provenance_raw))
-        except (json.JSONDecodeError, TypeError):
+            provenance = parse_provenance_migrated(str(provenance_raw))
+        except (ValueError, TypeError):
             provenance = [str(provenance_raw)]
 
     return {

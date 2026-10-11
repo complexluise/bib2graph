@@ -13,11 +13,18 @@ R1 (ADR 0023):
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 import pyarrow as pa
 from pydantic import BaseModel, field_validator
 
 from bib2graph.constants import Col, CurationStatus
+
+# Valores válidos del campo ``source_kind`` (ADR 0050 D2). Se exportan como
+# `Literal[...]` para que mypy enforce el contrato; la validación de runtime
+# la hace Pydantic al construir el modelo.
+_SOURCE_KIND_VALUES = ("seed_equation", "chaining_forward", "chaining_backward")
+SourceKind = Literal["seed_equation", "chaining_forward", "chaining_backward"]
 
 SCHEMA_VERSION = "1"
 
@@ -43,6 +50,13 @@ class ProvenanceEvent(BaseModel):
         fetched_at: Timestamp ISO8601 UTC del fetch, o ``None``.
         decided_by: Identificador de quien tomó la decisión, o ``None``.
         decided_at: Timestamp ISO8601 UTC de la decisión, o ``None``.
+        source_kind: Origen semántico del evento (ADR 0050 D2). Uno de
+            ``"seed_equation"`` (semilla de ecuación), ``"chaining_forward"``
+            (citante forward), ``"chaining_backward"`` (referencia forrajeada),
+            o ``None`` (load, fetched_by_id, curación).  Default ``None``
+            para retrocompat con corpus pre-D2: la migración on-read
+            (``migrate_provenance_event`` en ``backends/_provenance_compat``)
+            deriva este campo del prefijo ``chaining:*`` al parsear.
     """
 
     action: str
@@ -52,6 +66,10 @@ class ProvenanceEvent(BaseModel):
     fetched_at: str | None = None
     decided_by: str | None = None
     decided_at: str | None = None
+    # ADR 0050 D2 — diferencia "vino de una ecuación" de "vino de encadenar
+    # citas". Default `None` para retrocompat con corpus pre-D2 (la migración
+    # on-read vive en `backends/_provenance_compat.py`).
+    source_kind: SourceKind | None = None
 
     model_config = {"frozen": True}  # serialización determinista
 
@@ -123,6 +141,31 @@ class ProvenanceEvent(BaseModel):
             String JSON con los eventos en orden.
         """
         return json.dumps([e.to_dict() for e in events], ensure_ascii=False)
+
+
+def parse_provenance_migrated(provenance_json: str | None) -> list[dict[str, object]]:
+    """Parsea el JSON de provenance aplicando la migración on-read (ADR 0050 D2).
+
+    API pública de lectura de provenance: combina ``ProvenanceEvent.parse_list``
+    (falla ruidoso ante JSON corrupto) con ``migrate_provenance_event``
+    (deriva ``source_kind`` de corpus pre-D2 con ``chaining:*`` en
+    ``equation_id``). Cualquier lector externo de provenance debe usarla —
+    evita dispersar la migración por el código.
+
+    Args:
+        provenance_json: JSON string con la lista de eventos, o ``None``.
+
+    Returns:
+        Lista de dicts post-D2 (cada evento tiene ``source_kind`` poblado si
+        provenía de chain). Vacía si la entrada es ``None`` o ``[]``.
+
+    Raises:
+        ValueError: Si el JSON es corrupto o no es una lista de objetos.
+    """
+    from bib2graph.backends._provenance_compat import migrate_provenance_event
+
+    events = ProvenanceEvent.parse_list(provenance_json)
+    return [migrate_provenance_event(e) for e in events]
 
 
 _LIST_STR = pa.list_(pa.string())
