@@ -70,7 +70,8 @@ Las releases las maneja [`release-please`](https://github.com/googleapis/release
 **ya conectado** en `.github/workflows/release-please.yml` (config en
 `release-please-config.json` + `.release-please-manifest.json`):
 
-1. Vos mergeás PRs a `main` con Conventional Commits bien escritos (el gate de CI
+1. Vos mergeás PRs a `main` (el `dev → main` de una release o un hotfix `fix:`, ver
+   `CONTRIBUTING.md` §Hotfix) con Conventional Commits bien escritos (el gate de CI
    —`.github/workflows/ci.yml`: ruff + mypy + pytest— debe estar verde).
 2. `release-please` abre/actualiza un PR de release con:
    - `CHANGELOG.md` actualizado (sección nueva con Added/Changed/Fixed/...).

@@ -131,7 +131,8 @@ El proyecto usa un modelo **GitFlow-lite** con dos ramas de larga vida:
 - **`dev`** — rama de **integración** y **default del repo**. Acá se **acumula** el
   trabajo. Protegida: no se pushea directo, todo entra por PR con CI verde.
 - **`main`** — rama **estable / de release**. Protegida (estricta). **Solo** recibe
-  `dev` cuando se libera, y el PR de release. No se trabaja directo sobre `main`.
+  `dev` cuando se libera, los **hotfixes** (`fix` urgentes, ver §Hotfix) y el PR de
+  release. No se trabaja directo sobre `main`.
 
 Flujo de un cambio:
 
@@ -161,6 +162,29 @@ cambio):
 3. release-please abre el PR de release en main (CHANGELOG + bump)
 4. mergeás ese PR          → tag vX.Y.Z + GitHub Release
 ```
+
+### Hotfix (un `fix` que sale ya, sin arrastrar lo que hay en `dev`)
+
+`dev` puede tener trabajo de la **próxima** release a medio camino. Un `fix` urgente sobre
+la versión publicada **no** pasa por `dev`: sale de `main` y vuelve a `main`.
+
+```
+1. ramear desde main       git checkout main && git pull && git checkout -b hotfix/lo-que-sea
+2. commitear               SOLO commits `fix:` (un hotfix no trae feat ni refactors)
+3. PR a main               gh pr create --base main               ← título `fix: ...`
+4. CI verde → squash       gh pr merge --squash                   ← el título decide el bump
+5. release-please abre el PR de release (patch: X.Y.Z → X.Y.Z+1) → mergearlo
+6. sync main → dev         AUTOMÁTICO: el job `back-merge` de release-please.yml
+```
+
+- **El título del PR es lo que ve `release-please`** (el squash deja un solo commit con ese
+  título): tiene que ser `fix: ...` para que el bump sea patch. Un `feat` en `main` sube minor.
+- **El sync a `dev` es automático** al cortar el release (job `back-merge`: `git merge
+  origin/main` sobre `dev` + push). Si choca con lo que hay en `dev`, el job falla y se resuelve
+  a mano: rama desde `dev`, `git merge origin/main`, resolver, PR a `dev` con **merge commit**
+  (no squash, para que git registre que `main` ya está integrado).
+- **No mandes el fix también a `dev`** por separado: lo trae el back-merge. Duplicarlo genera
+  conflictos y entradas repetidas en el CHANGELOG.
 
 > **Caveat:** el PR de release **no dispara CI** (los commits del `GITHUB_TOKEN` no
 > disparan workflows). Hasta que exista el secret `RELEASE_PLEASE_TOKEN` (un PAT), se
@@ -201,7 +225,7 @@ cambio):
 ## Releases
 
 Las releases las maneja **`release-please`** desde los Conventional Commits que
-llegan a **`main`** (vía el merge `dev → main`). Cuando hay commits liberables,
+llegan a **`main`** (vía el merge `dev → main` o un hotfix). Cuando hay commits liberables,
 abre/actualiza **solo** el PR `chore(main): release X.Y.Z` con el `CHANGELOG.md`
 y el bump de versión ya hechos; al mergearlo se crea el tag `vX.Y.Z` y el GitHub
 Release. No publica a PyPI (por ahora, solo GitHub Releases). Versionado pre-1.0:

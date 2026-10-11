@@ -11,13 +11,17 @@ Modelo **GitFlow-lite** — detalle en [`AGENTS.md`](AGENTS.md) §Flujo de traba
 [`CONTRIBUTING.md`](CONTRIBUTING.md):
 
 - **`dev`** = rama de integración y default del repo (acá se acumula el trabajo).
-  **`main`** = estable/release. **Ambas protegidas**: PR + CI verde obligatorios, nunca pushear directo.
+  **`main`** = estable/release (recibe `dev` al liberar y los hotfixes). **Ambas protegidas**: PR + CI verde obligatorios, nunca pushear directo.
 - **Un cambio:** ramear desde `dev` → commits Conventional Commits → `gh pr create --base dev`
   → CI verde → `gh pr merge --squash`.
 - **Liberar** (cuando hay varias cosas en `dev`): PR `dev → main` con **merge commit** →
   `release-please` abre el PR de release → mergearlo crea tag + GitHub Release. **No** bumpees
   versión ni edites `CHANGELOG.md` a mano.
-- **Dos tipos de PR:** el de trabajo (manual, a `dev`) y el de release (lo crea release-please solo).
+- **Hotfix** (un `fix` sobre la versión publicada; `dev` puede tener trabajo de la próxima release):
+  ramear `hotfix/...` desde **`main`** → solo `fix:` → `gh pr create --base main` → squash → PR de
+  release patch. El sync `main → dev` lo hace solo el job `back-merge`. No mandar el fix también a `dev`.
+- **Tres tipos de PR:** el de trabajo (manual, a `dev`), el hotfix (manual, a `main`) y el de release
+  (lo crea release-please solo).
 
 ## Reglas que no se negocian
 
