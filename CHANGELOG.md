@@ -11,6 +11,38 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.14.0](https://github.com/complexluise/bib2graph/compare/v0.13.0...v0.14.0) (2026-10-11)
+
+
+### Features
+
+* **0.14.0:** pulido de superficie — 429 accionable, scope accepted, curación masiva, chain acotado ([#306](https://github.com/complexluise/bib2graph/issues/306)/[#307](https://github.com/complexluise/bib2graph/issues/307)/[#308](https://github.com/complexluise/bib2graph/issues/308)/[#309](https://github.com/complexluise/bib2graph/issues/309)) ([ea90b61](https://github.com/complexluise/bib2graph/commit/ea90b61f37882c4bbb12611503df51dbc5ad2813))
+* **chain:** forrajeo acotado — scoping (--ids/--top/--scope) + --preview + --budget ([#309](https://github.com/complexluise/bib2graph/issues/309)) ([b9a3231](https://github.com/complexluise/bib2graph/commit/b9a3231596aa2c8f139f970def6c5d2eb9a5b25a))
+* **corpus:** scope accepted excluye rejected ([#307](https://github.com/complexluise/bib2graph/issues/307)) ([e6d60f2](https://github.com/complexluise/bib2graph/commit/e6d60f2186c33b7b0a0f8c846f1dec5950b9ad0d))
+* **curate:** curación masiva declarativa por selector (accept/reject)  ([#308](https://github.com/complexluise/bib2graph/issues/308)) ([0a93989](https://github.com/complexluise/bib2graph/commit/0a939893fa2bb5049bc9edb4f45e7ef3bf25397a))
+* **equations:** tabla equations de 1ª clase + equation_hash en metadata Arrow ([#291](https://github.com/complexluise/bib2graph/issues/291), [#292](https://github.com/complexluise/bib2graph/issues/292)) ([#300](https://github.com/complexluise/bib2graph/issues/300)) ([68af4b2](https://github.com/complexluise/bib2graph/commit/68af4b29e3c36237d21b9c2f63bb514939e06900))
+* **export:** export del corpus a Arrow/Feather y BibTeX ([#293](https://github.com/complexluise/bib2graph/issues/293)) ([#299](https://github.com/complexluise/bib2graph/issues/299)) ([d3cb3df](https://github.com/complexluise/bib2graph/commit/d3cb3df149bd59ce239d2a66d4fbdfc9386a1488))
+
+
+### Bug Fixes
+
+* **0.14.0:** consolida QA + hallazgos arquitectónicos (equations round-trip completo, canal único de warnings) ([5956c6c](https://github.com/complexluise/bib2graph/commit/5956c6cb596b15af109eb049f8440c5044bc0a23))
+* **build:** warning en canal único (top-level), no duplicado en data (QA 0.14.0) ([4f37e76](https://github.com/complexluise/bib2graph/commit/4f37e76c8c0c7872b260ba11902d4953123d5cec))
+* **equations:** reconstruye manifest.equations al cargar + expone equations en status + desduplica warning (QA 0.14.0) ([87ea10f](https://github.com/complexluise/bib2graph/commit/87ea10fbe6d86d6312832771319d94b404c91b61))
+* **export:** propaga warning de equation_hash omitido + DRY de map_scope (hallazgos arquitectónicos 0.14.0) ([af847c5](https://github.com/complexluise/bib2graph/commit/af847c5088b32759ab5d9812c8016eeaf35ddacb))
+* **release:** sincroniza uv.lock en el PR de release ([#294](https://github.com/complexluise/bib2graph/issues/294)) ([#295](https://github.com/complexluise/bib2graph/issues/295)) ([bcfd038](https://github.com/complexluise/bib2graph/commit/bcfd038b77348e480252f4973109db7063222e91))
+* **snapshot:** restore reconstruye equations desde el manifest hermano (cierra D1) ([e64fbff](https://github.com/complexluise/bib2graph/commit/e64fbff3978d242ab1e6ea640f39277a52df6c0a))
+* **sources:** 429 de OpenAlex se reporta como rate-limit, no error de conexión ([#306](https://github.com/complexluise/bib2graph/issues/306)) ([9da2c0f](https://github.com/complexluise/bib2graph/commit/9da2c0f2b94528e342b8bff2d44166339487f199))
+
+
+### Documentation
+
+* **adr:** 0050 — contrato de export del corpus (Arrow/Feather + BibTeX + ecuación) ([#297](https://github.com/complexluise/bib2graph/issues/297)) ([bc01058](https://github.com/complexluise/bib2graph/commit/bc010584da8c915cd6ad3da1146f626724a1ff0c))
+* **api:** sincroniza API.md con el contrato de export del corpus (ADR 0050) ([#301](https://github.com/complexluise/bib2graph/issues/301)) ([6672c48](https://github.com/complexluise/bib2graph/commit/6672c48105b8011257c9bd5df67fa281d0d98698))
+* **api:** snapshot restore reconstruye equations desde el manifest hermano (D1) ([aa061df](https://github.com/complexluise/bib2graph/commit/aa061df0365b2e391a7ea5cfcca1480fa53b1f0f))
+* contrato de los 4 fixes de superficie 0.14.0 ([#306](https://github.com/complexluise/bib2graph/issues/306)/[#307](https://github.com/complexluise/bib2graph/issues/307)/[#308](https://github.com/complexluise/bib2graph/issues/308)/[#309](https://github.com/complexluise/bib2graph/issues/309)) + ADR 0051 ([bc881ec](https://github.com/complexluise/bib2graph/commit/bc881ec4b6ad52fe01b87043abca729ec22ed5d3))
+* sincroniza API.md + ADR 0021 con los fixes de QA de equations (0.14.0) ([ef0fed3](https://github.com/complexluise/bib2graph/commit/ef0fed3b69779036d19120d16feda7eded6725cb))
+
 ## [0.13.0](https://github.com/complexluise/bib2graph/compare/v0.12.0...v0.13.0) (2026-07-19)
 
 
