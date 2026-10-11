@@ -291,7 +291,8 @@ pushear directo). Detalle en [`CONTRIBUTING.md`](CONTRIBUTING.md) §Modelo de ra
 
 - **`dev`** — rama de **integración** y **default del repo**. Acá se **acumula** el trabajo.
   Protección no-estricta.
-- **`main`** — rama **estable / de release**. Solo recibe `dev` al liberar y el PR de release.
+- **`main`** — rama **estable / de release**. Solo recibe `dev` al liberar, los **hotfixes** y el
+  PR de release.
   Protección **estricta** (la rama del PR debe estar actualizada con `main` antes de mergear).
 
 Flujo de un cambio (agente o humano):
@@ -315,7 +316,14 @@ gh pr merge --squash --delete-branch   # 1 commit conventional limpio por idea
 **merge commit** (NO squash, para que release-please vea los `feat`/`fix`) → release-please
 abre su PR de release → mergearlo crea el tag + GitHub Release.
 
-**Reglas para agentes:** ramear desde `dev`; nunca commitear directo a `dev`/`main`; un PR =
+**Hotfix** (un `fix` sobre la versión publicada, sin arrastrar el trabajo de la próxima release que
+haya en `dev`): ramear `hotfix/...` **desde `main`** → solo commits `fix:` → `gh pr create --base
+main` con título `fix: ...` → **squash** (el título decide el bump patch) → release-please abre el PR
+de release X.Y.Z+1 → mergearlo. El **sync `main → dev` es automático** (job `back-merge` de
+`release-please.yml`); si choca, se resuelve con un PR a `dev` con merge commit. **No** mandar el
+mismo fix también a `dev`. Detalle en `CONTRIBUTING.md` §Hotfix.
+
+**Reglas para agentes:** ramear desde `dev` (salvo hotfix: desde `main`); nunca commitear directo a `dev`/`main`; un PR =
 una idea; el commit/PR sigue Conventional Commits (abajo); no bumpear versión ni editar
 `CHANGELOG.md` a mano (lo hace release-please).
 
