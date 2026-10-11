@@ -325,3 +325,117 @@ que ese es el **único canal canónico**:
 
 Aplica a **todos** los comandos del ciclo; los avisos ya canónicos por top-level (walk-up del cwd, ADR
 0045 #259; `networks_cache_stale` de `status`) no cambian. Documentado en `docs/API.md` §Envelope JSON.
+
+## Enmienda — errores de Click en modo JSON como envelope ([#283](https://github.com/complexluise/bib2graph/issues/283), 2026-10-11)
+
+> Enmienda **aditiva** al §C (envelope) y al §D (exit codes). El envelope `schema="1"` queda
+> intacto; se agrega un único punto de captura para errores que **escapan** al cuerpo del comando
+> Click (los `click.exceptions.UsageError` y subclases — `NoSuchCommand`, `NoSuchOption`,
+> `BadParameter`). Detectado por la auditoría AX del capstone e2e 0.12.0.
+
+### Problema (#283)
+
+Antes de esta enmienda, los errores de parseo de Click salían como **texto plano a stderr + exit
+2**, **incluso en modo JSON**. Un agente que siempre parsea `stdout` como envelope rompía: recibía
+texto no-JSON sin poder rutear el error por el mismo canal. El síntoma concreto:
+
+```
+$ B2G_JSON=1 b2g monitor
+Error de uso: No such command 'monitor'.   # texto plano, exit 2, NO envelope
+```
+
+Estos errores son los que **escapan** al cuerpo del comando Click: Click los lanza **antes** de
+entrar al cuerpo del subcomando, así que el decorador `@handle_errors` (que sí cubre el camino de
+errores de dominio) nunca los ve.
+
+### Decisión
+
+Los errores de Click se re-canalizan al envelope en modo JSON, vía un interceptor único en
+`main()`:
+
+- **Modo JSON** (`--json` flag local **o** env `B2G_JSON` truthy):
+  - `stdout` recibe **una línea** envelope con `schema="1"`, `ok:false`, `error.code='USAGE_ERROR'`,
+    `error.message=<click message>`, `exit_code=2`, `command` best-effort (nombre del verb
+    intentado, parseado de `exc.message` para `NoSuchCommand`, de `exc.ctx.command.name` para
+    el resto).
+  - `stderr` queda vacío (contrato stdout puro del §C).
+  - Exit code devuelto por `main()`: **2** (parse error de Click — coherente con la exit code
+    table del §D fila 1 "uso / errores de parseo de Click", y con el comportamiento nativo de
+    Click que ya emite 2 para esto).
+- **Modo humano** (sin flag ni env): comportamiento previo intacto — Click imprime el usage en
+  `stderr`, `main()` retorna 2 (`UsageError` ya se capturaba en `main()` para devolver exit 2;
+  antes de la enmienda el formateo era `Error de uso: <format_message()>`; ahora se unifica con
+  la rama JSON para que el comportamiento sea "exit 2 en ambos modos", diferenciándose solo en
+  el canal de salida — texto a stderr vs envelope a stdout).
+
+### Limitación documentada de Click (importante)
+
+Cuando el primer token inválido está **antes** de `--json` en argv, Click aborta el parseo y nunca
+alcanza el flag. Esto afecta **todos** los escenarios de error de parseo:
+
+- `b2g monitor --json` → Click ve `monitor`, lanza `NoSuchCommand`, sale con exit 2 antes de
+  parsear `--json`. El flag no surte efecto.
+- `b2g build --opcion-inexistente --json` → Click ve `build`, ve `--opcion-inexistente`, lanza
+  `NoSuchOption`, sale con exit 2 antes de parsear `--json`.
+
+El **camino agente-native** es entonces `B2G_JSON=1` por entorno (no por flag), que se inspecciona
+en `main()` **una sola vez antes** de invocar el grupo Click. Esto es coherente con la enmienda
+`B2G_JSON` del 2026-06-27 y con la postura agents-first del ADR 0043.
+
+El `command` del envelope es **best-effort**: para `NoSuchCommand` se parsea del mensaje
+(`No such command '<name>'.`); para otras variantes se usa `exc.ctx.command.name`. Si Click no da
+ninguno de los dos, queda `""` (no es fatal; el consumidor puede ramificar por `error.code`).
+
+### Implementación
+
+- **Helper puro nuevo**: `cli/_click_error_handler.py` con dos funciones —
+  `extract_command_from_usage_error(exc)` (best-effort) y `emit_click_usage_error_envelope(exc,
+  *, command, json_mode) -> int` (decide canal y retorna exit code). Sin side effects globales
+  aparte del I/O explícito a stdout/stderr (igual que el resto del CLI).
+- **Interceptor en `main()`** (`cli/__init__.py`): reemplaza el `click.echo(...err=True)` previo
+  por el helper. El `except click.exceptions.UsageError` ya existía; ahora delega al helper
+  pasando `json_mode` (env-only probe) y `command` best-effort.
+- **No se toca el cuerpo de los subcomandos**. La interceptación es **genérica** y vive solo en
+  `main()` (Adaptador CLI, ADR 0028). El decorador `@handle_errors` queda intacto — sigue
+  cubriendo el camino de errores de **dominio** (los `B2GError`, `OSError`, `ImportError`,
+  `httpx.HTTPError`); el interceptor nuevo cubre los errores de **parseo** de Click. Las dos
+  ramas no se solapan (los `B2GError` se lanzan **dentro** del cuerpo del comando; los
+  `UsageError` de Click se lanzan **antes** del cuerpo).
+
+### Contrato
+
+El envelope para un error de Click tiene la misma forma que cualquier envelope de error:
+
+```json
+{
+  "schema": "1",
+  "ok": false,
+  "command": "monitor",
+  "exit_code": 2,
+  "data": {},
+  "warnings": [],
+  "error": {"code": "USAGE_ERROR", "message": "No such command 'monitor'."}
+}
+```
+
+`code`/`exit_code`/`schema` son los mismos que el §D fila 1 ("uso"). `error.subcode` queda ausente
+(como cualquier error que no sea de red — coherente con la enmienda ADR 0045 #258).
+
+### Consecuencias
+
+- **Agente puede recuperarse por el mismo canal.** Un agente que tantea verbos retirados por la
+  poda #207 (`b2g monitor`, `b2g enrich`, etc.) recibe ahora `ok:false, error.code='USAGE_ERROR',
+  command='monitor'` y puede decidir el fallback por `error.code`, sin parsear texto plano.
+- **No se cambia `schema`** ni se agregan campos: el cambio es estrictamente aditivo en el
+  sentido de que ahora hay **más** errores que llegan como envelope. Para un consumidor que ya
+  parseaba envelopes, los `error.code='USAGE_ERROR'` de Click son indistinguibles de los de
+  dominio (`@handle_errors` ya emitía `USAGE_ERROR` para errores de workspace), pero se
+  distinguen por `command` (verb conocido vs verb intentado) y por `exit_code` (1 vs 2). Un
+  consumidor estricto puede usarlo para rutear.
+- **No se rompe la postura humana.** El usuario interactivo sigue viendo el formato de Click
+  que ya conocía (texto a stderr + exit 2). La rama JSON es estrictamente ortogonal.
+- **Helper testeable en aislamiento.** Las dos funciones del helper son puras (sin estado
+  global, sin red, sin duckdb) y se cubren con tests unit rápidos (`tests/unit/test_cli_click_errors_envelope.py`).
+
+Implementado y verificado en #283 (commit de código + esta enmienda, 2 commits en el mismo PR).
+
