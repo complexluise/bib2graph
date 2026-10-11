@@ -128,6 +128,18 @@ def handle_errors(command: str) -> Callable[[F], F]:
     ``httpx.TimeoutException`` (sin respuesta), se asume ``UPSTREAM_TIMEOUT``.
     En cualquier otro caso, ``subcode`` queda ``None`` (aditivo, no rompe).
 
+    #306: cuando el subcode derivado es ``RATE_LIMITED`` (429), el mensaje
+    humano NO usa el genérico "Error de red... Verificá tu conexión...
+    reintentá" — un 429 no es un problema de conexión, y "reintentá" es
+    peligroso ante un rate-limit account-wide (un agente que lo sigue al
+    pie de la letra reintenta en loop y quema más cuota). En su lugar usa
+    ``_rate_limit_fallback_message`` (nombra rate-limit/cuota, menciona
+    ``Retry-After`` si vino, sugiere esperar el reset o reducir el alcance
+    del forrajeo). Los métodos con retry de ``OpenAlexSource`` ya traducen
+    el 429 a ``NetworkError`` con este tratamiento antes de llegar acá; este
+    camino es defensa en profundidad para un ``httpx.HTTPStatusError`` 429
+    crudo (p. ej. de un source de terceros sin retry propio).
+
     Args:
         command: Nombre del subcomando (para el envelope).
 
@@ -165,17 +177,27 @@ def handle_errors(command: str) -> Callable[[F], F]:
                 _emit_error_envelope(command, 3, "DEPENDENCY_ERROR", msg, json_mode)
                 sys.exit(3)
             except httpx.HTTPError as exc:
-                msg = (
-                    f"Error de red ({type(exc).__name__}): {exc}. "
-                    "Verificá tu conexión a internet y reintentá."
-                )
+                subcode = _subcode_for_http_error(exc)
+                # #306: un 429 crudo que llega hasta acá (no traducido por el
+                # source a NetworkError) NO es un problema de conexión —
+                # es rate-limit/cuota. El mensaje genérico de "Verificá tu
+                # conexión... reintentá" es un misdiagnóstico peligroso: un
+                # agente que sigue ese consejo al pie de la letra reintenta
+                # en loop y quema más cuota ante un 429 account-wide.
+                if subcode == "RATE_LIMITED":
+                    msg = _rate_limit_fallback_message(exc)
+                else:
+                    msg = (
+                        f"Error de red ({type(exc).__name__}): {exc}. "
+                        "Verificá tu conexión a internet y reintentá."
+                    )
                 _emit_error_envelope(
                     command,
                     4,
                     "NETWORK_ERROR",
                     msg,
                     json_mode,
-                    subcode=_subcode_for_http_error(exc),
+                    subcode=subcode,
                 )
                 sys.exit(4)
 
@@ -210,3 +232,41 @@ def _subcode_for_http_error(exc: httpx.HTTPError) -> str | None:
     if isinstance(exc, httpx.TimeoutException):
         return "UPSTREAM_TIMEOUT"
     return None
+
+
+def _rate_limit_fallback_message(exc: httpx.HTTPError) -> str:
+    """Mensaje de fallback para un 429 crudo no traducido por el source (#306).
+
+    Camino de defensa en profundidad: los métodos de ``OpenAlexSource`` con
+    retry ya traducen un 429 agotado a ``NetworkError`` con un mensaje
+    detallado (ver ``bib2graph.sources.openalex._build_rate_limit_message``).
+    Este mensaje cubre el caso residual de un ``httpx.HTTPStatusError`` 429
+    que llegue crudo hasta acá (p. ej. un source de terceros sin retry
+    propio) — nombra el error como rate-limit/cuota (no "conexión"), NO
+    aconseja reintentar sin más, menciona ``Retry-After`` si vino, y sugiere
+    reducir el alcance del forrajeo.
+
+    Args:
+        exc: La excepción ``httpx.HTTPError`` (se espera ``HTTPStatusError``
+            con ``response.status_code == 429``).
+
+    Returns:
+        Mensaje humano accionable, sin "conexión" ni "reintentá" a secas.
+    """
+    response = getattr(exc, "response", None)
+    retry_after = None
+    if response is not None:
+        retry_after = getattr(response, "headers", {}).get("Retry-After")
+
+    msg = (
+        "OpenAlex respondió 429 (Too Many Requests): rate-limit / cuota"
+        " agotada. Evitá reintentar en loop — la cuota es account-wide y"
+        " se recupera en horas."
+    )
+    if retry_after:
+        msg += f" OpenAlex indicó Retry-After: {retry_after}."
+    msg += (
+        " Esperá el reset de cuota, o reducí el alcance del forrajeo"
+        " (--top/--ids acotan cuántos papers se piden; ver #309)."
+    )
+    return msg

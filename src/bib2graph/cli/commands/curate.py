@@ -22,6 +22,15 @@ TRANSVERSAL (ADR 0016 enmendado, R3):
   el CycleState.  ``filter`` SÍ transiciona a FILTERED (el verbo define la
   transición, precedente D1 de #159).
 
+Curación masiva declarativa (#308):
+  ``accept`` y ``reject`` aceptan, además de ``--ids`` enumerados, un
+  SELECTOR declarativo: ``--query`` (substring de título, mismo criterio
+  que ``read list --query``) y/o metadata ``--year-gte/lte``,
+  ``--language``, ``--type``, ``--min-citations`` (misma semántica que
+  ``filter``). El conjunto afectado es la UNIÓN de ``--ids`` y lo que
+  matchea el selector — se pueden combinar libremente. Sin ``--ids`` ni
+  selector → error de uso (exit 1).
+
 Capa de servicios (#155):
   Toda la lógica vive en ``service.curate``; este módulo son shims delgados
   que inyectan el reloj (frontera CLI, R2/ADR 0017) y emiten el envelope.
@@ -40,6 +49,8 @@ Flujo canónico:
     b2g curate apply curacion.csv --by maria # con identificador de curador
     b2g curate accept --ids W1 --ids W2      # acepta por id
     b2g curate reject --ids W3               # rechaza por id
+    b2g curate accept --year-gte 2015        # acepta por selector (masivo)
+    b2g curate reject --query "erratum"      # rechaza por selector (masivo)
     b2g curate filter --year-gte 2018        # filtra y transiciona a FILTERED
 """
 
@@ -93,6 +104,8 @@ def curate_grp(ctx: click.Context) -> None:
         b2g curate apply curacion.csv
         b2g curate accept --ids W1 --ids W2
         b2g curate reject --ids W3
+        b2g curate accept --year-gte 2015
+        b2g curate reject --query "erratum"
         b2g curate filter --year-gte 2018 --year-lte 2024
     """
     ctx.ensure_object(dict)
@@ -237,9 +250,39 @@ def apply_cmd(
 @curate_grp.command("accept")
 @click.option(
     "--ids",
-    required=True,
     multiple=True,
     help="IDs de papers a aceptar (repetible: --ids ID1 --ids ID2).",
+)
+@click.option(
+    "--query",
+    default=None,
+    help=(
+        "Selector: texto a buscar en el título (substring, case-insensitive; "
+        "mismo criterio que 'read list --query')."
+    ),
+)
+@click.option(
+    "--year-gte", type=int, default=None, help="Selector: incluir años >= este valor."
+)
+@click.option(
+    "--year-lte", type=int, default=None, help="Selector: incluir años <= este valor."
+)
+@click.option(
+    "--language",
+    multiple=True,
+    help="Selector: códigos ISO 639-1 a incluir (repetible).",
+)
+@click.option(
+    "--type",
+    "type_in",
+    multiple=True,
+    help="Selector: áreas de investigación a incluir (repetible).",
+)
+@click.option(
+    "--min-citations",
+    type=int,
+    default=None,
+    help="Selector: mínimo de citantes en cited_by_id.",
 )
 @click.option(
     "--by",
@@ -253,10 +296,23 @@ def apply_cmd(
 def curate_accept_cmd(
     ctx: click.Context,
     ids: tuple[str, ...],
+    query: str | None,
+    year_gte: int | None,
+    year_lte: int | None,
+    language: tuple[str, ...],
+    type_in: tuple[str, ...],
+    min_citations: int | None,
     by: str,
     json_output: bool,
 ) -> None:
     """Marca papers como accepted en el corpus.
+
+    Acepta ``--ids`` enumerados y/o un SELECTOR declarativo (``--query``,
+    ``--year-gte/lte``, ``--language``, ``--type``, ``--min-citations`` —
+    misma semántica que ``curate filter``). El conjunto afectado es la
+    UNIÓN de ambos: si das solo ``--ids``, se comporta como antes; si das
+    solo selector, acepta todo lo que matchea; si das ambos, acepta la
+    unión (no hace falta que se solapen).
 
     Curación TRANSVERSAL: no transiciona el CycleState.  Disponible en
     cualquier estado del lazo (Nota 05 §4, ADR 0016 enmendado R3).
@@ -265,7 +321,18 @@ def curate_accept_cmd(
 
     ws = resolve_workspace(ctx.obj)
     now = datetime.now(UTC)
-    data = accept_papers(ws.library_path, list(ids), by=by, decided_at=now)
+    data = accept_papers(
+        ws.library_path,
+        list(ids),
+        by=by,
+        decided_at=now,
+        query=query,
+        year_gte=year_gte,
+        year_lte=year_lte,
+        language=list(language) if language else None,
+        type_in=list(type_in) if type_in else None,
+        min_citations=min_citations,
+    )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
@@ -287,9 +354,39 @@ def curate_accept_cmd(
 @curate_grp.command("reject")
 @click.option(
     "--ids",
-    required=True,
     multiple=True,
     help="IDs de papers a rechazar (repetible: --ids ID1 --ids ID2).",
+)
+@click.option(
+    "--query",
+    default=None,
+    help=(
+        "Selector: texto a buscar en el título (substring, case-insensitive; "
+        "mismo criterio que 'read list --query')."
+    ),
+)
+@click.option(
+    "--year-gte", type=int, default=None, help="Selector: incluir años >= este valor."
+)
+@click.option(
+    "--year-lte", type=int, default=None, help="Selector: incluir años <= este valor."
+)
+@click.option(
+    "--language",
+    multiple=True,
+    help="Selector: códigos ISO 639-1 a incluir (repetible).",
+)
+@click.option(
+    "--type",
+    "type_in",
+    multiple=True,
+    help="Selector: áreas de investigación a incluir (repetible).",
+)
+@click.option(
+    "--min-citations",
+    type=int,
+    default=None,
+    help="Selector: mínimo de citantes en cited_by_id.",
 )
 @click.option(
     "--by",
@@ -303,10 +400,27 @@ def curate_accept_cmd(
 def curate_reject_cmd(
     ctx: click.Context,
     ids: tuple[str, ...],
+    query: str | None,
+    year_gte: int | None,
+    year_lte: int | None,
+    language: tuple[str, ...],
+    type_in: tuple[str, ...],
+    min_citations: int | None,
     by: str,
     json_output: bool,
 ) -> None:
     """Marca papers como rejected en el corpus.
+
+    Acepta ``--ids`` enumerados y/o un SELECTOR declarativo (``--query``,
+    ``--year-gte/lte``, ``--language``, ``--type``, ``--min-citations`` —
+    misma semántica que ``curate filter``). El conjunto afectado es la
+    UNIÓN de ambos: si das solo ``--ids``, se comporta como antes; si das
+    solo selector, rechaza todo lo que matchea; si das ambos, rechaza la
+    unión (no hace falta que se solapen).
+
+    A diferencia de ``curate filter``, este comando rechaza EXACTAMENTE lo
+    que matchea el selector/ids (sin excepción para ``accepted``) y NO
+    transiciona el CycleState (curación transversal, Nota 05 §4).
 
     Curación TRANSVERSAL: no transiciona el CycleState.  Disponible en
     cualquier estado del lazo (Nota 05 §4, ADR 0016 enmendado R3).
@@ -315,7 +429,18 @@ def curate_reject_cmd(
 
     ws = resolve_workspace(ctx.obj)
     now = datetime.now(UTC)
-    data = reject_papers(ws.library_path, list(ids), by=by, decided_at=now)
+    data = reject_papers(
+        ws.library_path,
+        list(ids),
+        by=by,
+        decided_at=now,
+        query=query,
+        year_gte=year_gte,
+        year_lte=year_lte,
+        language=list(language) if language else None,
+        type_in=list(type_in) if type_in else None,
+        min_citations=min_citations,
+    )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)

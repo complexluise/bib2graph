@@ -621,6 +621,43 @@ class TestJsonOutput:
         # Los warnings están en el envelope, no sueltos en stdout
         assert isinstance(envelope.get("warnings"), list)
 
+    def test_json_warnings_canal_unico_no_duplicado_en_data(
+        self, tmp_path: Path
+    ) -> None:
+        """Los warnings viven SOLO en el top-level del envelope, NUNCA duplicados
+        también dentro de ``data`` (mismo criterio que export.py; QA 0.14.0)."""
+        from click.testing import CliRunner
+
+        from bib2graph.cli import b2g
+        from bib2graph.workspace import Workspace
+
+        ws_dir = tmp_path / "ws"
+        ws = Workspace.init(ws_dir, "test")
+        # Semillas con referencias pero sin cited_by → dispara el hint de cocitación.
+        _seed_store(ws.library_path, _rows_con_referencias())
+
+        runner = CliRunner()
+        result = runner.invoke(
+            b2g,
+            ["--workspace", str(ws_dir), "build", "--json"],
+        )
+
+        assert result.exit_code == 0
+        envelope = json.loads(result.output)
+
+        # Canal único: 'warnings' NO debe existir dentro de data (se movió al top-level).
+        assert "warnings" not in envelope["data"], (
+            "data.warnings no debe existir: el canal único es el top-level del envelope. "
+            f"data keys={list(envelope['data'].keys())}"
+        )
+        # Y el warning de cocitación sí aparece en el top-level (una sola vez).
+        assert any(
+            "cocita" in w.lower() or "cited_by" in w.lower()
+            for w in envelope.get("warnings", [])
+        ), (
+            f"esperaba el hint de cocitación en top-level warnings={envelope.get('warnings')}"
+        )
+
     def test_json_data_tiene_scope_y_corpus_scope(self, tmp_path: Path) -> None:
         """data incluye 'scope' (nuevo) y 'corpus_scope' (backward compat)."""
         from click.testing import CliRunner

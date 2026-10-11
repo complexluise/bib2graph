@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -41,6 +42,7 @@ from bib2graph.backends.memory import (
     _merge_curation_status,
     _merge_provenance,
     _merge_rows,
+    build_equation_metadata,
     compute_corpus_hash,
 )
 from bib2graph.constants import LIST_COLUMNS, CurationStatus
@@ -147,6 +149,21 @@ CREATE TABLE IF NOT EXISTS enricher_log (
     name        VARCHAR NOT NULL,
     params_json VARCHAR NOT NULL DEFAULT '{}',
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+"""
+
+# ADR 0050 (D1): tabla lateral de ecuaciones de búsqueda de 1ª clase.
+# PK equation_id: escritura idempotente vía INSERT OR REPLACE (upsert).
+# Lateral al corpus: NO entra en CORPUS_SCHEMA ni en corpus_hash (R2, ADR 0017).
+_DDL_EQUATIONS = """
+CREATE TABLE IF NOT EXISTS equations (
+    equation_id VARCHAR NOT NULL PRIMARY KEY,
+    engine      VARCHAR NOT NULL,
+    raw_query   VARCHAR NOT NULL,
+    params_json VARCHAR NOT NULL DEFAULT '{}',
+    label       VARCHAR,
+    created_at  VARCHAR NOT NULL,
+    _seq        BIGINT
 )
 """
 
@@ -476,6 +493,7 @@ class DuckDBBackend:
         self._con.execute(_DDL_EXTERNAL_IDS)
         self._con.execute(_DDL_FILTER_LOG)
         self._con.execute(_DDL_ENRICHER_LOG)
+        self._con.execute(_DDL_EQUATIONS)
         self._register_udfs()
 
     def _register_udfs(self) -> None:
@@ -636,6 +654,33 @@ class DuckDBBackend:
                     "VALUES (?, ?, ?)",
                     [er_name, er_params, er_at],
                 )
+            equation_rows = self._con.execute(
+                "SELECT equation_id, engine, raw_query, params_json, label, "
+                "created_at, _seq FROM equations ORDER BY _seq"
+            ).fetchall()
+            for (
+                eq_id_val,
+                eq_engine_val,
+                eq_raw_query_val,
+                eq_params_val,
+                eq_label_val,
+                eq_created_val,
+                eq_seq_val,
+            ) in equation_rows:
+                new_backend._con.execute(
+                    "INSERT INTO equations "
+                    "(equation_id, engine, raw_query, params_json, label, "
+                    "created_at, _seq) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        eq_id_val,
+                        eq_engine_val,
+                        eq_raw_query_val,
+                        eq_params_val,
+                        eq_label_val,
+                        eq_created_val,
+                        eq_seq_val,
+                    ],
+                )
             return new_backend
         else:
             new_backend = DuckDBBackend.__new__(DuckDBBackend)
@@ -652,11 +697,25 @@ class DuckDBBackend:
         Impone el schema exacto de ``CORPUS_SCHEMA`` (orden y tipos).
         Valida con ``validate_table`` antes de devolver.
 
+        ADR 0050 (D3): puebla la metadata del schema Arrow con
+        ``equation_hash`` cuando hay exactamente una ecuación registrada en
+        la tabla lateral ``equations``. Con 0 o >1 ecuaciones, la metadata se
+        omite silenciosamente aquí (no se inventa un hash no verificable);
+        ``build_equation_metadata`` sigue disponible para que el punto de
+        consumo real (p. ej. el comando de export) emita el ``warning``
+        accionable al usuario en el momento en que corresponde — no en cada
+        llamada interna de ``to_arrow()`` del pipeline (que ocurre docenas de
+        veces por invocación y no es un evento visible al usuario).
+
         Returns:
-            Tabla Arrow con el schema canónico del Corpus (sin ``_seq``).
+            Tabla Arrow con el schema canónico del Corpus (sin ``_seq``), con
+            la metadata de schema poblada (o no) según la regla de D3.
         """
         table = _arrow_table_from_con(self._con)
         validate_table(table)
+        metadata, _warning = build_equation_metadata(self.load_equations())
+        if metadata:
+            table = table.replace_schema_metadata(metadata)
         return table
 
     def add_paper(self, row: dict[str, object]) -> DuckDBBackend:
@@ -1093,6 +1152,77 @@ class DuckDBBackend:
             {
                 "name": r[0],
                 "params": json.loads(r[1]),
+            }
+            for r in rows
+        ]
+
+    # Extensiones propias: equations (ADR 0050 D1)
+
+    def persist_equation(
+        self,
+        equation_id: str,
+        *,
+        engine: str,
+        raw_query: str,
+        params_json: str,
+        label: str | None = None,
+        created_at: str | None = None,
+    ) -> None:
+        """Persiste (upsert) una ecuación en la tabla lateral ``equations``.
+
+        Idempotente vía ``INSERT OR REPLACE`` por ``equation_id`` (PK):
+        re-escribir la misma ecuación reemplaza la fila sin duplicar.  El
+        ``_seq`` se asigna solo la primera vez (orden de primera aparición);
+        un re-persist del mismo ``equation_id`` conserva su ``_seq`` original.
+
+        Args:
+            equation_id: PK de la ecuación.
+            engine: Motor que ejecutó la búsqueda.
+            raw_query: Ecuación cruda tal como la escribió el usuario.
+            params_json: JSON string con los parámetros de la ecuación.
+            label: Etiqueta humana opcional.
+            created_at: Timestamp ISO8601 UTC.  Si es ``None``, se usa
+                ``datetime.now(UTC)`` como fallback.
+        """
+        resolved_at = (
+            created_at if created_at is not None else datetime.now(UTC).isoformat()
+        )
+        existing = self._con.execute(
+            "SELECT _seq FROM equations WHERE equation_id = ?", [equation_id]
+        ).fetchone()
+        if existing is not None:
+            seq = existing[0]
+        else:
+            result = self._con.execute(
+                "SELECT COALESCE(MAX(_seq), 0) FROM equations"
+            ).fetchone()
+            seq = int(result[0]) + 1 if result else 1
+        self._con.execute(
+            "INSERT OR REPLACE INTO equations "
+            "(equation_id, engine, raw_query, params_json, label, created_at, _seq) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [equation_id, engine, raw_query, params_json, label, resolved_at, seq],
+        )
+
+    def load_equations(self) -> list[dict[str, object]]:
+        """Devuelve todas las ecuaciones persistidas, en orden de inserción.
+
+        Returns:
+            Lista de dicts con las claves ``equation_id``, ``engine``,
+            ``raw_query``, ``params_json``, ``label``, ``created_at``.
+        """
+        rows = self._con.execute(
+            "SELECT equation_id, engine, raw_query, params_json, label, created_at "
+            "FROM equations ORDER BY _seq"
+        ).fetchall()
+        return [
+            {
+                "equation_id": r[0],
+                "engine": r[1],
+                "raw_query": r[2],
+                "params_json": r[3],
+                "label": r[4],
+                "created_at": r[5],
             }
             for r in rows
         ]

@@ -65,8 +65,13 @@ en `bib2graph.cycle`), `transitions_available`, `curation_available` (`accept`/`
 disponibles, curación transversal), `round` (contador de ronda con `reseed`), conteos por
 `curation_status`, `workspace: {root, source}` (el bloque hoy es **universal** en los comandos del
 ciclo, ADR 0045 #259 — ver §Envelope), `networks_cache_stale: bool` (+ `warnings` accionable
-cuando la cache de `networks/` quedó obsoleta — avisa, NO regenera) y `referenced_not_fetched` (nº de
-IDs que el backward chaining observó sin materializar; §4/§5). Todos campos aditivos, `schema="1"`
+cuando la cache de `networks/` quedó obsoleta — avisa, NO regenera), `referenced_not_fetched` (nº de
+IDs que el backward chaining observó sin materializar; §4/§5) y **`equations`** (lista de las
+ecuaciones registradas en el store, leída de `backend.load_equations()`; QA 0.14.0 #2, ADR 0050 D1):
+cada entrada es `{equation_id, raw_query, engine, created_at}`; **siempre presente** (`[]` si no hay
+ecuaciones, sin romper). En modo humano se imprime la sección **"Ecuaciones registradas (N):"**. Así
+la procedencia deja de ser invisible (antes solo se veía en la metadata del `.arrow` exportado) **sin
+agregar un verbo** (es estado, no una acción — ADR 0037). Todos campos aditivos, `schema="1"`
 intacto. **`validate`** chequea la consistencia del workspace (read-only).
 
 **`init`** (ADR [0029](decisiones/0029-workspace-por-investigacion.md)): scaffold de un workspace.
@@ -138,7 +143,31 @@ en forward, default 50), **`--email`**, **`--preview`** (dry-run sin red ni tran
 desde `references_id`; forward exacto solo si hay `cited_by_id`). Transiciona a **`FORAGED`** y corre
 **automática la pasada refs→DOI** (§Enricher absorbido): el `--json` suma `data["enrichment"]`. `data =
 {candidates_found, new_candidates, total_papers, direction, depth, ranking_preview, observed_refs_count,
-loop_state, round, enrichment}`.
+loop_state, round, enrichment, budget_used, budget_stopped}`.
+
+- **Forrajeo acotado — guardarraíles anti-footgun (#309, MVP aditivo).** El forrajeo forward es
+  **multiplicativo** (cada semilla dispara sus propias llamadas) y su costo es invisible hasta que ya se
+  gastó: un `chain` sin acotar sobre cientos de semillas puede agotar la cuota de OpenAlex (429
+  account-wide, recuperación de horas). Estos flags acotan y presupuestan, **todos aditivos** — los
+  **defaults NO cambian** (sin ninguno: **todas las semillas**, comportamiento previo). El flip a un
+  default seguro/acotado (`--exhaustive` como opt-in) es la [Discussion #310](https://github.com/complexluise/bib2graph/discussions/310).
+  - **Unidad escopada** (de qué papers-origen se forrajea), **mutuamente excluyentes** entre sí:
+    **`--ids`** (repetible; IDs explícitos de papers-origen, valida contra el corpus), **`--top N`**
+    (las N semillas más "centrales"), **`--scope [all|accepted|seeds]`** (reusa `Corpus.scoped`, vocab
+    CLI `seeds`→`seeds_only`). Combinar dos → `UsageError` exit 1.
+  - **`--top N` usa el nº de `references_id` como PROXY de centralidad** (**degradación documentada**):
+    ordena las semillas por `len(references_id)` desc (desempate `id` asc), no por la centralidad real
+    del acoplamiento bibliográfico sobre el grafo construido. Es puro y no requiere un `build` previo ni
+    artefactos en disco. Para la centralidad real, correr `b2g build` y pasar los IDs más centrales del
+    `metrics.json` vía `--ids`/`--scope` (`cli/commands/chain.py::_top_n_seed_ids`).
+  - **`--preview` refleja el scoping** (#309): la estimación de fanout se acota al subconjunto
+    resuelto; suma **`data["origin_count"]`** (cuántos papers-origen participan del fanout estimado).
+  - **`--budget N`** topa las **llamadas HTTP** del forward chaining; al alcanzarlo el forrajeo **para
+    limpio, sin reintentar** (nunca reintenta en loop sobre 429, complemento de #306). El resultado
+    queda **parcial pero consistente** y marcado con **`data["budget_stopped"] = true`** +
+    **`data["budget_used"]`** (llamadas realizadas). `budget_used` **no** cuenta las llamadas de la
+    pasada refs→DOI posterior (acotada, fuera de alcance del budget). Sin `--budget`: sin tope
+    (`budget_used=0`, `budget_stopped=false`). Ver `CallBudget` en §5.
 
 - **`chain forward`/`both` puebla `cited_by_id` de las semillas alcanzadas** (ADR 0048, #270): el
   forrajeo hacia adelante ya trae los citantes; con esta decisión completa además la columna
@@ -193,14 +222,31 @@ VERBO:** solo **`curate filter`→`FILTERED`**; el resto transversal. **BREAKING
   aviso (no no-op silencioso). `data = {accepted_count, rejected_count, skipped_count, not_found_count,
   total_rows}`. **`note` se ignora en apply** (advisory). Lee el CSV con `utf-8-sig`: **tolera el
   BOM UTF-8** que Excel-Windows agrega al guardar como UTF-8 (#238, política Excel-friendly de #214).
-- **`curate accept --ids ... [--by NOMBRE]`** / **`curate reject --ids ... [--by NOMBRE]`** — por
-  identificador (uno-a-uno o lote). **Cada `--ids` acepta las tres formas: id interno, DOI crudo o
-  `source_id`** (ADR 0049 #287), con la **misma prioridad que `read show`: id > doi > source_id** (ADR
-  [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)). La resolución vive en el helper
-  compartido `service/_identity.py::resolve_idents`, reusado por `curate` y por `read.get_paper` (fuente
-  única de identidad). Si algún identificador no resuelve, el error **lista los no resueltos** y aclara
-  que se aceptan las tres formas. Usan `accept_papers`/`reject_papers` de `service/curate.py` (fuente
-  única de curación).
+- **`curate accept [--ids ...] [SELECTOR] [--by NOMBRE]`** / **`curate reject [--ids ...] [SELECTOR]
+  [--by NOMBRE]`** — acepta/rechaza por **identificador** y/o por **selector declarativo** (curación
+  masiva, #308). **`--ids` ya NO es obligatorio.** **Cada `--ids` acepta las tres formas: id interno,
+  DOI crudo o `source_id`** (ADR 0049 #287), con la **misma prioridad que `read show`: id > doi >
+  source_id** (ADR [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)). La resolución
+  vive en el helper compartido `service/_identity.py::resolve_idents`, reusado por `curate` y por
+  `read.get_paper` (fuente única de identidad). Si algún identificador no resuelve, el error **lista los
+  no resueltos** y aclara que se aceptan las tres formas.
+  - **SELECTOR declarativo (#308):** **`--query`** (substring de título, case-insensitive, mismo
+    criterio que `read list --query`), **`--year-gte`**/**`--year-lte`**, **`--language`** (repetible),
+    **`--type`** (repetible), **`--min-citations`** — misma semántica que `curate filter`. El conjunto
+    afectado es la **UNIÓN** de `--ids` resueltos y lo que matchea el selector; se combinan libremente
+    (no hace falta que se solapen). **Sin `--ids` ni selector → `DataError` exit 2** (mensaje que lista
+    los criterios). Los ids resueltos por selector nunca fallan por "no encontrado" (se derivan del
+    corpus mismo).
+  - **`data = {accepted_count|rejected_count, ids, selector_matched_count}`.** `ids` = todos los ids
+    afectados (unión, ordenados); **`selector_matched_count`** = cuántos vinieron del selector (`0` si
+    no se usó). Usan `accept_papers`/`reject_papers` de `service/curate.py` (fuente única de curación).
+  - **`curate accept` por selector PUEDE revertir un `rejected` → `accepted`** —no es una
+    inconsistencia. Esto es distinto de `curate filter`, que **nunca toca** un `accepted` (ADR
+    [0044](decisiones/0044-precedencia-inclusion-manual-en-curate.md): la inclusión manual gana). La
+    asimetría es deliberada: `filter` es exclusión PRISMA automática (respeta la decisión manual
+    previa); `accept`/`reject` **son** la decisión manual explícita y por eso **sobrescriben** el estado
+    anterior, incluso vía selector. Un `curate accept --query "..."` que matchea un paper antes
+    rechazado lo re-acepta a propósito.
 - **`curate filter`** (`--year-gte`/`--year-lte`, `--language`, `--type`, `--min-citations`): aplica
   inclusión/exclusión PRISMA **marcando `rejected`** (no borra) con conteo por paso. **Transiciona a
   `FILTERED`.** Comparte `filter_corpus(store_path, *, year_gte, year_lte, language, type_in,
@@ -212,14 +258,53 @@ VERBO:** solo **`curate filter`→`FILTERED`**; el resto transversal. **BREAKING
 **`build` y `export` separados** (ADR 0021 §B). `build` computa `Networks.quick` (4-5 redes) y escribe
 a `<workspace>/networks/<kind>/` (transiciona a `BUILT`); `export --format graphml|csv` **relee** esos
 artefactos (`ws.networks_dir`) y los serializa (sin transición). **`export --out-dir`** override
-opcional (default `<workspace>/exports/`).
+opcional (default `<workspace>/exports/`, = `ws.exports_dir`).
+
+**`export --format arrow|bibtex` — serializa el CORPUS** (ADR
+[0050](decisiones/0050-contrato-export-corpus-arrow-bibtex-ecuacion.md) D4, #293). `export` gana **dos
+formatos nuevos** al `--format` existente (`graphml`/`csv`): **NO es un verbo nuevo** (respeta la poda de
+10 verbos; `export`/`snapshot` = un verbo) y **no transiciona** la FSM. A diferencia de `graphml`/`csv`
+(que serializan **redes de build** releyendo `networks/`), estos serializan el **corpus** del store vivo:
+
+- **`--format arrow`** → escribe **`corpus.arrow`** = **Feather / Arrow IPC** (**no** parquet), vía
+  `ArrowExporter` (`exporters/arrow.py`), que solo serializa `Corpus.scoped(scope).to_arrow()` **tal
+  cual** (no toca schema ni metadata). La metadata de ecuación + `equation_hash` (§1.6) **viaja dentro**
+  del Feather → **archivo autoverificable** que el consumidor programático sube y valida. Es un artefacto **distinto de
+  `snapshot create`** (parquet + `manifest.json`, reproducibilidad interna): no se solapan.
+- **`--format bibtex`** → escribe **`corpus.bib`** parseable, vía `BibtexExporter`
+  (`exporters/bibtex.py`; extra **`[bibtex]`** — import perezoso de `bibtexparser`, falta → exit 3).
+  **Defaults del MVP (ADR 0050 D4, congelados):** entry-type **inferido** con **`@article`** default
+  (heurística mínima: `booktitle`/sin `journal` → `@inproceedings`); **citekey = el `id` interno** del
+  paper (`doi:…`/`src:…`/`tt:…`, estable y sin colisiones), el DOI va como **campo** (`doi = {…}` +
+  `url = https://doi.org/<doi>`); campos mínimos universales `title`, `author` (` and `-joined),
+  `year`, `doi`, `journal` (= venue/`source`), `url` — **`keywords`/`abstract` fuera del MVP**; scope =
+  el corpus **scopeado por `--scope`**, **sin** filtrar por "metadata suficiente" (las entradas
+  incompletas se emiten con los campos que haya, no se descartan).
+
+**`--scope [all|accepted|seeds]`** (default `all`; `Choice`): filtra el corpus **antes** de serializar,
+reusando `Corpus.scoped(scope)` (vocab CLI `seeds`→`seeds_only`; §1.2). **`accepted` EXCLUYE a los
+`rejected`** aunque sean semillas (ADR [0051](decisiones/0051-scope-accepted-excluye-rejected.md), #307):
+un paper rechazado por `curate reject`/`filter` NO sale en `--scope accepted` —coincide con
+`.exclude(curation_status='rejected')` sobre el Arrow. **Solo aplica a los formatos de
+CORPUS (`arrow`/`bibtex`).** Con `graphml`/`csv` **se IGNORA** (esas redes ya vienen scopeadas por `b2g
+build --scope`); si se pasa `--scope` explícito con un formato de red, `export` emite un **`warning`**
+accionable (no error). `--scope` es propio de `export` — es distinto del `build --scope` de §build.
+
+**Envelope `--json`** (aditivo, `schema="1"` intacto): `data = {format, out_dir, files_written,
+workspace}` **más una clave según la familia** — **`rows_exported`** (nº de filas del corpus)
+para `arrow`/`bibtex`, **`networks_exported`** (nº de redes) para `graphml`/`csv`. **Son claves
+distintas, NO unificadas:** el consumidor sabe por cuál mira qué familia exportó. Los avisos (p. ej.
+`--scope` ignorado con `graphml`/`csv`, o `equation_hash` omitido) van en el **`warnings` top-level del
+envelope, NO en `data`** (canal único, §Envelope). `--out-dir` override (default `ws.exports_dir`).
 
 `build` tiene **dos modos**: **quick** (sin `--spec`) y **declarativo** (**`build --spec <redes.yaml>`**:
 `load_specs` con clave raíz `networks:` → `Networks.build` por red; helper único `_build_from_spec_file`).
 **Ambos transicionan a `BUILT` y sellan `networks/.corpus_hash`** (decisión D1). Flags:
 
 - **`--scope [all|accepted|seeds]`** (default `all`): filtra el corpus por curación **antes** de
-  proyectar (`Corpus.scoped`, §1.2). `accepted` = `is_seed` + aceptados; `seeds` = solo semillas. El
+  proyectar (`Corpus.scoped`, §1.2). `accepted` = `is_seed` + aceptados **menos los `rejected`** (ADR
+  [0051](decisiones/0051-scope-accepted-excluye-rejected.md), #307: rechazar una semilla la saca de
+  `accepted`); `seeds` = solo semillas (incluye rechazadas). El
   `.corpus_hash` se sella con el corpus **filtrado**; `clusters.csv`/`decorate` reflejan ese subset.
   Scope con **0 papers** → **exit 0** + `warning` (no error). **No confundir con `NetworkSpec.scope`**
   (§10, por-red sobre `is_seed`). Es la **única** forma: el flag `--corpus-scope` (y su vocab interno
@@ -255,8 +340,10 @@ transición la define el verbo.
   schema_version, maturity}`.
 - **`snapshot restore --from-corpus <parquet>`** (= ex verbo plano `restore`): **rehidrata un corpus ya
   curado SIN red** (lee con `CORPUS_SCHEMA`, `Corpus.from_arrow`, merge+dedup+persist; cero llamadas a
-  OpenAlex). **Preserva la curación** (`decision`/`curation_status`/`is_seed`, D3). **Transiciona a
-  `FILTERED`** (reusa la transición permisiva `filter`; válida desde cualquier estado, incluido store
+  OpenAlex). **Preserva la curación** (`decision`/`curation_status`/`is_seed`, D3) y **reconstruye la
+  tabla `equations`** (D1, ADR 0050) desde el `manifest.json` **hermano** del parquet si existe —graceful:
+  sin manifest hermano (o `equations` ausente) → 0 ecuaciones, sin error—, cerrando el round-trip de
+  procedencia con `snapshot create`. **Transiciona a `FILTERED`** (reusa la transición permisiva `filter`; válida desde cualquier estado, incluido store
   vacío). Parquet inexistente o schema no canónico → `DataError` exit 2. `data = {papers_loaded,
   total_papers, state, round}`. (El verbo suelto `b2g restore` se retiró en 0.12.0; su capacidad es
   `b2g snapshot restore`.)
@@ -386,7 +473,17 @@ JSON** con `schema="1"`:
 }
 ```
 
-En error conocido: `ok=false`, `data={}`, `error={"code": <CODE>, "message": <accionable>}`. Los exit
+En error conocido: `ok=false`, `data={}`, `error={"code": <CODE>, "message": <accionable>}`.
+
+**Canal único de `warnings` (ADR 0021 §C, enmienda QA 0.14.0 #3).** Los avisos no fatales van
+**SIEMPRE** en el campo **`warnings` top-level** del envelope y **NUNCA** duplicados dentro de `data`:
+el consumidor mira **un solo lugar**. Aunque un servicio interno (`run_export`/`run_build`) devuelva un
+`data["warnings"]` propio (lo conserva para sus tests), la **superficie CLI lo extrae** (`pop`, no
+`get`) antes de emitir, así el texto sobrevive en un único lugar. **Excepción por diseño:**
+`data["empty_networks"]` de `build` **no** es un warning sino un diagnóstico estructurado por-red
+(`{kind, reason, fix_command}`) que vive en `data`, separado del canal `warnings` (§build).
+
+Los exit
 codes se mapean **por tipo de error** (ADR 0021 §D): `DataError`→2, `ImportError`/`DependencyError`/
 `NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5. `AttributeError` **no** se
 mapea (un bug real no se disfraza de "capacidad faltante"); la capacidad-de-source-faltante se convierte
@@ -405,6 +502,17 @@ no aplica, el campo **no aparece** (no se emite `subcode: null`). Es **aditivo**
 ```json
 { "code": "NETWORK_ERROR", "message": "…", "subcode": "RATE_LIMITED" }
 ```
+
+**Mensaje accionable del `RATE_LIMITED` (#306).** Un `429` **no** es un problema de conexión y
+*"reintentá"* es el consejo **contrario** al correcto ante un rate-limit account-wide (recuperación de
+**horas**): un agente que lo sigue al pie de la letra reintenta en loop y quema más cuota. Por eso el
+`message` de un 429 **NO** usa el genérico *"Error de red… Verificá tu conexión… reintentá"*; nombra el
+error como **rate-limit / cuota**, incluye el **`Retry-After`** si el upstream lo declaró, y sugiere
+**esperar el reset** o **reducir el alcance del forrajeo** (`chain --top N`/`--ids`, ver §5 y #309). El
+subcode `RATE_LIMITED` sigue siendo la señal para ramificar sin parsear texto; el mensaje solo deja de
+misdiagnosticar el caso humano. Aplica tanto al 429 traducido por `OpenAlexSource`
+(`sources/openalex.py::_build_rate_limit_message`) como al 429 crudo que llegue al borde CLI
+(`cli/_errors.py::_rate_limit_fallback_message`).
 
 **`data.workspace` universal + warning de walk-up (ADR 0045 #259).** Todos los comandos del ciclo que
 resuelven un workspace ecoan `data["workspace"] = {"root": <str|null>, "source": <str>}` (antes solo lo
@@ -779,21 +887,30 @@ class Corpus:
         Falla ruidoso si el schema no coincide."""
 
     def to_arrow(self) -> pa.Table:
-        """Materializa el contenido del backend como pa.Table. Puente a los proyectores puros."""
+        """Materializa el contenido del backend como pa.Table. Puente a los proyectores puros.
+        ADR 0050 D3: puebla la METADATA del schema Arrow con `equation_hash`/`equation_hash_algo`/
+        `equation_expression`/`equation_id` cuando hay exactamente 1 ecuación en la tabla `equations`
+        (§1.5/§1.6). Con 0 o >1 ecuaciones la metadata se omite (silenciosa acá; el warning lo emite
+        el punto de consumo). El schema de columnas + el dominio de `curation_status` son contrato con
+        consumidores externos (el consumidor programático, §1.7)."""
     def seeds(self) -> pa.Table:        """Vista is_seed == True."""
     def candidates(self) -> pa.Table:   """Vista curation_status == 'candidate'."""
     def accepted(self) -> pa.Table:     """Vista curation_status == 'accepted' (la biblioteca curada)."""
 
     def scoped(self, scope: str) -> "Corpus":
         """Vista PURA por estado de curación: devuelve un Corpus NUEVO con el subconjunto de filas
-        (no muta el original). Valores: `'all'` = corpus completo; `'accepted'` = `is_seed == True`
-        OR `curation_status == 'accepted'`; `'seeds_only'` = `is_seed == True`. Scope inválido →
+        (no muta el original). Valores: `'all'` = corpus completo; `'accepted'` =
+        `(is_seed == True OR curation_status == 'accepted') AND curation_status != 'rejected'`
+        (ADR 0051, #307: una semilla RECHAZADA queda EXCLUIDA de `accepted` aunque sea semilla —
+        rechazar refleja la curación PRISMA); `'seeds_only'` = `is_seed == True` (**NO** excluye
+        rejected: una semilla rechazada SÍ aparece — scope estructural "qué entró", numerador PRISMA;
+        decisión explícita del ADR 0051, no omisión). Scope inválido →
         `ValueError` accionable. Determinista: dos llamadas con el mismo scope dan corpora con el
         mismo `corpus_hash` (subset estable). `'all'` reusa el backend; los otros materializan el
         filtro en un `InMemoryBackend`. Lo usa `b2g build --scope` (vocab CLI `seeds`→`seeds_only`
         internamente) para sellar el hash del
-        corpus FILTRADO. Issue #56 / #159. **NO confundir con `NetworkSpec.scope`** (§10): aquel es un
-        eje por-red (`full`/`seeds_only`) sobre `is_seed`; `scoped()` filtra el corpus entero por
+        corpus FILTRADO. Issue #56 / #159 / #307. **NO confundir con `NetworkSpec.scope`** (§10): aquel
+        es un eje por-red (`full`/`seeds_only`) sobre `is_seed`; `scoped()` filtra el corpus entero por
         curación antes de proyectar."""
 
     def with_manifest(self, manifest: Manifest) -> "Corpus":
@@ -861,6 +978,12 @@ class Manifest(BaseModel):
     # Con default — D5
     openalex_version: str | None = None          # versión/fecha del snapshot de OpenAlex usado
     equations: list[EquationRef] = []            # ecuaciones + query OpenAlex ejecutada + reporte de traducción
+                                                  # EquationRef vive en `bib2graph.corpus` (NO en `schemas`).
+                                                  # ADR 0050 D1: extendida con engine/params/created_at;
+                                                  # se PERSISTE en la tabla `equations` del store vivo (§1.5)
+                                                  # y `DuckDBStore.load()` la RECONSTRUYE de vuelta (D1
+                                                  # completo, QA 0.14.0 #1): el snapshot sella la tabla
+                                                  # fielmente, no `[]`.
     chaining: ChainingParams | None = None       # profundidad, topes, dirección
     preprocessors: list[PreprocRef] = []         # normalize + thesaurus aplicados
     filters: list[FilterStep] = []               # criterios incl/excl con conteos (flujo PRISMA)
@@ -925,7 +1048,14 @@ class TabularBackend(Protocol):
     def add_referenced_refs(self, ref_ids: list[str], *, cycle_round: int) -> "TabularBackend": ...
         # Registra IDs observados (idempotente por existencia de `ref_id`; observed_at = now() del backend).
     def referenced_refs_count(self) -> int: ...    # nº de IDs observados distintos
-    def referenced_refs(self) -> pa.Table: ...     # los IDs observados (ref_id, cycle_round, observed_at)
+    def referenced_refs(self) -> list[str]: ...    # los ref_id observados, en orden de inserción
+
+    # ADR 0050 D1: tabla hermana `equations` (objeto ecuación de 1ª clase; FUERA del corpus_hash,
+    # como referenced_but_not_fetched). Firmas y schema en §1.5.
+    def persist_equation(self, equation_id: str, *, engine: str, raw_query: str,
+                         params_json: str, label: str | None = None,
+                         created_at: str | None = None) -> None: ...   # upsert idempotente por equation_id
+    def load_equations(self) -> list[dict[str, object]]: ...           # filas persistidas, orden de inserción
 ```
 
 | Implementación | Estado | Notas |
@@ -937,6 +1067,150 @@ class TabularBackend(Protocol):
 TabularBackend, InMemoryBackend`). El contrato D1/D2/D3 se verifica con una **suite parametrizada
 por backend** (`tests/unit/test_backends.py`), ahora parametrizada **también con `DuckDBBackend`**
 (Hito 3, construido): el backend SQL cumple los mismos invariantes que el InMemory.
+
+### 1.5 Objeto/tabla `equations` — la ecuación como objeto de 1ª clase (ADR 0050 D1, v1)
+
+La ecuación de búsqueda **se persiste como objeto de 1ª clase** en el store vivo (ADR
+[0050](decisiones/0050-contrato-export-corpus-arrow-bibtex-ecuacion.md) D1, 0.14.0), no solo como el
+`equation_id` string suelto dentro del JSON de `provenance`. Es una **tabla hermana** del backend
+(análoga a `loop_state_log`/`referenced_but_not_fetched`): SQL en `DuckDBBackend`, estructura
+equivalente en `InMemoryBackend`. Schema de la tabla `equations` (PK `equation_id`):
+
+| Campo | Tipo | Nullable | Notas |
+|---|---|---|---|
+| `equation_id` | `string` (**PK**) | no | formato `eq-<YYYYMMDDTHHMMSS>` (seed); mismo que hoy en `provenance`. Estable. |
+| `engine` | `string` | no | motor que ejecutó la búsqueda (`openalex`; futuro `s2`/`crossref`). |
+| `raw_query` | `string` | no | la ecuación **cruda** tal como la escribió el usuario (`EquationSpec.query` / `--equation`), **antes** de traducir a filtros OpenAlex. Es lo que el consumidor programático confirma y hashea (§1.6). |
+| `params_json` | `string` (JSON) | no (default `'{}'`) | superconjunto de `EquationRef` + los flags de `seed`: `{exclude, max_results, native, min_year, max_year, executed_query, translation_report}`. |
+| `label` | `string \| null` | sí | etiqueta humana opcional. |
+| `created_at` | `string` (ISO8601 UTC) | no | sello de creación de la ecuación. |
+
+- **`provenance.equation_id` es una FK / denormalización** a `equations.equation_id`. **La tabla
+  `equations` es la fuente de verdad; el `equation_id` string en `provenance` es cache/denormalización.**
+  Retrocompat total: los consumidores que solo leen `provenance.equation_id` **no rompen** (el string
+  sigue ahí, incluidos los `chaining:*` — su desambiguación con `source_kind` es 0.15.0, ver abajo).
+- **Se persiste al sembrar.** `b2g seed --equation`/`--spec` escribe una fila en `equations` en la
+  biblioteca viva (`store.backend.persist_equation(...)`, idempotente por `equation_id` PK: `INSERT OR
+  REPLACE` en DuckDB, upsert por posición en InMemory). El `raw_query` que se persiste es la ecuación
+  cruda; `params_json` serializa `EquationRef.params`.
+- **El chaining NO crea filas en `equations`** (un citante forrajeado no vino de una ecuación).
+- **Round-trip completo (D1, QA 0.14.0 #1).** `DuckDBStore.load()` **reconstruye `manifest.equations`**
+  desde esta tabla al rehidratar (mismo patrón que `filters`/`enrichers`, ver §4 "Procedencia del
+  Manifest persistida entre cargas"). Por eso el `manifest.json` que sella `snapshot create` **refleja
+  fielmente la tabla `equations`**, no un `[]` vacío: la persistencia y la carga cierran el ciclo, la
+  procedencia sobrevive entre sesiones. (`b2g status` la expone directo de `load_equations()`, sin
+  pasar por el manifest reconstruido; ver §Convenciones CLI · `status`.)
+
+**`EquationRef`** (`bib2graph.corpus`, **NO** `schemas`) es la vista Python de esta fila, reusada en el
+`Manifest` del snapshot (§1.3). ADR 0050 D1 la **extiende** (aditivo, retrocompat):
+
+```python
+class EquationRef(BaseModel):
+    """Referencia a una ecuación ejecutada. Vive en bib2graph.corpus (ADR 0030 + 0050 D1).
+    Se sella en Manifest.equations (snapshot) Y se persiste en la tabla `equations` (store vivo)."""
+    equation_id: str                                    # PK, `eq-<YYYYMMDDTHHMMSS>` (seed)
+    query: str                                          # query EJECUTADA (traducida) — campo histórico
+    translation_report: list[str] = Field(default_factory=list)
+    engine: str | None = None                           # ADR 0050: motor (`openalex`; futuro s2/crossref)
+    params: dict[str, object] = Field(default_factory=dict)  # ADR 0050: raw_query, exclude, max_results,
+                                                        # native, min_year, max_year, executed_query
+    created_at: str | None = None                       # ADR 0050: sello ISO8601 UTC
+```
+
+> **`query` = query traducida (histórico); la ecuación CRUDA vive en `params["raw_query"]`** (= la
+> columna `raw_query` de la tabla y lo que se hashea, §1.6). No se confunden: `query` mantiene el uso
+> histórico del campo; `raw_query` es lo que el usuario escribió.
+
+**Métodos del backend (aditivos al Protocol `TabularBackend`, §1.4):**
+
+```python
+def persist_equation(self, equation_id: str, *, engine: str, raw_query: str,
+                     params_json: str, label: str | None = None,
+                     created_at: str | None = None) -> None: ...
+    # Upsert idempotente por equation_id (PK). created_at=None → datetime.now(UTC).
+def load_equations(self) -> list[dict[str, object]]: ...
+    # Filas persistidas (equation_id, engine, raw_query, params_json, label, created_at),
+    # en orden de inserción. Copia defensiva.
+```
+
+**D2 (`source_kind`/`hop`) NO está en 0.14.0.** ADR 0050 **difiere D2 a 0.15.0** (diseño congelado en
+el ADR, implementación después): el `equation_id` string sigue **tal cual** (incluidos los `chaining:*`),
+`provenance` no gana el campo `source_kind`, `chaining_hop` no se toca, y **no hay migración ni parser de
+compat** en 0.14.0. Cuando D2 aterrice, se documentará el evento `provenance` con `source_kind`.
+
+### 1.6 Metadata del schema Arrow — `equation_hash` (ADR 0050 D3, v1) — contrato con el consumidor programático
+
+`to_arrow()` (§1.2) puebla la **metadata del schema Arrow** (`pa.schema(...).with_metadata({...})`,
+bytes→bytes) con la ligadura ecuación↔corpus, **cuando hay exactamente una ecuación** en la tabla
+`equations` (§1.5). Claves (bytes UTF-8):
+
+| Clave | Valor |
+|---|---|
+| `equation_hash` | SHA-256 (hex, **minúsculas**) de la ecuación cruda normalizada (ver abajo). |
+| `equation_hash_algo` | `"sha256"` (constante; explícito para versionar el algoritmo del digest). |
+| `equation_expression` | la ecuación **cruda** (`raw_query`), para trazabilidad. |
+| `equation_id` | la FK (`eq-…`), para cruzar con la tabla `equations` (§1.5). |
+
+**Normalización canónica del hash — `strip()` puro, CONGELADO (contrato de verificación del consumidor).** Se
+hashea la ecuación **cruda** (`raw_query` = lo que el usuario escribió, **antes** de traducir a filtros
+OpenAlex):
+
+```python
+equation_hash = hashlib.sha256(raw_query.strip().encode("utf-8")).hexdigest()
+```
+
+Es decir: **solo `str.strip()`** (elimina espacios al inicio/final) → codificar en **UTF-8** →
+**SHA-256** → **hexdigest en minúsculas**. **NO** colapsa espacios internos, **NO** cambia mayúsculas,
+**NO** normaliza comillas ni Unicode (NFC/NFKC). Esta definición es **exactamente** la del contrato de
+verificación del consumidor y **se congela**: una vez que el consumidor programático empiece a verificar,
+cambiar la normalización rompería la verificación (por eso `equation_hash_algo` deja versionar el
+algoritmo para evoluciones controladas).
+
+- **Regla 1-ecuación → presente / 0-o-N → omitida** (congelada, ADR 0050 D3). Exactamente **una**
+  ecuación en `equations` → la metadata (`equation_hash`/`equation_hash_algo`/`equation_expression`/
+  `equation_id`) se puebla. **Cero o múltiples** ecuaciones → la metadata se **omite por completo** y
+  `build_equation_metadata` devuelve un **`warning`** accionable. **Nunca se inventa un hash** para 0 o
+  >1 ecuaciones (fallar suave y honesto, no mentir un hash que el consumidor programático no podría
+  verificar). El helper puro `build_equation_metadata(equations) -> tuple[dict[bytes, bytes], str | None]`
+  (`bib2graph.backends.memory`) implementa la regla; `to_arrow()` lo aplica silenciosamente (el
+  `warning` lo emite el punto de consumo, p. ej. `b2g export --format arrow`).
+- **Contrato a FUTURO, no bloqueante.** La verificación por hash **aún no está implementada del lado del
+  consumidor** (su contrato de verificación en estado Propuesta). bib2graph emite el hash bien (strip
+  exacto) para dejar la ligadura lista **para cuando** el consumidor programático la active; su ausencia
+  no frena nada.
+
+> **El schema de columnas de `to_arrow()` (los 19 nombres+tipos que el consumidor programático lee) y el
+> dominio de `curation_status` (`candidate | accepted | rejected`) son CONTRATO con consumidores
+> externos** — ver §1.7. La metadata de ecuación (D1/D3) es **aditiva**: no toca esas columnas.
+
+### 1.7 Contrato con consumidores externos — schema del Arrow congelado
+
+Un **consumidor programático** carga corpus reales subiendo el **Arrow que produce `to_arrow()`**
+(Feather de `b2g export --format arrow`, §CLI). Un usuario programático que integra el Arrow de bib2graph
+reportó que su ingest impone un **constraint DURO** sobre el schema (ADR 0050 §Constraints del consumidor
+programático): estos dos elementos son **contrato con consumidores externos y no se cambian sin coordinar
+cross-repo**:
+
+1. **El schema de columnas del Arrow — los 19 nombres+tipos load-bearing que el consumidor programático
+   lee** (`INGESTED_COLUMNS`): `id`, `doi`, `source_id`, `references_id`, `references_doi`, `title`,
+   `year`, `abstract`, `source`, `curation_status`, `is_seed`, `provenance`, `authors_raw`, `authors_id`,
+   `authors_affiliations`, `keywords_raw`, `keywords_id`, `institutions_raw`, `institutions_id`.
+   `source_id`/`references_id` deben seguir siendo ids OpenAlex del **mismo namespace** (`W…`): el
+   consumidor programático joinea `references_id` de un paper contra `source_id` de otro para armar el
+   grafo de citas. Un rename/retipo los vuelve **invisibles sin error** (rompe en silencio).
+2. **El dominio de `curation_status` — exactamente `candidate | accepted | rejected`**. El ingest del
+   consumidor programático hace `.exclude(rejected)`; renombrar un estado filtra mal los papers rechazados.
+
+**Regla: aditivo es seguro; renombrar/retipar/estrechar NO.** **Agregar** columnas nuevas a
+`CORPUS_SCHEMA` o metadata nueva al schema (como `equation_hash`, D3) es **100% seguro** — el consumidor
+programático ignora todo lo que no está en `INGESTED_COLUMNS` y toda metadata que no consume. **Renombrar,
+retipar o estrechar el dominio** sobre lo que el consumidor programático lee **rompe la carga** (varios
+rompen en silencio).
+
+Esto lo blinda el **test guardarraíl `tests/unit/test_arrow_schema_contract.py`** (#296, ya en dev): una
+**copia congelada** de los 19 nombres+tipos + el dominio de `curation_status`, que falla si alguien
+renombra/retipa una columna load-bearing o cambia el dominio. Agregar columnas nuevas lo deja pasar
+(verificado). Referencia normativa: **ADR 0050 §Constraints del consumidor programático**.
 
 ---
 
@@ -1170,6 +1444,13 @@ los **reconstruye** al rehidratar, para que sobrevivan a un ciclo persist/load:
   `load_enricher_refs()` (#141), **mismo patrón** que `filters`: la pasada de enriquecimiento
   (`chain` refs→DOI, `build` co-citación) sella sus `EnricherRef` y `load()` los recompone, así el
   snapshot reporta qué enriquecimiento se aplicó sin re-correrlo.
+- **`manifest.equations`** ⇄ tabla **`equations`** (§1.5) — vía `DuckDBBackend.persist_equation()` /
+  `load_equations()` (QA 0.14.0 #1, ADR 0050 D1), **mismo patrón**: `seed --equation`/`--spec` sella
+  la fila y **`load()` reconstruye `manifest.equations`** al rehidratar. Así el `manifest.json` del
+  snapshot **refleja fielmente la tabla lateral `equations`** (D1 completo): antes era un bug —la
+  tabla se poblaba pero `load()` no la leía de vuelta, y un `snapshot create` posterior sellaba
+  `equations: []` pese a haber ecuaciones registradas, perdiendo la procedencia—. `load_equations()`
+  nunca lanza por tabla ausente (stores pre-D1 devuelven `[]`, retrocompat sin excepciones).
 
 **Extensiones del `DuckDBBackend`, FUERA del Protocol `Store`/`TabularBackend`** (se acceden vía
 `store.backend.…`): son específicas de DuckDB y no parte del contrato genérico:
@@ -1242,11 +1523,19 @@ class Forager:
     El scent consume el primitivo de proyectores. Solo el Forager toca la red; el núcleo
     de scent es puro."""
     def __init__(self, source: Source, *, depth: int = 1, max_candidates: int | None = None,
-                 max_citing_per_paper: int = 50) -> None:
+                 max_citing_per_paper: int = 50, origin_ids: set[str] | None = None,
+                 call_budget: "CallBudget | None" = None) -> None:
         """depth=1 por defecto; depth>1 lanza NotImplementedError (futuro v0.3+).
         max_candidates = tope configurable del ranking (None = sin límite).
         max_citing_per_paper = tope de citantes POR SEMILLA en el forward batcheado (default 50;
-        acota el fetch vía fetch_citing_batch; CLI `--max-citing`). AS-BUILT #21 (2026-06-16)."""
+        acota el fetch vía fetch_citing_batch; CLI `--max-citing`). AS-BUILT #21 (2026-06-16).
+        origin_ids (#309, CLI `chain --ids`/`--top`/`--scope`): si NO es None, acota los papers-origen
+        del forrajeo a las filas cuyo `id` o `source_id` está en el set (matchea ambos). None (default)
+        = todas las semillas (comportamiento previo, sin cambios).
+        call_budget (#309, CLI `chain --budget N`): `CallBudget` compartido por referencia con el
+        `source` para topar las llamadas HTTP del forward; al agotarse, el chaining PARA limpio (sin
+        reintentar) y `RankedCandidates.budget_stopped` queda True con lo materializado hasta ese punto.
+        None = sin tope."""
 
     def preview(self, corpus: Corpus, *, direction: Direction = "both") -> "GrowthPreview":
         """'Esta expansión sumaría ~N papers' SIN traerlos. Opera SOLO localmente, SIN red.
@@ -1281,6 +1570,22 @@ class RankedCandidates(BaseModel):
                                        # max_candidates). El backward observa; el forward materializa.
                                        # b2g chain los persiste en `referenced_but_not_fetched` (§4),
                                        # fuera del corpus_hash. Materializar = diferido a #71.
+    budget_used: int = 0               # #309: llamadas HTTP realizadas cuando `chain --budget N` está
+                                       # activo. 0 si no se pasó call_budget al Forager.
+    budget_stopped: bool = False       # #309: True si el chaining se detuvo temprano por agotar el
+                                       # call_budget (parada limpia, sin reintentar) → resultado PARCIAL
+                                       # pero consistente. b2g chain avisa y sugiere re-correr acotado.
+
+class CallBudget:                      # bib2graph.foraging.CallBudget (#309, CLI `chain --budget N`)
+    """Tope mutable de llamadas HTTP a OpenAlex, COMPARTIDO POR REFERENCIA entre Forager y
+    OpenAlexSource (mismo objeto, sin acoplarlos por herencia). Guardarraíl anti-footgun: al llegar al
+    tope, quien consulta `exhausted` DEBE parar limpio, SIN reintentar —ni el retry/backoff ante 429/5xx
+    ni una página más de paginación por cursor. `limit=None` → sin tope (default)."""
+    limit: int | None                  # tope de llamadas (None = sin tope)
+    used: int                          # llamadas realizadas hasta el momento
+    @property
+    def exhausted(self) -> bool: ...    # True si used >= limit (limit no-None)
+    def record_call(self) -> None: ...  # incrementa `used`
 
 # RETIRADO (ADR 0022): `explain_candidate` y el extra `[llm]` se ELIMINAN del producto.
 # El producto no usa IA generativa. El "porqué" de un candidato lo explica la ESTRUCTURA
@@ -1304,6 +1609,12 @@ class RankedCandidates(BaseModel):
   metadata real (vía `fetch_citing_batch_with_works`, §2; cero red extra). Asimetría deliberada.
 - **`preview` y `chain` no mutan** el corpus de entrada (semántica de valor). `fetch_citing` (singular,
   con retry/backoff ante 429/5xx) sigue disponible; el forward lo consume vía la variante batcheada.
+- **Forrajeo acotado y presupuestado (#309):** `origin_ids` (unidad escopada, CLI
+  `chain --ids`/`--top`/`--scope`) y `call_budget` (`CallBudget`, CLI `chain --budget N`) son
+  **aditivos**: sin ellos, el `Forager` se comporta como antes (todas las semillas, sin tope). Al agotar
+  el `call_budget` el chaining **para limpio sin reintentar** y expone lo parcial vía
+  `RankedCandidates.budget_used`/`budget_stopped`. Ver §CLI `chain` para los defaults y la
+  [Discussion #310](https://github.com/complexluise/bib2graph/discussions/310) (flip a default acotado).
 
 ---
 
@@ -1365,7 +1676,8 @@ def apply_filters(corpus: Corpus, criteria: list[FilterCriterion]) -> tuple[Corp
   silencioso (endurece el flujo PRISMA, sin exclusiones perdidas).
 - **Símbolos públicos** (`from bib2graph import ...`): `Forager`, `GrowthPreview`, `RankedCandidates`,
   `Preprocessor`, `FilterCriterion`, `apply_filters`. `apply_filter` (singular) desde
-  `bib2graph.filters`.
+  `bib2graph.filters`. **`CallBudget`** (#309) se exporta desde **`bib2graph.foraging`** (junto a
+  `Forager`/`RankedCandidates`/`GrowthPreview`), no del top-level.
 
 ---
 
@@ -1574,12 +1886,29 @@ class QualityThresholds(BaseModel):
 
 ## 9. Núcleo — `Exporter`
 
+Dos familias de exportador: **de red** (serializan un `nx.Graph` de build) y **de corpus** (serializan
+la tabla Arrow del corpus). Los consume `b2g export --format …` (§CLI, ADR 0050 D4).
+
 ```python
+# --- Exportadores de RED (build → networks/) ---
 class Exporter(Protocol):
     def export(self, g: nx.Graph, results: dict, out_dir: str) -> None: ...
 
 class GraphMLExporter: ...   # v1 — para Gephi / VOSviewer / Cytoscape
 class CsvExporter: ...       # v1 — nodos.csv + aristas.csv para pandas
+
+# --- Exportadores de CORPUS (ADR 0050 D4, v1) — serializan Corpus.scoped(scope).to_arrow() ---
+class ArrowExporter:         # v1 — `corpus.arrow` (Feather / Arrow IPC)
+    def export(self, table: pa.Table, out_path: str | Path) -> Path: ...
+        # Serializa la tabla TAL CUAL con pyarrow.feather.write_feather: NO toca schema ni metadata.
+        # La metadata de ecuación + equation_hash (§1.6) ya viene en el schema de to_arrow() y viaja
+        # dentro del Feather (archivo autoverificable para el consumidor programático).
+
+class BibtexExporter:        # v1 — `corpus.bib` (BibTeX). Extra [bibtex] (bibtexparser, import perezoso).
+    def export(self, table: pa.Table, out_path: str | Path) -> Path: ...
+        # entry-type inferido (@article default); citekey = id interno; DOI como campo; campos mínimos
+        # universales title/author/year/doi/journal/url (ADR 0050 D4; ver §CLI export). ImportError si
+        # falta bibtexparser → exit 3.
 ```
 
 **Notas de contrato** (Hito 2, ADR [0014](decisiones/0014-proyeccion-redes-pesos-asortatividad.md), D5):
@@ -1778,6 +2107,8 @@ b2g curate apply curacion.csv                     # aplica accepted/rejected en 
 b2g build --max-citing 50 --email tu@correo.org   # → BUILT; co-citación (cited_by) sobre las aceptadas
 b2g read top --kind bibliographic_coupling        # salida de investigación (nodos centrales + co-citación)
 b2g export --format graphml                        # serializa networks/ a exports/
+b2g export --format arrow --scope accepted         # corpus.arrow (Feather autoverificable, p/ consumidor programático)
+b2g export --format bibtex                          # corpus.bib (BibTeX, entry-type inferido)
 b2g snapshot create                                # foto reproducible (parquet + manifest.json)
 b2g status                                         # CycleState + round + curation_available + workspace
 ```

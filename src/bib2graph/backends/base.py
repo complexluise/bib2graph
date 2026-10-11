@@ -211,3 +211,45 @@ class TabularBackend(Protocol):
             Lista de tuplas ``(paper_id, engine, id)`` en orden no definido.
         """
         ...
+
+    def persist_equation(
+        self,
+        equation_id: str,
+        *,
+        engine: str,
+        raw_query: str,
+        params_json: str,
+        label: str | None = None,
+        created_at: str | None = None,
+    ) -> None:
+        """Persiste una ecuación de búsqueda en la tabla lateral ``equations`` (ADR 0050 D1).
+
+        Idempotente: escribir el mismo ``equation_id`` dos veces reemplaza la
+        fila (upsert), no duplica. La tabla ``equations`` es lateral al
+        ``CORPUS_SCHEMA`` — no participa de ``corpus_hash`` ni de la
+        identidad del corpus (R2, ADR 0017).
+
+        Args:
+            equation_id: PK, formato ``eq-<YYYYMMDDTHHMMSS>`` (mismo formato
+                que ``provenance.equation_id`` hoy).
+            engine: Motor que ejecutó la búsqueda (p. ej. ``'openalex'``).
+            raw_query: La ecuación CRUDA tal como la escribió el usuario,
+                ANTES de traducir a filtros del motor.
+            params_json: JSON string con los parámetros (``exclude``,
+                ``max_results``, ``native``, ``min_year``, ``max_year``,
+                ``executed_query``, ``translation_report``).
+            label: Etiqueta humana opcional.
+            created_at: Timestamp ISO8601 UTC de creación. Si es ``None``,
+                la implementación usa ``datetime.now(UTC)`` como fallback.
+        """
+        ...
+
+    def load_equations(self) -> list[dict[str, object]]:
+        """Devuelve todas las ecuaciones persistidas en la tabla ``equations``.
+
+        Returns:
+            Lista de dicts con las claves ``equation_id``, ``engine``,
+            ``raw_query``, ``params_json``, ``label``, ``created_at``, en
+            orden de inserción.
+        """
+        ...

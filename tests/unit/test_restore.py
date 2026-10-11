@@ -15,6 +15,10 @@ Casos cubiertos (movidos desde test_equation_spec.py + extendidos):
 6. El estado FILTERED habilita build aguas abajo (FSM permisiva: apply_transition
    desde FILTERED → build → BUILT es válido).
 7. b2g snapshot restore requiere --from-corpus (no hay modo sin argumento).
+8. QA 0.14.0 (ADR 0050 D1, eslabón final): ``snapshot restore`` reconstruye las
+   ecuaciones desde el ``manifest.json`` hermano del parquet — antes se perdían
+   (round-trip create→restore dejaba ``load_equations() == 0``). Graceful si
+   no hay manifest hermano.
 
 Filosofía (AGENTS.md): se testea la FUNCIÓN detrás del comando, NO el parser
 Click. CliRunner solo donde hay integración de flag necesaria.
@@ -501,3 +505,184 @@ def test_run_restore_con_estado_previo_preserva_ronda(tmp_path: Path) -> None:
     )
     assert store2.backend.loop_state() == CycleState.FILTERED
     assert store2.backend.loop_round() == 2
+
+
+# ---------------------------------------------------------------------------
+# 9. QA 0.14.0 (ADR 0050 D1, eslabón final): snapshot restore reconstruye
+#    equations desde el manifest.json hermano del parquet.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_snapshot_restore_reconstruye_equations_round_trip(tmp_path: Path) -> None:
+    """Round-trip: sembrar 2 ecuaciones → snapshot create → snapshot restore
+    en un store/workspace FRESCO → ``load_equations()`` refleja las mismas
+    ecuaciones (equation_id/raw_query) y ``manifest.equations`` no está vacío.
+
+    Cierra el eslabón final de ADR 0050 D1: ``snapshot create`` ya sellaba
+    ``equations`` en el manifest y ``DuckDBStore.load()`` ya las reconstruía
+    en memoria desde la tabla lateral; lo único que faltaba era que
+    ``snapshot restore`` las re-sembrara en el store DESTINO (fresco, sin la
+    tabla lateral poblada).
+    """
+    import httpx
+
+    from bib2graph.cli.commands.seed import run_seed
+    from bib2graph.service.snapshot import run_restore, run_snapshot
+    from bib2graph.stores.duckdb import DuckDBStore
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"results": [], "meta": {"count": 0, "next_cursor": None}},
+            headers={"x-openalex-api-version": "2026-06-17"},
+        )
+
+    transport = httpx.MockTransport(handler)
+
+    # --- 1. Sembrar 2 ecuaciones en el store ORIGEN ---
+    origin_store_path = tmp_path / "origin.duckdb"
+    run_seed(origin_store_path, "ecology", transport=transport)
+    run_seed(origin_store_path, "environmental justice", transport=transport)
+
+    origin_store = DuckDBStore(origin_store_path)
+    try:
+        origin_equations = origin_store.backend.load_equations()
+    finally:
+        origin_store.close()
+    assert len(origin_equations) >= 1  # puede colapsar a 1 si cae en el mismo segundo
+
+    # --- 2. snapshot create: exporta parquet + manifest.json sellando equations ---
+    snap_dir = tmp_path / "snap"
+    run_snapshot(origin_store_path, out_dir=snap_dir)
+    manifest_path = snap_dir / "manifest.json"
+    assert manifest_path.exists()
+    manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest_data["equations"], "el manifest debe sellar ecuaciones no vacías"
+
+    # --- 3. snapshot restore en un store FRESCO (nunca vio estas ecuaciones) ---
+    fresh_store_path = tmp_path / "fresh.duckdb"
+    run_restore(fresh_store_path, snap_dir / "corpus.parquet")
+
+    fresh_store = DuckDBStore(fresh_store_path)
+    try:
+        restored_equations = fresh_store.backend.load_equations()
+        restored_corpus = fresh_store.load()
+    finally:
+        fresh_store.close()
+
+    # equation_id/raw_query coinciden con los sembrados en origen.
+    origin_ids = {eq["equation_id"] for eq in origin_equations}
+    restored_ids = {eq["equation_id"] for eq in restored_equations}
+    assert restored_ids == origin_ids
+
+    origin_raw_queries = {eq["raw_query"] for eq in origin_equations}
+    restored_raw_queries = {eq["raw_query"] for eq in restored_equations}
+    assert restored_raw_queries == origin_raw_queries
+
+    # manifest.equations (reconstruido por DuckDBStore.load()) no está vacío.
+    assert len(restored_corpus.manifest.equations) == len(restored_equations)
+
+
+@pytest.mark.unit
+def test_snapshot_restore_reconstruye_equations_via_cli(tmp_path: Path) -> None:
+    """``b2g snapshot restore --from-corpus`` (CliRunner) reconstruye equations.
+
+    Cubre el camino end-to-end real: ``b2g snapshot create`` seguido de
+    ``b2g snapshot restore`` en un workspace fresco.
+    """
+    import httpx
+    from click.testing import CliRunner
+
+    from bib2graph.cli import b2g
+    from bib2graph.cli.commands.seed import run_seed
+    from bib2graph.service.snapshot import run_snapshot
+    from bib2graph.stores.duckdb import DuckDBStore
+    from bib2graph.workspace import Workspace
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"results": [], "meta": {"count": 0, "next_cursor": None}},
+            headers={"x-openalex-api-version": "2026-06-17"},
+        )
+
+    transport = httpx.MockTransport(handler)
+
+    origin_ws_dir = tmp_path / "origin_ws"
+    origin_ws = Workspace.init(origin_ws_dir, "origin")
+    run_seed(origin_ws.library_path, "unequal exchange", transport=transport)
+
+    snap_dir = tmp_path / "snap_cli"
+    run_snapshot(origin_ws.library_path, out_dir=snap_dir)
+
+    fresh_ws_dir = tmp_path / "fresh_ws"
+    Workspace.init(fresh_ws_dir, "fresh")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        b2g,
+        [
+            "--workspace",
+            str(fresh_ws_dir),
+            "snapshot",
+            "restore",
+            "--from-corpus",
+            str(snap_dir / "corpus.parquet"),
+            "--json",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, f"Salida inesperada: {result.output}"
+
+    # Resolver la ruta canónica del store vía el Workspace (evita asumir nombre de archivo).
+    ws2 = Workspace.open(fresh_ws_dir)
+    fresh_store = DuckDBStore(ws2.library_path)
+    try:
+        restored_equations = fresh_store.backend.load_equations()
+    finally:
+        fresh_store.close()
+
+    assert len(restored_equations) == 1
+    assert restored_equations[0]["raw_query"] == "unequal exchange"
+
+
+@pytest.mark.unit
+def test_snapshot_restore_sin_manifest_hermano_es_graceful(tmp_path: Path) -> None:
+    """Restore desde un parquet SIN manifest.json hermano no crashea.
+
+    Simula un parquet curado externo suelto (p.ej. exportado a mano, sin el
+    ``manifest.json`` que produce ``snapshot create``): 0 ecuaciones
+    reconstruidas, sin excepción, y las filas del corpus se importan igual
+    que siempre (no regresión).
+    """
+    from bib2graph.service.snapshot import run_restore
+    from bib2graph.stores.duckdb import DuckDBStore
+
+    rows = [
+        _make_corpus_row(id="P1"),
+        _make_corpus_row(id="P2", curation_status="accepted"),
+    ]
+    parquet_path = tmp_path / "external_corpus.parquet"
+    _make_parquet(parquet_path, rows)
+    # Sin manifest.json hermano en tmp_path.
+    assert not (tmp_path / "manifest.json").exists()
+
+    store_path = tmp_path / "test.duckdb"
+    data = run_restore(store_path, parquet_path)
+
+    assert data["papers_loaded"] == 2
+    assert data["total_papers"] == 2
+
+    store = DuckDBStore(store_path)
+    try:
+        equations = store.backend.load_equations()
+        corpus = store.load()
+        corpus_len = len(corpus)
+        manifest_equations = corpus.manifest.equations
+    finally:
+        store.close()
+
+    assert equations == []
+    assert manifest_equations == []
+    assert corpus_len == 2

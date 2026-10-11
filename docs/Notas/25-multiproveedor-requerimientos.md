@@ -158,7 +158,7 @@ ecuación. (Re-probar SciELO por su Search API / OAI si se lo prioriza luego.)
 > corte de presupuesto lo dejó fuera del voto final → *reconfirmar antes de implementar*.
 >
 > **Nota de alcance:** la licencia de los *datos* de un proveedor es problema del **consumidor**
-> (Atalaya / el producto), **no de bib2graph**. El motor es determinista y agnóstico a la fuente;
+> (el producto downstream), **no de bib2graph**. El motor es determinista y agnóstico a la fuente;
 > solo le importa el contrato técnico (`Source`). Por eso esta nota no evalúa licencias de datos
 > como criterio de inclusión del motor.
 

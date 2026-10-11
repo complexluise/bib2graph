@@ -427,3 +427,88 @@ def test_merge_solapado_preserva_hash_y_orden(backend_factory: BackendFactory) -
 
     ref_backend = InMemoryBackend(table_self).merge(table_other)
     assert merged.corpus_hash() == ref_backend.corpus_hash()
+
+
+# ---------------------------------------------------------------------------
+# ADR 0050 (D1) — tabla lateral ``equations`` de 1ª clase + FK
+# ---------------------------------------------------------------------------
+
+
+def test_persist_equation_y_load_equations(backend_factory: BackendFactory) -> None:
+    """``persist_equation`` + ``load_equations`` — round-trip básico."""
+    backend = backend_factory(_make_table([_make_row(id="oa:aaaabbbb11112222")]))
+
+    backend.persist_equation(
+        "eq-20260719T220850",
+        engine="openalex",
+        raw_query='"unequal exchange" OR "ecological debt"',
+        params_json='{"max_results": 150}',
+        label="mi-busqueda",
+        created_at="2026-07-19T22:08:50+00:00",
+    )
+
+    equations = backend.load_equations()
+    assert len(equations) == 1
+    eq = equations[0]
+    assert eq["equation_id"] == "eq-20260719T220850"
+    assert eq["engine"] == "openalex"
+    assert eq["raw_query"] == '"unequal exchange" OR "ecological debt"'
+    assert eq["params_json"] == '{"max_results": 150}'
+    assert eq["label"] == "mi-busqueda"
+    assert eq["created_at"] == "2026-07-19T22:08:50+00:00"
+
+
+def test_persist_equation_es_idempotente_por_pk(
+    backend_factory: BackendFactory,
+) -> None:
+    """Re-persistir el mismo ``equation_id`` reemplaza la fila (upsert), no duplica."""
+    backend = backend_factory(_make_table([_make_row(id="oa:aaaabbbb11112222")]))
+
+    backend.persist_equation(
+        "eq-1", engine="openalex", raw_query="query original", params_json="{}"
+    )
+    backend.persist_equation(
+        "eq-1", engine="openalex", raw_query="query actualizada", params_json="{}"
+    )
+
+    equations = backend.load_equations()
+    assert len(equations) == 1
+    assert equations[0]["raw_query"] == "query actualizada"
+
+
+def test_load_equations_multiples_preserva_orden(
+    backend_factory: BackendFactory,
+) -> None:
+    """Varias ecuaciones se listan en orden de primera aparición (PK equation_id)."""
+    backend = backend_factory(_make_table([_make_row(id="oa:aaaabbbb11112222")]))
+
+    backend.persist_equation("eq-1", engine="openalex", raw_query="a", params_json="{}")
+    backend.persist_equation("eq-2", engine="openalex", raw_query="b", params_json="{}")
+    backend.persist_equation("eq-3", engine="openalex", raw_query="c", params_json="{}")
+
+    equations = backend.load_equations()
+    assert [e["equation_id"] for e in equations] == ["eq-1", "eq-2", "eq-3"]
+
+
+def test_load_equations_vacio_sin_ecuaciones(backend_factory: BackendFactory) -> None:
+    """Sin ecuaciones persistidas, ``load_equations`` devuelve lista vacía."""
+    backend = backend_factory(_make_table([_make_row(id="oa:aaaabbbb11112222")]))
+
+    assert backend.load_equations() == []
+
+
+def test_equations_no_afecta_corpus_hash(backend_factory: BackendFactory) -> None:
+    """La tabla lateral ``equations`` no participa de ``corpus_hash`` (R2, ADR 0017).
+
+    Persistir una ecuación no debe cambiar el hash de contenido: es lateral,
+    igual que ``external_ids``/``referenced_but_not_fetched``.
+    """
+    table = _make_table([_make_row(id="oa:aaaabbbb11112222")])
+    backend = backend_factory(table)
+    hash_before = backend.corpus_hash()
+
+    backend.persist_equation(
+        "eq-1", engine="openalex", raw_query="ecolog*", params_json="{}"
+    )
+
+    assert backend.corpus_hash() == hash_before

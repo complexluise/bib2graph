@@ -2,13 +2,27 @@
 
 Expande el corpus con candidatos rankeados por information scent.
 Transiciona el CycleState a FORAGED tras persistir con éxito.
+
+**Guardarraíles anti-footgun (#309):** el forrajeo forward es multiplicativo
+(cada semilla dispara sus propias llamadas HTTP) y su costo es invisible hasta
+que ya se gastó — un ``chain`` sin acotar sobre cientos de semillas puede
+agotar la cuota de OpenAlex (429 account-wide, recuperación de horas).  Este
+módulo agrega, TODOS aditivos (no cambian el default sin acotar, ver
+Discussion #310):
+
+- ``--ids``/``--top``/``--scope``: acotan la **unidad escopada** — de qué
+  papers-origen se forrajea (ver ``_resolve_origin_ids``).
+- ``--preview``: dry-run que estima el fanout sin fetchear (ya existía,
+  ahora también refleja el scoping).
+- ``--budget``: tope de llamadas HTTP; al alcanzarlo, para y reporta parcial
+  SIN reintentar (ver ``foraging.base.CallBudget``).
 """
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import click
 
@@ -23,6 +37,129 @@ from bib2graph.cli._store import (
     workspace_echo,
     workspace_walkup_warning,
 )
+from bib2graph.constants import Col
+
+if TYPE_CHECKING:
+    from bib2graph.corpus import Corpus
+
+# Mapea el vocab de --scope (CLI) al vocab interno de corpus.scoped() —
+# mismo patrón que build.py._map_scope (#309, reusa Corpus.scoped, ADR
+# consistente con el resto del CLI: --scope usa 'seeds', scoped() 'seeds_only').
+_SCOPE_TO_INTERNAL = {"all": "all", "accepted": "accepted", "seeds": "seeds_only"}
+
+
+def _resolve_origin_ids(
+    corpus: Corpus,
+    *,
+    ids: tuple[str, ...],
+    top: int | None,
+    scope: str | None,
+) -> set[str] | None:
+    """Resuelve la unidad escopada del forrajeo (#309) a un set de ids.
+
+    Los tres flags (``--ids``, ``--top``, ``--scope``) son mutuamente
+    excluyentes en este MVP: combinar dos criterios de acotamiento distintos
+    (p. ej. "estos 3 IDs" + "los 10 más centrales") no tiene una semántica
+    obvia sin más contexto de producto — se deja para una iteración futura si
+    hay necesidad real (ver Discussion #310).
+
+    Args:
+        corpus: Corpus cargado del store.
+        ids: IDs explícitos de ``--ids`` (tupla vacía = no se usó el flag).
+        top: Valor de ``--top`` (``None`` = no se usó el flag).
+        scope: Valor de ``--scope`` (``None`` = no se usó el flag).
+
+    Returns:
+        Set de ``id``/``source_id`` a los que acotar el chaining, o ``None``
+        si no se pasó ningún flag de scoping — comportamiento ACTUAL sin
+        cambios: todas las semillas (#309, DoD "no cambiar los defaults").
+
+    Raises:
+        UsageError: Si se combina más de un flag de scoping, si ``--ids``
+            referencia IDs que no existen en el corpus, o si ``--top`` es
+            <= 0.
+    """
+    flags_used = sum([bool(ids), top is not None, scope is not None])
+    if flags_used > 1:
+        raise UsageError(
+            "--ids, --top y --scope son mutuamente excluyentes: elegí UN "
+            "criterio para acotar la unidad escopada del forrajeo."
+        )
+    if flags_used == 0:
+        return None
+
+    if ids:
+        corpus_ids: set[str] = set()
+        rows = corpus.to_arrow().to_pylist()
+        for row in rows:
+            if row.get(Col.ID):
+                corpus_ids.add(str(row[Col.ID]))
+            if row.get(Col.SOURCE_ID):
+                corpus_ids.add(str(row[Col.SOURCE_ID]))
+        missing = [id_ for id_ in ids if id_ not in corpus_ids]
+        if missing:
+            raise UsageError(
+                f"--ids referencia {len(missing)} id(s) que no están en el "
+                f"corpus: {missing}. Verificá los IDs con 'b2g read' o quitalos."
+            )
+        return set(ids)
+
+    if top is not None:
+        if top <= 0:
+            raise UsageError(f"--top debe ser un entero positivo (recibido {top}).")
+        return _top_n_seed_ids(corpus, top)
+
+    assert scope is not None  # flags_used == 1 y ni ids ni top: debe ser scope
+    internal_scope = _SCOPE_TO_INTERNAL.get(scope)
+    if internal_scope is None:
+        raise UsageError(f"--scope '{scope}' no reconocido. Usá: all, accepted, seeds.")
+    scoped_corpus = corpus.scoped(internal_scope)
+    scoped_rows = scoped_corpus.to_arrow().to_pylist()
+    result: set[str] = set()
+    for row in scoped_rows:
+        if row.get(Col.ID):
+            result.add(str(row[Col.ID]))
+        if row.get(Col.SOURCE_ID):
+            result.add(str(row[Col.SOURCE_ID]))
+    return result
+
+
+def _top_n_seed_ids(corpus: Corpus, top: int) -> set[str]:
+    """Resuelve ``--top N``: las N semillas más "centrales" del corpus.
+
+    **Criterio (#309):** nº de referencias (``len(references_id)``) como
+    proxy simple de centralidad — una semilla con más referencias listadas
+    tiene más superficie de acoplamiento bibliográfico potencial (backward) y
+    tiende a ser un hub más citado en su propio campo.  Es una **degradación
+    documentada** del criterio ideal (centralidad de acople sobre el grafo
+    construido por ``b2g build``): no requiere un build previo ni artefactos
+    en disco, es puro y determinista.  Si se necesita la centralidad real del
+    acoplamiento bibliográfico, correr ``b2g build`` y usar ``--scope``/
+    ``--ids`` con los IDs más centrales del ``metrics.json`` resultante.
+
+    Desempate: ``id`` ascendente (mismo criterio de estabilidad que
+    ``foraging.scent.rank_candidates``).
+
+    Args:
+        corpus: Corpus cargado del store.
+        top: Cuántas semillas devolver (ya validado > 0 por el llamador).
+
+    Returns:
+        Set de ``id`` (no ``source_id``: alcanza para acotar, ``_resolve_origin_ids``
+        ya matchea contra ambos en el llamador de ``Forager``) de las ``top``
+        semillas con más referencias.  Si hay menos de ``top`` semillas, se
+        devuelven todas.
+    """
+    rows = corpus.to_arrow().to_pylist()
+    seed_rows = [row for row in rows if row.get(Col.IS_SEED)]
+    ranked = sorted(
+        seed_rows,
+        key=lambda row: (
+            -len(row.get(Col.REFERENCES_ID) or []),
+            str(row.get(Col.ID)),
+        ),
+    )
+    return {str(row[Col.ID]) for row in ranked[:top] if row.get(Col.ID)}
 
 
 # Función núcleo (testeable, sin Click)
@@ -37,6 +174,10 @@ def run_chain(
     transport: Any = None,
     preview: bool = False,
     since: date | None = None,
+    ids: tuple[str, ...] = (),
+    top: int | None = None,
+    scope: str | None = None,
+    budget: int | None = None,
     _fsm_action: str | None = None,
 ) -> dict[str, Any]:
     """Expande el corpus con candidatos rankeados por information scent.
@@ -47,6 +188,15 @@ def run_chain(
     ``cited_by_id`` poblado (por un ``chain forward`` previo o la pasada
     cited_by de ``build``, ADR 0048), o indica que se requiere fetch si
     ``cited_by_id`` está vacío.
+
+    **Unidad escopada (#309):** ``ids``/``top``/``scope`` acotan de qué
+    papers-origen se forrajea (mutuamente excluyentes, ver
+    ``_resolve_origin_ids``).  Si no se pasa ninguno, comportamiento ACTUAL
+    sin cambios: todas las semillas.
+
+    **Budget (#309):** ``budget`` topa las llamadas HTTP del forward
+    chaining.  Al alcanzarlo, el forrajeo **para limpio (sin reintentar)** y
+    el resultado queda marcado como parcial (``result["budget_stopped"]``).
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
@@ -59,17 +209,29 @@ def run_chain(
         transport: Transport inyectable para tests.
         preview: Si ``True``, solo estima el crecimiento sin fetchear ni
             transicionar estado (dry-run).
+        ids: IDs explícitos de papers-origen (``--ids``, repetible).  Tupla
+            vacía (default) = no acota.
+        top: Acota a las ``top`` semillas más "centrales" (``--top``, ver
+            ``_top_n_seed_ids``).  ``None`` (default) = no acota.
+        scope: Acota al subconjunto ``all``/``accepted``/``seeds`` del
+            corpus (``--scope``, reusa ``Corpus.scoped``).  ``None``
+            (default) = no acota.
+        budget: Tope de llamadas HTTP a OpenAlex (``--budget``).  ``None``
+            (default) = sin tope (comportamiento actual).
 
     Returns:
-        Dict con ``candidates_found``, ``total_papers``, ``ranking_preview``
-        (modo normal); o con ``preview``, ``estimated_candidates``,
-        ``by_direction``, ``capped_by_max``, ``forward_requires_fetch``,
-        ``forward_from_cited_by`` (modo preview).  ``candidates_found`` es el
-        total de candidatos rankeados (backward observados + forward
-        materializados, #269); NO cuenta solo lo materializado en el corpus,
-        que en chaining puramente backward siempre da 0 (opción B, #54).
+        Dict con ``candidates_found``, ``total_papers``, ``ranking_preview``,
+        ``budget_used``, ``budget_stopped`` (modo normal); o con ``preview``,
+        ``estimated_candidates``, ``by_direction``, ``capped_by_max``,
+        ``forward_requires_fetch``, ``forward_from_cited_by``, ``origin_count``
+        (modo preview).  ``candidates_found`` es el total de candidatos
+        rankeados (backward observados + forward materializados, #269); NO
+        cuenta solo lo materializado en el corpus, que en chaining puramente
+        backward siempre da 0 (opción B, #54).
 
     Raises:
+        UsageError: Si se combina más de un flag de scoping, o si
+            ``--ids``/``--top`` son inválidos.
         DependencyError: Si el source no soporta forward chaining.
         NetworkError: Si falla la conexión a OpenAlex.
         StoreError: Si el store está bloqueado.
@@ -80,6 +242,9 @@ def run_chain(
             direction=direction,
             depth=depth,
             max_candidates=max_candidates,
+            ids=ids,
+            top=top,
+            scope=scope,
         )
 
     if since is not None and direction == "backward":
@@ -95,7 +260,7 @@ def run_chain(
         effective_direction = "forward"
 
     from bib2graph.cycle import apply_transition
-    from bib2graph.foraging import Forager
+    from bib2graph.foraging import CallBudget, Forager
     from bib2graph.sources.openalex import OpenAlexSource
 
     # Selección de acción FSM: "monitor" si --since activo O si se fuerza
@@ -133,6 +298,12 @@ def run_chain(
             current_state, fsm_action, current_round
         )
 
+        # Unidad escopada (#309): resuelve --ids/--top/--scope contra el
+        # corpus ANTES de tocar la red. None = comportamiento actual (todas
+        # las semillas), sin cambios.
+        origin_ids = _resolve_origin_ids(corpus, ids=ids, top=top, scope=scope)
+        call_budget = CallBudget(budget) if budget is not None else None
+
         source = OpenAlexSource(email=email, transport=transport)
 
         # Pre-check explícito: si la dirección requiere forward y el source no
@@ -156,6 +327,8 @@ def run_chain(
                 depth=depth,
                 max_candidates=max_candidates,
                 max_citing_per_paper=max_citing_per_paper,
+                origin_ids=origin_ids,
+                call_budget=call_budget,
             )
             ranked = forager.chain(corpus, direction=effective_direction, since=since)
         except NotImplementedError as exc:
@@ -232,6 +405,11 @@ def run_chain(
         "loop_state": new_state.value,
         "round": new_round,
         "enrichment": enrich_metrics,
+        # #309: budget del forward chaining (llamadas HTTP a /works para
+        # traer citantes).  NO incluye las llamadas de la pasada refs_doi
+        # posterior (acotada, bajo impacto — fuera de alcance del budget).
+        "budget_used": ranked.budget_used,
+        "budget_stopped": ranked.budget_stopped,
     }
 
 
@@ -241,22 +419,33 @@ def _run_chain_preview(
     direction: Literal["backward", "forward", "both"],
     depth: int,
     max_candidates: int | None,
+    ids: tuple[str, ...] = (),
+    top: int | None = None,
+    scope: str | None = None,
 ) -> dict[str, Any]:
     """Implementación del modo preview (dry-run) de ``run_chain``.
 
     Estima el crecimiento potencial del corpus **sin hacer fetch ni transicionar
     estado**.  Abre el store, lee el corpus y llama a ``Forager.preview()``.
 
+    Con ``--ids``/``--top``/``--scope`` (#309), la estimación de fanout se
+    acota al subconjunto de papers-origen resuelto — el preview refleja
+    fielmente lo que haría el ``chain`` real subsecuente sin ``--preview``.
+
     Args:
         store_path: Ruta al archivo ``.duckdb``.
         direction: Dirección pedida.
         depth: Profundidad (solo 1 implementado; >1 → DependencyError).
         max_candidates: Tope de candidatos.
+        ids: IDs explícitos de papers-origen (``--ids``).
+        top: Acota a las ``top`` semillas más "centrales" (``--top``).
+        scope: Acota al scope ``all``/``accepted``/``seeds`` (``--scope``).
 
     Returns:
         Dict con las claves del envelope de preview (``preview=True``,
         ``estimated_candidates``, ``by_direction``, ``direction``,
-        ``capped_by_max``, ``forward_requires_fetch``, ``forward_from_cited_by``).
+        ``capped_by_max``, ``forward_requires_fetch``, ``forward_from_cited_by``,
+        ``origin_count``: cuántos papers-origen participan del fanout estimado).
     """
     from bib2graph.foraging import Forager
 
@@ -264,11 +453,27 @@ def _run_chain_preview(
     try:
         corpus = store.load()
 
+        origin_ids = _resolve_origin_ids(corpus, ids=ids, top=top, scope=scope)
+        rows = corpus.to_arrow().to_pylist()
+        if origin_ids is not None:
+            # Contar PAPERS (filas), no entradas del set (que incluye tanto
+            # id como source_id por paper — contar el set duplicaría).
+            origin_count = sum(
+                1
+                for row in rows
+                if str(row.get(Col.ID)) in origin_ids
+                or str(row.get(Col.SOURCE_ID)) in origin_ids
+            )
+        else:
+            # Comportamiento actual sin scoping: origen = todas las semillas.
+            origin_count = sum(1 for row in rows if row.get(Col.IS_SEED))
+
         try:
             forager = Forager(
                 None,  # source no se usa en preview()
                 depth=depth,
                 max_candidates=max_candidates,
+                origin_ids=origin_ids,
             )
         except NotImplementedError as exc:
             raise DependencyError(
@@ -298,6 +503,9 @@ def _run_chain_preview(
         "capped_by_max": growth.capped_by_max,
         "forward_requires_fetch": growth.forward_requires_fetch,
         "forward_from_cited_by": growth.forward_from_cited_by,
+        # #309: cuántos papers-origen participan del fanout estimado (todas
+        # las semillas si no se pasó --ids/--top/--scope).
+        "origin_count": origin_count,
         "warnings": warnings,
     }
 
@@ -360,6 +568,48 @@ def _run_chain_preview(
         "Incompatible con --direction backward."
     ),
 )
+@click.option(
+    "--ids",
+    "ids",
+    multiple=True,
+    help=(
+        "Forrajea SOLO desde estos papers-origen (repetible: --ids ID1 --ids ID2). "
+        "Mutuamente excluyente con --top/--scope.  Sin este flag (default): "
+        "todas las semillas (comportamiento actual, sin cambios)."
+    ),
+)
+@click.option(
+    "--top",
+    "top",
+    type=int,
+    default=None,
+    help=(
+        "Forrajea desde las N semillas más 'centrales' (criterio: nº de "
+        "referencias, ver docstring de _top_n_seed_ids). "
+        "Mutuamente excluyente con --ids/--scope."
+    ),
+)
+@click.option(
+    "--scope",
+    "scope",
+    type=click.Choice(["all", "accepted", "seeds"]),
+    default=None,
+    help=(
+        "Forrajea desde este subconjunto del corpus (reusa Corpus.scoped). "
+        "Mutuamente excluyente con --ids/--top."
+    ),
+)
+@click.option(
+    "--budget",
+    "budget",
+    type=int,
+    default=None,
+    help=(
+        "Tope de llamadas HTTP a OpenAlex para el forward chaining.  Al "
+        "alcanzarlo, PARA y reporta el estado parcial (papers materializados, "
+        "budget usado) — nunca reintenta.  Sin límite por defecto."
+    ),
+)
 @json_option
 @click.pass_context
 @handle_errors("chain")
@@ -372,12 +622,20 @@ def chain_cmd(
     email: str | None,
     preview: bool,
     since_str: str | None,
+    ids: tuple[str, ...],
+    top: int | None,
+    scope: str | None,
+    budget: int | None,
     json_output: bool,
 ) -> None:
     """Expande el corpus con candidatos rankeados por information scent.
 
     Con --preview (dry-run), solo muestra la estimación de crecimiento sin
     tocar la red ni el corpus.  Sin --preview, transiciona el estado a FORAGED.
+
+    Guardarraíles anti-footgun (#309): --ids/--top/--scope acotan de qué
+    papers-origen se forrajea (sin ninguno: todas las semillas, igual que
+    siempre); --budget topa las llamadas HTTP y para limpio al agotarse.
     """
     from bib2graph.cli._options import parse_since
 
@@ -398,6 +656,10 @@ def chain_cmd(
         email=email,
         preview=preview,
         since=since,
+        ids=ids,
+        top=top,
+        scope=scope,
+        budget=budget,
     )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
@@ -414,6 +676,7 @@ def chain_cmd(
         emit(envelope)
     elif preview:
         emit_human(f"[preview] Dirección: {data['direction']}")
+        emit_human(f"[preview] Papers-origen: {data['origin_count']}")
         emit_human(f"[preview] Candidatos potenciales: {data['estimated_candidates']}")
         for dir_name, count in data["by_direction"].items():
             emit_human(f"  {dir_name}: {count}")
@@ -428,3 +691,9 @@ def chain_cmd(
             emit_human("Top candidatos por scent:")
             for item in data["ranking_preview"][:5]:
                 emit_human(f"  {item['id']}: {item['scent']:.3f}")
+        if data.get("budget_stopped"):
+            emit_human(
+                f"Aviso: se alcanzó --budget ({data['budget_used']} llamadas). "
+                "El resultado es PARCIAL — corré 'b2g chain' de nuevo (o con "
+                "--ids/--top/--scope más acotado) para completar el forrajeo."
+            )
