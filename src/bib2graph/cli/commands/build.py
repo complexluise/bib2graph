@@ -147,11 +147,19 @@ def _write_artifacts(
         # D3 — incluir asortatividad en metrics.json cuando está disponible.
         # community_composition es un dict anidado; se incluye dentro de
         # assortativity para no alterar el schema de primer nivel.
+        # ADR 0052 (#321): también se incluyen ``clustering``, ``resolution``,
+        # ``scope`` de la NetworkSpec para que ``b2g export --format arrow
+        # --network-type <kind>`` pueda re-llenar la metadata del Arrow sin
+        # re-computar la red. Es aditivo (los readers existentes ignoran
+        # campos desconocidos).
         metrics_payload: dict[str, object] = {
             "kind": kind,
             "nodes": art.graph.number_of_nodes(),
             "edges": art.graph.number_of_edges(),
             **safe_metrics,
+            "clustering": art.spec.clustering,
+            "resolution": art.spec.resolution,
+            "scope": art.spec.scope,
         }
         if art.assortativity is not None:
             metrics_payload["assortativity"] = art.assortativity

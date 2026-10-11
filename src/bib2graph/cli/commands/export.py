@@ -11,6 +11,27 @@ Dos familias de formato (ADR 0050 D4, issue #293):
     ``corpus.scoped(scope).to_arrow()`` — ``--scope`` de este comando SÍ
     aplica (vocab CLI ``seeds`` → ``seeds_only``, igual que ``build``).
 
+ADR 0052 (#321) — red tipada en el Arrow:
+  ``--network-type <kind>`` (default ``bibliographic_coupling``) controla qué
+  red del ``b2g build`` se embebe como columnas struct anidadas en la tabla
+  ``papers`` del ``.arrow`` (``community_id``, ``degree_weighted``,
+  ``intra_community_pagerank``, ``network_edges``, ``network_communities``)
+  + 4 claves de metadata del schema (network_type, network_type_algo,
+  network_resolution, network_scope). Solo aplica a ``--format arrow``.
+
+  Modo degradado (ADR 0052 D4): si no hay artefacto de build para el kind
+  pedido, el export sale igual, las columnas de red están AUSENTES,
+  ``network_type`` ausente en metadata, y se emite un warning en el envelope
+  ``--json`` (``data.warnings`` → top-level ``warnings``).
+
+  Kinds no-paper (author_collab / institution_collab / keyword_cooccurrence):
+  warning en envelope + sin columnas de red (los nodos de esas redes no son
+  papers; no se pueden anclar por paper en el Arrow).
+
+  ``cocitation`` sin ``cited_by_id`` poblado en el corpus: error accionable
+  (DataError, exit 2 — la red de co-citación no es construible sin
+  citantes).
+
 ADR 0029 — workspace:
   El directorio de salida es ``<workspace>/exports/`` por defecto.
   Si se pasa ``--out-dir`` explícito, se usa ese (override opcional).
@@ -36,11 +57,21 @@ from bib2graph.cli._store import (
     workspace_echo,
     workspace_walkup_warning,
 )
+from bib2graph.constants import NetworkKind
 
 #: Formatos que serializan artefactos de build (redes); ignoran ``--scope``.
 _NETWORK_FORMATS = frozenset({"graphml", "csv"})
 #: Formatos que serializan el corpus; respetan ``--scope`` (ADR 0050 D4).
 _CORPUS_FORMATS = frozenset({"arrow", "bibtex"})
+
+#: Kinds de NetworkKind no-papers: warning en envelope + sin columnas de red.
+_NON_PAPER_KINDS: frozenset[str] = frozenset(
+    {
+        NetworkKind.AUTHOR_COLLAB,
+        NetworkKind.INSTITUTION_COLLAB,
+        NetworkKind.KEYWORD_COOCCURRENCE,
+    }
+)
 
 
 def _export_networks(
@@ -142,32 +173,65 @@ def _export_corpus(
     out_dir: str | Path,
     store_path: str | Path,
     scope: str,
+    networks_dir: str | Path,
+    network_type: str,
 ) -> dict[str, Any]:
     """Serializa el corpus (scopeado) a Arrow (Feather) o BibTeX.
+
+    Para ``format == "arrow"`` y ``network_type`` no vacío, intenta embeber
+    la red tipada del ``b2g build`` en la tabla ``papers`` (ADR 0052 D1):
+
+      - ``network_type`` en kinds no-paper (author_collab, etc.) → warning
+        en ``corpus_warnings``, NO se embebe red.
+      - ``network_type == "cocitation"`` con corpus sin ``cited_by_id``
+        poblado → ``DataError`` accionable (la red no se puede construir).
+      - Si existe ``<networks_dir>/<network_type>/network.graphml`` → se
+        reconstruye el ``NetworkArtifact`` desde disco y se embebe vía
+        ``arrow_with_network``. Si no existe → modo degradado (ADR 0052 D4)
+        con warning.
 
     Args:
         format: ``"arrow"`` o ``"bibtex"``.
         out_dir: Directorio de salida para el archivo exportado.
         store_path: Ruta al archivo ``.duckdb``.
         scope: Vocab interno de scope (``all``/``accepted``/``seeds_only``).
+        networks_dir: Directorio base de artefactos de build
+            (``<workspace>/networks/``).
+        network_type: ``NetworkKind`` a embeber (``"bibliographic_coupling"``
+            por default; vacío = sin red).
 
     Returns:
         Dict con ``format``, ``out_dir``, ``files_written``, ``rows_exported``
         y ``warnings`` (lista, puede ser vacía). Para ``format == "arrow"``
         incluye el warning accionable de ``build_equation_metadata`` cuando el
-        corpus tiene 0 o >1 ecuaciones registradas (ADR 0050 D3): el
-        ``equation_hash`` se omite en ese caso y el usuario debe saberlo, en
-        vez de descubrirlo en silencio al inspeccionar el ``.arrow``.
+        corpus tiene 0 o >1 ecuaciones registradas (ADR 0050 D3), y los
+        warnings de red del ADR 0052 (modo degradado, kind no-paper, etc.).
 
     Raises:
+        DataError: Si ``format`` no se reconoce o si ``network_type`` no
+            aplica al corpus (``cocitation`` sin ``cited_by_id``).
         ImportError: Si falta ``bibtexparser`` (formato ``bibtex``, extra
             ``[bibtex]``).
     """
     from bib2graph.backends.memory import build_equation_metadata
-    from bib2graph.exporters.arrow import ArrowExporter
+    from bib2graph.exporters.arrow import ArrowExporter, arrow_with_network
     from bib2graph.exporters.bibtex import BibtexExporter
+    from bib2graph.service.export_network import (
+        is_paper_kind,
+        load_artifact_from_disk,
+    )
+    from bib2graph.workspace import Workspace
 
     corpus_warnings: list[str] = []
+    network_meta: dict[str, Any] = {
+        "network_type": None,
+        "network_nodes": 0,
+        "network_edges": 0,
+        "network_communities": 0,
+        "network_modularity": None,
+        "network_type_algo": None,
+        "network_resolution": None,
+    }
 
     store = open_store_readonly(store_path)
     try:
@@ -185,6 +249,84 @@ def _export_corpus(
             _metadata, warning = build_equation_metadata(store.backend.load_equations())
             if warning is not None:
                 corpus_warnings.append(warning)
+
+            # ADR 0052 — embeber la red tipada si network_type está presente.
+            if network_type:
+                if not is_paper_kind(network_type):
+                    corpus_warnings.append(
+                        f"network_type={network_type} not supported in Arrow "
+                        "export; use --format graphml for this kind"
+                    )
+                elif network_type == NetworkKind.COCITATION and not _any_cited_by(
+                    table
+                ):
+                    raise DataError(
+                        "--network-type cocitation requires cited_by_id to be "
+                        "populated in the corpus (run 'b2g enrich' to populate "
+                        "it from the accepted seeds)."
+                    )
+                else:
+                    # Necesitamos el Workspace para resolver el directorio de
+                    # artefactos de build. ``networks_dir`` puede venir como
+                    # Path absoluto o relativo; si no contiene un workspace.json
+                    # en su raíz, ``Workspace.open`` va a fallar — el caller
+                    # garantiza que ``networks_dir`` es ``<workspace>/networks``.
+                    ws_root = Path(networks_dir).parent
+                    try:
+                        ws = Workspace.open(ws_root, source="flag")
+                    except Exception:
+                        ws = None
+
+                    artifact = None
+                    if ws is not None:
+                        artifact = load_artifact_from_disk(ws, network_type)
+
+                    if artifact is None:
+                        # Modo degradado (ADR 0052 D4): sin b2b build para
+                        # este kind. No es un error: el corpus se exporta,
+                        # las columnas de red están AUSENTES, warning al
+                        # usuario.
+                        corpus_warnings.append(
+                            "no network computed; run 'b2g build' first to "
+                            "attach a typed network to the export"
+                        )
+                    else:
+                        table = arrow_with_network(table, artifact)
+                        # Poblar el bloque aditivo del envelope (ADR 0052 D5).
+                        spec = artifact.spec
+                        network_meta["network_type"] = str(spec.kind)
+                        network_meta["network_nodes"] = artifact.graph.number_of_nodes()
+                        network_meta["network_edges"] = artifact.graph.number_of_edges()
+                        if artifact.communities is not None:
+                            network_meta["network_communities"] = len(
+                                {int(c) for c in artifact.communities.values()}
+                            )
+                        if spec.clustering is not None:
+                            network_meta["network_type_algo"] = str(spec.clustering)
+                        network_meta["network_resolution"] = float(spec.resolution)
+
+                        # Modularidad global (nx.community.modularity sobre la
+                        # partición del artifact si tiene comunidades).
+                        if artifact.communities:
+                            try:
+                                import networkx as nx
+
+                                comm_ids = sorted(
+                                    {int(c) for c in artifact.communities.values()}
+                                )
+                                by_comm: dict[int, set[Any]] = {
+                                    cid: set() for cid in comm_ids
+                                }
+                                for node, cid in artifact.communities.items():
+                                    if artifact.graph.has_node(node):
+                                        by_comm[int(cid)].add(node)
+                                mod = nx.community.modularity(
+                                    artifact.graph,
+                                    [by_comm[cid] for cid in comm_ids],
+                                )
+                                network_meta["network_modularity"] = float(mod)
+                            except Exception:
+                                network_meta["network_modularity"] = None
     finally:
         store.close()
 
@@ -200,13 +342,42 @@ def _export_corpus(
     else:
         raise DataError(f"Formato '{format}' no reconocido. Usá 'arrow' o 'bibtex'.")
 
-    return {
+    data: dict[str, Any] = {
         "format": format,
         "out_dir": str(out_path),
         "files_written": [str(dest)],
         "rows_exported": table.num_rows,
         "warnings": corpus_warnings,
     }
+    # ADR 0052 D5: campos aditivos del envelope ``--json`` para ``--format
+    # arrow``. ``network_type=None`` y los counts en 0 cuando el kind no se
+    # embebe (modo degradado / kind no-paper / bibtex).
+    if format == "arrow":
+        data.update(network_meta)
+    return data
+
+
+def _any_cited_by(table: Any) -> bool:
+    """True sii al menos un paper del corpus tiene ``cited_by_id`` no vacío.
+
+    Helper para validar ``network_type=cocitation`` (ADR 0052 D2): la red
+    de co-citación requiere que el corpus tenga citantes poblados. Sin
+    esto, la red saldría con 0 aristas y el usuario debe saberlo.
+
+    Args:
+        table: Tabla Arrow del Corpus.
+
+    Returns:
+        ``True`` si al menos un row tiene ``cited_by_id`` con ≥1 elemento.
+    """
+    from bib2graph.constants import Col
+
+    if Col.CITED_BY_ID not in table.schema.names:
+        return False
+    for val in table.column(Col.CITED_BY_ID).to_pylist():
+        if isinstance(val, list) and any(e is not None for e in val):
+            return True
+    return False
 
 
 def run_export(
@@ -217,6 +388,7 @@ def run_export(
     networks_dir: str | Path | None = None,
     scope: str = "all",
     scope_explicit: bool = False,
+    network_type: str = "bibliographic_coupling",
 ) -> dict[str, Any]:
     """Serializa artefactos al formato pedido.
 
@@ -227,27 +399,41 @@ def run_export(
     Para ``arrow``/``bibtex`` (ADR 0050 D4) serializa
     ``corpus.scoped(scope).to_arrow()`` del store vivo — ``scope`` sí aplica.
 
+    Para ``--format arrow``, ``network_type`` controla la red tipada del
+    ADR 0052 (D1/D2/D4/D5): default ``bibliographic_coupling``. Solo aplica
+    a ``arrow``; para ``bibtex`` la red no se embebe (los kinds no-paper
+    no tienen dónde anclarse).
+
     Args:
         store_path: Ruta al archivo ``.duckdb``.
         format: Formato de salida (``graphml``, ``csv``, ``arrow`` o
             ``bibtex``).
         out_dir: Directorio de salida para los archivos exportados.
         networks_dir: Directorio base de artefactos de build (solo
-            ``graphml``/``csv``; default: ``<store_dir>/networks/``).
+            ``graphml``/``csv``/``arrow`` con red; default:
+            ``<store_dir>/networks/``).
         scope: Vocab interno de scope (``all``/``accepted``/``seeds_only``).
             Solo aplica a ``arrow``/``bibtex`` (ADR 0050 D4).
         scope_explicit: ``True`` si el caller pasó ``--scope`` explícito en
             la CLI. Se usa para emitir el warning de scope-ignorado cuando
             ``format`` es de red y el usuario igual pasó ``--scope``.
+        network_type: ``NetworkKind`` a embeber en el Arrow. Default
+            ``"bibliographic_coupling"`` (la más robusta en one-shot, D2).
+            Solo aplica a ``--format arrow``.
 
     Returns:
         Dict con ``format``, ``out_dir``, ``files_written`` y, según la
         familia de formato, ``networks_exported`` (redes) o ``rows_exported``
-        (corpus). Incluye ``warnings`` (lista, puede ser vacía).
+        (corpus). Incluye ``warnings`` (lista, puede ser vacía) y, para
+        ``--format arrow``, los 7 campos aditivos del envelope
+        (``network_type``, ``network_nodes``, ``network_edges``,
+        ``network_communities``, ``network_modularity``, ``network_type_algo``,
+        ``network_resolution``).
 
     Raises:
-        DataError: Si no hay artefactos de build disponibles (redes) o el
-            formato no se reconoce.
+        DataError: Si no hay artefactos de build disponibles (redes), el
+            formato no se reconoce, o ``network_type=cocitation`` sin
+            ``cited_by_id`` poblado.
         StoreError: Si el store está bloqueado.
         ImportError: Si falta ``bibtexparser`` (formato ``bibtex``).
     """
@@ -267,11 +453,17 @@ def run_export(
             store_path=store_path,
         )
     elif format in _CORPUS_FORMATS:
+        if networks_dir is None:
+            effective_networks_dir: Path = Path(store_path).parent / "networks"
+        else:
+            effective_networks_dir = Path(networks_dir)
         data = _export_corpus(
             format,
             out_dir=out_dir,
             store_path=store_path,
             scope=scope,
+            networks_dir=effective_networks_dir,
+            network_type=network_type,
         )
     else:
         raise DataError(
@@ -314,6 +506,31 @@ def run_export(
     ),
 )
 @click.option(
+    "--network-type",
+    "network_type",
+    type=click.Choice(
+        [
+            NetworkKind.BIBLIOGRAPHIC_COUPLING.value,
+            NetworkKind.COCITATION.value,
+            NetworkKind.AUTHOR_COLLAB.value,
+            NetworkKind.INSTITUTION_COLLAB.value,
+            NetworkKind.KEYWORD_COOCCURRENCE.value,
+        ],
+        case_sensitive=False,
+    ),
+    default=NetworkKind.BIBLIOGRAPHIC_COUPLING.value,
+    show_default=True,
+    help=(
+        "Red del b2g build a embeber en el Arrow (ADR 0052 D2). Solo aplica a "
+        "--format arrow: agrega columnas de red (community_id, degree_weighted, "
+        "intra_community_pagerank, network_edges, network_communities) + "
+        "metadata del schema. Kinds no-paper (author_collab, institution_collab, "
+        "keyword_cooccurrence) salen sin red + warning. cocitation requiere "
+        "cited_by_id poblado (sino: error accionable). Si no hay b2g build "
+        "previo, modo degradado (sin columnas de red) + warning."
+    ),
+)
+@click.option(
     "--out-dir",
     default=None,
     help=(
@@ -328,6 +545,7 @@ def export_cmd(
     ctx: click.Context,
     fmt: str,
     scope: str | None,
+    network_type: str,
     out_dir: str | None,
     json_output: bool,
 ) -> None:
@@ -338,7 +556,9 @@ def export_cmd(
     - 'graphml'/'csv': re-emiten las redes de build (ya scopeadas por
       ``b2g build --scope``).
     - 'arrow'/'bibtex' (ADR 0050 D4): serializan el CORPUS del store vivo,
-      scopeado por ``--scope`` de este comando.
+      scopeado por ``--scope`` de este comando. ``--format arrow`` admite
+      ``--network-type`` para embeber la red tipada del último ``b2g build``
+      (ADR 0052).
 
     El directorio de salida por defecto es ``<workspace>/exports/``.
     Con ``--out-dir`` se puede especificar un directorio alternativo.
@@ -357,6 +577,7 @@ def export_cmd(
         networks_dir=ws.networks_dir,
         scope=internal_scope,
         scope_explicit=scope_explicit,
+        network_type=network_type,
     )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
