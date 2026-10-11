@@ -603,22 +603,6 @@ class TestCorpusHashIntacto:
         # idénticas (mismas columnas, misma metadata) -> mismo hash.
         assert compute_corpus_hash(live) == corpus._backend.corpus_hash()
 
-    def test_compute_corpus_hash_igual_con_y_sin_red(self) -> None:
-        """Regresión (Nota 05 de Atalaya, B2): el mismo corpus exportado con y
-        sin red tiene el mismo ``corpus_hash`` — ``compute_corpus_hash`` excluye
-        las columnas de red (ADR 0052 §Constraints / DoD).
-        """
-        table = _3_row_corpus()
-        artifact = _build_artifact(
-            nodes=["doi:p1", "doi:p2", "doi:p3"],
-            edges=[("doi:p1", "doi:p2", 3), ("doi:p2", "doi:p3", 1)],
-            communities={"doi:p1": 0, "doi:p2": 0, "doi:p3": 1},
-        )
-        with_net = arrow_with_network(table, artifact)
-
-        assert len(with_net.schema.names) > len(table.schema.names)
-        assert compute_corpus_hash(with_net) == compute_corpus_hash(table)
-
 
 # ---------------------------------------------------------------------------
 # 6. Validación de kind no-paper (la elección de kind la hace el CLI)

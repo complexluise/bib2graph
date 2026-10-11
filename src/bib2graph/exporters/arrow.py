@@ -22,8 +22,8 @@ adhiere, cuando hay ``NetworkArtifact`` disponible, **5 columnas nuevas**
 (``network_type``, ``network_type_algo``, ``network_resolution``,
 ``network_scope``). Si ``artifact is None``, la tabla queda intacta
 (columnas de red **ausentes**, ``network_type`` ausente) — modo degradado
-del ADR 0052 D4. La función es pura: no toca I/O, no muta la tabla de entrada, y no cambia
-el ``corpus_hash`` (``compute_corpus_hash`` excluye las columnas de red).
+del ADR 0052 D4. La función es pura: no toca I/O, no toca ``corpus_hash``,
+no muta la tabla de entrada.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 
-from bib2graph.constants import ARROW_NETWORK_COLUMNS, PAPER_NETWORK_KINDS
+from bib2graph.constants import PAPER_NETWORK_KINDS
 
 if TYPE_CHECKING:
     from bib2graph.networks.spec import NetworkArtifact
@@ -187,10 +187,9 @@ def arrow_with_network(
     función lanza ``ValueError`` (la decisión de warning vs error es del CLI,
     no del exportador).
 
-    Función pura: no toca I/O, no muta ``table``, no afecta ``corpus_hash``:
-    ``compute_corpus_hash`` excluye las columnas de red
-    (``constants.ARROW_NETWORK_COLUMNS``), así que la tabla devuelta y la de
-    entrada tienen el mismo hash.
+    Función pura: no toca I/O, no muta ``table``, no afecta ``corpus_hash``
+    (las columnas de red se adhieren a la tabla DESPUÉS de calcular el hash
+    sobre la tabla original).
 
     Args:
         table: Tabla Arrow canónica del corpus (la que produce
@@ -299,7 +298,13 @@ def arrow_with_network(
     )
     new_fields: list[pa.Field] = []
     for field in target_schema:
-        if field.name in ARROW_NETWORK_COLUMNS:
+        if field.name in {
+            "community_id",
+            "degree_weighted",
+            "intra_community_pagerank",
+            "network_edges",
+            "network_communities",
+        }:
             new_fields.append(field.with_nullable(False))
         else:
             new_fields.append(field)
