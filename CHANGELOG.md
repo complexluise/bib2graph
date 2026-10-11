@@ -11,6 +11,23 @@ desde los Conventional Commits y bumpea `pyproject.toml`. Al mergear ese PR se c
 `vX.Y.Z` y el GitHub Release. Las secciones por debajo de `[0.3.0]` son el historial previo a
 la conexión del tooling (se mantuvieron a mano); de acá en adelante las gestiona el bot.
 
+## [0.15.0](https://github.com/complexluise/bib2graph/compare/v0.14.0...v0.15.0) (2026-10-11)
+
+
+### Features
+
+* **cli:** errores de Click en modo --json/B2G_JSON salen como envelope (enmienda 0021, [#283](https://github.com/complexluise/bib2graph/issues/283)) ([#324](https://github.com/complexluise/bib2graph/issues/324)) ([dc8f05d](https://github.com/complexluise/bib2graph/commit/dc8f05de7c2068652891c0cdc91352282e88265d))
+* **corpus:** source_kind en ProvenanceEvent + migración on-read de chaining:* (D2 del ADR 0050, [#320](https://github.com/complexluise/bib2graph/issues/320)) ([#323](https://github.com/complexluise/bib2graph/issues/323)) ([2eea8f7](https://github.com/complexluise/bib2graph/commit/2eea8f7f15f1e97e1f382604c91a3f03dc5d4f9f))
+* **export:** implementar ADR 0052 — red tipada en el Arrow del corpus ([#321](https://github.com/complexluise/bib2graph/issues/321)) ([#325](https://github.com/complexluise/bib2graph/issues/325)) ([7c0f370](https://github.com/complexluise/bib2graph/commit/7c0f370990c877e26066d0c202f776604d0bd1e6))
+
+
+### Documentation
+
+* **adr:** 0052 — red tipada en el Arrow del corpus (secuela de 0050, cierra [#316](https://github.com/complexluise/bib2graph/issues/316)) ([#319](https://github.com/complexluise/bib2graph/issues/319)) ([a0e381c](https://github.com/complexluise/bib2graph/commit/a0e381c17e7b2af540cabdcabd87a3a62d9d6a15))
+* **api,arch:** sincronizar con 0.15.0 (Pieza 1+2+3, closes [#320](https://github.com/complexluise/bib2graph/issues/320)/[#321](https://github.com/complexluise/bib2graph/issues/321)/[#283](https://github.com/complexluise/bib2graph/issues/283)) ([#326](https://github.com/complexluise/bib2graph/issues/326)) ([ccbeca1](https://github.com/complexluise/bib2graph/commit/ccbeca19db20436ccd28fc1896dd1f980823a229))
+* **examples:** e2e de 0.15.0 — D2 + red tipada + envelope de Click ([110968c](https://github.com/complexluise/bib2graph/commit/110968c24d1a658d1eb4fde785c93d1966fa6e41))
+* **notas:** sincronizar Nota 33 con la realidad de 0.15.0 ([#322](https://github.com/complexluise/bib2graph/issues/322)) ([a0488c8](https://github.com/complexluise/bib2graph/commit/a0488c872fa8aa59d680a1d079728d415a4594bc))
+
 ## [0.14.0](https://github.com/complexluise/bib2graph/compare/v0.13.0...v0.14.0) (2026-10-11)
 
 
