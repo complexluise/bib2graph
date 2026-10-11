@@ -164,3 +164,12 @@ LIST_COLUMNS: frozenset[str] = frozenset(
         Col.CITED_BY_ID,
     }
 )
+
+
+# Kinds de red cuyo nodo es un paper id (Col.ID). Fuente única: ``constants`` (ADR 0023).
+# Reemplaza las copias locales en ``networks/decorate.py``, ``networks/clusters.py``,
+# ``exporters/arrow.py`` y ``service/export_network.py``. Si se suma un kind de paper
+# (p. ej. ``direct_citation``), se agrega acá y todos los imports lo ven.
+PAPER_NETWORK_KINDS: frozenset[str] = frozenset(
+    {NetworkKind.BIBLIOGRAPHIC_COUPLING, NetworkKind.COCITATION}
+)

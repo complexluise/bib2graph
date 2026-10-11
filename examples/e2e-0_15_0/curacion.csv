@@ -1,0 +1,9 @@
+id,source_id,title,year,authors,venue,doi,keywords,cited_by_count,references_count,is_seed,openalex_url,scent_score,cluster,decision,note
+src:p1,W1000000001,Synthetic paper on critical pedagogy and complexity (A1),2003,,,,,,,https://openalex.org/W1000000001,,,,accepted,e2e-0_15_0: anchor A
+src:p2,W1000000002,Synthetic paper on critical pedagogy and complexity (A2),2005,,,,,,,https://openalex.org/W1000000002,,,,accepted,e2e-0_15_0
+src:p3,W1000000003,Synthetic paper on critical pedagogy and complexity (A3),2007,,,,,,,https://openalex.org/W1000000003,,,,accepted,e2e-0_15_0
+src:p4,W1000000004,Synthetic paper on critical pedagogy and complexity (A4),2009,,,,,,,https://openalex.org/W1000000004,,,,rejected,e2e-0_15_0: too recent
+src:p5,W1000000005,Foundational paper on transdisciplinarity (B1),1998,,,,,,,https://openalex.org/W1000000005,,,,undecided,
+src:p6,W1000000006,Synthetic paper on transdisciplinarity (B2),2001,,,,,,,https://openalex.org/W1000000006,,,,undecided,
+src:p7,W1000000007,Synthetic paper on transdisciplinarity (B3),2004,,,,,,,https://openalex.org/W1000000007,,,,undecided,
+src:p8,W1000000008,Synthetic paper on transdisciplinarity (B4),2010,,,,,,,https://openalex.org/W1000000008,,,,undecided,

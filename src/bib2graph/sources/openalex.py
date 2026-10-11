@@ -298,12 +298,13 @@ def _oa_id_short(url: str | None) -> str | None:
 def _work_to_row(
     work: dict[str, Any],
     *,
-    equation_id: str,
+    equation_id: str | None,
     fetched_at: str,
     is_seed: bool = True,
     action: str = "fetched",
     chaining_hop: int | None = None,
     source_tag: str = "openalex",
+    source_kind: str | None = None,
 ) -> dict[str, Any]:
     """Mapea un objeto JSON de OpenAlex a la fila del schema canónico.
 
@@ -314,6 +315,11 @@ def _work_to_row(
     Args:
         work: Objeto JSON de un Work de OpenAlex.
         equation_id: ID de la ecuación que originó la búsqueda (para provenance).
+            ``None`` para citantes forrajeados (el chaining no crea ecuaciones,
+            ADR 0050 D1); un string ``"eq-…"`` para semillas; ``"load"`` para
+            cargas de archivo. Default interno de las llamadas históricas:
+            ``"eq-…"``, pero tras D2 las llamadas explícitas suelen pasar
+            ``None`` cuando no son semilla.
         fetched_at: Timestamp ISO de la consulta.
         is_seed: Si el paper es semilla (``True``) o candidato (``False``).
             Default ``True`` (comportamiento histórico para ``seed``/``load``).
@@ -324,6 +330,11 @@ def _work_to_row(
         source_tag: Etiqueta de fuente para el evento de provenance.
             Default ``'openalex'``; usar ``'chaining:forward'`` para el forward
             chaining.
+        source_kind: Origen semántico del evento (ADR 0050 D2 #320). Default
+            ``None``. Valores: ``"seed_equation"`` (semilla de ecuación),
+            ``"chaining_forward"`` (citante forrajeado), ``"chaining_backward"``
+            (referencia forrajeada). ``None`` para ``load``, ``fetched_by_id``
+            y el resto de los casos no-semilla/no-chain.
 
     Returns:
         Dict con todas las columnas del schema canónico.
@@ -390,6 +401,7 @@ def _work_to_row(
         fetched_at=fetched_at,
         decided_by=None,
         decided_at=None,
+        source_kind=source_kind,  # ADR 0050 D2 — aditivo; None para load/seed_default
     )
 
     return {
@@ -592,7 +604,12 @@ class OpenAlexSource:
 
         # R5: bulk-load — construir tabla Arrow de una vez en vez de N add_paper/clone.
         rows = [
-            _work_to_row(work, equation_id=equation_id, fetched_at=fetched_at)
+            _work_to_row(
+                work,
+                equation_id=equation_id,
+                fetched_at=fetched_at,
+                source_kind="seed_equation",  # ADR 0050 D2 #320
+            )
             for work in works
         ]
         rows_with_ids = _rows_with_ids(rows)
@@ -720,29 +737,28 @@ class OpenAlexSource:
 
         filter_str = f"cites:{openalex_id}"
         fetched_at = datetime.now(UTC).isoformat()
-        equation_id = f"chaining:forward:{openalex_id}"
 
         works, _ = self._fetch_all_with_retry(filter_str)
         rows: list[dict[str, Any]] = []
         for work in works:
-            # La provenance se sobreescribe para agregar chaining_hop=1 (no
-            # soportado como parámetro de _work_to_row: es específico de fetch_citing).
+            # La provenance se construye con chaining_hop=1 y source_kind
+            # "chaining_forward" (ADR 0050 D2 #320).  Antes se sobreescribía
+            # acá con un ProvenanceEvent separado, pero `_work_to_row` ya
+            # emite el evento correcto — la sobreescritura quedó obsoleta y
+            # se eliminó.
+            # ADR 0050 D2 (#320): chaining_forward → equation_id=None; el
+            # origen semántico se declara con source_kind (no con un
+            # pseudo-equation_id `chaining:forward:*`).
             row = _work_to_row(
                 work,
-                equation_id=equation_id,
+                equation_id=None,
                 fetched_at=fetched_at,
                 is_seed=False,
-            )
-            provenance_event = ProvenanceEvent(
                 action="fetched",
-                equation_id=None,
                 chaining_hop=1,
-                source="openalex",
-                fetched_at=fetched_at,
-                decided_by=None,
-                decided_at=None,
+                source_tag="openalex",
+                source_kind="chaining_forward",
             )
-            row[Col.PROVENANCE] = ProvenanceEvent.dump_list([provenance_event])
             # Calcular id canónico (D1', ADR 0036) para que Forager y compute_forward_scent
             # puedan identificar el candidato
             row["id"] = _compute_id(
@@ -910,6 +926,8 @@ class OpenAlexSource:
                     fetched_at=fetched_at,
                     is_seed=False,
                     action="fetched_by_id",
+                    # ADR 0050 D2 (#320): fetch_works_by_ids no es ni seed ni
+                    # chain — source_kind queda None (default).
                 )
                 all_rows.append(row)
 
@@ -1345,6 +1363,8 @@ class OpenAlexSource:
         equation_id = "load"
 
         # R5: bulk-load — construir tabla Arrow de una vez en vez de N add_paper/clone.
+        # ADR 0050 D2 (#320): `load` deja source_kind=None (default) — cargar
+        # un archivo no es ni seed de ecuación ni citante forrajeado.
         rows = [
             _work_to_row(work, equation_id=equation_id, fetched_at=fetched_at)
             for work in data

@@ -65,6 +65,11 @@ import sys
 
 import click
 
+from bib2graph.cli._click_error_handler import (
+    emit_click_usage_error_envelope,
+    extract_command_from_usage_error,
+)
+from bib2graph.cli._options import json_mode as _resolve_json_mode
 from bib2graph.cli.commands.build import build_cmd
 from bib2graph.cli.commands.chain import chain_cmd
 from bib2graph.cli.commands.curate import curate_grp
@@ -161,10 +166,22 @@ def main() -> int:
     Los errores ya están manejados por el decorador ``@handle_errors``
     en cada subcomando.
 
+    #283 (enmienda al ADR 0021): los errores de parseo de Click
+    (``click.exceptions.UsageError`` y subclases — ``NoSuchCommand``,
+    ``NoSuchOption``, ``BadParameter``) **escapan** al cuerpo del comando
+    y no pasan por ``@handle_errors``. Antes salían como texto plano a
+    stderr; ahora, si el modo JSON está activo (``--json`` o env
+    ``B2G_JSON``), se re-canalizan como envelope ``schema="1"`` con
+    ``error.code='USAGE_ERROR'`` para preservar el contrato de stdout
+    puro / agente-native. En modo humano el comportamiento previo
+    (texto a stderr + exit 2) queda intacto.
+
     Returns:
-        Exit code del proceso (0 éxito, 1-5 error según ADR 0010).
+        Exit code del proceso (0 éxito, 1-5 error según ADR 0010;
+        2 para errores de parseo de Click, según el ADR 0021 §D).
     """
     _force_utf8()
+    json_active = _resolve_json_mode(False)
     try:
         b2g(standalone_mode=False)
         return 0
@@ -173,7 +190,9 @@ def main() -> int:
     except click.exceptions.Abort:
         return 1
     except click.exceptions.UsageError as exc:
-        click.echo(f"Error de uso: {exc.format_message()}", err=True)
-        return 1
+        command = extract_command_from_usage_error(exc)
+        return emit_click_usage_error_envelope(
+            exc, command=command, json_mode=json_active
+        )
     except SystemExit as exc:
         return int(exc.code) if exc.code is not None else 0

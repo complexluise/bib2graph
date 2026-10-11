@@ -122,6 +122,9 @@ def _entry_to_row(
         fetched_at=fetched_at,
         decided_by=None,
         decided_at=None,
+        # ADR 0050 D2 (#320): BibTeX no es ni seed de ecuación ni citante
+        # forrajeado — source_kind queda None.
+        source_kind=None,
     )
 
     return {

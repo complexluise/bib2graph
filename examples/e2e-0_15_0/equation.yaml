@@ -1,0 +1,23 @@
+# equation.yaml — Ecuación de la e2e de 0.15.0.
+#
+# Caso reducido del ejemplo valoraciones (examples/valoraciones/equation.yaml),
+# para reproducir offline (R2 gate). No requiere acceso a OpenAlex.
+#
+# Uso:
+#   b2g init e2e-0_15_0         # o b2g init . sobre la carpeta
+#   b2g snapshot restore --from-corpus examples/e2e-0_15_0/corpus.parquet
+#   b2g build
+#   b2g export --format arrow --network-type bibliographic_coupling
+#
+# equation_id de procedencia: eq-e2e-0_15_0
+equation:
+  query: >-
+    ("pensamiento complejo" OR "Edgar Morin" OR "Paulo Freire")
+    AND
+    ("evaluación" OR "assessment" OR "calificación")
+  exclude: []
+  min_year: 1990
+  max_year: 2020
+  max_results: 8
+  labels:
+    - "e2e-0_15_0"

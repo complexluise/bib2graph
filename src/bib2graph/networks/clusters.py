@@ -22,15 +22,10 @@ from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 
-from bib2graph.constants import Col, CurationStatus, NetworkKind
+from bib2graph.constants import PAPER_NETWORK_KINDS, Col, CurationStatus
 
 if TYPE_CHECKING:
     from bib2graph.networks.spec import NetworkArtifact
-
-# Kinds cuyo nodo es un paper id (Col.ID) — misma fuente que _PAPER_KINDS en decorate.py
-_PAPER_KINDS: frozenset[str] = frozenset(
-    {NetworkKind.BIBLIOGRAPHIC_COUPLING, NetworkKind.COCITATION}
-)
 
 _TOP_N: int = 5
 
@@ -72,7 +67,7 @@ def cluster_table(
     Returns:
         Lista de dicts ordenada por ``cluster``. Vacía si no aplica.
     """
-    if artifact.spec.kind not in _PAPER_KINDS:
+    if artifact.spec.kind not in PAPER_NETWORK_KINDS:
         return []
 
     if artifact.communities is None:

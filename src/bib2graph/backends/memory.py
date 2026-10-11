@@ -45,7 +45,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from bib2graph.constants import LIST_COLUMNS, Col, CurationStatus
-from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
+from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent, parse_provenance_migrated
 
 # Re-exportar LIST_COLUMNS con el alias histórico (_LIST_COLS) para que
 # backends/duckdb.py y cualquier otro importador de la constante antigua
@@ -152,21 +152,28 @@ def build_equation_metadata(
 def _parse_provenance(provenance_json: str | None) -> list[dict[str, object]]:
     """Parsea el JSON de provenance como lista de eventos (dicts).
 
-    Delega a ``ProvenanceEvent.parse_list`` que falla ruidoso ante JSON
-    corrupto.  Devuelve dicts (no modelos) para mantener compatibilidad con
-    el resto de la lógica interna que los manipula como dicts.
+    Delega a ``parse_provenance_migrated`` (API pública en ``schemas.py``)
+    que aplica ``ProvenanceEvent.parse_list`` (falla ruidoso ante JSON
+    corrupto) **+** ``migrate_provenance_event`` (migración on-read de
+    corpus pre-D2 con ``chaining:*``, ADR 0050 D2 #320).
+
+    Devuelve dicts (no modelos) para mantener compatibilidad con el resto
+    de la lógica interna que los manipula como dicts. Cualquier llamada a
+    lectura debe pasar por acá — el parser on-read vive en un solo punto
+    (``schemas.parse_provenance_migrated``).  Los demás módulos pueden
+    importarlo directo si quieren el mismo comportamiento en lectura pura.
 
     Args:
         provenance_json: String JSON o None.
 
     Returns:
         Lista de dicts de eventos (puede ser vacía si JSON es None o ``[]``).
+        Cada evento es post-D2 (``source_kind`` poblado si venía de chain).
 
     Raises:
         ValueError: Si el JSON es corrupto o no es una lista de objetos válidos.
     """
-    events = ProvenanceEvent.parse_list(provenance_json)
-    return [e.to_dict() for e in events]
+    return parse_provenance_migrated(provenance_json)
 
 
 def _latest_human_decided_at(events: list[dict[str, object]]) -> str | None:
