@@ -702,14 +702,19 @@ class Forager:
                 scent_map[citer_id] = score
                 work = works_map.get(citer_id)
                 if work is not None:
+                    # ADR 0050 D2 (#320): equation_id=None (era
+                    # `chaining:forward`); source_kind="chaining_forward"
+                    # desambigua el origen. source_tag se mantiene adrede
+                    # (ADR 0020).
                     row = _work_to_row(
                         work,
-                        equation_id="chaining:forward",
+                        equation_id=None,
                         fetched_at=fetched_at,
                         is_seed=False,
                         action="fetched",
                         chaining_hop=1,
                         source_tag="chaining:forward",
+                        source_kind="chaining_forward",
                     )
                 else:
                     # Fallback (source sin fetch_citing_batch_with_works): fila
@@ -725,6 +730,8 @@ class Forager:
                         fetched_at=fetched_at,
                         decided_by=None,
                         decided_at=None,
+                        # ADR 0050 D2 (#320): source_kind="chaining_forward".
+                        source_kind="chaining_forward",
                     )
                     from bib2graph.constants import CurationStatus
 
