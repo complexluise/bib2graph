@@ -85,15 +85,11 @@ def migrate_provenance_event(
         return data
 
     # Recorremos los prefijos conocidos. Si matchea, derivamos source_kind.
-    # Se preserva el orden en el dict: si en el futuro hay prefijos
-    # compuestos (`chaining:forward:foo:bar`) que coincidan, gana el más
-    # largo — pero hoy los prefijos no se solapan.
+    # Solo matcheamos el prefijo exacto (`chaining:forward`) o con un `:` pegado
+    # (`chaining:forward:foo`); nunca prefijos extendidos tipo
+    # `chaining:forwardish` — esos no son chaining_forward y se preservan tal cual.
     for prefix, kind in _SOURCE_KIND_FOR_PREFIX.items():
-        if (
-            equation_id == prefix
-            or equation_id.startswith(prefix + ":")
-            or equation_id.startswith(prefix)
-        ):
+        if equation_id == prefix or equation_id.startswith(prefix + ":"):
             data["source_kind"] = kind
             data["equation_id"] = None
             return data

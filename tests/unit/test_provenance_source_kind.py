@@ -805,3 +805,29 @@ def test_parse_provenance_migrated_corpus_vacio_devuelve_lista_vacia() -> None:
     from bib2graph.schemas import parse_provenance_migrated
 
     assert parse_provenance_migrated("[]") == []
+
+
+@pytest.mark.unit
+def test_migrate_provenance_event_no_matchea_prefijo_extendido() -> None:
+    """Un prefijo extendido tipo ``chaining:forwardish`` no es chaining_forward.
+
+    Hallazgo del verifier: el ``startswith(prefix)`` sin ``:`` matcheaba
+    cualquier string que empezara con ``chaining:forward``, incluyendo
+    ``chaining:forwardish`` (que no existe hoy en el código, pero podría
+    aparecer en un futuro). El fix: solo matchear prefijo exacto o con
+    ``:`` pegado. Verifica que un prefijo extendido se preserva tal cual.
+    """
+    from bib2graph.backends._provenance_compat import migrate_provenance_event
+
+    pre_d2 = {
+        "action": "fetched",
+        "equation_id": "chaining:forwardish",
+        "chaining_hop": None,
+        "source": "openalex",
+        "fetched_at": "2026-01-01T00:00:00+00:00",
+        "decided_by": None,
+        "decided_at": None,
+    }
+    migrated = migrate_provenance_event(pre_d2)
+    assert "source_kind" not in migrated or migrated.get("source_kind") is None
+    assert migrated["equation_id"] == "chaining:forwardish"
