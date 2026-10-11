@@ -146,16 +146,16 @@ class TestExtractCommandFromUsageError:
         runner = CliRunner()
         # standalone_mode=False para que Click NO convierta la excepción a SystemExit;
         # catch_exceptions=False para que la excepción se propague al test.
-        runner2 = CliRunner()
         with pytest.raises(click.exceptions.NoSuchCommand) as exc_info:
-            runner2.invoke(
+            runner.invoke(
                 b2g,
                 ["monitor"],
                 standalone_mode=False,
                 catch_exceptions=False,
             )
         assert extract_command_from_usage_error(exc_info.value) == "monitor"
-        # Confirmamos también que la primera invocación efectivamente lanzó la excepción.
+        # Confirmamos también que el path de Click es estable: segunda invocación
+        # con el mismo input también lanza NoSuchCommand (regresión silenciosa).
         with pytest.raises(click.exceptions.NoSuchCommand):
             runner.invoke(
                 b2g,
