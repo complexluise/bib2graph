@@ -23,13 +23,11 @@ from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 
+from bib2graph.constants import PAPER_NETWORK_KINDS
 from bib2graph.networks.spec import NetworkArtifact, NetworkSpec
 
 if TYPE_CHECKING:
     from bib2graph.workspace import Workspace
-
-
-_PAPER_KINDS: frozenset[str] = frozenset({"bibliographic_coupling", "cocitation"})
 
 
 def load_artifact_from_disk(
@@ -153,4 +151,4 @@ def load_artifact_from_disk(
 
 def is_paper_kind(kind: str) -> bool:
     """``True`` si el kind es de paper (coupling/cocitation). Cobertura fina."""
-    return kind in _PAPER_KINDS
+    return kind in PAPER_NETWORK_KINDS

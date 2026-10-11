@@ -54,7 +54,7 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 import pyarrow as pa
 
-from bib2graph.constants import Col, NetworkKind, resolve_paper_url
+from bib2graph.constants import PAPER_NETWORK_KINDS, Col, NetworkKind, resolve_paper_url
 
 if TYPE_CHECKING:
     from bib2graph.networks.spec import NetworkArtifact
@@ -66,9 +66,8 @@ else:
 
 LABEL_MAX_CHARS: int = 60
 
-_PAPER_KINDS: frozenset[str] = frozenset(
-    {NetworkKind.BIBLIOGRAPHIC_COUPLING, NetworkKind.COCITATION}
-)
+# Reusar la fuente única de kinds de paper (constants.PAPER_NETWORK_KINDS)
+# en vez de redefinir localmente.
 
 
 def _build_paper_index(table: pa.Table) -> dict[str, dict[str, object]]:
@@ -265,7 +264,7 @@ def decorate_graph(
     # Centralidad de grado (una sola llamada, determinista)
     deg_centrality: dict[Any, float] = nx.degree_centrality(graph)
 
-    if kind in _PAPER_KINDS:
+    if kind in PAPER_NETWORK_KINDS:
         paper_index = _build_paper_index(table)
         for node in graph.nodes():
             key = str(node)

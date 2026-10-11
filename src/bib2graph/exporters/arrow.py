@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 
-from bib2graph.constants import NetworkKind
+from bib2graph.constants import PAPER_NETWORK_KINDS
 
 if TYPE_CHECKING:
     from bib2graph.networks.spec import NetworkArtifact
@@ -59,12 +59,10 @@ _LIST_COMMUNITIES = pa.list_(_COMMUNITY_STRUCT)
 
 
 # Kinds cuyo nodo es un paper id (``Col.ID``). Las redes no-papers
-# (author_collab / institution_collab / keyword_cooccurrence) no se pueden
-# anclar por paper en el Arrow; la elección de kind la hace el CLI (allí se
-# decide si se avisa con warning o se cae).
-_PAPER_KINDS: frozenset[str] = frozenset(
-    {NetworkKind.BIBLIOGRAPHIC_COUPLING, NetworkKind.COCITATION}
-)
+# Kinds de paper: reusar la fuente única de ``constants`` (ADR 0023). Kinds
+# no-paper (author_collab / institution_collab / keyword_cooccurrence) no se
+# pueden anclar por paper en el Arrow; la elección de kind la hace el CLI
+# (allí se decide si se avisa con warning o se cae).
 
 
 class ArrowExporter:
@@ -210,10 +208,10 @@ def arrow_with_network(
     if artifact is None:
         return table
 
-    if artifact.spec.kind not in _PAPER_KINDS:
+    if artifact.spec.kind not in PAPER_NETWORK_KINDS:
         raise ValueError(
             f"arrow_with_network solo aplica a kinds de paper "
-            f"({sorted(_PAPER_KINDS)}); recibido '{artifact.spec.kind}'. "
+            f"({sorted(PAPER_NETWORK_KINDS)}); recibido '{artifact.spec.kind}'. "
             f"Para kinds no-papers, usar --format graphml o no embeber red."
         )
 

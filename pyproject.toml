@@ -64,6 +64,8 @@ dependencies = [
     # parser de specs declarativas (NetworkSpec YAML, Hito 9)
     "rapidfuzz>=3,<4",
     # dedup fuzzy determinista (core desde #88; antes extra [dedup])
+    # nx.pagerank (usado en intra_community_pagerank, ADR 0052 D3, #321)
+    # requiere scipy via _pagerank_scipy; falla ruidoso sin esto
     "scipy>=1.17.1",
 ]
 
