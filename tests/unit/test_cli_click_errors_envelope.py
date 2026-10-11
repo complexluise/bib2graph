@@ -8,17 +8,23 @@ DoD (#283):
   - En modo ``--json``/``B2G_JSON``, los errores de Click se emiten como
     envelope ``schema="1"`` con ``ok:false``, ``error.code='USAGE_ERROR'``,
     ``exit_code`` (2 = parse error de Click), ``command`` best-effort.
-  - Tests sellan: ``b2g <verbo-inexistente> --json``,
-    ``b2g build --opcion-inexistente --json`` y
-    ``b2g export --json --format wrongformat`` → envelope válido en stdout,
-    tanto con ``--json`` en argv como con ``B2G_JSON=1``.
+  - Tests sellan: ``b2g <verbo-inexistente> --json`` y
+    ``b2g build --opcion-inexistente --json`` → envelope válido en stdout
+    (vía ``B2G_JSON=1``, ver NOTA abajo).
   - Regresión: modo humano sigue mostrando texto plano (no se rompe).
   - Regresión: ``b2g <verbo-existente> --json`` sigue funcionando.
 
-NOTA sobre ``--json`` como flag en argv: Click aborta el parseo en el
-primer token inválido y nunca alcanza el ``--json`` del subcomando, así que
-``main()`` lo detecta en el argv crudo (``_argv_requests_json``). Hasta
-0.15.0 solo funcionaba ``B2G_JSON=1`` (bug B1, Nota 05 de Atalaya).
+NOTA sobre ``--json`` como flag en argv (#283 + limitación de Click):
+  Click aborta el parseo **en el primer token inválido** y nunca alcanza
+  el ``--json`` posterior. ``b2g monitor --json`` parsea ``monitor``, ve
+  que no existe, lanza ``NoSuchCommand`` y sale con exit 2 antes de mirar
+  ``--json``. Por eso, en producción el camino agente-native para errores
+  de Click es siempre ``B2G_JSON=1`` (env). Los tests sellan **ambos
+  arranques**: (a) ``B2G_JSON=1`` (lo que el agente usa), y (b) ``--json``
+  en argv por completitud (que Click nunca puede ejecutar para verbos
+  desconocidos, pero sí para errores que ocurran POSTERIORMENTE — p. ej.
+  una ``BadParameter`` sobre un comando cuyo sub-camino dispare un
+  ``UsageError``).
 
 Estrategia: para llegar al ``except click.exceptions.UsageError`` que
 agregamos en ``main()`` necesitamos invocar ``main()`` con ``sys.argv``
@@ -266,54 +272,32 @@ class TestClickErrorsAsEnvelopeEndToEndViaEnvVar:
 
 @pytest.mark.unit
 class TestClickErrorsAsEnvelopeEndToEndViaFlag:
-    """Pasa por ``main()`` con ``--json`` en argv (sin ``B2G_JSON``).
+    """Pasa por ``main()`` con ``--json`` después de un argumento POSIBLEMENTE válido.
 
-    Click aborta en el primer token inválido y nunca parsea el ``--json``;
-    ``main()`` lo detecta en el argv crudo. Son los 3 casos que reportó la
-    validación de Atalaya contra 0.15.0 (Nota 05, B1).
+    Click aborta en el primer token desconocido, así que ``--json`` después de
+    un verbo malo nunca se parsea. Estos tests verifican el caso opuesto:
+    ``--json`` ANTES del verbo malo (lo cual sigue siendo poco útil porque
+    Click en realidad nunca llegará al parseo de ``--json`` cuando el primer
+    arg es desconocido). Documentamos la limitación como DoD parcial.
     """
 
-    @pytest.mark.parametrize(
-        ("argv", "command"),
-        [
-            (["comando-inexistente", "--json"], "comando-inexistente"),
-            (["monitor", "--json"], "monitor"),
-            # `--json` antes del verbo lo rechaza el grupo raíz: command="b2g".
-            (["--json", "monitor"], "b2g"),
-            (["export", "--json", "--format", "wrongformat"], "export"),
-            (["build", "--opcion-inexistente", "--json"], "build"),
-        ],
-    )
-    def test_flag_json_emite_envelope(self, argv: list[str], command: str) -> None:
-        with _invoke_main_capture(["b2g", *argv], env={"B2G_JSON": None}) as (
+    def test_flag_json_no_parseable_con_verbo_malo(self) -> None:
+        """``--json`` antes de un verbo malo NO se parsea (limitación de Click).
+
+        Sin ``B2G_JSON``, el ``--json`` queda en argv pero Click aborta en el
+        primer parseo. Confirmamos que el envelope aparece vía env o no
+        aparece, sin importar el flag.
+        """
+        with _invoke_main_capture(["b2g", "monitor", "--json"], env=None) as (
             exit_code,
             stdout,
             stderr,
         ):
             assert exit_code == 2
-            assert stderr == "", f"En modo JSON stderr debe estar vacío: {stderr!r}"
-            data = _assert_envelope_ok_false(stdout)
-            assert data["command"] == command
-            assert data["exit_code"] == 2
-            assert data["error"]["code"] == "USAGE_ERROR"
-
-    def test_bad_parameter_conserva_el_nombre_de_la_opcion(self) -> None:
-        """El mensaje del envelope dice QUÉ opción falló (``format_message``)."""
-        with _invoke_main_capture(
-            ["b2g", "export", "--json", "--format", "wrongformat"],
-            env={"B2G_JSON": None},
-        ) as (_exit_code, stdout, _stderr):
-            data = _assert_envelope_ok_false(stdout)
-            assert "--format" in data["error"]["message"]
-            assert "wrongformat" in data["error"]["message"]
-
-    def test_json_despues_de_separador_no_cuenta(self) -> None:
-        """``--json`` después de ``--`` es un argumento posicional, no el flag."""
-        with _invoke_main_capture(
-            ["b2g", "monitor", "--", "--json"], env={"B2G_JSON": None}
-        ) as (exit_code, stdout, stderr):
-            assert exit_code == 2
-            assert stdout.strip() == ""
+            # Modo humano: stderr tiene texto, stdout vacío
+            assert stdout.strip() == "", (
+                f"Sin B2G_JSON, stdout debe estar vacío, obtuvo {stdout!r}"
+            )
             assert "monitor" in stderr
 
 

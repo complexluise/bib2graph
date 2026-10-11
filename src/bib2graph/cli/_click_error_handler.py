@@ -93,7 +93,7 @@ def emit_click_usage_error_envelope(
             "exit_code": exit_code,
             "data": {},
             "warnings": [],
-            "error": {"code": "USAGE_ERROR", "message": exc.format_message()},
+            "error": {"code": "USAGE_ERROR", "message": exc.message or ""},
         }
         print(json.dumps(envelope, ensure_ascii=False, default=str))
         sys.stdout.flush()

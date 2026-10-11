@@ -24,10 +24,6 @@ ADR 0052 (#321) — red tipada en el Arrow:
   ``network_type`` ausente en metadata, y se emite un warning en el envelope
   ``--json`` (``data.warnings`` → top-level ``warnings``).
 
-  ``--no-network`` (enmienda post-0.15.0 al ADR 0052 D4): pide el modo
-  degradado explícitamente aunque haya build previo — sin columnas de red,
-  sin metadata de red y sin warning. Excluyente con ``--network-type``.
-
   Kinds no-paper (author_collab / institution_collab / keyword_cooccurrence):
   warning en envelope + sin columnas de red (los nodos de esas redes no son
   papers; no se pueden anclar por paper en el Arrow).
@@ -52,7 +48,7 @@ from typing import Any, Literal
 import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
-from bib2graph.cli._errors import DataError, UsageError, handle_errors
+from bib2graph.cli._errors import DataError, handle_errors
 from bib2graph.cli._options import json_mode, json_option
 from bib2graph.cli._scope import map_scope as _map_scope
 from bib2graph.cli._store import (
@@ -423,8 +419,7 @@ def run_export(
             ``format`` es de red y el usuario igual pasó ``--scope``.
         network_type: ``NetworkKind`` a embeber en el Arrow. Default
             ``"bibliographic_coupling"`` (la más robusta en one-shot, D2).
-            ``""`` = sin red (lo que pide ``--no-network``). Solo aplica a
-            ``--format arrow``.
+            Solo aplica a ``--format arrow``.
 
     Returns:
         Dict con ``format``, ``out_dir``, ``files_written`` y, según la
@@ -536,17 +531,6 @@ def run_export(
     ),
 )
 @click.option(
-    "--no-network",
-    "no_network",
-    is_flag=True,
-    default=False,
-    help=(
-        "Exporta el Arrow SIN red tipada aunque haya un b2g build previo (modo "
-        "degradado del ADR 0052 D4, pedido explícito: sin warning). Excluyente "
-        "con --network-type."
-    ),
-)
-@click.option(
     "--out-dir",
     default=None,
     help=(
@@ -562,7 +546,6 @@ def export_cmd(
     fmt: str,
     scope: str | None,
     network_type: str,
-    no_network: bool,
     out_dir: str | None,
     json_output: bool,
 ) -> None:
@@ -575,8 +558,7 @@ def export_cmd(
     - 'arrow'/'bibtex' (ADR 0050 D4): serializan el CORPUS del store vivo,
       scopeado por ``--scope`` de este comando. ``--format arrow`` admite
       ``--network-type`` para embeber la red tipada del último ``b2g build``
-      (ADR 0052), o ``--no-network`` para exportarlo sin red aunque haya
-      build previo (ADR 0052 D4, enmienda post-0.15.0).
+      (ADR 0052).
 
     El directorio de salida por defecto es ``<workspace>/exports/``.
     Con ``--out-dir`` se puede especificar un directorio alternativo.
@@ -587,16 +569,6 @@ def export_cmd(
 
     scope_explicit = scope is not None
     internal_scope = _map_scope(scope) if scope is not None else "all"
-
-    if no_network:
-        source = ctx.get_parameter_source("network_type")
-        if source is not None and source != click.core.ParameterSource.DEFAULT:
-            raise UsageError(
-                "--no-network y --network-type son mutuamente excluyentes."
-            )
-        # ``network_type=""`` = sin red: ``_export_corpus`` saltea el embebido
-        # sin emitir el warning de modo degradado (el usuario lo pidió).
-        network_type = ""
 
     data = run_export(
         ws.library_path,

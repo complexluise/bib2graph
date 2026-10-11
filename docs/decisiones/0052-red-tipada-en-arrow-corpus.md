@@ -181,12 +181,6 @@ presencia de una red que no existe. La forma del Arrow cambia con y sin red; el 
 validar la presencia/ausencia de las columnas de red (es la disciplina que el constraint
 "rompen-en-silencio" del ADR 0050 §"Constraints" ya impone).
 
-> **Enmienda post-0.15.0 (2026-10-11, Nota 05 de Atalaya, B3).** En 0.15.0 el modo degradado solo
-> era alcanzable si nunca se había corrido `b2g build`: con build previo, el default
-> `--network-type bibliographic_coupling` siempre embebía la red. Se suma **`b2g export --no-network`**
-> (aditivo, excluyente con `--network-type` explícito): mismo Arrow que el modo degradado, **sin**
-> warning porque es un pedido explícito. Sirve para producir dos Arrows comparables del mismo corpus.
-
 ### D5 — Envelope `--json` aditivo (sin romper `schema="1"`)
 
 El envelope de `b2g export --format arrow` (que ya es `schema="1"`, aditivo sobre
@@ -258,10 +252,6 @@ columnas, pero tenerlos en el envelope le evita parsear el schema). El bloque `m
   proyectan desde artefactos de build, no modifican el contenido bibliográfico. El hash del corpus
   sigue siendo de la tabla `papers` original, sin las columnas de red. **El hash del Arrow exportado
   cambia** (más bytes, más metadata) — pero el `corpus_hash` de la biblioteca viva no.
-  > **Corrección post-0.15.0 (Nota 05 de Atalaya, B2):** en 0.15.0 `compute_corpus_hash` sobre la
-  > tabla exportada **sí** cambiaba con la red (hasheaba también las 5 columnas nuevas). Ahora las
-  > excluye (`constants.ARROW_NETWORK_COLUMNS`): el mismo corpus exportado con y sin red da el mismo
-  > `corpus_hash`, como pedía el DoD de abajo.
 - **Envelope `schema="1"` intacto**: la entrega es aditiva sobre `data`, no sobre `schema` (los
   campos de red son del Arrow, no del envelope del CLI). El bloque `maturity` del envelope se
   mantiene.
