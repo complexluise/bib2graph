@@ -60,7 +60,7 @@ import pyarrow as pa
 
 from bib2graph.constants import Col, CurationStatus
 from bib2graph.corpus import Corpus, EquationRef, _rows_with_ids
-from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
+from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent, SourceKind
 from bib2graph.service.errors import NetworkError
 from bib2graph.sources.openalex import _normalize_doi
 
@@ -166,7 +166,7 @@ def _paper_to_row(
     action: str = "fetched",
     chaining_hop: int | None = None,
     source_tag: str = "semanticscholar",
-    source_kind: str | None = None,
+    source_kind: SourceKind | None = None,
 ) -> dict[str, Any]:
     """Mapea un objeto JSON de Semantic Scholar a la fila del schema canónico.
 
