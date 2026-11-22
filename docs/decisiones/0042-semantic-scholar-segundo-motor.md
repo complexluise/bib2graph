@@ -127,3 +127,21 @@ idea por PR (regla del repo).
   La query nativa + reporte honesto (D3) entrega valor ya; la traducción rica es trabajo futuro.
 - **Meter el selector `--source` en el mismo PR.** Rechazada: dos ideas (motor nuevo + cambio de
   superficie CLI/contrato). Viola "una idea por PR" y mezcla un cambio de `docs/API.md` con la costura.
+
+## Enmienda (2026-11-21) — alineación con contratos 0.15.x al rebasar #250
+
+Al rebasar el PR sobre la rama de integración (0.13→0.15.1) el adaptador se alineó con contratos
+posteriores, sin revertir el principio de D2 ("no reintentar en silencio hasta el infinito"):
+
+- **Retry acotado en `seed()`** (como el `seed` de OpenAlex desde #287): hasta 3 intentos con
+  backoff 1 s / 2 s ante 429/5xx, en `/paper/search`, `/paper/batch` y `/citations`. Al agotarse,
+  `NetworkError` con `subcode` tipado (`RATE_LIMITED` / `UPSTREAM_TIMEOUT`, ADR 0045). El mensaje
+  de 429 distingue si ya hay API key (no pide una key a quien ya la pasó).
+- **Provenance:** las semillas llevan `source_kind="seed_equation"` (ADR 0050 D2).
+- **`EquationRef`:** `engine="semanticscholar"`, `created_at` y `params` (`raw_query`,
+  `max_results`, `executed_query`, `translation_report`) (ADR 0050 D1/D3).
+- **`max_results` ∈ 1..1000** (límite offset+limit de `/paper/search`): fuera de rango → `ValueError`.
+- **Límite conocido:** la siembra no pide `references` (no verificado que `/paper/search` lo acepte);
+  las semillas quedan sin `references_*` hasta materializarlas por ID. Follow-up con llamada real.
+
+El wiring end-to-end (`--source`, Forager) lo fija el ADR 0053 (multi-proveedor).

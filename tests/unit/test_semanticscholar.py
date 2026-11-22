@@ -92,11 +92,44 @@ def _make_search_handler(papers: list[dict[str, Any]]) -> httpx.MockTransport:
     return httpx.MockTransport(handler)
 
 
-def _make_429_handler() -> httpx.MockTransport:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(429, text="Too Many Requests")
+def _make_status_handler(
+    status: int,
+) -> tuple[httpx.MockTransport, list[httpx.Request]]:
+    """MockTransport que responde siempre ``status``; registra los requests."""
+    seen: list[httpx.Request] = []
 
-    return httpx.MockTransport(handler)
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(status, text="error")
+
+    return httpx.MockTransport(handler), seen
+
+
+def _make_429_handler() -> httpx.MockTransport:
+    return _make_status_handler(429)[0]
+
+
+def _make_flaky_handler(
+    fail_status: int, fails: int, ok_body: Any
+) -> tuple[httpx.MockTransport, list[httpx.Request]]:
+    """Falla ``fails`` veces con ``fail_status`` y luego responde 200 ``ok_body``."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if len(seen) <= fails:
+            return httpx.Response(fail_status, text="error")
+        return httpx.Response(200, json=ok_body)
+
+    return httpx.MockTransport(handler), seen
+
+
+@pytest.fixture(autouse=True)
+def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Neutraliza el backoff real; devuelve los sleeps pedidos."""
+    sleeps: list[float] = []
+    monkeypatch.setattr("bib2graph.sources.semanticscholar.time.sleep", sleeps.append)
+    return sleeps
 
 
 # ---------------------------------------------------------------------------
@@ -235,13 +268,16 @@ def test_seed_manifest_equations_query() -> None:
 
 
 @pytest.mark.unit
-def test_seed_429_levanta_network_error_accionable() -> None:
+def test_seed_429_levanta_network_error_accionable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Un 429 sostenido en /paper/search lanza NetworkError, no HTTPStatusError.
 
     Sella D2 (ADR 0042): el mensaje nombra la API key como remedio (no el
     "polite pool" de OpenAlex). No debe loopear infinitamente: seed() no
     reintenta (single-shot), por lo que un único 429 ya dispara el error.
     """
+    monkeypatch.delenv("S2_API_KEY", raising=False)
     transport = _make_429_handler()
     source = SemanticScholarSource(transport=transport)  # sin api_key
 
@@ -253,11 +289,15 @@ def test_seed_429_levanta_network_error_accionable() -> None:
     assert "api key" in msg.lower() or "api_key" in msg.lower()
     assert "S2_API_KEY" in msg
     assert "ADR 0042" in msg
+    assert exc_info.value.subcode == "RATE_LIMITED"
 
 
 @pytest.mark.unit
-def test_seed_429_no_es_httpstatuserror_pelado() -> None:
+def test_seed_429_no_es_httpstatuserror_pelado(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """El error levantado es NetworkError, no httpx.HTTPStatusError directo."""
+    monkeypatch.delenv("S2_API_KEY", raising=False)
     transport = _make_429_handler()
     source = SemanticScholarSource(transport=transport)
 
@@ -268,6 +308,166 @@ def test_seed_429_no_es_httpstatuserror_pelado() -> None:
         pass
     except httpx.HTTPStatusError:
         pytest.fail("seed() no debe propagar httpx.HTTPStatusError pelado")
+
+
+@pytest.mark.unit
+def test_seed_429_con_key_no_pide_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Con api_key ya pasada, el mensaje del 429 no le pide una key."""
+    monkeypatch.delenv("S2_API_KEY", raising=False)
+    source = SemanticScholarSource(api_key="k", transport=_make_429_handler())
+
+    with pytest.raises(NetworkError) as exc_info:
+        source.seed("q")
+
+    msg = str(exc_info.value)
+    assert "ya está configurada" in msg
+    assert "obtené una API key" not in msg
+    assert exc_info.value.subcode == "RATE_LIMITED"
+
+
+@pytest.mark.unit
+def test_seed_504_levanta_network_error_upstream_timeout() -> None:
+    transport, seen = _make_status_handler(504)
+    source = SemanticScholarSource(api_key="k", transport=transport)
+
+    with pytest.raises(NetworkError) as exc_info:
+        source.seed("q")
+
+    assert exc_info.value.subcode == "UPSTREAM_TIMEOUT"
+    assert len(seen) == 3
+
+
+@pytest.mark.unit
+def test_seed_reintenta_y_se_recupera(_no_sleep: list[float]) -> None:
+    """429 transitorio: backoff (1s, 2s) y luego éxito."""
+    ok = {"total": 1, "offset": 0, "data": [PAPER_CON_DOI]}
+    transport, seen = _make_flaky_handler(429, 2, ok)
+    source = SemanticScholarSource(api_key="k", transport=transport)
+
+    result = source.seed("q")
+
+    assert len(result.corpus) == 1
+    assert len(seen) == 3
+    assert _no_sleep == [1.0, 2.0]
+
+
+@pytest.mark.unit
+def test_seed_error_no_retryable_propaga_sin_reintentar() -> None:
+    transport, seen = _make_status_handler(400)
+    source = SemanticScholarSource(api_key="k", transport=transport)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        source.seed("q")
+
+    assert len(seen) == 1
+
+
+@pytest.mark.unit
+def test_seed_provenance_source_kind_seed_equation() -> None:
+    transport = _make_search_handler([PAPER_CON_DOI, PAPER_SIN_DOI])
+    source = SemanticScholarSource(api_key="k", transport=transport)
+
+    table = source.seed("q").corpus.to_arrow()
+
+    for prov_json in table.column(Col.PROVENANCE).to_pylist():
+        assert ProvenanceEvent.parse_list(prov_json)[0].source_kind == "seed_equation"
+
+
+@pytest.mark.unit
+def test_paper_to_row_source_kind_default_none() -> None:
+    row = _paper_to_row(PAPER_CON_DOI, equation_id="e", fetched_at="2026-01-01")
+    events = ProvenanceEvent.parse_list(row[Col.PROVENANCE])
+    assert events[0].source_kind is None
+
+
+@pytest.mark.unit
+def test_seed_equation_ref_engine_params_created_at() -> None:
+    transport = _make_search_handler([PAPER_CON_DOI])
+    source = SemanticScholarSource(api_key="k", max_results=50, transport=transport)
+
+    ref = source.seed("unequal exchange").corpus.manifest.equations[0]
+
+    assert ref.engine == "semanticscholar"
+    assert ref.created_at is not None
+    assert ref.params["raw_query"] == "unequal exchange"
+    assert ref.params["max_results"] == 50
+    assert ref.params["executed_query"] == "unequal exchange"
+
+
+@pytest.mark.unit
+def test_sin_api_key_no_envia_header_x_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("S2_API_KEY", raising=False)
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"total": 0, "data": []})
+
+    source = SemanticScholarSource(transport=httpx.MockTransport(handler))
+    source.seed("q")
+
+    assert seen
+    assert "x-api-key" not in seen[0].headers
+
+
+@pytest.mark.unit
+def test_con_api_key_envia_header_x_api_key() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"total": 0, "data": []})
+
+    source = SemanticScholarSource(
+        api_key="my-key", transport=httpx.MockTransport(handler)
+    )
+    source.seed("q")
+
+    assert seen[0].headers["x-api-key"] == "my-key"
+
+
+@pytest.mark.unit
+def test_batch_reintenta_y_agotado_levanta_con_subcode() -> None:
+    transport, seen = _make_flaky_handler(503, 2, [PAPER_CON_DOI])
+    source = SemanticScholarSource(transport=transport)
+    assert len(source.fetch_works_by_ids(["p1"])) == 1
+    assert len(seen) == 3
+
+    transport, seen = _make_status_handler(429)
+    source = SemanticScholarSource(transport=transport)
+    with pytest.raises(NetworkError) as exc_info:
+        source.fetch_works_by_ids(["p1"])
+    assert exc_info.value.subcode == "RATE_LIMITED"
+    assert len(seen) == 3
+
+    transport, _ = _make_status_handler(504)
+    source = SemanticScholarSource(transport=transport)
+    with pytest.raises(NetworkError) as exc_info:
+        source.fetch_works_by_ids(["p1"])
+    assert exc_info.value.subcode == "UPSTREAM_TIMEOUT"
+
+
+@pytest.mark.unit
+def test_citations_reintenta_y_agotado_levanta_con_subcode() -> None:
+    ok = {"offset": 0, "data": [{"citingPaper": _citing_paper("c1")}]}
+    transport, seen = _make_flaky_handler(500, 2, ok)
+    source = SemanticScholarSource(transport=transport)
+    assert source.fetch_citing_batch(["s1"]) == {"s1": ["c1"]}
+    assert len(seen) == 3
+
+    transport, _ = _make_status_handler(429)
+    source = SemanticScholarSource(transport=transport)
+    with pytest.raises(NetworkError) as exc_info:
+        source.fetch_citing_batch(["s1"])
+    assert exc_info.value.subcode == "RATE_LIMITED"
+
+    transport, _ = _make_status_handler(504)
+    source = SemanticScholarSource(transport=transport)
+    with pytest.raises(NetworkError) as exc_info:
+        source.fetch_citing_batch(["s1"])
+    assert exc_info.value.subcode == "UPSTREAM_TIMEOUT"
 
 
 # ---------------------------------------------------------------------------
@@ -626,6 +826,18 @@ def test_load_levanta_not_implemented_error() -> None:
 def test_max_results_default_es_200() -> None:
     source = SemanticScholarSource()
     assert source._max_results == 200
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("bad", [0, -1, 1001])
+def test_max_results_fuera_de_rango_levanta_value_error(bad: int) -> None:
+    with pytest.raises(ValueError, match="max_results"):
+        SemanticScholarSource(max_results=bad)
+
+
+@pytest.mark.unit
+def test_max_results_tope_1000_aceptado() -> None:
+    assert SemanticScholarSource(max_results=1000)._max_results == 1000
 
 
 @pytest.mark.unit

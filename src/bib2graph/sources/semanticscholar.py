@@ -71,9 +71,12 @@ from .base import SeedResult
 _BASE_URL = "https://api.semanticscholar.org/graph/v1"
 
 # Fields exigidos por el contrato de seed() (D1, ADR 0042): mínimo universal +
-# enriquecimiento barato. NO incluye "references": el costo de traerlas en cada
-# resultado de búsqueda no se justifica en la siembra (se traen en fetch_works_by_ids
-# / fetch_citing_*, donde el universo de papers ya está acotado).
+# enriquecimiento barato. NO incluye "references" (decisión de costo + límite no
+# verificado): no hay evidencia offline (tests/fixtures/ADR 0042) de que
+# /paper/search acepte ese field, y traerlas en cada resultado de búsqueda no se
+# justifica en la siembra. Se traen en fetch_works_by_ids / fetch_citing_*, donde
+# el universo de papers ya está acotado. Las semillas quedan con
+# references_id/references_doi en None hasta materializarlas por ID.
 _SEARCH_FIELDS = ",".join(
     [
         "title",
@@ -93,24 +96,56 @@ _SEARCH_FIELDS = ",".join(
 _FULL_FIELDS = _SEARCH_FIELDS + ",references,references.externalIds"
 
 # Retry/backoff: mismos parámetros que OpenAlexSource (ADR 0042 no decide
-# valores distintos). El seed NO reintenta (ver _MSG_RATE_LIMIT_429 / D2):
-# es una llamada única del usuario: si falla por 429, el remedio es la key,
-# no un retry ciego.
+# valores distintos). Aplica a seed() (#287, espejo de OpenAlex) y al forrajeo.
+# Si el 429/504 persiste tras agotar los reintentos, aflora NetworkError tipado.
 _RETRY_STATUS_CODES: frozenset[int] = frozenset({429, 500, 502, 503, 504})
 _RETRY_MAX_ATTEMPTS: int = 3
 _RETRY_BACKOFF_BASE: float = 1.0  # segundos; duplica por cada intento
 
-# Mensaje accionable para 429 agotado en seed() (D2, ADR 0042): el remedio de
-# S2 es la API key gratuita, no el "polite pool" de OpenAlex (ADR 0012).
-_MSG_RATE_LIMIT_429 = (
-    "Semantic Scholar respondió 429 (Too Many Requests) en /paper/search: el "
-    "rol sembrador de S2 prácticamente exige una API key (ADR 0042, D2). "
-    "Remedio: obtené una API key gratuita de Semantic Scholar "
-    "(https://www.semanticscholar.org/product/api#api-key) y pasala via "
-    "SemanticScholarSource(api_key='tu-key') o la variable de entorno "
-    "S2_API_KEY. El forrajeo (fetch_works_by_ids/fetch_citing_batch) sí "
-    "funciona sin key a bajo volumen. Ver ADR 0042."
-)
+# Tope de /paper/search: offset + limit <= 1000 (límite de la API de S2).
+_MAX_SEARCH_RESULTS = 1000
+
+
+def _build_rate_limit_message(
+    *, has_key: bool, retry_after: str | None, endpoint: str
+) -> str:
+    """Mensaje accionable para 429 agotado (D2, ADR 0042).
+
+    Distingue si ya hay API key: a quien ya la pasó no se le pide una (el
+    remedio es esperar/bajar el volumen); a quien no, se le nombra la key
+    gratuita de S2 (no el "polite pool" de OpenAlex, ADR 0012).
+    """
+    msg = (
+        f"Semantic Scholar respondió 429 (Too Many Requests) en {endpoint} "
+        "tras agotar los reintentos. "
+    )
+    if has_key:
+        msg += (
+            "La API key ya está configurada: el límite de tasa aplica igualmente. "
+            "Esperá antes de reintentar o reducí el volumen (ADR 0042). "
+        )
+    else:
+        msg += (
+            "El rol sembrador de S2 prácticamente exige una API key (ADR 0042, "
+            "D2). Remedio: obtené una API key gratuita de Semantic Scholar "
+            "(https://www.semanticscholar.org/product/api#api-key) y pasala via "
+            "SemanticScholarSource(api_key='tu-key') o la variable de entorno "
+            "S2_API_KEY. El forrajeo (fetch_works_by_ids/fetch_citing_batch) sí "
+            "funciona sin key a bajo volumen. Ver ADR 0042. "
+        )
+    if retry_after:
+        msg += f"S2 indicó Retry-After: {retry_after} (esperá ese tiempo)."
+    return msg.rstrip()
+
+
+def _msg_upstream_timeout_504(endpoint: str) -> str:
+    """Mensaje accionable para 504 agotado (ADR 0045)."""
+    return (
+        f"Semantic Scholar respondió 504 (Gateway Timeout) en {endpoint} tras "
+        "agotar los reintentos: la petición tardó demasiado upstream. "
+        "Simplificá la query (menos términos, max_results más chico) y reintentá."
+    )
+
 
 # Reporte de traducción honesto (D3, ADR 0042): no hay capa WoS→S2; la query
 # se ejecuta nativa.
@@ -131,6 +166,7 @@ def _paper_to_row(
     action: str = "fetched",
     chaining_hop: int | None = None,
     source_tag: str = "semanticscholar",
+    source_kind: str | None = None,
 ) -> dict[str, Any]:
     """Mapea un objeto JSON de Semantic Scholar a la fila del schema canónico.
 
@@ -151,6 +187,8 @@ def _paper_to_row(
             ``None`` si no aplica (seed/fetch_works_by_ids).
         source_tag: Etiqueta de fuente para el evento de provenance.
             Default ``'semanticscholar'``.
+        source_kind: Origen semántico del evento (ADR 0050 D2). ``seed()``
+            pasa ``"seed_equation"``; ``None`` para el resto.
 
     Returns:
         Dict con todas las columnas del schema canónico.
@@ -206,6 +244,7 @@ def _paper_to_row(
         fetched_at=fetched_at,
         decided_by=None,
         decided_at=None,
+        source_kind=source_kind,
     )
 
     return {
@@ -280,8 +319,18 @@ class SemanticScholarSource:
                 no tiene polite pool (a diferencia de OpenAlex, ADR 0012).
             transport: Transport de httpx (inyectar ``MockTransport`` en tests).
             base_url: URL base de la API (default producción).
-            max_results: Tope de resultados por llamada a ``seed()``.
+            max_results: Tope de resultados por llamada a ``seed()``. Debe estar
+                en ``1..1000`` (límite offset+limit de ``/paper/search``).
+
+        Raises:
+            ValueError: Si ``max_results`` está fuera de ``1..1000``.
         """
+        if not 1 <= max_results <= _MAX_SEARCH_RESULTS:
+            raise ValueError(
+                f"max_results={max_results} fuera de rango: /paper/search de "
+                f"Semantic Scholar admite offset+limit <= {_MAX_SEARCH_RESULTS}; "
+                f"usá un valor entre 1 y {_MAX_SEARCH_RESULTS}."
+            )
         # Resolución de api_key: argumento > entorno > ausencia (D2, ADR 0042)
         self._api_key = api_key or os.environ.get("S2_API_KEY")
         self._base_url = base_url.rstrip("/")
@@ -310,14 +359,64 @@ class SemanticScholarSource:
             )
         return httpx.Client(base_url=self._base_url, headers=headers)
 
-    # Paginación de búsqueda (sin retry: ver módulo docstring / D2)
+    # Request con retry/backoff (compartido por seed, batch y citations)
+
+    def _request_with_retry(
+        self,
+        client: httpx.Client,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any],
+        json: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        """Ejecuta un request con retry/backoff ante 429/5xx.
+
+        Returns:
+            La respuesta 2xx.
+
+        Raises:
+            NetworkError: Si se agotan los reintentos con 429 (subcode
+                ``RATE_LIMITED``) o 504 (``UPSTREAM_TIMEOUT``), ADR 0045.
+            httpx.HTTPStatusError: Código no retryable (propaga de inmediato) o
+                retryable 5xx distinto de 504 agotado.
+        """
+        last_exc: httpx.HTTPStatusError | None = None
+        for attempt in range(_RETRY_MAX_ATTEMPTS):
+            try:
+                resp = client.request(method, path, params=params, json=json)
+                resp.raise_for_status()
+                return resp
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code not in _RETRY_STATUS_CODES:
+                    raise
+                last_exc = exc
+                if attempt < _RETRY_MAX_ATTEMPTS - 1:
+                    time.sleep(_RETRY_BACKOFF_BASE * (2**attempt))
+        assert last_exc is not None
+        status = last_exc.response.status_code
+        endpoint = "/paper/{id}/citations" if path.endswith("/citations") else path
+        if status == 429:
+            raise NetworkError(
+                _build_rate_limit_message(
+                    has_key=bool(self._api_key),
+                    retry_after=last_exc.response.headers.get("Retry-After"),
+                    endpoint=endpoint,
+                ),
+                subcode="RATE_LIMITED",
+            ) from last_exc
+        if status == 504:
+            raise NetworkError(
+                _msg_upstream_timeout_504(endpoint), subcode="UPSTREAM_TIMEOUT"
+            ) from last_exc
+        raise last_exc
+
+    # Paginación de búsqueda
 
     def _fetch_search(self, query: str) -> list[dict[str, Any]]:
         """Recupera papers de ``/paper/search`` paginando con offset/limit.
 
-        Sin retry/backoff: ``seed()`` es una llamada única del usuario; un 429
-        agotado debe aflorar de inmediato como ``NetworkError`` accionable
-        (D2, ADR 0042), no reintentarse en silencio.
+        Cada página se pide con retry/backoff (#287, espejo de OpenAlex).
 
         Args:
             query: Query nativa de S2 (sin traducción, D3).
@@ -333,7 +432,9 @@ class SemanticScholarSource:
             while len(papers) < self._max_results:
                 remaining = self._max_results - len(papers)
                 limit = min(page_size, remaining)
-                resp = client.get(
+                resp = self._request_with_retry(
+                    client,
+                    "GET",
                     "/paper/search",
                     params={
                         "query": query,
@@ -342,7 +443,6 @@ class SemanticScholarSource:
                         "limit": limit,
                     },
                 )
-                resp.raise_for_status()
                 data: dict[str, Any] = resp.json()
                 page_papers: list[dict[str, Any]] = data.get("data") or []
                 papers.extend(page_papers)
@@ -372,23 +472,24 @@ class SemanticScholarSource:
             ``query``) y el reporte de traducción (honesto: sin traducción).
 
         Raises:
-            NetworkError: Si S2 responde 429 (sin key, D2): el mensaje nombra
-                el remedio (API key gratuita de S2).
+            NetworkError: Si tras reintentar S2 responde 429
+                (``subcode="RATE_LIMITED"``) o 504 (``"UPSTREAM_TIMEOUT"``).
         """
         equation_id = f"eq-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}"
-        fetched_at = datetime.now(UTC).isoformat()
+        created_at = datetime.now(UTC).isoformat()
+        fetched_at = created_at
 
-        try:
-            papers = self._fetch_search(query)
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 429:
-                raise NetworkError(_MSG_RATE_LIMIT_429) from exc
-            raise
+        papers = self._fetch_search(query)
 
         translation_report = [_TRANSLATION_REPORT_LINE]
 
         rows = [
-            _paper_to_row(paper, equation_id=equation_id, fetched_at=fetched_at)
+            _paper_to_row(
+                paper,
+                equation_id=equation_id,
+                fetched_at=fetched_at,
+                source_kind="seed_equation",  # ADR 0050 D2
+            )
             for paper in papers
         ]
         rows_with_ids = _rows_with_ids(rows)
@@ -398,6 +499,14 @@ class SemanticScholarSource:
             table = _empty_corpus_table()
         corpus = Corpus.from_arrow(table)
 
+        # ADR 0050 D1: ``raw_query`` es la ecuación cruda (S2 no traduce, así
+        # que coincide con ``executed_query``).
+        equation_params: dict[str, object] = {
+            "raw_query": query,
+            "max_results": self._max_results,
+            "executed_query": query,
+            "translation_report": translation_report,
+        }
         updated_manifest = corpus.manifest.model_copy(
             update={
                 "equations": [
@@ -405,6 +514,9 @@ class SemanticScholarSource:
                         equation_id=equation_id,
                         query=query,
                         translation_report=translation_report,
+                        engine="semanticscholar",
+                        params=equation_params,
+                        created_at=created_at,
                     )
                 ],
             }
@@ -453,29 +565,19 @@ class SemanticScholarSource:
             Lista alineada con ``ids``: objeto JSON del paper o ``None``.
 
         Raises:
-            httpx.HTTPStatusError: Si se agotan los reintentos.
+            NetworkError: Si se agotan los reintentos con 429/504 (con subcode).
+            httpx.HTTPStatusError: Otro código no retryable.
         """
-        last_exc: Exception | None = None
-        for attempt in range(_RETRY_MAX_ATTEMPTS):
-            try:
-                with self._client() as client:
-                    resp = client.post(
-                        "/paper/batch",
-                        params={"fields": _FULL_FIELDS},
-                        json={"ids": ids},
-                    )
-                    resp.raise_for_status()
-                    data: list[dict[str, Any] | None] = resp.json()
-                    return data
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code in _RETRY_STATUS_CODES:
-                    last_exc = exc
-                    wait = _RETRY_BACKOFF_BASE * (2**attempt)
-                    time.sleep(wait)
-                else:
-                    raise
-        assert last_exc is not None
-        raise last_exc
+        with self._client() as client:
+            resp = self._request_with_retry(
+                client,
+                "POST",
+                "/paper/batch",
+                params={"fields": _FULL_FIELDS},
+                json={"ids": ids},
+            )
+            data: list[dict[str, Any] | None] = resp.json()
+            return data
 
     def fetch_works_by_ids(self, ids: list[str]) -> Corpus:
         """Trae papers completos de S2 a partir de una lista de IDs.
@@ -548,31 +650,17 @@ class SemanticScholarSource:
             Objeto JSON de la respuesta (``{"offset", "next", "data"}``).
 
         Raises:
-            httpx.HTTPStatusError: Si se agotan los reintentos.
+            NetworkError: Si se agotan los reintentos con 429/504 (con subcode).
+            httpx.HTTPStatusError: Otro código no retryable.
         """
-        last_exc: Exception | None = None
-        for attempt in range(_RETRY_MAX_ATTEMPTS):
-            try:
-                resp = client.get(
-                    f"/paper/{paper_id}/citations",
-                    params={
-                        "fields": _FULL_FIELDS,
-                        "offset": offset,
-                        "limit": limit,
-                    },
-                )
-                resp.raise_for_status()
-                data: dict[str, Any] = resp.json()
-                return data
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code in _RETRY_STATUS_CODES:
-                    last_exc = exc
-                    wait = _RETRY_BACKOFF_BASE * (2**attempt)
-                    time.sleep(wait)
-                else:
-                    raise
-        assert last_exc is not None
-        raise last_exc
+        resp = self._request_with_retry(
+            client,
+            "GET",
+            f"/paper/{paper_id}/citations",
+            params={"fields": _FULL_FIELDS, "offset": offset, "limit": limit},
+        )
+        data: dict[str, Any] = resp.json()
+        return data
 
     def _fetch_citing_one(
         self,
