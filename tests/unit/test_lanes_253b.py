@@ -172,6 +172,15 @@ def test_read_ve_solo_su_carril(tmp_path: Path) -> None:
     assert sorted(p["id"] for p in oa["papers"]) == ["a", "b", "c"]
 
 
+def test_read_top_ve_solo_su_carril(tmp_path: Path) -> None:
+    """#355: la red de ``read top`` sale del carril pedido, no del default."""
+    ws = _two_lane_ws(tmp_path)
+    s2 = _json(_run(ws, "read", "top", "--source", "s2", "--json"))["data"]
+    assert sorted(n["id"] for n in s2["central"]) == ["x", "y"]
+    oa = _json(_run(ws, "read", "top", "--json"))["data"]
+    assert sorted(n["id"] for n in oa["central"]) == ["a", "b", "c"]
+
+
 def test_curate_con_source_escribe_en_su_carril(tmp_path: Path) -> None:
     ws = _two_lane_ws(tmp_path)
     result = _run(ws, "curate", "accept", "--ids", "x", "--source", "s2", "--json")
