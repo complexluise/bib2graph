@@ -323,6 +323,14 @@ Qué tenés que saber:
   vaya a consumir.
 - **El ciclo es de la investigación.** Sembrar `s2` después de un `build` cuenta como una ronda nueva
   en `status`.
+- **DOAJ solo da redes sin citas.** El carril `doaj` se siembra igual (`b2g seed --source doaj …`,
+  query en sintaxis Lucene) pero no se forrajea: `b2g chain --source doaj` falla. En
+  `b2g build --source doaj --out-dir networks-doaj`, acoplamiento y co-citación quedan vacías, y el
+  build lo avisa con un solo warning. Las de coautoría y keywords salen con aristas. Las keywords son
+  las que cargó cada revista, normalizadas a minúsculas, y no conceptos de un vocabulario controlado
+  como en OpenAlex, así que esperá más variantes del mismo término (un thesaurus con `--thesaurus`
+  ayuda a unirlas). La de instituciones sale vacía. `b2g status --source doaj` ya no ofrece `chain`
+  y recomienda `build`. Con DOAJ comparás **quién escribe y sobre qué**, no quién cita a quién.
 
 Detalle del contrato: [Contratos detallados · `--source`](../API.md).
 

@@ -48,6 +48,7 @@ from bib2graph.cli._store import (
 from bib2graph.constants import DEFAULT_PROVIDER, Provider
 from bib2graph.cycle import CURATION_ACTIONS, available_transitions, next_best_action
 from bib2graph.networks.facade import predict_build_preview
+from bib2graph.sources.registry import Capability, has
 
 # Función núcleo (testeable, sin Click)
 
@@ -120,6 +121,12 @@ def run_status(
     # Transiciones disponibles desde el dominio (cicle.py); incluye reseed
     # cuando hay estado previo.
     transitions = available_transitions(loop_state)
+    prov = Provider(provider)
+    # Un proveedor sin grafo de citas (p. ej. DOAJ) no puede forrajear: no se
+    # ofrece `chain` (daría exit 3). El FSM (cycle.py) queda puro; se filtra acá.
+    can_chain = has(prov, Capability.FORWARD) or has(prov, Capability.BACKWARD)
+    if not can_chain:
+        transitions = [t for t in transitions if t != "chain"]
 
     # Curación transversal: siempre disponible, nunca transiciona el lazo.
     curation = list(CURATION_ACTIONS)
@@ -135,8 +142,14 @@ def run_status(
 
     # next_best_action: derivado puramente del FSM (cycle.py).
     action = next_best_action(loop_state)
+    if action == "chain" and not can_chain:
+        action = "build"
 
-    build_prev = predict_build_preview(corpus)
+    build_prev = predict_build_preview(
+        corpus,
+        can_resolve=has(prov, Capability.RESOLVE_DOI),
+        has_citations=can_chain,
+    )
 
     # QA 0.14.0 (hallazgo #2, ADR 0050 D1): exponer las ecuaciones registradas
     # en la tabla lateral ``equations`` — hoy invisibles salvo en la metadata

@@ -194,9 +194,9 @@ class TestWorkspaceSource:
 
     def test_init_source_invalido_lo_rechaza_click(self, tmp_path: Path) -> None:
         result = CliRunner().invoke(
-            b2g, ["init", str(tmp_path / "x"), "--source", "doaj"]
+            b2g, ["init", str(tmp_path / "x"), "--source", "scielo"]
         )
-        assert result.exit_code != 0  # doaj entra con #252
+        assert result.exit_code != 0  # solo proveedores con Source implementada
 
     def test_resolve_provider_precedencia(self, tmp_path: Path) -> None:
         """flag > workspace > default."""

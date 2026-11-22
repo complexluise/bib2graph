@@ -273,12 +273,22 @@ def _normalize_doi(raw: str | None) -> str | None:
     """
     if not raw:
         return None
-    doi = raw
-    for prefix in ("https://doi.org/", "http://doi.org/"):
+    # Los DOI cargados a mano (editores de DOAJ, .bib) traen espacios y
+    # prefijos variados: se limpian todos, sin distinguir mayúsculas.
+    doi = raw.strip().lower()
+    for prefix in (
+        "https://doi.org/",
+        "http://doi.org/",
+        "https://dx.doi.org/",
+        "http://dx.doi.org/",
+        "doi.org/",
+        "dx.doi.org/",
+        "doi:",
+    ):
         if doi.startswith(prefix):
-            doi = doi[len(prefix) :]
+            doi = doi[len(prefix) :].strip()
             break
-    return doi.lower() or None
+    return doi or None
 
 
 def _oa_id_short(url: str | None) -> str | None:

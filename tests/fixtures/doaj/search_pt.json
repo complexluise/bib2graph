@@ -1,0 +1,223 @@
+{
+ "total": 63,
+ "page": 1,
+ "pageSize": 3,
+ "timestamp": "2026-11-22T08:13:17.999658Z",
+ "query": "ecologia complexidade",
+ "results": [
+  {
+   "last_updated": "2025-08-19T22:21:59Z",
+   "bibjson": {
+    "identifier": [
+     {
+      "id": "1983-5213",
+      "type": "eissn"
+     },
+     {
+      "id": "10.26512/rici.v15.n3.2022.44730",
+      "type": "doi"
+     }
+    ],
+    "journal": {
+     "volume": "15",
+     "number": "3",
+     "country": "BR",
+     "issns": [
+      "1983-5213"
+     ],
+     "publisher": "Universidade de Brasília",
+     "language": [
+      "EN",
+      "ES",
+      "PT"
+     ],
+     "title": "Revista Ibero-Americana de Ciência da Informação"
+    },
+    "month": "12",
+    "end_page": "827",
+    "keywords": [
+     "identidade nacional.",
+     "memória.",
+     "ciência da informação.",
+     "educação ambiental.",
+     "meio ambiente.",
+     "responsabilidade social."
+    ],
+    "year": "2022",
+    "start_page": "805",
+    "subject": [
+     {
+      "code": "Z",
+      "scheme": "LCC",
+      "term": "Bibliography. Library science. Information resources"
+     }
+    ],
+    "author": [
+     {
+      "orcid_id": "https://orcid.org/0000-0002-7876-9392",
+      "affiliation": "Universidade Federal do Espírito Santo, Vitória, ES, Brasil",
+      "name": "Marcelo Calderari Miguel"
+     },
+     {
+      "orcid_id": "https://orcid.org/0000-0002-4110-4610",
+      "affiliation": "Universidade Federal do Espírito Santo, Programa de Pós-Graduação em Ciência da Informação, Vitória, ES, Brasil",
+      "name": "Margarete Farias de  Moraes"
+     },
+     {
+      "orcid_id": "https://orcid.org/0000-0002-6962-0000",
+      "affiliation": "Universidade Federal do Espírito Santo, Vitória, ES, Brasil",
+      "name": "Sandra Maria Souza de  Carvalho"
+     }
+    ],
+    "link": [
+     {
+      "content_type": "html",
+      "type": "fulltext",
+      "url": "https://periodicos.unb.br/index.php/RICI/article/view/44730"
+     }
+    ],
+    "abstract": "O estudo averigua o empenho teórico do naturalista brasileiro Augusto Ruschi (1915-1986) diante a valorização planetária da ecologia para sustentabilidade das nações. Objetiva-se evidenciar os princípios e postulados de Ruschi que sustentam a complexidade dos encontros e parâmetros sobre patrimônio científico e memorial. Dessa forma, é importante demonstrar que o pensamento de Ruschi abre novos espaços de difusão da crítica e de dilemas próprios da linguagem científica. A metodologia envolve uma pesquisa bibliográfica e a análise de conteúdo. Consulta-se trechos da obra e depoimentos do naturalista para enfocar a questão do desenvolvimento, da inclusão social e da educação ambiental. Os resultados indicam um legado social, refletindo a visão progressista no entorno do bens naturais e culturais de valor juridicamente protegido, desde o solo, as águas, a flora, a fauna, as belezas naturais e artificiais, o patrimônio histórico, artístico, turístico, paisagístico, arquivístico, arquitetônico, monumental, espeleológico, arqueológico, fossilífero, geológico, urbanístico e etc. Diversas contribuições servem para se pensar o paradigma social da ciência da informação, fortalecendo e apoiando a abordagem informacional. Conclui-se que Augusto Ruschi foi visionário, edificando um legado, sobretudo, intelectual que avançou internacionalmente. As memórias de Ruschi são fonte inspiradora de políticas públicas, pesquisas e extensões universitárias que desdobram múltiplas potencialidades de exaltar o meio ambiente.",
+    "title": "Patrimônio científico e memorial de Augusto Ruschi: reflexões, encontros e atualidade do pensamento ecológico no Brasil"
+   },
+   "id": "0007cbc11851435cbd1cc9a2b7e97754",
+   "created_date": "2023-04-28T19:24:12Z"
+  },
+  {
+   "last_updated": "2025-08-19T22:55:17Z",
+   "bibjson": {
+    "identifier": [
+     {
+      "id": "2175-7429",
+      "type": "pissn"
+     },
+     {
+      "id": "2176-7912",
+      "type": "eissn"
+     },
+     {
+      "id": "10.33871/nupem.v9i18.501",
+      "type": "doi"
+     }
+    ],
+    "journal": {
+     "volume": "9",
+     "number": "18",
+     "country": "BR",
+     "issns": [
+      "2175-7429",
+      "2176-7912"
+     ],
+     "publisher": "Universidade Estadual do Paraná",
+     "language": [
+      "EN",
+      "ES",
+      "PT"
+     ],
+     "title": "Revista NUPEM"
+    },
+    "month": "9",
+    "end_page": "42",
+    "keywords": [
+     "sexualidade, comunicação, ecologia"
+    ],
+    "year": "2017",
+    "start_page": "30",
+    "subject": [
+     {
+      "code": "H",
+      "scheme": "LCC",
+      "term": "Social Sciences"
+     }
+    ],
+    "author": [
+     {
+      "name": "Ana Cristina Teodoro Silva"
+     }
+    ],
+    "link": [
+     {
+      "content_type": "html",
+      "type": "fulltext",
+      "url": "https://periodicos.unespar.edu.br/index.php/nupem/article/view/5538"
+     }
+    ],
+    "abstract": "O texto é fundamentado em discussões contemporâneas a respeito de três objetos: sexualidade, comunicação social e cultural, ecologia. Cada um desses três objetos foi constituído tradicionalmente dentro de binarismos que contrapõem masculino e feminino, emissor e receptor, homem e natureza. O objetivo é mostrar que é possível romper com os binarismos normativos, constituindo um campo convergente de pensamento. A partir da exegese de textos fundamentais de cada área, exercitando o pensamento analógico e o método da complexidade, identifica-se uma tendência: considerar a integração de polos normalmente opostos e admite-se atuar com paradoxos, como por exemplo estar ao mesmo tempo em rede e à margem. Entende-se que indicar essa tendência movimenta possibilidades para o conhecimento, para a Educação e para a política.",
+    "title": "Em rede e à margem: ecologia, comunicação e sexualidade"
+   },
+   "id": "0109bdefb6214eb88586a2310e56762b",
+   "created_date": "2022-06-02T23:15:52Z"
+  },
+  {
+   "last_updated": "2025-08-20T00:31:24Z",
+   "bibjson": {
+    "identifier": [
+     {
+      "id": "1518-952X",
+      "type": "pissn"
+     },
+     {
+      "id": "2176-9109",
+      "type": "eissn"
+     },
+     {
+      "id": "10.5380/dma.v18i0.13429",
+      "type": "doi"
+     }
+    ],
+    "journal": {
+     "volume": "18",
+     "number": "0",
+     "country": "BR",
+     "issns": [
+      "1518-952X",
+      "2176-9109"
+     ],
+     "publisher": "Universidade Federal do Paraná",
+     "language": [
+      "EN",
+      "ES",
+      "FR",
+      "PT"
+     ],
+     "title": "Desenvolvimento e Meio Ambiente"
+    },
+    "month": "12",
+    "keywords": [
+     "ecologia da ciência",
+     "ciência ecológica",
+     "diversidade",
+     "science ecology",
+     "ecological science",
+     "diversity"
+    ],
+    "year": "2008",
+    "subject": [
+     {
+      "code": "GE1-350",
+      "scheme": "LCC",
+      "term": "Environmental sciences"
+     }
+    ],
+    "author": [
+     {
+      "affiliation": "Universidade Federal do Paraná",
+      "name": "Maria da Conceição de Almeida"
+     }
+    ],
+    "link": [
+     {
+      "content_type": "html",
+      "type": "fulltext",
+      "url": "https://revistas.ufpr.br/made/article/view/13429"
+     }
+    ],
+    "abstract": "O paradigma de pensar o mundo de forma fragmentada, que consolida as ciências modernas nascidasno século XVII, mostra-se, sobretudo a partir da primeira metade do século XX, insuficiente paracompreender a complexidade dos fenômenos – sejam eles físicos ou sociais. Uma ecologia dos conhecimentos,hoje em construção, reconhece a multidimensionalidade dos fenômenos e a interconexão entresistemas, ao mesmo tempo em que reafirma a diversidade cultural e cognitiva como princípios capazesde ultrapassar a “monocultura da mente” e questionar a ocidentalização do planeta.",
+    "title": "Ecologia da Ciência, ética da diversidade e educação transdisciplinar"
+   },
+   "id": "061b585db0604d90b6da8c1f2dd666af",
+   "created_date": "2024-07-02T18:16:07Z"
+  }
+ ],
+ "next": "https://doaj.org/api/v4/search/articles/ecologia%20complexidade?page=2&pageSize=3",
+ "last": "https://doaj.org/api/v4/search/articles/ecologia%20complexidade?page=21&pageSize=3"
+}

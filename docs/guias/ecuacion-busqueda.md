@@ -30,6 +30,22 @@ Esta guía es una receta para llegar a una ecuación acotada, testeada, sin ruid
     tiene su carril. Ver [Comparar proveedores](leer-redes.md#comparar-proveedores). Detalle en
     [Contratos detallados](../API.md).
 
+!!! note "DOAJ: otra sintaxis, y los filtros WoS no aplican"
+    DOAJ (`--source doaj`) indexa revistas de acceso abierto y es fuerte en español y portugués.
+    No pide key. Su búsqueda usa sintaxis **Elasticsearch/Lucene**, no la de WoS que enseña esta
+    guía: los campos se nombran (`bibjson.title:"pensamiento complejo"`) y los operadores van en
+    mayúscula (`AND`, `OR`, `NOT`). bib2graph manda la ecuación **tal cual,
+    sin traducir**. Por eso no aplican `--exclude`, `--min-year`/`--max-year` ni `--native`
+    (fallan con un error que lo explica). Las exclusiones se escriben dentro de la query con `NOT`.
+    Si la sintaxis es inválida, DOAJ la rechaza y `b2g seed` termina con exit 2. `--preview` muestra
+    la query pero no la valida.
+
+    DOAJ **solo siembra**: no tiene citas, así que `b2g chain --source doaj` falla. Los carriles no
+    se mezclan: lo que sembraste en DOAJ no se forrajea desde `openalex`. Si querés el grafo de
+    citas, sembrá la misma pregunta también en `openalex` o `s2`. Muchos artículos de DOAJ no traen
+    DOI, y esos no se cruzan con los de otro proveedor. Ver
+    [Comparar proveedores](leer-redes.md#comparar-proveedores).
+
 ---
 
 ## Antes de empezar: afina tu pregunta

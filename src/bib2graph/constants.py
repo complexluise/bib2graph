@@ -97,12 +97,13 @@ class Provider(StrEnum):
 
     Un token por proveedor en todo el sistema: el valor del CLI (``--source``)
     es el valor persistido (``workspace.json.source``, ``equations.engine``,
-    ``ProvenanceEvent.source``).  ``doaj`` entra con #252 (no se publica un
-    proveedor antes de que su ``Source`` exista).
+    ``ProvenanceEvent.source``).  ``doaj`` (#252) es solo sembrador: sin grafo
+    de citas (ver ``sources.registry.PROVIDERS``).
     """
 
     OPENALEX = "openalex"
     S2 = "s2"
+    DOAJ = "doaj"
 
 
 DEFAULT_PROVIDER = Provider.OPENALEX

@@ -28,7 +28,7 @@
   y `schemas.py` (capa base, R1; `ProvenanceEvent` vive en `schemas.py`, no hay `models.py`),
   `corpus.py`, `cycle.py` (FSM cíclico de dominio, R3),
   `backends/` (`TabularBackend` + `InMemoryBackend` + `DuckDBBackend`), `stores/`
-  (`DuckDBStore`), `sources/` (`OpenAlexSource`, `BibtexSource`), `foraging/` (`Forager`,
+  (`DuckDBStore`), `sources/` (`OpenAlexSource`, `SemanticScholarSource`, `DoajSource`, `BibtexSource` + `registry.py` de proveedores y capacidades, ADR 0053), `foraging/` (`Forager`,
   scent bibliométrico), `preprocessors/` (normalize + dedup automáticos en la ingesta + thesaurus
   explícito), `filters/` (PRISMA),
   `networks/` (proyectores, analyzer, spec, facade), `sources/equation.py` (capa declarativa de la
@@ -514,7 +514,9 @@ src/bib2graph/
                        # models.py separado), parseo que falla ruidoso
   cycle.py             # FSM CÍCLICO de dominio puro (ADR 0016 enmendado, Hito R3): SEEDED→…→
                        # MONITORED + reseed/ronda. Sale del backend; el backend solo lo persiste.
-  sources/             # OpenAlexSource (núcleo, backbone); BibtexSource (secundaria, cableada al CLI
+  sources/             # OpenAlexSource (núcleo, backbone); SemanticScholarSource (--source s2, ADR 0042);
+                       # DoajSource (--source doaj, solo siembra, ADR 0053 Corte 5); registry.py
+                       # (PROVIDERS: proveedor -> fábrica + capacidades); BibtexSource (secundaria, cableada al CLI
                        # como seed --from-bib, 3er modo sin red —ADR 0030 Ciclo 10, #50);
                        # equation.py (EquationSpec + load_equation_spec, capa declarativa de la
                        # ecuación —seed --spec, 9a); RIS, CSV (futuro, no publicar)

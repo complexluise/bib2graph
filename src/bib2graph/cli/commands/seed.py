@@ -402,7 +402,11 @@ def preview_seed_query(
     if not has(provider, Capability.SEED_FILTERS):
         if native or exclude or min_year is not None or max_year is not None:
             require(provider, Capability.SEED_FILTERS)
-        from bib2graph.sources.semanticscholar import TRANSLATION_REPORT_LINE
+        # Reporte honesto por proveedor (query nativa, sin traducción WoS).
+        if provider is Provider.DOAJ:
+            from bib2graph.sources.doaj import TRANSLATION_REPORT_LINE
+        else:
+            from bib2graph.sources.semanticscholar import TRANSLATION_REPORT_LINE
 
         return {
             "preview": True,
@@ -500,7 +504,10 @@ def _preview_provider(ctx: click.Context, flag: str | None) -> tuple[Provider, A
     "max_results",
     type=int,
     default=None,
-    help="Tope de resultados a traer de OpenAlex, default: 200 (solo con --equation/--spec).",
+    help=(
+        "Tope de resultados a traer del proveedor, default: 200; S2 y DOAJ "
+        "admiten 1..1000 (solo con --equation/--spec)."
+    ),
 )
 @click.option(
     "--exclude",
@@ -592,6 +599,7 @@ def seed_cmd(
       b2g seed --spec equation.yaml
       b2g seed --from-bib semillas.bib
       b2g seed --equation "ecological debt" --source s2
+      b2g seed --equation 'bibjson.title:"pensamiento complejo"' --source doaj
     """
     modes_given = sum(
         [equation is not None, spec_path is not None, bib_path is not None]

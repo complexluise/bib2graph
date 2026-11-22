@@ -149,10 +149,14 @@ def reject_email_for(provider: Provider, email: str | None) -> None:
     from bib2graph.service.errors import UsageError
 
     if email is not None and provider is not Provider.OPENALEX:
+        creds = (
+            "las credenciales de S2 van en la variable de entorno S2_API_KEY"
+            if provider is Provider.S2
+            else "la búsqueda de DOAJ no requiere credenciales"
+        )
         raise UsageError(
             f"--email es del polite pool de OpenAlex y no aplica al proveedor "
-            f"'{provider.value}'. Quitá --email (las credenciales de S2 van en "
-            "la variable de entorno S2_API_KEY)."
+            f"'{provider.value}'. Quitá --email ({creds})."
         )
 
 

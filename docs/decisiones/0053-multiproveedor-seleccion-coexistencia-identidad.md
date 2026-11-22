@@ -844,3 +844,95 @@ casillas).
    con esta versión lo migra en el lugar a v3, y el archivo queda modificado en git. Ya pasaba con v2
    desde el Corte 3a. No se commitea esa migración salvo que se decida re-generar el ejemplo. Lo
    anuncia el PR.
+
+## Enmienda (2026-11-22) — Corte 5 (#252) as-built: `DoajSource`, solo sembradora; cierre del plan de cortes
+
+Append-only; el texto, los DoD y las enmiendas anteriores quedan como historia (no se tildan las
+casillas).
+
+1. **Hecho según el DoD del Corte 5, con las desviaciones de los puntos 2–5.**
+   `sources/doaj.py::DoajSource` cumple `Source`: `seed(query)` por query y `load()` →
+   `NotImplementedError` accionable. Se agregó `Provider.DOAJ = "doaj"`, y `PROVIDERS[DOAJ]`
+   declara **solo `seed`**. El `click.Choice` de `--source` sale del registro, así que todos los
+   comandos con `--source` aceptan `doaj`, y `workspace.json.source` también. `--email` con `doaj`
+   → exit 1. `seed --preview --source doaj` devuelve la query nativa con la línea de reporte propia
+   de DOAJ. El help de `seed --max-results` ya no habla solo de OpenAlex y menciona el rango
+   1..1000 de S2 y DOAJ. **Identidad según la recomendación de R3:** `source_id` = id de artículo
+   DOAJ. Un artículo sin DOI queda en `src:`, no en `tt:`, y uno con DOI comparte el `doi:` con
+   OpenAlex. El DOI sale solo del `identifier` con `type == "doi"`, porque el mismo arreglo trae los
+   ISSN de la revista. Contrato vigente: API.md §2 (fila `DoajSource`), §`--source` (matriz),
+   §`build` y §`status`. Los tests TDD del DoD están en `tests/unit/test_doaj_source.py`, con
+   fixtures reales ES/PT en `tests/fixtures/doaj/`.
+2. **Desviación — API v4, no v3.** El probe del 2026-06-30 (`examples/multiproveedor-probe/`, Nota
+   25) usó `/api/v3/search/articles/{query}`. `DoajSource` usa **`/api/v4/search/articles/{query}`**,
+   verificada contra respuestas reales (las fixtures). Contrato de la respuesta: `{total, page,
+   pageSize, results: [{id, bibjson}]}`, con `pageSize` de 100 como máximo. El paginado usa un
+   **`pageSize` fijo** (`min(100, max_results)`), porque DOAJ calcula el offset como
+   `(page-1)*pageSize` y achicarlo en la última página saltaría o duplicaría resultados.
+   `max_results` queda en `1..1000`, el mismo rango que S2, para no prometer paginación profunda de
+   Elasticsearch. El DoD no fijaba versión (decisión de la IA, `registro-ia.md` 256.16).
+3. **Desviación — retry propio.** El DoD pedía backoff con el subcode de ADR 0045. Está hecho con
+   los mismos parámetros que OpenAlex y S2 (3 intentos, backoff 1 s / 2 s ante 429/500/502/503/504,
+   `RATE_LIMITED`/`UPSTREAM_TIMEOUT` al agotar), pero en un `_get_with_retry` **propio** de
+   `doaj.py`, no en un helper compartido. Ya son tres copias de la misma política. El helper común
+   es [#352](https://github.com/complexluise/bib2graph/issues/352) (`registro-ia.md` 256.17).
+4. **Desviación — 400 → `DataError` exit 2, sin reintentar.** ADR 0045 solo regula los errores de
+   red. Un 400 de DOAJ es una query Lucene inválida, o sea un error del dato de entrada, no de la
+   red. Mapearlo a `NetworkError` (exit 4) habría invitado a reintentar algo que no puede andar. El
+   mensaje recuerda la sintaxis (`bibjson.title:"…" AND …`) y agrega el `error` del cuerpo si viene
+   (`registro-ia.md` 256.18).
+5. **Desviación y mapeo — `language` = `None`; keywords y ORCID normalizados.** El DoD pedía
+   distinguir "mínimo vs enriquecimiento" en API.md.
+   - DOAJ trae `bibjson.journal.language`, pero es la lista de idiomas de la **revista**, no del
+     artículo. Copiarlo inventaría un dato por paper, y `curate filter --language` lo usaría para
+     decidir. Queda `None`. Por el mismo criterio, `institutions_*` quedan `None`, porque DOAJ solo
+     trae afiliaciones de texto libre, que van a `authors_affiliations` (`registro-ia.md` 256.19).
+   - `authors_id` toma el ORCID en **forma corta** (`0000-…`, sin `https://orcid.org/`) si está, y
+     si no el nombre (256.19).
+   - **Keywords:** `keywords_raw` = `bibjson.keywords` con `strip`. Como DOAJ no da ids de concepto,
+     `keywords_id` es la forma normalizada (`casefold`, sin `.`, `;` ni `,` al final, deduplicada por
+     paper). Así la red de co-ocurrencia de keywords se arma con lo que trae DOAJ, sin
+     `--thesaurus`. Son keywords de autor o de revista, no un vocabulario controlado: quedan más
+     variantes del mismo término que en OpenAlex (`registro-ia.md` 256.22).
+6. **Superficie para un proveedor sin citas** (decisiones de la IA tras la verificación,
+   `registro-ia.md` 256.20 y 256.23). Se condiciona a las capacidades, no a `if provider is DOAJ`:
+   - `chain --source doaj` → `DependencyError` exit 3 antes de la red, en toda dirección.
+   - `build --source doaj` no falla. Emite **un solo** warning, "no expone citas", que absorbe el de
+     la pasada `cited_by` omitida. El acoplamiento queda vacío y la co-citación vacía u omitida.
+     Coautoría y keywords salen con aristas, y la de instituciones vacía. El hint de co-citación →
+     `chain forward` (ADR 0049) se emite solo si el proveedor declara `forward`.
+   - `networks/facade.py::predict_build_preview` gana los kwargs `can_resolve` y `has_citations`
+     (default `True`, que conserva el comportamiento previo). `build` y `status` le pasan las
+     capacidades del proveedor activo, así que `empty_networks`/`build_preview` no sugieren
+     `b2g seed --resolve` sin `resolve_doi`, ni `seed --resolve`/`b2g build` para las redes de
+     citas sin `forward`/`backward`.
+   - `status`, con un proveedor sin `forward` ni `backward`, saca `chain` de
+     `transitions_available` y cambia `next_best_action` de `chain` a `build`. La FSM de `cycle.py`
+     no cambia (R6): el ajuste es de presentación y se ve en el envelope.
+7. **DOI normalizado en las fuentes de red** (`registro-ia.md` 256.21). `sources/openalex.py::
+   _normalize_doi`, que también usan S2 y DOAJ, hace `strip` + minúsculas y quita
+   `https?://doi.org/`, `https?://dx.doi.org/`, `doi.org/`, `dx.doi.org/` y `doi:`. Los DOI de
+   DOAJ los cargan editores a mano. Para OpenAlex (`https://doi.org/…` en minúsculas) y S2 (DOI
+   pelado) el resultado no cambia, así que no cambia ningún `id` existente.
+8. **Cierre del plan de cortes.** Con este corte los cinco cortes del plan (#251 → #255 → #253 →
+   #254 → #252) están hechos, y el **epic #256 queda completo** respecto de este ADR. Lo que sigue
+   abierto:
+   - **R3** (curación de papers sin DOI entre proveedores) es una pregunta al PO en
+     [#351](https://github.com/complexluise/bib2graph/issues/351). Pesa más desde este corte,
+     porque cerca de 2/3 de los artículos DOAJ no traen DOI. El corte no lo cambia: siguió la
+     recomendación de R3.
+   - **R4** (consumidor externo del Arrow) aplica a `doaj` igual que a `s2`: el warning de export
+     ya cubre todo carril ≠ `openalex`.
+   - El DoD original de #252 pedía un "fallback título+año cuando no hay DOI". Lo reemplazó la
+     recomendación de R3, que es lo que se implementó.
+9. **Seguimientos (no bloquean):**
+   - [#352](https://github.com/complexluise/bib2graph/issues/352): un helper común de retry/backoff
+     con subcode para OpenAlex, S2 y DOAJ (punto 3).
+   - [#353](https://github.com/complexluise/bib2graph/issues/353): unificar los normalizadores de
+     DOI. Además del de `sources/openalex.py` (punto 7) quedan tres con la regla corta (solo
+     `https?://doi.org/`): `service/resolve.py::_normalize_doi`, el de `sources/bibtex.py` y la rama
+     `doi` de `corpus.py::_compute_id`. Un `.bib` con `doi:10.x/…` o `https://dx.doi.org/…` da un
+     `doi:` distinto del que da DOAJ para el mismo DOI, y la curación no viaja entre esos carriles.
+     Unificar en `_compute_id` cambia ids `doi:`, así que necesita una migración.
+   - `service/reads.py:894` (`read top`) sigue llamando a `predict_build_preview(corpus)` sin las
+     capacidades. En el carril `doaj`, el bloque de co-citación vacía todavía sugiere `b2g build`.

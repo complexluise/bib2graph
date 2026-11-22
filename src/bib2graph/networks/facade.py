@@ -421,7 +421,12 @@ def _has_paper_with_multi_distinct(
     return False
 
 
-def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
+def predict_build_preview(
+    corpus: Corpus,
+    *,
+    can_resolve: bool = True,
+    has_citations: bool = True,
+) -> list[dict[str, object]]:
     """Predice vacío/no-vacío para cada red posible sin proyectarlas.
 
     Fuente única con ``Networks.quick``: reusa los mismos predicados de columna
@@ -442,7 +447,16 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
         - ``kind``: tipo de red (string de ``NetworkKind``).
         - ``would_be_empty``: ``True`` si la red saldría vacía.
         - ``reason``: causa determinista si saldría vacía, ``None`` si no.
-        - ``fix_command``: comando exacto para arreglarlo, ``None`` si no vacía.
+        - ``fix_command``: comando exacto para arreglarlo, ``None`` si no vacía
+          o si el proveedor no puede ejecutarlo (``can_resolve``/``has_citations``).
+
+    Args:
+        corpus: Corpus a diagnosticar.
+        can_resolve: ``False`` si el proveedor activo no declara ``resolve_doi``:
+            no se sugiere ``b2g seed --resolve`` (daría exit 3).
+        has_citations: ``False`` si el proveedor no tiene grafo de citas
+            (sin ``backward``/``forward``): no se sugiere ``b2g build`` como arreglo
+            de co-citación, ni ``seed --resolve`` para el acoplamiento.
     """
     table = corpus.to_arrow()
     rows: list[dict[str, object]] = table.to_pylist()
@@ -471,7 +485,11 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
             "kind": str(NetworkKind.BIBLIOGRAPHIC_COUPLING),
             "would_be_empty": bc_empty,
             "reason": bc_reason,
-            "fix_command": "b2g seed --resolve" if bc_empty else None,
+            "fix_command": (
+                "b2g seed --resolve"
+                if bc_empty and can_resolve and has_citations
+                else None
+            ),
         }
     )
 
@@ -495,7 +513,7 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
             "kind": str(NetworkKind.AUTHOR_COLLAB),
             "would_be_empty": ac_empty,
             "reason": ac_reason,
-            "fix_command": "b2g seed --resolve" if ac_empty else None,
+            "fix_command": "b2g seed --resolve" if ac_empty and can_resolve else None,
         }
     )
 
@@ -518,7 +536,7 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
             "kind": str(NetworkKind.INSTITUTION_COLLAB),
             "would_be_empty": ic_empty,
             "reason": ic_reason,
-            "fix_command": "b2g seed --resolve" if ic_empty else None,
+            "fix_command": "b2g seed --resolve" if ic_empty and can_resolve else None,
         }
     )
 
@@ -541,7 +559,7 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
         kw_fix: str | None = (
             "b2g build --thesaurus <archivo>"
             if n_kw_raw > 0 and n_kw_any == 0
-            else "b2g seed --resolve"
+            else ("b2g seed --resolve" if can_resolve else None)
         )
     else:
         kw_reason = None
@@ -577,7 +595,7 @@ def predict_build_preview(corpus: Corpus) -> list[dict[str, object]]:
             "kind": str(NetworkKind.COCITATION),
             "would_be_empty": coc_empty,
             "reason": coc_reason,
-            "fix_command": "b2g build" if coc_empty else None,
+            "fix_command": "b2g build" if coc_empty and has_citations else None,
         }
     )
 

@@ -181,3 +181,13 @@ que en la práctica cada workspace registra un solo `engine`. `--resolve` regist
 pero exige la capacidad `resolve_doi`, que S2 no declara, y el guard lo limita a investigaciones
 `openalex`. La coexistencia de los dos ids en un mismo store llega con los carriles (#253),
 donde la llamada pasa adentro del backend atado a carril.
+
+## Nota (2026-11-22) — piloto S2 + DOAJ realizado (ADR 0053 Corte 5, #252)
+
+Append-only. El piloto que recomendaba la Nota [25](../Notas/25-multiproveedor-requerimientos.md)
+(accionable 4: S2 como 2º backbone y DOAJ como 1ª fuente Sur-global) está hecho. S2 entró con este
+ADR (#250) y su wiring con los cortes 1–4 de [0053](0053-multiproveedor-seleccion-coexistencia-identidad.md).
+DOAJ entró como `DoajSource` (`--source doaj`), solo sembradora, con la misma regla de D3 de este ADR:
+query nativa (Elasticsearch/Lucene), sin traducción y sin `seed_filters`. Ver la enmienda del Corte 5
+de 0053. La otra pendiente de la Nota 25 (política para papers sin DOI, tensión 3) sigue abierta:
+es R3 de 0053, en [#351](https://github.com/complexluise/bib2graph/issues/351).

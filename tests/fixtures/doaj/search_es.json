@@ -1,0 +1,259 @@
+{
+ "total": 297,
+ "page": 1,
+ "pageSize": 4,
+ "timestamp": "2026-11-22T08:13:17.533687Z",
+ "query": "educación pensamiento complejo",
+ "results": [
+  {
+   "last_updated": "2025-08-19T22:33:27Z",
+   "bibjson": {
+    "identifier": [
+     {
+      "id": "0121-2494",
+      "type": "pissn"
+     },
+     {
+      "id": "2500-6436",
+      "type": "eissn"
+     }
+    ],
+    "journal": {
+     "volume": "0",
+     "number": "30",
+     "country": "CO",
+     "issns": [
+      "0121-2494",
+      "2500-6436"
+     ],
+     "publisher": "Universidad Pedagógica Nacional",
+     "language": [
+      "ES",
+      "PT"
+     ],
+     "title": "Pedagogía y Saberes"
+    },
+    "month": "6",
+    "year": "2012",
+    "subject": [
+     {
+      "code": "L",
+      "scheme": "LCC",
+      "term": "Education"
+     }
+    ],
+    "author": [
+     {
+      "affiliation": "Profesor Universidad Nacional de San Luis, Argentina",
+      "name": "Marcelo Fabián Vitarelli"
+     }
+    ],
+    "link": [
+     {
+      "content_type": "html",
+      "type": "fulltext",
+      "url": "http://revistas.pedagogica.edu.co/index.php/PYS/article/view/1343"
+     }
+    ],
+    "abstract": "Este trabajo se inscribe en el horizonte de investigación que venimos realizando en torno a las prácticas de conocimiento\ny sus condiciones de producción y emergencia a partir de opciones epistemológicas del pensamiento complejo.\nReleva introductoriamente tres posiciones en torno a la economía y la educación que determinan prácticas sociales\ne institucionales específicas y desarrolla, de una manera pormenorizada, la primera de ellas. Nuestra indagación\ncobra relevancia en particular dado que nos encontramos trabajando en la formación de profesionales en enseñanza\nuniversitaria con compromiso intelectual, moral y político.",
+    "title": "ECONOMÍA Y EDUCACIÓN: Teorías y prácticas en su enseñanza"
+   },
+   "created_date": "2017-02-09T23:33:15Z",
+   "id": "0099346ca458440a8bef6911a05cc0c7"
+  },
+  {
+   "last_updated": "2025-08-19T19:56:24Z",
+   "bibjson": {
+    "identifier": [
+     {
+      "id": "2469-0724",
+      "type": "eissn"
+     }
+    ],
+    "journal": {
+     "volume": "3",
+     "number": "3",
+     "country": "AR",
+     "issns": [
+      "2469-0724"
+     ],
+     "publisher": "Universidad Nacional de Córdoba",
+     "language": [
+      "ES"
+     ],
+     "title": "Pensum"
+    },
+    "month": "December",
+    "keywords": [
+     "Hábitat",
+     "Universidad",
+     "Transdisciplina",
+     "Complejidad"
+    ],
+    "year": "2017",
+    "subject": [
+     {
+      "code": "NA1-9428",
+      "scheme": "LCC",
+      "term": "Architecture"
+     },
+     {
+      "code": "HT101-395",
+      "scheme": "LCC",
+      "term": "Urban groups. The city. Urban sociology"
+     }
+    ],
+    "author": [
+     {
+      "affiliation": "Arquitecto, doctorando en Estudios Sociales de América Latina en la orientación de sociología, en el marco de una beca doctoral de\r\nCONICET. Su campo de estudio es el hábitat como campo de disputas. Desarrolla sus tareas en el instituto INVIHAB-FAUD-UNC\r\nvinculado a CEUR-CONICET",
+      "name": "Fernando Vanoli"
+     }
+    ],
+    "link": [
+     {
+      "content_type": "HTML",
+      "type": "fulltext",
+      "url": "https://revistas.unc.edu.ar/index.php/pensu/article/view/19033"
+     }
+    ],
+    "abstract": "Este artículo propone reflexionar respecto a la experiencia pedagógica del seminario de Gestión Territorial y Hábitat, de la Facultad de Ciencias Sociales, de la Universidad Nacional de Córdoba. Haciendo foco en las dimensiones epistemológicas, metodológicas y de contenido, en relación al abordaje de los conflictos en ese campo. En una primera instancia, este trabajo aborda la propuesta académica del seminario, para luego mencionar las epistemologías del sur y la educación popular como dos corrientes que fundamentan la propuesta. Posteriormente finalizamos con el aporte del pensamiento complejo y la transdisciplina como herramientas necesarias para el desafío que supone la formación universitaria.",
+    "title": "El pensamiento complejo y la transdisciplina en el abordaje del hábitat. Reflexiones en torno a la experiencia del Seminario de Gestión Territorial y Hábitat"
+   },
+   "id": "0113577f47e7415f91d874cf15edf72a",
+   "created_date": "2019-02-05T12:34:19Z"
+  },
+  {
+   "last_updated": "2026-08-20T00:01:00Z",
+   "bibjson": {
+    "identifier": [
+     {
+      "id": "10.47189/rcct.v26i51.1028",
+      "type": "doi"
+     },
+     {
+      "id": "1390-6321",
+      "type": "pissn"
+     },
+     {
+      "id": "2661-6734",
+      "type": "eissn"
+     }
+    ],
+    "journal": {
+     "volume": "26",
+     "number": "51",
+     "country": "EC",
+     "issns": [
+      "1390-6321",
+      "2661-6734"
+     ],
+     "publisher": "Universidad Tecnológica Empresarial de Guayaquil",
+     "language": [
+      "EN",
+      "ES",
+      "PT"
+     ],
+     "title": "Revista Científica Ciencia y Tecnología"
+    },
+    "month": "July",
+    "keywords": [
+     "transdisciplinariedad",
+     "Pensamiento complejo",
+     "Inteligencias múltiples",
+     "comunicación no verbal",
+     "Educación infantil"
+    ],
+    "year": "2026",
+    "subject": [
+     {
+      "code": "H",
+      "scheme": "LCC",
+      "term": "Social Sciences"
+     }
+    ],
+    "author": [
+     {
+      "name": "Laura Constanza Mayorga-Bautista"
+     }
+    ],
+    "link": [
+     {
+      "content_type": "HTML",
+      "type": "fulltext",
+      "url": "https://cienciaytecnologia.uteg.edu.ec/revista/index.php/cienciaytecnologia/article/view/1028"
+     }
+    ],
+    "abstract": "El aprendizaje infantil es un fenómeno complejo que involucra dimensiones cognitivas emocionales y corporales, desde la perspectiva del pensamiento complejo la investigación aquí presentada busca articular la teoría de las inteligencias múltiples de Howard Gardner con la comunicación no verbal concebidas ambas como lenguajes que conectan cuerpo mente y entorno, se parte de un enfoque transdisciplinario que supera la fragmentación disciplinar y propone la integración de saberes para una educación más humana e inclusiva, se llevó a cabo un estudio piloto con un diseño mixto (cuantitativo y cualitativo) en un aula de educación infantil donde ocho docentes recibieron formación en pensamiento complejo y transdisciplinariedad se diseñaron actividades que estimulan diversas inteligencias y se observó la comunicación no verbal docente–discentes mediante rúbricas y registros audiovisuales, los resultados muestran un aumento significativo en la motivación la participación y la comprensión de los niños así como una mayor conciencia docente sobre la importancia de los gestos la proxemia y la entonación en sus prácticas, el estudio concluye que tejer inteligencias y gestos bajo un enfoque transdisciplinario contribuye a un aprendizaje integral y a la construcción de ambientes pedagógicos más enriquecedores.\n",
+    "title": "Tejiendo Inteligencias Y Gestos: Un Abordaje Transdisciplinario Del Aprendizaje Infantil"
+   },
+   "id": "01cac107f2ef4cfebbf036aa08aa9bcf",
+   "created_date": "2026-08-04T00:00:59Z"
+  },
+  {
+   "last_updated": "2025-08-19T20:31:25Z",
+   "bibjson": {
+    "identifier": [
+     {
+      "id": "10.46551/issn2179-6807v26n1p169-188",
+      "type": "doi"
+     },
+     {
+      "id": "1982-8608",
+      "type": "pissn"
+     },
+     {
+      "id": "2179-6807",
+      "type": "eissn"
+     }
+    ],
+    "journal": {
+     "volume": "26",
+     "number": "1",
+     "country": "BR",
+     "issns": [
+      "1982-8608",
+      "2179-6807"
+     ],
+     "publisher": "Programa de Pós-Graduação em Desenvolvimento Social - Universidade Estadual de Montes Claros",
+     "language": [
+      "EN",
+      "ES",
+      "PT"
+     ],
+     "title": "Revista Desenvolvimento Social"
+    },
+    "month": "April",
+    "keywords": [
+     "Des-ligar. Religar. Re-civilizar. Ecosofía. Humanidad."
+    ],
+    "year": "2021",
+    "subject": [
+     {
+      "code": "H1-99",
+      "scheme": "LCC",
+      "term": "Social sciences (General)"
+     }
+    ],
+    "author": [
+     {
+      "affiliation": "Universidad de Oriente, Venezuela",
+      "name": "Milagros Elena Rodríguez"
+     }
+    ],
+    "link": [
+     {
+      "content_type": "HTML",
+      "type": "fulltext",
+      "url": "https://www.periodicos.unimontes.br/index.php/rds/article/view/2849"
+     }
+    ],
+    "abstract": "Como objetivo complejo, se analiza el religar ecosóficamente como urgencia transepistémica en la re-civilización de la humanidad. La indagación se realizó bajo estructuras rizomáticas, siguiendo el pensamiento complejo y transdisciplinar con el transmétodo la deconstrucción rizomática. En las conclusiones de aperturas religadas se tiene que para re-ligar, es importante des-ligar: soltar las ataduras, es aflojar y soltar; es liberarse. Así las cosas, la descolonización y la decolonialidad son proyectos por excelencia para des-ligarse de la preeminencia occidental. La ecosofía, como el arte de habitar en el planeta lleva a volver a civilizar, la re-civilización, accionar del ciudadano, que alcanza imaginarios, previendo un modo de estar en el mundo, de percibirlo, con un cambio en las acciones y una conciencia que favorezca la unidad en la vida. El amor y la sensibilidad deben ser el centro del accionar, en pro de la preservación de la unidad, valorizando las culturas, profundizando el conocimiento ecosófico en la búsqueda de una educación de excelencia, y de allí una humanidad verdaderamente humana.",
+    "title": "Religar ecosóficamente como urgencia transepistémica en la re-civilización de la humanidad"
+   },
+   "id": "028a3d9a9e1648b9ab55351fe12a483c",
+   "created_date": "2022-01-31T21:40:42Z"
+  }
+ ],
+ "next": "https://doaj.org/api/v4/search/articles/educaci%C3%B3n%20pensamiento%20complejo?page=2&pageSize=4",
+ "last": "https://doaj.org/api/v4/search/articles/educaci%C3%B3n%20pensamiento%20complejo?page=75&pageSize=4"
+}
