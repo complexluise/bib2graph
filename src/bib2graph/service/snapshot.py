@@ -24,6 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from bib2graph.constants import DEFAULT_PROVIDER, Provider
 from bib2graph.preprocessors.pipeline import normalize_and_dedup
 from bib2graph.service.errors import DataError
 from bib2graph.service.store import open_store as _open_store
@@ -128,6 +129,7 @@ def run_restore(
     corpus_path: str | Path,
     *,
     decided_at: datetime | None = None,
+    provider: Provider = DEFAULT_PROVIDER,
 ) -> dict[str, Any]:
     """Carga un corpus curado desde un parquet y lo persiste en el store sin red.
 
@@ -167,6 +169,9 @@ def run_restore(
         store_path: Ruta al archivo ``.duckdb``.
         corpus_path: Ruta al archivo ``.parquet`` con el corpus curado.
         decided_at: Timestamp inyectado por el llamador (R2/ADR 0017).
+        provider: Proveedor con el que se registran los ``external_ids`` de las
+            filas con ``source_id`` (ADR 0053 Corte 2).  El CLI pasa el de la
+            investigación; en #253 será el carril del parquet.
 
     Returns:
         Dict con ``papers_loaded``, ``total_papers``, ``state``, ``round``.
@@ -237,6 +242,10 @@ def run_restore(
         store.backend.set_loop_state(new_state, cycle_round=new_round)
 
         _restore_equations_from_sibling_manifest(store, resolved)
+        # ADR 0053 Corte 2: source_id → external_ids[engine].
+        # Idempotente y al final: si algo falla antes, la próxima ingesta lo rellena.
+        # TODO(#253): engine = carril del parquet / backend atado a carril
+        store.register_external_ids(merged_deduped, provider)
     finally:
         # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
         # para evitar segfault en Linux ante llamadas consecutivas al mismo archivo.

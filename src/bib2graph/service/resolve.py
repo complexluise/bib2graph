@@ -18,7 +18,9 @@ Flujo:
 Idempotente: re-ejecutar sobre el mismo corpus produce el mismo resultado
 (los papers que ya tienen source_id no se tocan).
 
-NO puebla ``external_ids`` (diferido, #120): solo ``source_id``.
+Puebla ``source_id`` y, tras persistir, registra ``external_ids`` con
+``engine='openalex'`` (la resolución DOI→id solo existe en OpenAlex; ADR 0053
+Corte 2, cierra #120).
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from bib2graph.constants import Col
+from bib2graph.constants import Col, Provider
 from bib2graph.service.errors import NetworkError, StoreError
 
 # Helper de normalización DOI (espeja el de openalex.py, función pura)
@@ -104,6 +106,7 @@ def _resolve_dois_on_store(
     """
     import httpx
     import pyarrow as pa
+    import pyarrow.compute as pc
 
     from bib2graph.corpus import Corpus
     from bib2graph.schemas import CORPUS_SCHEMA
@@ -157,6 +160,7 @@ def _resolve_dois_on_store(
         }
 
     resolved_count = 0
+    resolved_ids: list[str] = []
     for row in rows:
         if row.get(Col.SOURCE_ID) is not None:
             continue  # ya tiene source_id; no tocar
@@ -166,6 +170,7 @@ def _resolve_dois_on_store(
         doi_norm = _normalize_doi(doi)
         if doi_norm and doi_norm in doi_to_source_id:
             row[Col.SOURCE_ID] = doi_to_source_id[doi_norm]
+            resolved_ids.append(row[Col.ID])
             resolved_count += 1
 
     updated_table = pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
@@ -173,6 +178,20 @@ def _resolve_dois_on_store(
     backend_close = getattr(updated_corpus._backend, "close", None)
     try:
         store.persist_replace(updated_corpus)
+        # Solo las filas recién resueltas (resolve_dois es API pública y no pasa
+        # por el guard de proveedor): el resto no se asume de OpenAlex.
+        if resolved_ids:
+            store.register_external_ids(
+                Corpus.from_arrow(
+                    updated_table.filter(
+                        pc.is_in(  # type: ignore[attr-defined]
+                            updated_table[Col.ID],
+                            value_set=pa.array(resolved_ids, type=pa.string()),
+                        )
+                    )
+                ),
+                Provider.OPENALEX,
+            )
     finally:
         # Cerrar el backend en memoria del corpus actualizado (InMemoryBackend
         # no tiene close(), DuckDBBackend sí; este backend es distinto del

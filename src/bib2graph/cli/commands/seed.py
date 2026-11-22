@@ -195,6 +195,9 @@ def run_seed(
                 params_json=json.dumps(eq_ref.params, ensure_ascii=False),
                 created_at=eq_ref.created_at,
             )
+        # ADR 0053 Corte 2 (D4 de 0042): source_id → external_ids[engine].
+        # Idempotente y al final: si algo falla antes, la próxima ingesta lo rellena.
+        store.register_external_ids(merged_deduped, provider)
     finally:
         # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
         # para evitar segfault en Linux ante llamadas consecutivas al mismo archivo.
@@ -327,6 +330,10 @@ def run_seed_from_bib(
         merged_backend_close = getattr(merged._backend, "close", None)
         store.persist_replace(merged_deduped)
         store.backend.set_loop_state(new_state, cycle_round=new_round)
+        # Filas sin source_id (--from-bib sin --resolve) no se registran; las
+        # resueltas por --resolve las registra ``_resolve_dois_on_store``.
+        # Idempotente y al final: si algo falla antes, la próxima ingesta lo rellena.
+        store.register_external_ids(merged_deduped, provider)
 
         # Encadenar resolución DOI→source_id DENTRO del mismo try, con el store
         # ya abierto.  Llamar a resolve_dois(store_path) tras store.close() reabre

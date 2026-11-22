@@ -1008,6 +1008,30 @@ class DuckDBBackend:
             [paper_id, engine, id],
         )
 
+    def add_external_ids_bulk(self, table: pa.Table) -> None:
+        """Registra muchos IDs externos en UNA sentencia y limpia huérfanos.
+
+        Idempotente (``INSERT OR REPLACE`` por PK ``(paper_id, engine)``).  En la
+        misma operación borra las entradas cuyo ``paper_id`` ya no existe en
+        ``corpus`` (p. ej. ids canónicos reemplazados por un dedup).
+
+        Args:
+            table: Tabla Arrow con columnas ``paper_id``, ``engine`` e ``id``
+                (strings, sin nulos).
+        """
+        if len(table) > 0:
+            self._con.register("_incoming_external_ids", table)
+            try:
+                self._con.execute(
+                    "INSERT OR REPLACE INTO external_ids (paper_id, engine, id) "
+                    "SELECT paper_id, engine, id FROM _incoming_external_ids"
+                )
+            finally:
+                self._con.unregister("_incoming_external_ids")
+        self._con.execute(
+            "DELETE FROM external_ids WHERE paper_id NOT IN (SELECT id FROM corpus)"
+        )
+
     def external_ids_for(self, paper_id: str) -> dict[str, str]:
         """Devuelve todos los IDs externos registrados para un paper.
 

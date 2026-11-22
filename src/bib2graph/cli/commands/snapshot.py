@@ -172,7 +172,11 @@ def restore_sub_cmd(
     ws = resolve_workspace(ctx.obj)
     # R2/ADR 0017: el reloj se inyecta en la frontera CLI.
     decided_at = datetime.now(UTC)
-    data = run_restore(ws.library_path, corpus_path, decided_at=decided_at)
+    # Sin --source en restore (llega en #253): engine = proveedor del workspace.
+    # TODO(#253): engine = carril del parquet / backend atado a carril
+    data = run_restore(
+        ws.library_path, corpus_path, decided_at=decided_at, provider=ws.provider
+    )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)

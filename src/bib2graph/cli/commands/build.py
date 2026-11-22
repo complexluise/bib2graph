@@ -423,6 +423,9 @@ def run_build(
             store.persist_replace(corpus_full)
             # #141: persistir EnricherRef (cited_by) para que manifest.enrichers sobreviva.
             store.backend.persist_enricher_refs(corpus_full.manifest.enrichers)
+            # ADR 0053 Corte 2: source_id → external_ids[engine].
+            # Idempotente y al final: si algo falla antes, la próxima ingesta lo rellena.
+            store.register_external_ids(corpus_full, provider)
 
         # #287 fricción #5: si hay semillas pero ninguna aceptada y cited_by_id
         # está vacío, la red de cocitación saldrá vacía y el gate (accepted,

@@ -18,6 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from bib2graph.backends.duckdb import DuckDBBackend, StoreLockedError
+from bib2graph.constants import Col, Provider
 from bib2graph.corpus import Corpus
 from bib2graph.cycle import CycleState
 from bib2graph.schemas import CORPUS_SCHEMA
@@ -68,6 +69,46 @@ class DuckDBStore:
             corpus: El ``Corpus`` completo y final a persistir.
         """
         self._backend.overwrite_corpus(corpus.to_arrow())
+
+    def register_external_ids(self, corpus: Corpus, engine: Provider) -> int:
+        """Registra en ``external_ids`` el ``source_id`` de cada fila (ADR 0053 Corte 2).
+
+        Registra ``(id, engine, source_id)`` de cada fila con ``source_id`` no
+        nulo vía ``backend.add_external_ids_bulk`` (``engine`` = token
+        ``Provider``: ``openalex`` | ``s2``).  Las filas sin ``source_id`` (p. ej.
+        ``seed --from-bib`` sin ``--resolve``) no se registran.
+
+        Bulk (una sentencia) y deja la tabla sin huérfanos (``paper_id`` que ya
+        no está en ``corpus``).  Idempotente por la PK ``(paper_id, engine)``.
+        Llamarlo al FINAL de la ingesta: si falla antes, la próxima ingesta
+        rellena (es idempotente).  ``external_ids`` es una
+        tabla lateral: no entra en ``corpus_hash`` (D4 de ADR 0042).
+
+        Args:
+            corpus: Corpus YA persistido (obligatorio: la limpieza de huérfanos
+                usa la tabla ``corpus``) del que leer ``id`` y ``source_id``.
+            engine: Proveedor que resolvió esos ``source_id``.
+
+        Returns:
+            Cantidad de filas registradas.
+        """
+        import pyarrow as pa
+        import pyarrow.compute as pc
+
+        table = corpus.to_arrow()
+        mask = pc.is_valid(table.column(Col.SOURCE_ID))  # type: ignore[attr-defined]
+        valid = table.filter(mask)
+        n = len(valid)
+        ext = pa.table(
+            {
+                "paper_id": valid.column(Col.ID).cast(pa.string()),
+                "engine": pa.array([engine.value] * n, type=pa.string()),
+                "id": valid.column(Col.SOURCE_ID).cast(pa.string()),
+            }
+        )
+        # Una sola sentencia + limpieza de huérfanos (ver add_external_ids_bulk).
+        self._backend.add_external_ids_bulk(ext)
+        return n
 
     def load(self) -> Corpus:
         """Carga el corpus acumulado desde la biblioteca viva.
