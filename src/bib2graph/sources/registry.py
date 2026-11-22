@@ -80,6 +80,24 @@ def _s2_factory(
     return SemanticScholarSource(**kwargs)
 
 
+def _doaj_factory(
+    *,
+    email: str | None,
+    api_key: str | None,
+    transport: Any,
+    max_results: int | None,
+) -> Any:
+    from bib2graph.sources.doaj import DoajSource
+
+    # DOAJ: search sin credenciales y sin polite pool; ``email``/``api_key`` no
+    # aplican (el CLI rechaza ``--email`` antes).
+    del email, api_key
+    kwargs: dict[str, Any] = {"transport": transport}
+    if max_results is not None:
+        kwargs["max_results"] = max_results
+    return DoajSource(**kwargs)
+
+
 PROVIDERS: dict[Provider, ProviderSpec] = {
     Provider.OPENALEX: ProviderSpec(
         factory=_openalex_factory,
@@ -98,6 +116,13 @@ PROVIDERS: dict[Provider, ProviderSpec] = {
                 Capability.ENRICH_CITED_BY,
             }
         ),
+    ),
+    # DOAJ (ADR 0053 Corte 5, #252): solo siembra por query nativa
+    # (Elasticsearch/Lucene, sin traducción). Sin grafo de citas: ni
+    # backward/forward ni enriquecimientos, y sin ``seed_filters``.
+    Provider.DOAJ: ProviderSpec(
+        factory=_doaj_factory,
+        capabilities=frozenset({Capability.SEED}),
     ),
 }
 

@@ -889,9 +889,18 @@ def get_top(
     # Igual que "build" con red vacía → exit 0, NO DataError.
     coc_is_empty = not coc_net["edges"]
     if coc_is_empty:
+        from bib2graph.constants import Provider
         from bib2graph.networks.facade import predict_build_preview
+        from bib2graph.sources.registry import Capability, has
 
-        preview = predict_build_preview(corpus)
+        # ADR 0053: no sugerir comandos que el carril no soporta (p. ej. doaj).
+        lane = Provider(provider or ws.provider)
+        preview = predict_build_preview(
+            corpus,
+            can_resolve=has(lane, Capability.RESOLVE_DOI),
+            has_citations=has(lane, Capability.FORWARD)
+            or has(lane, Capability.BACKWARD),
+        )
         coc_entry = next(
             (p for p in preview if p["kind"] == str(NetworkKind.COCITATION)),
             None,

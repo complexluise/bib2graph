@@ -99,7 +99,7 @@ De idea difusa → `seed --equation "..."`:
   `("unequal exchange" OR "ecological debt") AND (trade OR commerce)`.
 - **Scope**: `--min-year/--max-year`, `--exclude "<términos a sacar>"`.
 - **Proveedor**: por defecto `openalex`. Se fija por investigación con
-  `b2g init --source {openalex,s2}` y `--source` lo pisa por invocación
+  `b2g init --source {openalex,s2,doaj}` y `--source` lo pisa por invocación
   (precedencia: `--source` > `workspace.json` > `openalex`). Hay **un carril por
   proveedor** y conviven en la misma investigación: `seed --source s2` escribe en
   el carril `s2` sin tocar `openalex`. Cada `build`/`export` opera sobre **un**
@@ -108,6 +108,12 @@ De idea difusa → `seed --equation "..."`:
   carril en `data.providers`. `s2` (Semantic Scholar) necesita `S2_API_KEY` en el
   entorno para sembrar (el forrajeo anda sin key, más lento) y **no** acepta
   `--exclude`, `--min-year/--max-year` ni `--native` (la query va nativa, sin traducir).
+  `doaj` (revistas OA, fuerte en **ES/PT**) es **solo siembra**: sin key, query nativa
+  Elasticsearch/Lucene (`bibjson.title:"pensamiento complejo"`), mismos flags de ecuación
+  rechazados que `s2`, y **sin citas**: `chain --source doaj` falla (exit 3) y `build` deja
+  vacías las redes de acoplamiento y co-citación (coautoría y keywords se arman con lo que DOAJ trae: autores y `bibjson.keywords`). Muchos
+  artículos no traen DOI y no se unifican con otros proveedores; para el grafo de citas
+  forrajeá en `openalex`/`s2`.
 - **Cuándo dejarla mutar (Bates):** tras `read top`, si los centrales revelan un
   término mejor o un subcampo, **refiná la ecuación y re-`seed`**. Eso es señal de
   buen forrajeo, no de error.
@@ -177,7 +183,7 @@ bloque copy-paste de arriba):
 
 - `seed` — `--equation` · `--from-bib` · `--exclude` · `--min-year/--max-year` ·
   `--max-results` · `--resolve` · `--source`
-- `init` — `--source {openalex,s2}` (proveedor por defecto de la investigación)
+- `init` — `--source {openalex,s2,doaj}` (proveedor por defecto de la investigación)
 - `chain` — `--depth` · `--direction backward|forward` · `--max-candidates` ·
   `--preview` · `--source`
 - `curate {dump,apply,accept,reject,filter}` — `--ids` · `--language` ·

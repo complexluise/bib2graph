@@ -60,7 +60,7 @@ class WorkspaceManifest(BaseModel):
         bib2graph_version: Versión del paquete al momento de la creación.
         schema_version: Versión del schema del manifest (``"1"`` por ahora).
         source: Proveedor por defecto de la investigación (ADR 0053 D1;
-            ``openalex`` | ``s2``).  Campo aditivo con default: un
+            ``openalex`` | ``s2`` | ``doaj``).  Campo aditivo con default: un
             ``workspace.json`` sin él se lee como ``openalex`` (sin migración;
             ``schema_version`` no cambia).
     """

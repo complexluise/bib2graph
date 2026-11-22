@@ -62,7 +62,7 @@ from bib2graph.cli._store import (
     workspace_walkup_warning,
 )
 from bib2graph.constants import DEFAULT_PROVIDER, Provider
-from bib2graph.sources.registry import make_source
+from bib2graph.sources.registry import Capability, has, make_source
 
 if TYPE_CHECKING:
     from bib2graph.corpus import Corpus
@@ -432,7 +432,12 @@ def run_build(
         _has_seeds = any(row.get(Col.IS_SEED) for row in _rows)
         _any_cited_by = any(row.get(Col.CITED_BY_ID) for row in _rows)
         cocitation_hint: str | None = None
-        if _has_seeds and not _has_accepted_seeds and not _any_cited_by:
+        if (
+            _has_seeds
+            and not _has_accepted_seeds
+            and not _any_cited_by
+            and has(provider, Capability.FORWARD)
+        ):
             cocitation_hint = (
                 "Red de cocitación vacía: no hay semillas aceptadas, así que la "
                 "pasada cited_by se saltó. Poblá la cocitación SIN aceptar en masa "
@@ -445,7 +450,21 @@ def run_build(
         # clusters.csv cuadre con los nodos del grafo (sin drift).
         corpus = corpus_full.scoped(corpus_scope)
 
-        build_warnings: list[str] = list(enrich_warnings)
+        build_warnings: list[str] = []
+        if not has(provider, Capability.BACKWARD) and not has(
+            provider, Capability.FORWARD
+        ):
+            # Proveedor solo sembrador (p. ej. DOAJ): no hay datos de citas, así
+            # que las redes de citas salen vacías. Un solo aviso: cubre también
+            # la pasada cited_by omitida (no se repite como warning aparte).
+            build_warnings.append(
+                f"El proveedor '{provider.value}' no expone citas: las redes de "
+                "acoplamiento bibliográfico y co-citación quedan vacías u omitidas. Las "
+                "redes de coautoría y co-ocurrencia de keywords se construyen "
+                "con los datos que el proveedor sí trae."
+            )
+        else:
+            build_warnings.extend(enrich_warnings)
         if cocitation_hint is not None:
             build_warnings.append(cocitation_hint)
         if len(corpus) == 0:
@@ -484,7 +503,17 @@ def run_build(
             }
 
         # Diagnóstico pre-build (ADR 0037 §(e), fuente única con status-time).
-        preview_by_kind = {str(e["kind"]): e for e in predict_build_preview(corpus)}
+        _can_cite = has(provider, Capability.FORWARD) or has(
+            provider, Capability.BACKWARD
+        )
+        preview_by_kind = {
+            str(e["kind"]): e
+            for e in predict_build_preview(
+                corpus,
+                can_resolve=has(provider, Capability.RESOLVE_DOI),
+                has_citations=_can_cite,
+            )
+        }
 
         if spec_path is not None:
             artifacts = _build_from_spec_file(corpus, spec_path)
