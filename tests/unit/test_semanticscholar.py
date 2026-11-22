@@ -5,7 +5,7 @@ salvo el marcado ``@pytest.mark.network`` (excluido del gate por defecto).
 
 Casos cubiertos (instrucción del epic):
 1. ``seed`` con key (mock 200): mapeo S2→PaperRow, executed_query,
-   translation_report honesto, provenance.source="semanticscholar".
+   translation_report honesto, provenance.source="s2".
 2. ``seed`` sin key (mock 429 sostenido): NetworkError accionable (D2),
    sin loop infinito.
 3. ``_paper_to_row``: dedup cross-motor vía DOI (mismo id que OpenAlex);
@@ -177,7 +177,7 @@ def test_seed_translation_report_honesto() -> None:
 
 @pytest.mark.unit
 def test_seed_provenance_source_semanticscholar() -> None:
-    """Todas las filas sembradas tienen provenance.source == 'semanticscholar'."""
+    """Todas las filas sembradas tienen provenance.source == 's2'."""
     transport = _make_search_handler([PAPER_CON_DOI, PAPER_SIN_DOI])
     source = SemanticScholarSource(api_key="test-key", transport=transport)
 
@@ -188,7 +188,7 @@ def test_seed_provenance_source_semanticscholar() -> None:
     for prov_json in provenance_col:
         events = ProvenanceEvent.parse_list(prov_json)
         assert len(events) >= 1
-        assert events[0].source == "semanticscholar"
+        assert events[0].source == "s2"
 
 
 @pytest.mark.unit
@@ -387,7 +387,7 @@ def test_seed_equation_ref_engine_params_created_at() -> None:
 
     ref = source.seed("unequal exchange").corpus.manifest.equations[0]
 
-    assert ref.engine == "semanticscholar"
+    assert ref.engine == "s2"
     assert ref.created_at is not None
     assert ref.params["raw_query"] == "unequal exchange"
     assert ref.params["max_results"] == 50
@@ -531,12 +531,12 @@ def test_paper_to_row_campos_faltantes_sin_keyerror() -> None:
 
 @pytest.mark.unit
 def test_paper_to_row_provenance_source_tag() -> None:
-    """El evento de provenance usa source_tag (default 'semanticscholar')."""
+    """El evento de provenance usa source_tag (default 's2')."""
     fetched_at = "2026-06-30T00:00:00+00:00"
     row = _paper_to_row(PAPER_CON_DOI, equation_id="eq-1", fetched_at=fetched_at)
 
     events = ProvenanceEvent.parse_list(row[Col.PROVENANCE])
-    assert events[0].source == "semanticscholar"
+    assert events[0].source == "s2"
 
 
 @pytest.mark.unit

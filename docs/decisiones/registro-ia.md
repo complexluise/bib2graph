@@ -439,3 +439,13 @@
 > alcanzable, `CycleState` única, merge sin interpolación), API.md (subcomando `monitor` 12°, conteo 11→12),
 > ROADMAP (seguimientos cerrados, batching → Hito 8, `monitor` ya no "futuro"), CHANGELOG (Added `monitor`,
 > Changed/Fixed alias + merge).
+
+---
+
+## 2026-11-21 — Epic multi-proveedor #256 (sesión autónoma)
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| 256.1 | **Guard R1 del corte #251: opción (a)** — un `--source` explícito distinto de `workspace.json.source` en un comando que escribe → exit 2 **haya o no corpus** (no la (b): reescribir `workspace.json.source` implícitamente) | La verificación mostró que con la condición "corpus no vacío" `init → seed --source s2 → chain` fusionaba carriles de forma irreversible; (b) muta el manifest a espaldas del usuario. (a) es la opción conservadora y es transitoria | Alta: el guard se retira en #253 (carriles) | Pendiente |
+| 256.2 | **Retry acotado en `SemanticScholarSource.seed()`** (3 intentos, backoff 1 s/2 s), invirtiendo el "single-shot" original de 0042 D2 | Paridad con el `seed` de OpenAlex (#287); el carril con key de S2 (~1 RPS) daba 429 en la 2ª página. Registrado como enmienda de 0042 | Alta | Pendiente |
+| 256.3 | **ADR 0042 pasa a Aceptada** al mergear #250 | La Nota 25 ya registraba "S2 decidido como 2º backbone" por el PO | N/A | Sí (Nota 25) |

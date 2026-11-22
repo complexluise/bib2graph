@@ -20,6 +20,14 @@ Esta guía es una receta para llegar a una ecuación acotada, testeada, sin ruid
     tier gratis se agota y aparecen errores `429`. Cómo hacerlo:
     [Quickstart → conseguí tu API key](../getting-started/quickstart.md#antes-de-empezar-consegui-tu-api-key-de-openalex).
 
+!!! note "Esta guía asume OpenAlex (el proveedor por defecto)"
+    Si tu investigación usa Semantic Scholar (`b2g init <nombre> --source s2`), la ecuación se manda
+    **tal cual, sin traducción**, con la sintaxis de búsqueda de S2. Ahí no aplican `--exclude`,
+    `--min-year`/`--max-year` ni `--native`: si los pasás, el comando falla con un error que lo
+    explica, no los ignora. `b2g seed --preview --source s2 --equation "…"` muestra la query exacta
+    sin gastar red. Para sembrar en S2 necesitás `S2_API_KEY` en el entorno. Detalle en
+    [Contratos detallados](../API.md).
+
 ---
 
 ## Antes de empezar: afina tu pregunta
@@ -166,7 +174,7 @@ AND (method OR approach OR framework)
 ```bash
 b2g init test-ecuacion
 cd test-ecuacion
-b2g seed "tu_ecuacion_aqui" --max-results 50
+b2g seed --equation "tu_ecuacion_aqui" --max-results 50
 b2g read list | head -20
 ```
 
@@ -278,7 +286,7 @@ Propón una ecuación de búsqueda en OpenAlex/bib2graph:
 3. Con exclusiones si hay ruido conocido
 
 Luego, dame el comando exacto para testear:
-b2g seed "[tu_ecuacion]" --max-results 50
+b2g seed --equation "[tu_ecuacion]" --max-results 50
 ```
 
 El agente genera, tú testeas. Esto es más rápido que hacerlo solo.

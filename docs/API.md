@@ -79,10 +79,19 @@ intacto. **`validate`** chequea la consistencia del workspace (read-only).
 **`init`** (ADR [0029](decisiones/0029-workspace-por-investigacion.md)): scaffold de un workspace.
 `b2g init <name>` crea `<name>/` con `workspace.json` + `library.duckdb` +
 `networks/`/`snapshots/`/`exports/`; **`b2g init .`** inicializa el cwd (adopta un `.duckdb` legacy). Si
-la carpeta ya es workspace → `WorkspaceExistsError`. **NO transiciona.** `data = {root, name, ...}`.
+la carpeta ya es workspace → `WorkspaceExistsError`. **NO transiciona.** `data = {workspace_dir,
+library_path, manifest}`; `manifest` = el contenido de `workspace.json` (`name`, `created_at`,
+`bib2graph_version`, `schema_version`, `source`). **`--source {openalex,s2}`** (ADR
+[0053](decisiones/0053-multiproveedor-seleccion-coexistencia-identidad.md) D1, #251) fija el
+**proveedor por defecto de la investigación** y lo escribe como `"source"` en `workspace.json`
+(sin el flag: `openalex`). Ver §`--source`.
 
 **`seed`** (ADR [0030](decisiones/0030-ecuacion-declarativa-corpus-ejemplo.md)): **TRES modos
 mutuamente excluyentes** (exactamente uno; ninguno o más de uno → exit 1):
+
+El proveedor de la siembra lo elige **`--source`** (default = `workspace.json.source`, y si falta,
+`openalex`; ver §`--source`). Lo que sigue describe el comportamiento con **OpenAlex**; con
+`--source s2` la ecuación va **nativa** (sin traducción) y los flags de filtro no aplican.
 
 - **`--equation '<texto>'`** — ecuación cruda (modo OpenAlex directo, con red). Los **términos se
   combinan en AND** dentro de la única expresión `title_and_abstract.search:(...)`: **más términos ⇒
@@ -105,7 +114,12 @@ muestras chicas); **`--exclude TEXT`** (repetible) = negaciones quirúrgicas iny
 (`from_publication_date`/`to_publication_date` como predicado separado por coma, fuera del `search`);
 **`--native`** = query cruda (sin traducción; min/max-year no aplican). **Combinar cualquier flag
 OpenAlex con `--from-bib` → exit 1** (salvo `--email` junto a `--resolve`). **No existe
-`seed --from-corpus`** (rehidratar un parquet curado es `snapshot restore`).
+`seed --from-corpus`** (rehidratar un parquet curado es `snapshot restore`). Con un proveedor sin la
+capacidad `seed_filters` (hoy `s2`), **`--native`/`--exclude`/`--min-year`/`--max-year`** (como flag o
+como campo de `--spec`) → `DependencyError` **exit 3** antes de tocar la red; **`--max-results`** sí
+aplica (en S2, rango 1..1000; fuera de rango → exit 1). `--from-bib --resolve` exige `resolve_doi`
+(con `s2` → exit 3). `--from-bib` **sin** `--resolve` no hace red, pero escribe en el corpus: le
+aplica el guard R1 y ecoa `data.provider`.
 
 - **`--preview`** (dry-run, ADR 0049 #287): traduce la ecuación y **muestra la query de OpenAlex**
   (`title_and_abstract.search:(...)`) **SIN fetchear ni tocar el corpus** — la forma barata de ver a
@@ -115,7 +129,11 @@ OpenAlex con `--from-bib` → exit 1** (salvo `--email` junto a `--resolve`). **
   En `--json` emite el envelope estándar con **`data.preview = true`**, **`data.executed_query`** (la
   query exacta) y **`data.translation_report`** (mapeos limpios/aproximados/descartados + negaciones);
   **no** trae `papers_added`/`total_papers` (nada se materializó). Es el análogo de `chain --preview`
-  para el paso SEED.
+  para el paso SEED. Con **`--source s2`** devuelve la query **nativa** (`executed_query` = la ecuación
+  tal cual) y un `translation_report` de una línea que declara "sin traducción" (ADR 0042 D3); sigue
+  sin red. Suma **`data.provider`** (§`--source`). Proveedor del preview: `--source` si se pasó; si
+  no, el del workspace **si hay uno resoluble** (sin workspace → `openalex`, `origin="default"`); un
+  `workspace.json` con `source` inválido sí falla (exit 1).
 
 **Credenciales de OpenAlex (`seed`/`chain`/`build`; ADR [0012](decisiones/0012-openalex-credenciales.md)).**
 Dos credenciales, ambas **inyectadas**, ninguna obligatoria:
@@ -138,6 +156,13 @@ configurar la key) y **`error.subcode = "RATE_LIMITED"`** en el envelope `--json
 [0045](decisiones/0045-cerrar-tres-grietas-agent-native.md) #258); análogamente un 504 agotado da
 `error.subcode = "UPSTREAM_TIMEOUT"`. Ver `error.subcode` en §Envelope.
 
+**Credenciales de Semantic Scholar (`--source s2`; ADR [0042](decisiones/0042-semantic-scholar-segundo-motor.md) D2).**
+Solo **API key** por entorno **`S2_API_KEY`** (no hay flag; el CLI no la pasa por argumento). S2 no
+tiene polite pool: **`--email` con un proveedor ≠ `openalex` → `UsageError` exit 1** (no se ignora en
+silencio). Asimetría por rol: la **siembra** (`/paper/search`) prácticamente exige la key (sin ella,
+429 sostenido → `NetworkError` exit 4 con `subcode="RATE_LIMITED"` y mensaje que pide la key); el
+**forrajeo** (`chain`, pasada `cited_by` de `build`) funciona sin key a bajo volumen.
+
 **`chain`** (paso CHAIN): expande el corpus con candidatos rankeados por *information scent*
 (forward/backward batcheado, §5). **`--direction [backward|forward|both]`** (default `both`),
 **`--depth`** (solo 1), **`--max-candidates`**, **`--max-citing`** (presupuesto de citantes por semilla
@@ -145,7 +170,7 @@ en forward, default 50), **`--email`**, **`--preview`** (dry-run sin red ni tran
 desde `references_id`; forward exacto solo si hay `cited_by_id`). Transiciona a **`FORAGED`** y corre
 **automática la pasada refs→DOI** (§Enricher absorbido): el `--json` suma `data["enrichment"]`. `data =
 {candidates_found, new_candidates, total_papers, direction, depth, ranking_preview, observed_refs_count,
-loop_state, round, enrichment, budget_used, budget_stopped}`.
+loop_state, round, enrichment, budget_used, budget_stopped, workspace, provider}`.
 
 - **Forrajeo acotado — guardarraíles anti-footgun (#309, MVP aditivo).** El forrajeo forward es
   **multiplicativo** (cada semilla dispara sus propias llamadas) y su costo es invisible hasta que ya se
@@ -169,7 +194,17 @@ loop_state, round, enrichment, budget_used, budget_stopped}`.
     queda **parcial pero consistente** y marcado con **`data["budget_stopped"] = true`** +
     **`data["budget_used"]`** (llamadas realizadas). `budget_used` **no** cuenta las llamadas de la
     pasada refs→DOI posterior (acotada, fuera de alcance del budget). Sin `--budget`: sin tope
-    (`budget_used=0`, `budget_stopped=false`). Ver `CallBudget` en §5.
+    (`budget_used=0`, `budget_stopped=false`). Ver `CallBudget` en §5. **Solo `openalex`:**
+    `--budget` con otro proveedor → `UsageError` exit 1 (no se ignora en silencio).
+
+- **`chain` con otro proveedor (§`--source`).** La dirección pide capacidades: `forward`/`both` exige
+  `forward`, `backward`/`both` exige `backward` (faltante → `DependencyError` exit 3 antes de la red).
+  **`chain --preview` valida igual que el modo normal** (capacidad por dirección y `--budget` con
+  proveedor ≠ `openalex`), aunque no haga red.
+  Si el proveedor no declara `enrich_refs_doi` (hoy `s2`), la pasada automática refs→DOI **se omite
+  con warning** (en el `warnings` top-level del envelope, canal único). Con `s2`,
+  `--since` se **aproxima por año** (S2 no tiene filtro de fecha nativo: se descartan citantes con
+  `year < since.year`).
 
 - **`chain forward`/`both` puebla `cited_by_id` de las semillas alcanzadas** (ADR 0048, #270): el
   forrajeo hacia adelante ya trae los citantes; con esta decisión completa además la columna
@@ -342,6 +377,9 @@ degradado, kind no-paper) van en el **`warnings` top-level del envelope, NO en `
   formado → `DataError` exit 2.
 - **`--email` / `--max-citing INT`**: parametrizan la pasada `cited_by` (co-citación; ver Enricher
   absorbido).
+- **`--source {openalex,s2}`** (§`--source`): proveedor de la pasada `cited_by`. Si no declara
+  `enrich_cited_by`, la pasada se omite con warning (hoy ambos la declaran). `--email` solo con
+  `openalex`. El guard transitorio R1 aplica igual que en `seed`/`chain`.
 
 **Artefactos por red:** todas escriben `network.graphml` + `metrics.json`; **`clusters.csv` solo las
 redes de paper** (`bibliographic_coupling`, `cocitation`) con comunidades (las de
@@ -354,7 +392,8 @@ para poblar `cited_by_id` (camino de ADR 0048) **sin** aceptar en masa —en vez
 los candidatos sólo para computar la red—. Es **sólo descubribilidad**: el gate del enricher **no
 cambia** (la pasada 8b de co-citación sigue atada a `accepted`, ADR 0025). **`--json.data`:** `networks_built`, `artifacts_dir`, `corpus_hash`, `scope` (token CLI),
 `corpus_scope` (vocab interno, backward-compat), `networks` (con `clusters_csv` condicional), `warnings`,
-`empty_networks`, `maturity` (ver Apéndice), `enrichment`, `thesaurus` (si se pasó `--thesaurus`).
+`empty_networks`, `maturity` (ver Apéndice), `enrichment`, `thesaurus` (si se pasó `--thesaurus`),
+`workspace` y `provider` (§`--source`).
 
 **`snapshot {create, restore}`** (grupo noun-verb, #163). Fuente única en `service/snapshot.py`. La
 transición la define el verbo.
@@ -477,6 +516,55 @@ ELIMINADA** (#75, BREAKING): pasarla da el error estándar de Click (`No such op
 ambiente** (precedencia): (1) `--workspace` explícito, (2) `B2G_WORKSPACE` (env), (3) **walk-up** del cwd
 buscando `workspace.json`. Sin ninguno → error accionable que sugiere `b2g init`.
 
+**`--source` — proveedor por invocación (ADR [0053](decisiones/0053-multiproveedor-seleccion-coexistencia-identidad.md) D1, #251, v1).**
+Opción **local** (después del verbo, como `--json`) en los comandos que instancian una `Source`:
+**`init`, `seed`, `chain` y `build`**. Valores: `click.Choice` derivado del registro de proveedores
+(`sources/registry.py::PROVIDERS`): hoy **`openalex | s2`**; `doaj` entra con #252 (no se publica un
+proveedor antes de que su `Source` exista). Un proveedor por invocación; no hay `--source a,b` ni
+variable de entorno.
+
+- **Precedencia:** `--source` > `workspace.json.source` > `openalex`. En `init`, el flag no pisa nada:
+  **escribe** el default de la investigación.
+- **`workspace.json.source`** (campo aditivo; `schema_version` sigue en `"1"`): un manifest **sin** el
+  campo se lee como `openalex`, sin reescribir el archivo. Un valor desconocido → `UsageError`
+  **exit 1** que lista los proveedores válidos. En Python: `Workspace.provider` (`Workspace.source`
+  sigue siendo el origen de la resolución, `flag|env|cwd|init`).
+- **Envelope:** `seed` (incluido `--preview`), `chain` y `build` suman
+  **`data.provider = {"name": <proveedor>, "origin": "flag" | "workspace" | "default"}`** (aditivo,
+  `schema="1"` intacto). `origin="workspace"` solo si `workspace.json` declara `source`
+  explícitamente. **No** se toca `data.workspace.source`. `init` lo refleja en `data.manifest.source`.
+- **Capacidades (proveedor como dato, no como `if`).** Cada proveedor declara capacidades en
+  `PROVIDERS`; pedir una que no tiene falla **antes de abrir el store o tocar la red** con
+  `DependencyError` **exit 3**: *"El proveedor 's2' no soporta la capacidad 'seed_filters' (declara:
+  …). Usá otro proveedor con --source o quitá el flag que la requiere."* Las **pasadas de
+  enriquecimiento** automáticas no fallan: si falta su capacidad, se **omiten con warning** (canal
+  `warnings` top-level).
+
+  | Capacidad | Qué la pide | `openalex` | `s2` |
+  |---|---|---|---|
+  | `seed` | `seed --equation`/`--spec` | sí | sí |
+  | `seed_filters` | `--native`/`--exclude`/`--min-year`/`--max-year` (flag o `--spec`) | sí | **no** → exit 3 |
+  | `backward` | `chain --direction backward\|both` | sí | sí |
+  | `forward` | `chain --direction forward\|both` (y `--since`) | sí | sí |
+  | `enrich_refs_doi` | pasada refs→DOI automática de `chain` | sí | **no** → se omite con warning |
+  | `enrich_cited_by` | pasada `cited_by` automática de `build` | sí | sí |
+  | `resolve_doi` | `seed --from-bib --resolve` | sí | **no** → exit 3 |
+
+- **Flags exclusivos de OpenAlex** (validación explícita, no capacidad): `--email` con otro proveedor
+  → exit 1 (en `seed`, `chain`, `build`); `chain --budget` con otro proveedor → exit 1.
+- **Guard transitorio R1 (hasta #253; enmienda 2026-11-21 de ADR 0053).** Mientras el corpus sea
+  una sola tabla con PK `id`, en **todo comando que escribe** —`seed` en todas sus variantes
+  (`--equation`, `--spec`, `--from-bib` con o sin `--resolve`), `chain` y `build`— un `--source`
+  explícito **distinto** de `workspace.json.source` → `DataError` **exit 2**, sin escribir, **haya o
+  no corpus**: el upsert fusionaría registros de dos proveedores de forma irreversible, y un corpus
+  vacío no protege (`init` → `seed --source s2` → `chain` también fusiona). **Para usar otro
+  proveedor hoy: `b2g init --source <p>`** (una investigación por proveedor). El mensaje apunta a eso
+  y a la coexistencia por proveedor (#253), que retira el guard. Los `--preview` no escriben y no lo
+  disparan.
+- **Tokens:** el valor del CLI es el valor persistido (`Provider`, `StrEnum` en `constants.py`):
+  `equations.engine` y `ProvenanceEvent.source` de los fetch de S2 valen **`s2`** (no
+  `semanticscholar`; enmienda de ADR 0042 D4 por ADR 0053 D1.6).
+
 **Transiciones automáticas del ciclo** (ADR 0021 §F): `seed`→`SEEDED` (con estado previo = `reseed`,
 ronda++), `chain`→`FORAGED`, `chain --since`→`MONITORED`, `curate filter`→`FILTERED`, `build`→`BUILT`,
 `snapshot restore`→`FILTERED`. El resto (`read`, `export`, `snapshot create`, `status`, `validate`,
@@ -512,7 +600,9 @@ Los exit
 codes se mapean **por tipo de error** (ADR 0021 §D): `DataError`→2, `ImportError`/`DependencyError`/
 `NotImplementedError`→3, `httpx.HTTPError`→4, `StoreLockedError`/`OSError`→5. `AttributeError` **no** se
 mapea (un bug real no se disfraza de "capacidad faltante"); la capacidad-de-source-faltante se convierte
-en `DependencyError` con un **pre-check `hasattr` en el comando** (p. ej. `chain` antes del `Forager`).
+en `DependencyError` con un **pre-check en el comando**: desde #251, `registry.require(provider,
+capability)` antes de abrir el store o la red (ADR 0053 D1.4); el `hasattr` de `chain` antes del
+`Forager` queda como defensa en profundidad.
 
 **`error.subcode` — desambiguación de red (ADR [0045](decisiones/0045-cerrar-tres-grietas-agent-native.md) #258).**
 El objeto `error` puede llevar un campo **opcional** `subcode`, poblado **solo** para
@@ -892,7 +982,8 @@ cada `Source.seed()/load()`.
 > poblar**): el backend expone `external_ids_for(paper_id)`/`all_external_ids()` para registrar 1↔N los
 > IDs que cada motor asignó al mismo paper (unificados por DOI). Su consumo (cruce cross-motor) está
 > diferido a la llegada del 2º motor (#120); hoy la identidad/dedup se resuelven solo por el `id`
-> canónico (DOI primero).
+> canónico (DOI primero). Con S2 ya seleccionable (#251) la tabla **sigue sin poblarse**: su escritura
+> es el Corte 2 de ADR 0053 (#255), con `engine` = token `Provider` (`openalex`, `s2`).
 
 **`provenance` es un log append-only** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md),
 D4), no un objeto único: la columna `string` guarda un JSON que es una **lista de eventos**. Cada
@@ -1150,7 +1241,7 @@ equivalente en `InMemoryBackend`. Schema de la tabla `equations` (PK `equation_i
 | Campo | Tipo | Nullable | Notas |
 |---|---|---|---|
 | `equation_id` | `string` (**PK**) | no | formato `eq-<YYYYMMDDTHHMMSS>` (seed); mismo que hoy en `provenance`. Estable. |
-| `engine` | `string` | no | motor que ejecutó la búsqueda (`openalex`; futuro `s2`/`crossref`). |
+| `engine` | `string` | no | motor que ejecutó la búsqueda: token `Provider` (`openalex` \| `s2`; futuro `doaj`/`crossref`). |
 | `raw_query` | `string` | no | la ecuación **cruda** tal como la escribió el usuario (`EquationSpec.query` / `--equation`), **antes** de traducir a filtros OpenAlex. Es lo que el consumidor programático confirma y hashea (§1.6). |
 | `params_json` | `string` (JSON) | no (default `'{}'`) | superconjunto de `EquationRef` + los flags de `seed`: `{exclude, max_results, native, min_year, max_year, executed_query, translation_report}`. |
 | `label` | `string \| null` | sí | etiqueta humana opcional. |
@@ -1186,7 +1277,7 @@ class EquationRef(BaseModel):
     equation_id: str                                    # PK, `eq-<YYYYMMDDTHHMMSS>` (seed)
     query: str                                          # query EJECUTADA (traducida) — campo histórico
     translation_report: list[str] = Field(default_factory=list)
-    engine: str | None = None                           # ADR 0050: motor (`openalex`; futuro s2/crossref)
+    engine: str | None = None                           # ADR 0050: motor (token Provider: `openalex`|`s2`)
     params: dict[str, object] = Field(default_factory=dict)  # ADR 0050: raw_query, exclude, max_results,
                                                         # native, min_year, max_year, executed_query
     created_at: str | None = None                       # ADR 0050: sello ISO8601 UTC
@@ -1482,6 +1573,7 @@ def load_equation_spec(path: str | Path) -> EquationSpec:
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
 | `OpenAlexSource` | **v1** | **Referencia/backbone**, sobre `httpx`. Entrega mínimo + enriquecimiento (refs inline + afiliaciones per-autor + instituciones; `cited_by_id` lo puebla el chaining/Enricher, no el seed). Traducción **passthrough**: envuelve la ecuación en `title_and_abstract.search:(...)` y **reporta** los límites WoS (NEAR/comodín/tags) sin traducirlos. Flag `native=True` (query cruda). **Negaciones (`exclude`):** cada `AND NOT "<término>"` se inyecta **dentro** de la única expresión `search:((query) AND NOT "<término>")` (campo no repetido; el filtro de año queda como predicado separado por coma, fuera del `search`) y se reporta en el `translation_report`; ignorado con `native`. Credenciales inyectadas: la **api_key** se resuelve `arg` → env `OPENALEX_API_KEY` → ausencia ⇒ polite pool (ADR 0012); con key viaja en el header `Authorization: Bearer <key>`. El **email** (arg `email=`/`--email`) viaja como `mailto` en la query (polite pool). Sin key el source **no rompe**: corre en polite pool, solo con menor límite. Cursor paging con tope `max_results` (default 200). Puebla `Manifest.openalex_version` (ADR 0017). `transport` inyectable (tests sin red). Un **429** (rate limit del pool anónimo) en `seed()` → `NetworkError` (exit 4) con mensaje **accionable**: declarar `--email` mueve la petición al polite pool (remedio primario); api_key opcional (ADR 0012, #210). |
+| `SemanticScholarSource` | **v1, 2º motor** (`--source s2`) | ADR [0042](decisiones/0042-semantic-scholar-segundo-motor.md). Academic Graph API sobre `httpx`. Mínimo universal + `doi`, `source_id`=`paperId`, `references_id`/`references_doi`, `cited_by_id`, `abstract`. **Query nativa, sin traducción** (D3): `executed_query` = la query tal cual, `translation_report` de una línea que lo declara. `seed(query)` **no** acepta `native`/`exclude`/`min_year`/`max_year` (capacidad `seed_filters` ausente). `max_results` ∈ 1..1000. Key por env `S2_API_KEY` (siembra prácticamente la exige; forrajeo no); retry 3 intentos con backoff ante 429/5xx → `NetworkError` con `subcode`. Tokens: `equations.engine = "s2"`, `provenance.source = "s2"`. Expone `fetch_citing_batch`/`fetch_citing_batch_with_works` (`since` aproximado por año), `fetch_works_by_ids` y `work_to_row`. |
 | `BibtexSource` | **v1, secundaria** | Sembrar desde *pearls* vía `load()`. Extra **`[bibtex]`** (import perezoso de `bibtexparser`); acceso defensivo (campos faltantes sin `KeyError`). Mínimo universal. `seed()` lanza `NotImplementedError`. `.bib` con error grave → `ValueError`; sin entradas válidas → `UserWarning` (no no-op silencioso). Carga bulk con `from_arrow`. |
 | `ScieloSource` / `RedalycSource` / `LaReferenciaSource` | futuro | Fuentes regionales, mínimo universal. Declaradas, no implementadas (ADR 0018). |
 | `RisSource` / `CsvSource` | futuro | No implementados. |
@@ -1507,6 +1599,36 @@ el `Forager` y el `Enricher`):
   inexistentes se omiten sin error; orden determinista; lista vacía → `Corpus` vacío sin tocar la red. Es
   el primitivo que materializaría lo observado por el backward chaining. Centraliza el mapeo JSON→Arrow
   vía `_work_to_row` (parametrizado por `is_seed`/`action`/`chaining_hop`/`source_tag`).
+
+**`work_to_row` (ADR 0053 D1.5, v1).** Toda `Source` con capacidad `forward` expone
+`work_to_row(work, *, equation_id, fetched_at, is_seed=True, action="fetched", chaining_hop=None,
+source_tag=<token>, source_kind=None) -> dict` (duck-typed): mapea un work crudo de su
+`works_map` a la fila canónica. El `Forager` materializa los candidatos forward con
+`self._source.work_to_row(...)` y **ya no importa** `sources.openalex._work_to_row`.
+`OpenAlexSource.work_to_row` envuelve `_work_to_row`; `SemanticScholarSource.work_to_row` envuelve
+`_paper_to_row`.
+
+**Registro de proveedores — `sources/registry.py` (ADR 0053 D1.4, v1).** El proveedor es un dato:
+
+```python
+class Capability(StrEnum):   # seed, seed_filters, backward, forward,
+    ...                      # enrich_cited_by, enrich_refs_doi, resolve_doi
+
+@dataclass(frozen=True)
+class ProviderSpec:
+    factory: Callable[..., Any]          # (email, api_key, transport, max_results) -> Source
+    capabilities: frozenset[Capability]
+
+PROVIDERS: dict[Provider, ProviderSpec]  # openalex: todas; s2: seed, backward, forward, enrich_cited_by
+
+def make_source(provider, *, email=None, api_key=None, transport=None, max_results=None) -> Source
+def has(provider, capability) -> bool
+def require(provider, capability) -> None   # DependencyError (exit 3) que nombra proveedor y capacidad
+```
+
+Sin efectos de import (las `Source` se importan perezosamente en cada fábrica). La matriz por
+proveedor está en §Convenciones del CLI → `--source`. Agregar un proveedor = una `Source` + una fila
+en `PROVIDERS` + el valor en `Provider`.
 
 **Reporte de cobertura/calidad** (concepto declarado, concreto **futuro**; ADR 0018): por seed/source,
 mide % de refs resueltas, % con DOI, distribución idioma/región y completitud del enriquecimiento;

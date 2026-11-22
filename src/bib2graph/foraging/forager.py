@@ -26,7 +26,7 @@ scent es puro.  ``explain_candidate`` fue **eliminado** (R4, ADR 0022).
 ninguna fila-fantasma para candidatos backward.
 ``_build_forward_candidate_row`` fue **eliminado** (#78, opción A1): el forward
 materializa metadata real vía ``fetch_citing_batch_with_works`` +
-``_work_to_row`` (cero red extra: los works viajan en las mismas páginas de
+``source.work_to_row`` (cero red extra: los works viajan en las mismas páginas de
 atribución).
 
 ``depth > 1`` lanza ``NotImplementedError`` claro (decisión e=A, ADR 0008).
@@ -61,7 +61,6 @@ from bib2graph.foraging.base import (
 )
 from bib2graph.foraging.scent import rank_candidates
 from bib2graph.schemas import CORPUS_SCHEMA
-from bib2graph.sources.openalex import _work_to_row
 
 
 def _make_empty_corpus() -> Corpus:
@@ -554,8 +553,8 @@ class Forager:
         la intersección de esos seeds con ``corpus_ids`` (trivial: seed_ids ⊆
         corpus_ids porque son los source_id de las semillas).
 
-        Cada fila candidata se construye con ``_work_to_row`` (el mapeador
-        canónico), con ``is_seed=False``, ``chaining_hop=1`` y
+        Cada fila candidata se construye con ``source.work_to_row`` (el mapeador
+        canónico del proveedor, ADR 0053 D1.5), con ``is_seed=False``, ``chaining_hop=1`` y
         ``source_tag='chaining:forward'``.
 
         **ADR 0048 (#270):** además, puebla ``cited_by_id`` de las semillas del
@@ -692,7 +691,7 @@ class Forager:
         if not citer_to_seeds:
             return {}, {}, seed_updates
 
-        # Construir filas con metadata real (vía _work_to_row) cuando el source
+        # Construir filas con metadata real (vía source.work_to_row) cuando el source
         # proveyó los works; el score es len(seeds_citados ∩ corpus_ids).
         candidate_rows: dict[str, dict[str, Any]] = {}
         scent_map: dict[str, float] = {}
@@ -706,7 +705,7 @@ class Forager:
                     # `chaining:forward`); source_kind="chaining_forward"
                     # desambigua el origen. source_tag se mantiene adrede
                     # (ADR 0020).
-                    row = _work_to_row(
+                    row = self._source.work_to_row(
                         work,
                         equation_id=None,
                         fetched_at=fetched_at,

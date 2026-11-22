@@ -38,13 +38,23 @@ from bib2graph.cli._errors import (
     handle_errors,
 )
 from bib2graph.cli._ingest import normalize_and_dedup
-from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._options import (
+    guard_provider_mix,
+    json_mode,
+    json_option,
+    provider_echo,
+    reject_email_for,
+    resolve_provider,
+    source_option,
+)
 from bib2graph.cli._store import (
     open_store,
     resolve_workspace,
     workspace_echo,
     workspace_walkup_warning,
 )
+from bib2graph.constants import DEFAULT_PROVIDER, Provider
+from bib2graph.sources.registry import Capability, has, make_source, require
 
 # Función núcleo: siembra desde OpenAlex (testeable, sin Click)
 
@@ -60,8 +70,10 @@ def run_seed(
     exclude: list[str] | None = None,
     min_year: int | None = None,
     max_year: int | None = None,
+    provider: Provider = DEFAULT_PROVIDER,
+    workspace_provider: Provider | None = None,
 ) -> dict[str, Any]:
-    """Siembra el corpus desde OpenAlex y persiste en el store.
+    """Siembra el corpus desde el proveedor elegido y persiste en el store.
 
     Lee el estado actual del store, siembra los papers de la ecuación,
     hace merge con el corpus existente, persiste y transiciona a SEEDED.
@@ -80,21 +92,37 @@ def run_seed(
             ``from_publication_date:<min_year>-01-01`` en el filtro de OpenAlex.
         max_year: Año máximo de publicación.  Genera
             ``to_publication_date:<max_year>-12-31`` en el filtro de OpenAlex.
+        provider: Proveedor (ADR 0053 D1).  Default ``openalex``.
+        workspace_provider: Proveedor de la investigación
+            (``workspace.json.source``) para el guard transitorio R1; ``None``
+            = sin guard (llamadas directas sin workspace).
 
     Returns:
         Dict con ``executed_query``, ``translation_report``, ``papers_added``,
         ``total_papers``, ``round``, ``reseeded``.
 
     Raises:
-        DataError: Si la ecuación está vacía.
-        NetworkError: Si falla la conexión a OpenAlex.
+        DataError: Si la ecuación está vacía, o si el guard R1 rechaza mezclar
+            proveedores con corpus no vacío.
+        DependencyError: Si el proveedor no declara una capacidad requerida
+            (``seed_filters`` con ``--native/--exclude/--min-year/--max-year``);
+            falla antes de tocar la red.
+        NetworkError: Si falla la conexión al proveedor.
         StoreError: Si el store está bloqueado.
     """
     from bib2graph.cycle import apply_transition
-    from bib2graph.sources.openalex import OpenAlexSource
 
     if not equation or not equation.strip():
         raise DataError("La ecuación de búsqueda no puede estar vacía.")
+
+    # ADR 0053 D1.4: capacidades verificadas ANTES de abrir el store o la red;
+    # nunca se ignora un flag en silencio.
+    require(provider, Capability.SEED)
+    if native or exclude or min_year is not None or max_year is not None:
+        require(provider, Capability.SEED_FILTERS)
+
+    # Guard R1 transitorio: antes de abrir el store (nada se escribe).
+    guard_provider_mix(provider, workspace_provider)
 
     merged_backend_close = None
     store = open_store(store_path)
@@ -112,19 +140,28 @@ def run_seed(
         else:
             new_state, new_round = apply_transition(None, "seed", current_round)
 
-        source_kwargs: dict[str, Any] = {"email": email, "transport": transport}
-        if max_results is not None:
-            source_kwargs["max_results"] = max_results
-
         try:
-            source = OpenAlexSource(**source_kwargs)
-            result = source.seed(
-                equation,
-                native=native,
-                exclude=exclude,
-                min_year=min_year,
-                max_year=max_year,
-            )
+            try:
+                source = make_source(
+                    provider,
+                    email=email,
+                    transport=transport,
+                    max_results=max_results,
+                )
+            except ValueError as exc:  # p. ej. max_results fuera de rango en S2
+                raise UsageError(str(exc)) from exc
+            if has(provider, Capability.SEED_FILTERS):
+                result = source.seed(
+                    equation,
+                    native=native,
+                    exclude=exclude,
+                    min_year=min_year,
+                    max_year=max_year,
+                )
+            else:
+                # Proveedor sin filtros de ecuación (S2): query nativa tal cual
+                # (los flags de filtro ya fallaron en require() arriba).
+                result = source.seed(equation)
         except ImportError as exc:
             raise NetworkError(
                 f"Error importando httpx: {exc}. Verificá la instalación del núcleo."
@@ -153,7 +190,7 @@ def run_seed(
         for eq_ref in result.corpus.manifest.equations:
             store.backend.persist_equation(
                 eq_ref.equation_id,
-                engine=eq_ref.engine or "openalex",
+                engine=eq_ref.engine or provider.value,
                 raw_query=str(eq_ref.params.get("raw_query", equation)),
                 params_json=json.dumps(eq_ref.params, ensure_ascii=False),
                 created_at=eq_ref.created_at,
@@ -185,6 +222,8 @@ def run_seed_from_bib(
     resolve: bool = False,
     email: str | None = None,
     transport: Any = None,
+    provider: Provider = DEFAULT_PROVIDER,
+    workspace_provider: Provider | None = None,
 ) -> dict[str, Any]:
     """Siembra el corpus desde un archivo BibTeX y persiste en el store.
 
@@ -214,6 +253,10 @@ def run_seed_from_bib(
             ``resolve=True``).
         transport: Transport inyectable para tests (``httpx.MockTransport``);
             solo relevante cuando ``resolve=True``.
+        provider: Proveedor (ADR 0053 D1); solo relevante con ``resolve=True``,
+            que exige la capacidad ``resolve_doi``.
+        workspace_provider: Proveedor de la investigación para el guard R1
+            (solo con ``resolve=True``); ``None`` = sin guard.
 
     Returns:
         Dict con ``papers_added``, ``total_papers``, ``round``, ``reseeded``.
@@ -229,6 +272,12 @@ def run_seed_from_bib(
     """
     from bib2graph.cycle import apply_transition
     from bib2graph.sources.bibtex import BibtexSource
+
+    if resolve:
+        # ADR 0053 D1.4: antes de abrir el store o tocar la red.
+        require(provider, Capability.RESOLVE_DOI)
+    # Guard R1 transitorio (con o sin --resolve): antes de abrir el store.
+    guard_provider_mix(provider, workspace_provider)
 
     resolved_bib = Path(bib_path)
     if not resolved_bib.exists():
@@ -323,8 +372,9 @@ def preview_seed_query(
     exclude: list[str] | None = None,
     min_year: int | None = None,
     max_year: int | None = None,
+    provider: Provider = DEFAULT_PROVIDER,
 ) -> dict[str, Any]:
-    """Traduce la ecuación a la query de OpenAlex SIN fetchear ni tocar el corpus.
+    """Traduce la ecuación a la query del proveedor SIN fetchear ni tocar el corpus.
 
     #287 fricción #2: la semántica AND de ``--equation`` era opaca hasta gastar
     la llamada (el eco ``Query ejecutada:`` llegaba después). Este preview
@@ -333,16 +383,33 @@ def preview_seed_query(
 
     Función pura: solo traduce (``_translate``); no abre store ni hace red.
 
+    Con un proveedor sin ``seed_filters`` (S2, ADR 0042 D3) la query se devuelve
+    nativa y el ``translation_report`` declara "sin traducción"; los flags de
+    filtro fallan antes (``DependencyError``).
+
     Returns:
         Dict con ``preview=True``, ``executed_query`` y ``translation_report``.
 
     Raises:
         DataError: Si la ecuación está vacía.
+        DependencyError: Si el proveedor no soporta los flags pedidos.
     """
-    from bib2graph.sources.openalex import _translate
-
     if not equation or not equation.strip():
         raise DataError("La ecuación de búsqueda no puede estar vacía.")
+
+    require(provider, Capability.SEED)
+    if not has(provider, Capability.SEED_FILTERS):
+        if native or exclude or min_year is not None or max_year is not None:
+            require(provider, Capability.SEED_FILTERS)
+        from bib2graph.sources.semanticscholar import TRANSLATION_REPORT_LINE
+
+        return {
+            "preview": True,
+            "executed_query": equation,
+            "translation_report": [TRANSLATION_REPORT_LINE],
+        }
+
+    from bib2graph.sources.openalex import _translate
 
     executed_query, translation_report = _translate(
         equation,
@@ -356,6 +423,29 @@ def preview_seed_query(
         "executed_query": executed_query,
         "translation_report": translation_report,
     }
+
+
+def _preview_provider(ctx: click.Context, flag: str | None) -> tuple[Provider, Any]:
+    """Proveedor del ``--preview`` (puro: funciona fuera de un workspace).
+
+    ``--source`` gana; si no, se usa el del workspace si existe, y si no hay
+    workspace, el default.  Un ``workspace.json`` inválido sí falla.
+    """
+    from bib2graph.workspace import (
+        Workspace,
+        WorkspaceManifestError,
+        WorkspaceNotFoundError,
+    )
+
+    if flag is not None:
+        return Provider(flag), "flag"
+    try:
+        ws = Workspace.resolve(workspace=ctx.obj.get("workspace"))
+    except WorkspaceNotFoundError:
+        return DEFAULT_PROVIDER, "default"
+    except WorkspaceManifestError as exc:
+        raise UsageError(str(exc)) from exc
+    return resolve_provider(None, ws)
 
 
 # Comando Click
@@ -461,6 +551,7 @@ def preview_seed_query(
         "ecuación —los términos van en AND— antes de gastar la llamada."
     ),
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("seed")
@@ -477,6 +568,7 @@ def seed_cmd(
     max_year: int | None,
     do_resolve: bool,
     preview: bool,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Siembra el corpus. Exactamente uno de los tres modos es requerido.
@@ -498,6 +590,7 @@ def seed_cmd(
       b2g seed --equation "unequal exchange"
       b2g seed --spec equation.yaml
       b2g seed --from-bib semillas.bib
+      b2g seed --equation "ecological debt" --source s2
     """
     modes_given = sum(
         [equation is not None, spec_path is not None, bib_path is not None]
@@ -560,6 +653,8 @@ def seed_cmd(
                 "--preview no aplica a --from-bib (no hay query que traducir). "
                 "Usalo con --equation o --spec."
             )
+        preview_provider, preview_origin = _preview_provider(ctx, source)
+        reject_email_for(preview_provider, email)
         if spec_path is not None:
             from bib2graph.sources.equation import load_equation_spec
 
@@ -573,6 +668,7 @@ def seed_cmd(
                 exclude=spec.exclude if spec.exclude else None,
                 min_year=spec.min_year,
                 max_year=spec.max_year,
+                provider=preview_provider,
             )
         else:
             data = preview_seed_query(
@@ -581,7 +677,9 @@ def seed_cmd(
                 exclude=list(exclude) if exclude else None,
                 min_year=min_year,
                 max_year=max_year,
+                provider=preview_provider,
             )
+        data["provider"] = provider_echo(preview_provider, preview_origin)
         if json_mode(json_output):
             envelope = build_envelope(
                 command="seed",
@@ -607,9 +705,22 @@ def seed_cmd(
     store_path = ws.library_path
     ws_warnings = workspace_walkup_warning(ws)
 
+    # ADR 0053 D1.2: --source > workspace.json.source > openalex.
+    provider, origin = resolve_provider(source, ws)
+    reject_email_for(provider, email)
+    ws_provider: Provider = ws.provider
+
     if bib_path is not None:
-        data = run_seed_from_bib(store_path, bib_path, resolve=do_resolve, email=email)
+        data = run_seed_from_bib(
+            store_path,
+            bib_path,
+            resolve=do_resolve,
+            email=email,
+            provider=provider,
+            workspace_provider=ws_provider,
+        )
         data["workspace"] = workspace_echo(ws)
+        data["provider"] = provider_echo(provider, origin)
         if json_mode(json_output):
             envelope = build_envelope(
                 command="seed",
@@ -647,8 +758,11 @@ def seed_cmd(
             exclude=spec.exclude if spec.exclude else None,
             min_year=spec.min_year,
             max_year=spec.max_year,
+            provider=provider,
+            workspace_provider=ws_provider,
         )
         data["workspace"] = workspace_echo(ws)
+        data["provider"] = provider_echo(provider, origin)
         if json_mode(json_output):
             envelope = build_envelope(
                 command="seed",
@@ -677,8 +791,11 @@ def seed_cmd(
         exclude=list(exclude) if exclude else None,
         min_year=min_year,
         max_year=max_year,
+        provider=provider,
+        workspace_provider=ws_provider,
     )
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     if json_mode(json_output):
         envelope = build_envelope(

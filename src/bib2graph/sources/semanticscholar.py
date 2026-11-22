@@ -33,17 +33,13 @@ Fuera de este módulo (ADR 0042, D4/D5, explícitamente diferido):
 - **Escritura de ``external_ids``**: el ``paperId`` vive en ``source_id``
   (cruza con OpenAlex vía DOI → mismo ``id`` canónico, dedup cross-motor
   gratis), pero la población de la tabla lateral ``external_ids(engine=
-  "semanticscholar")`` (D4) no está cableada en este PR — el ADR autoriza
+  "s2")`` (D4) no está cableada en este PR — el ADR autoriza
   explícitamente recortarla a un PR aparte.
-- **Selector CLI ``--source``** (D5): este módulo no se enchufa a ningún
-  comando; es su propio PR.
-- Nota de riesgo para quien wire el ``Forager`` con este Source en el futuro:
-  ``forager.py`` materializa filas forward-chaining llamando directamente a
-  ``bib2graph.sources.openalex._work_to_row`` sobre el ``works_map`` que
-  devuelve ``fetch_citing_batch_with_works`` (import hardcodeado, no
-  duck-typed). El ``works_map`` que produce este módulo trae JSON crudo de S2
-  (shape de ``_paper_to_row``, no de ``_work_to_row``); wireear S2 al Forager
-  requiere generalizar ese punto — no es parte de este hito.
+- **Selector CLI ``--source``**: lo cablea ``cli/_options.py`` + el registro
+  ``sources/registry.py`` (ADR 0053 D1, #251).
+- ``Forager`` (ADR 0053 D1.5): ``work_to_row`` expone el mapeo de un
+  ``citingPaper`` (shape de ``_paper_to_row``) para que el ``Forager`` no
+  dependa del mapeador de OpenAlex.
 
 Ver ``docs/decisiones/0042-semantic-scholar-segundo-motor.md``.
 """
@@ -58,7 +54,7 @@ from typing import Any
 import httpx
 import pyarrow as pa
 
-from bib2graph.constants import Col, CurationStatus
+from bib2graph.constants import Col, CurationStatus, Provider
 from bib2graph.corpus import Corpus, EquationRef, _rows_with_ids
 from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent, SourceKind
 from bib2graph.service.errors import NetworkError
@@ -149,7 +145,7 @@ def _msg_upstream_timeout_504(endpoint: str) -> str:
 
 # Reporte de traducción honesto (D3, ADR 0042): no hay capa WoS→S2; la query
 # se ejecuta nativa.
-_TRANSLATION_REPORT_LINE = (
+TRANSLATION_REPORT_LINE = (
     "S2: query interpretada con sintaxis nativa de Semantic Scholar; sin traducción WoS"
 )
 
@@ -160,12 +156,12 @@ _TRANSLATION_REPORT_LINE = (
 def _paper_to_row(
     paper: dict[str, Any],
     *,
-    equation_id: str,
+    equation_id: str | None,
     fetched_at: str,
     is_seed: bool = True,
     action: str = "fetched",
     chaining_hop: int | None = None,
-    source_tag: str = "semanticscholar",
+    source_tag: str = "s2",
     source_kind: SourceKind | None = None,
 ) -> dict[str, Any]:
     """Mapea un objeto JSON de Semantic Scholar a la fila del schema canónico.
@@ -179,14 +175,15 @@ def _paper_to_row(
     Args:
         paper: Objeto JSON de un paper de Semantic Scholar (``/paper/search``,
             ``/paper/batch`` o el ``citingPaper`` de ``/paper/{id}/citations``).
-        equation_id: ID de la ecuación que originó la búsqueda (para provenance).
+        equation_id: ID de la ecuación que originó la búsqueda (para provenance),
+            o ``None`` si no aplica (forward chaining, ADR 0050 D2).
         fetched_at: Timestamp ISO de la consulta.
         is_seed: Si el paper es semilla (``True``) o candidato (``False``).
         action: Tipo de evento de provenance (``'fetched'``, ``'fetched_by_id'``).
         chaining_hop: Profundidad del chaining (1 = primera expansión), o
             ``None`` si no aplica (seed/fetch_works_by_ids).
         source_tag: Etiqueta de fuente para el evento de provenance.
-            Default ``'semanticscholar'``.
+            Default ``'s2'`` (token ``Provider.S2``, ADR 0053 D1.6).
         source_kind: Origen semántico del evento (ADR 0050 D2). ``seed()``
             pasa ``"seed_equation"``; ``None`` para el resto.
 
@@ -481,7 +478,7 @@ class SemanticScholarSource:
 
         papers = self._fetch_search(query)
 
-        translation_report = [_TRANSLATION_REPORT_LINE]
+        translation_report = [TRANSLATION_REPORT_LINE]
 
         rows = [
             _paper_to_row(
@@ -514,7 +511,7 @@ class SemanticScholarSource:
                         equation_id=equation_id,
                         query=query,
                         translation_report=translation_report,
-                        engine="semanticscholar",
+                        engine=Provider.S2.value,
                         params=equation_params,
                         created_at=created_at,
                     )
@@ -770,6 +767,36 @@ class SemanticScholarSource:
             attribution[paper_id] = citer_ids
             works_map.update(paper_works)
         return attribution, works_map
+
+    def work_to_row(
+        self,
+        work: dict[str, Any],
+        *,
+        equation_id: str | None,
+        fetched_at: str,
+        is_seed: bool = True,
+        action: str = "fetched",
+        chaining_hop: int | None = None,
+        source_tag: str = "s2",
+        source_kind: SourceKind | None = None,
+    ) -> dict[str, Any]:
+        """Mapea un ``citingPaper`` de S2 a la fila canónica (ADR 0053 D1.5).
+
+        Contrato duck-typed que consume el ``Forager`` para materializar los
+        candidatos forward con metadata real (el ``works_map`` de
+        ``fetch_citing_batch_with_works`` trae JSON crudo de S2, no de
+        OpenAlex).  Envuelve ``_paper_to_row``.
+        """
+        return _paper_to_row(
+            work,
+            equation_id=equation_id,
+            fetched_at=fetched_at,
+            is_seed=is_seed,
+            action=action,
+            chaining_hop=chaining_hop,
+            source_tag=source_tag,
+            source_kind=source_kind,
+        )
 
     def fetch_citing_batch(
         self,

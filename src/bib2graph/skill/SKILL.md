@@ -98,6 +98,12 @@ De idea difusa → `seed --equation "..."`:
   AND entre sí. Ej:
   `("unequal exchange" OR "ecological debt") AND (trade OR commerce)`.
 - **Scope**: `--min-year/--max-year`, `--exclude "<términos a sacar>"`.
+- **Proveedor**: por defecto `openalex`. Se fija por investigación con
+  `b2g init --source {openalex,s2}` y `--source` lo pisa por invocación
+  (precedencia: `--source` > `workspace.json` > `openalex`); hoy un `--source`
+  distinto del de la investigación es error (exit 2). `s2` (Semantic Scholar)
+  necesita `S2_API_KEY` en el entorno para sembrar (el forrajeo anda sin key, más lento) y **no** acepta `--exclude`,
+  `--min-year/--max-year` ni `--native` (la query va nativa, sin traducir).
 - **Cuándo dejarla mutar (Bates):** tras `read top`, si los centrales revelan un
   término mejor o un subcampo, **refiná la ecuación y re-`seed`**. Eso es señal de
   buen forrajeo, no de error.
@@ -166,12 +172,13 @@ bloque copy-paste de arriba):
 ## Referencia de comandos (v1)
 
 - `seed` — `--equation` · `--from-bib` · `--exclude` · `--min-year/--max-year` ·
-  `--max-results` · `--resolve`
+  `--max-results` · `--resolve` · `--source`
+- `init` — `--source {openalex,s2}` (proveedor por defecto de la investigación)
 - `chain` — `--depth` · `--direction backward|forward` · `--max-candidates` ·
-  `--preview`
+  `--preview` · `--source`
 - `curate {dump,apply,accept,reject,filter}` — `--ids` · `--language` ·
   `--min-citations` · `--type` · `--year-gte/--year-lte` · `--scope`
-- `build` — `--spec` · `--scope` · `--min-weight`
+- `build` — `--spec` · `--scope` · `--min-weight` · `--source`
 - `read {list,stats,show,top}`
 
 Para cualquier flag, `b2g <verbo> --help` es la fuente autoritativa.

@@ -91,6 +91,22 @@ class NetworkKind(StrEnum):
     KEYWORD_COOCCURRENCE = "keyword_cooccurrence"
 
 
+class Provider(StrEnum):
+    """Proveedor (motor de extracción) de una investigación (ADR 0053 D1).
+
+    Un token por proveedor en todo el sistema: el valor del CLI (``--source``)
+    es el valor persistido (``workspace.json.source``, ``equations.engine``,
+    ``ProvenanceEvent.source``).  ``doaj`` entra con #252 (no se publica un
+    proveedor antes de que su ``Source`` exista).
+    """
+
+    OPENALEX = "openalex"
+    S2 = "s2"
+
+
+DEFAULT_PROVIDER = Provider.OPENALEX
+
+
 def doi_to_url(doi: str | None) -> str | None:
     """Deriva la URL canónica ``https://doi.org/<doi>`` a partir de un DOI.
 

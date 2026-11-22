@@ -26,6 +26,11 @@ eso reproducible. Trade-off honesto: rankear por estructura presente sesga hacia
 central/popular (efecto Mateo); el scent **prioriza**, la exhaustividad la sostienen los
 filtros (PRISMA) en `curate`.
 
+**Proveedor de datos:** por defecto `openalex`; se fija por investigación con
+`b2g init --source {openalex,s2}` y `--source` lo pisa por invocación (precedencia:
+`--source` > `workspace.json` > `openalex`; hoy uno distinto del de la investigación es
+exit 2). `s2` necesita `S2_API_KEY` para sembrar (el forrajeo anda sin key) y no acepta `--exclude`/`--min-year`/`--max-year`/`--native`.
+
 **Irreductiblemente humanos:** pasos 0, 4, 6, 7. La herramienta **no automatiza el juicio**:
 asiste el forrajeo con estructura y le da al humano el material para el sensemaking.
 
