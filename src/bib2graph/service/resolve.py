@@ -93,7 +93,6 @@ def _resolve_dois_on_store(
         store: ``DuckDBStore`` ya abierto y listo para leer/escribir.
         email: Email para el polite pool de OpenAlex (recomendado).
         transport: Transport inyectable para tests (``httpx.MockTransport``).
-        provider: Carril sobre el que opera el store (ADR 0053 D2.1).
 
     Returns:
         Dict con:

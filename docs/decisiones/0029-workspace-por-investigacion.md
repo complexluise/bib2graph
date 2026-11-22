@@ -215,3 +215,10 @@ El resto del contrato (envelope `schema="1"`, exit codes, estructura del workspa
 > `WORKSPACE_SCHEMA_VERSION` no cambia y un manifest sin el campo se lee como `openalex`. En Python se
 > expone como `Workspace.provider`, porque `Workspace.source` ya nombra el origen de la resolución
 > (`flag|env|cwd|init`).
+
+> **Nota append-only — `b2g init .` migra el store a v2 (2026-11-22, ADR [0053](0053-multiproveedor-seleccion-coexistencia-identidad.md) Corte 3a, #253).**
+> Adoptar un `.duckdb` legacy con `b2g init .` (enmienda #75) ahora además lo **migra** al esquema de
+> store v2 (carriles, `store_meta`). Sus filas se etiquetan con el `--source` del `init` (default
+> `openalex`), que pasa a ser `workspace.json.source`. Lo mismo pasa al abrir por primera vez cualquier
+> workspace existente con una bib2graph nueva. La migración no tiene vuelta atrás: conviene hacer
+> `b2g snapshot create` antes de actualizar.

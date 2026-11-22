@@ -839,5 +839,9 @@ def curate_paper(
         raise DataError(f"Decisión '{decision}' inválida. Valores válidos: {valid}.")
 
     if decision == "accepted":
-        return accept_papers(store_path, [paper_id], by=by, decided_at=decided_at)
-    return reject_papers(store_path, [paper_id], by=by, decided_at=decided_at)
+        return accept_papers(
+            store_path, [paper_id], by=by, decided_at=decided_at, provider=provider
+        )
+    return reject_papers(
+        store_path, [paper_id], by=by, decided_at=decided_at, provider=provider
+    )

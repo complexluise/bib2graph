@@ -493,6 +493,13 @@ FROM (
 WHERE corpus.id = winner.id AND corpus.curation_status <> winner.status
 """
 
+# Columnas v1 (sin ``provider``) de las hermanas que la migración reconstruye.
+_SIBLING_V1_COLUMNS: dict[str, tuple[str, ...]] = {
+    "referenced_but_not_fetched": ("ref_id", "cycle_round", "observed_at"),
+    "filter_log": ("name", "criteria", "count_before", "count_after", "recorded_at"),
+    "enricher_log": ("name", "params_json", "recorded_at"),
+}
+
 # Tablas de datos que ``_clone`` copia al clonar un backend ``:memory:``.
 _DATA_TABLES = (
     "corpus",
@@ -582,7 +589,7 @@ class DuckDBBackend:
                 "El archivo puede estar bloqueado por otro escritor (ADR 0019). "
                 "Cerrá el otro proceso y reintentá."
             ) from exc
-        self._setup()
+        self._setup_or_close()
         if table is not None:
             self._upsert_table(table)
 
@@ -592,6 +599,17 @@ class DuckDBBackend:
         return self._provider
 
     # Inicialización interna
+
+    def _setup_or_close(self) -> None:
+        """``_setup()``; si falla (migración, versión futura) cierra la conexión.
+
+        Evita dejar el lock del archivo tomado tras un error de apertura.
+        """
+        try:
+            self._setup()
+        except BaseException:
+            self._con.close()
+            raise
 
     def _table_exists(self, name: str) -> bool:
         row = self._con.execute(
@@ -690,12 +708,27 @@ class DuckDBBackend:
             )
             self._con.execute("DROP TABLE corpus")
             self._con.execute("ALTER TABLE corpus_v2 RENAME TO corpus")
-            for sibling in ("referenced_but_not_fetched", "filter_log", "enricher_log"):
-                if not self._column_exists(sibling, "provider"):
-                    self._con.execute(
-                        f"ALTER TABLE {sibling} "
-                        f"ADD COLUMN provider VARCHAR DEFAULT '{legacy}'"
-                    )
+            # DuckDB no admite ADD COLUMN ... NOT NULL: se reconstruyen las
+            # hermanas con la DDL nueva (provider NOT NULL), igual que un store
+            # nuevo, para que el esquema migrado y el fresco sean idénticos.
+            for sibling, old_cols in _SIBLING_V1_COLUMNS.items():
+                if self._column_exists(sibling, "provider"):
+                    continue
+                ddl = {
+                    "referenced_but_not_fetched": _DDL_REFERENCED_BUT_NOT_FETCHED,
+                    "filter_log": _DDL_FILTER_LOG,
+                    "enricher_log": _DDL_ENRICHER_LOG,
+                }[sibling]
+                tmp = f"{sibling}_v2"
+                self._con.execute(ddl.replace(sibling, tmp, 1))
+                sib_cols = ", ".join(old_cols)
+                self._con.execute(
+                    f"INSERT INTO {tmp} ({sib_cols}, provider) "
+                    f"SELECT {sib_cols}, ? FROM {sibling}",
+                    [legacy],
+                )
+                self._con.execute(f"DROP TABLE {sibling}")
+                self._con.execute(f"ALTER TABLE {tmp} RENAME TO {sibling}")
             self._con.execute(
                 "INSERT OR REPLACE INTO store_meta (key, value) "
                 "VALUES ('schema_version', ?)",
@@ -876,7 +909,7 @@ class DuckDBBackend:
         new_backend._legacy_provider = self._legacy_provider
         if self._path == ":memory:":
             new_backend._con = duckdb.connect(":memory:")
-            new_backend._setup()
+            new_backend._setup_or_close()
             for name in _DATA_TABLES:
                 src = self._con.execute(f"SELECT * FROM {name}").to_arrow_table()
                 if len(src) == 0:
@@ -890,7 +923,7 @@ class DuckDBBackend:
                     new_backend._con.unregister("_clone_src")
             return new_backend
         new_backend._con = duckdb.connect(self._path)
-        new_backend._setup()
+        new_backend._setup_or_close()
         return new_backend
 
     # TabularBackend protocol

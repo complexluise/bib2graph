@@ -639,3 +639,65 @@ Append-only; el DoD de arriba queda como historia (no se tildan las casillas).
 5. **Huérfanos — resuelto en este corte:** `persist_replace` vacía `corpus` pero no `external_ids`;
    por eso `add_external_ids_bulk` borra en la misma operación las filas cuyo `paper_id` ya no está en
    `corpus` (p. ej. una fila `src:` que ganó DOI). Precondición: llamar con el corpus ya persistido.
+
+## Enmienda (2026-11-22) — Corte 3a (#253, parte store) as-built: carriles en el store, migración v1→v2 y curación por `id` (BREAKING para stores)
+
+Append-only; el texto y los DoD de arriba quedan como historia (no se tildan las casillas). El Corte 3
+se partió como preveía el plan: **3a** (store) en este PR y **3b** (CLI) después.
+
+1. **Hecho según D2.1/D2.2/D2.4 y el DoD de 3a:** `Col.PROVIDER` en `CORPUS_SCHEMA` (no-nullable,
+   después de `id`) y en `PaperRow`; `SCHEMA_VERSION = "2"`. Las `Source` sellan su token y
+   `BibtexSource(provider=…)` recibe el carril; los citantes que materializa el `Forager` heredan el
+   carril del corpus que se expande. DDL con `PRIMARY KEY (id, provider)` y upsert
+   `ON CONFLICT (id, provider)`. `DuckDBBackend(table=None, *, path=None, provider=…, legacy_provider=…)`,
+   `DuckDBStore(path, provider, legacy_provider)`, `open_store`/`open_store_readonly` con los mismos
+   dos parámetros; `_clone()` conserva el carril. Vista temporal `corpus_lane` para todas las lecturas
+   (incluidos los tres SQL crudos de `status.py`/`reads.py`). Cada escritura valida el carril
+   (`ProviderMismatchError`), `overwrite_corpus` borra solo su carril y `_seq` es por carril.
+   `_sync_curation_across_lanes` corre en `_upsert_table`/`overwrite_corpus`/`add_paper`/
+   `apply_curation`, y el evento de procedencia queda solo en el carril que decidió. Hay columna
+   `provider` en `referenced_but_not_fetched`/`filter_log`/`enricher_log`, y `load_equations()`
+   filtra por `engine = carril`. `store_meta` + migración v1→v2 transaccional con carril legacy =
+   `workspace.json.source` (`Workspace.init` lo pasa; `b2g init .` migra un `.duckdb` legacy con su
+   `--source`); la segunda apertura es no-op. `Corpus.provider`, `merge` entre proveedores →
+   `ProviderMismatchError`, y `add_paper` sin `provider` hereda el carril del corpus.
+2. **`ProviderMismatchError` es `ValueError`** (en `backends/base.py`, re-exportada por
+   `bib2graph.backends`), no `B2GError`. Hoy solo `run_restore` la traduce a `DataError`. Mientras rija
+   el guard R1, ningún otro camino del CLI puede recibirla de un input del usuario.
+3. **Compat de snapshot v1 = `read_corpus_parquet(path)`** (`corpus.py`), usada por
+   `CorpusSnapshot.corpus` y `run_restore`. Completa `provider = "openalex"` **cuando falta la
+   columna** (no mira `manifest.schema_version`). Los `examples/` siguen en parquet v1 y se leen por
+   esta vía: el gate R2 no exigió re-snapshot porque compara cargas entre sí, no contra un hash
+   commiteado.
+4. **Versión futura del store → `StoreSchemaError`** (nuevo, `backends/duckdb.py`, subclase de
+   `OSError` como `StoreLockedError`), que el CLI mapea a exit 5. D2.4 no lo preveía.
+5. **Migraciones aditivas históricas** (`_seq`, `openalex_id → source_id`): ahora corren solo sobre un
+   store v1, **antes** de la reconstrucción. Es equivalente a "quedan como están" (D2.4), porque un
+   store v2 ya las tiene.
+6. **Sincronización de curación en SQL** (decisión de la IA, ver `registro-ia.md` 256.5): en vez de
+   plegar `_merge_curation_status` en Python fila a fila, una sola sentencia `UPDATE` set-based elige
+   por id `ORDER BY decided_at_humano DESC NULLS LAST, prioridad DESC`, con una UDF que reutiliza
+   `_latest_human_decided_at`. Es el orden lexicográfico equivalente al fold de dos filas. Matiz frente
+   a §Alternativas ("reimplementar en SQL la regla"): se reimplementa **el orden**, no la extracción de
+   la fecha, que sigue en Python.
+7. **`register_external_ids(corpus, engine=None)`:** `engine` = carril del store. El argumento queda por
+   compat con el Corte 2 y, si difiere del carril, lanza `ProviderMismatchError`. La limpieza de
+   huérfanos se acota a `engine = carril` y compara contra `corpus_lane`. **Desvío del DoD del Corte 2**
+   ("la llamada se muda adentro del backend… para que ningún camino pueda olvidarla"): el engine sí
+   sale del backend, pero cada ingesta sigue llamándola explícitamente. `--resolve` pasa
+   `engine=openalex` explícito, coherente porque exige `resolve_doi`.
+8. **Estado transitorio hasta 3b** (difiere de D2.3 y del DoD de 3, que se cumplen en 3b):
+   - **El guard R1 sigue activo.** Los comandos de lectura todavía no tienen `--source` y operan sobre
+     el carril de `workspace.json.source`. Retirar el guard antes dejaría carriles que la lectura no
+     ve.
+   - **`snapshot restore`** restaura en el carril del store. Un parquet de otro carril da `DataError`
+     exit 2 sin escribir, en lugar de "restaurar en el carril que declara el parquet" (D2.3).
+   - **Pendientes de 3b:** `source_option` en `curate`/`read`/`status`/`export`/`snapshot create`/
+     `validate`; `restore` por carril del parquet; retirar el guard; `networks/.provider`; `status`
+     contra el carril sellado y `data.providers`; metadata Arrow `provider` con su error y su warning;
+     traducir `ProviderMismatchError` a `DataError` donde el CLI pueda recibirla.
+9. **BREAKING para stores** (D2.4, ya anunciado en §Consecuencias): abrir un `.duckdb` con esta versión
+   lo migra a v2 **sin vuelta atrás**. Una bib2graph anterior no puede escribirlo. El respaldo es
+   `b2g snapshot create` **antes** de actualizar. El `corpus_hash` de todo corpus cambia una vez, así
+   que `status` avisa *stale* una vez. El release lo declara en el footer `BREAKING CHANGE:` del commit
+   (CONTRIBUTING).

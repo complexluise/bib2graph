@@ -277,6 +277,7 @@ def run_chain(
             top=top,
             scope=scope,
             provider=provider,
+            workspace_provider=workspace_provider,
         )
 
     # Guard R1 transitorio: antes de abrir el store (nada se escribe).
@@ -477,6 +478,7 @@ def _run_chain_preview(
     top: int | None = None,
     scope: str | None = None,
     provider: Provider = DEFAULT_PROVIDER,
+    workspace_provider: Provider | None = None,
 ) -> dict[str, Any]:
     """Implementación del modo preview (dry-run) de ``run_chain``.
 
@@ -496,6 +498,9 @@ def _run_chain_preview(
         top: Acota a las ``top`` semillas más "centrales" (``--top``).
         scope: Acota al scope ``all``/``accepted``/``seeds`` (``--scope``).
         provider: Carril sobre el que se estima (ADR 0053 D2.1).
+        workspace_provider: Proveedor de la investigación; es el carril legacy
+            si abrir el store dispara la migración v1→v2 (el preview no debe
+            re-etiquetar un store de otro proveedor).
 
     Returns:
         Dict con las claves del envelope de preview (``preview=True``,
@@ -505,7 +510,7 @@ def _run_chain_preview(
     """
     from bib2graph.foraging import Forager
 
-    store = open_store(store_path, provider, provider)
+    store = open_store(store_path, provider, workspace_provider or provider)
     try:
         corpus = store.load()
 

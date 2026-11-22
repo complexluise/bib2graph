@@ -155,3 +155,10 @@ El preprocesamiento determinista se ejecuta **automáticamente en la ingesta**, 
 > (proveedor), y `persist_replace`/`overwrite_corpus` reescribe **solo ese carril**
 > (`DELETE … WHERE provider = ?`). "Cross-biblioteca" pasa a significar "en todo el carril": no hay
 > dedup entre proveedores. El algoritmo (0026) y el resto de este ADR no cambian.
+
+> **Nota append-only — as-built del dedup intra-carril (2026-11-22, ADR [0053](0053-multiproveedor-seleccion-coexistencia-identidad.md) Corte 3a, #253).**
+> La nota anterior está implementada: `persist_replace` → `overwrite_corpus` hace
+> `DELETE FROM corpus WHERE provider = ?` y reasigna `_seq` solo en ese carril. Un efecto lateral
+> deliberado: al terminar, el backend **sincroniza `curation_status`** de los `id` reescritos en los
+> **otros** carriles (curación por paper, 0053 D2.2). Es lo único que un `persist_replace` escribe
+> fuera de su carril; los metadatos, las listas y la procedencia de los otros carriles no se tocan.

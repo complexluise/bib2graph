@@ -1001,23 +1001,38 @@ def test_columna_provider_es_aditiva_en_el_arrow() -> None:
 
 
 _RAW_CORPUS_SQL = re.compile(
-    r"\b(FROM|JOIN|INTO|UPDATE)\s+corpus\b(?!_)", re.IGNORECASE
+    r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:main\.)?corpus\b(?!_)", re.IGNORECASE
 )
+# Une literales adyacentes ("...FROM" <salto> " corpus") antes de normalizar.
+_ADJACENT_LITERALS = re.compile(r"[\"']\s*\n\s*f?[\"']")
+
+
+def _normalized(text: str) -> str:
+    return re.sub(r"\s+", " ", _ADJACENT_LITERALS.sub("", text))
+
+
+def test_guardarrail_detecta_multilinea_y_main_corpus() -> None:
+    assert _RAW_CORPUS_SQL.search(_normalized('q = (\n "SELECT 1 FROM"\n " corpus"\n)'))
+    assert _RAW_CORPUS_SQL.search(_normalized("SELECT *\n  FROM\n   main.corpus"))
+    assert _RAW_CORPUS_SQL.search(_normalized("DELETE FROM\ncorpus"))
+    assert not _RAW_CORPUS_SQL.search(_normalized("SELECT * FROM corpus_lane"))
 
 
 def test_no_sql_crudo_sobre_corpus_fuera_de_backends() -> None:
     """R2: un `FROM corpus` crudo fuera de `backends/` leería/borraría TODOS los carriles.
 
     Todo SQL de lectura del corpus fuera del backend debe ir contra `corpus_lane`.
+    Se normalizan whitespace y literales adyacentes (SQL multilínea) y se
+    detecta también `main.corpus`.
     """
     src = Path(__file__).resolve().parents[2] / "src" / "bib2graph"
     offenders: list[str] = []
     for py in src.rglob("*.py"):
         if "backends" in py.relative_to(src).parts:
             continue
-        for lineno, line in enumerate(py.read_text(encoding="utf-8").splitlines(), 1):
-            if _RAW_CORPUS_SQL.search(line):
-                offenders.append(f"{py.relative_to(src)}:{lineno}: {line.strip()}")
+        text = _normalized(py.read_text(encoding="utf-8"))
+        for m in _RAW_CORPUS_SQL.finditer(text):
+            offenders.append(f"{py.relative_to(src)}: ...{m.group(0)}...")
     assert offenders == [], (
         "SQL crudo sobre `corpus` fuera de backends/:\n" + "\n".join(offenders)
     )
@@ -1055,3 +1070,141 @@ def _dt(iso: str) -> Any:
     from datetime import datetime
 
     return datetime.fromisoformat(iso)
+
+
+# ---------------------------------------------------------------------------
+# Correcciones del verifier/architect (3a)
+# ---------------------------------------------------------------------------
+
+
+def _legacy_sibling_providers(path: Path) -> set[str]:
+    con = duckdb.connect(str(path))
+    try:
+        out: set[str] = set()
+        for t in ("referenced_but_not_fetched", "filter_log", "enricher_log"):
+            out |= {r[0] for r in con.execute(f"SELECT provider FROM {t}").fetchall()}
+        return out
+    finally:
+        con.close()
+
+
+def test_chain_preview_con_source_ajeno_no_migra_a_otro_carril(tmp_path: Path) -> None:
+    """Regresión: `chain --preview --source s2` en un store v1 de un workspace
+    openalex no debe re-etiquetar todo como s2 (migración irreversible)."""
+    from bib2graph.cli.commands.chain import run_chain
+
+    path = tmp_path / "v1.duckdb"
+    _make_v1_store(path)
+    run_chain(
+        path,
+        preview=True,
+        provider=S2,
+        workspace_provider=OA,
+    )
+    assert {p for _, p, _ in _statuses(path)} == {"openalex"}
+    assert _legacy_sibling_providers(path) == {"openalex"}
+
+
+def test_curate_paper_respeta_el_carril(tmp_path: Path) -> None:
+    from bib2graph.service.curate import curate_paper
+
+    path = tmp_path / "lib.duckdb"
+    s2 = _lane_store(path, S2)
+    s2.persist(Corpus.from_arrow(_table([_row("a", "s2")])))
+    s2.close()
+    curate_paper(
+        path,
+        "a",
+        decision="accepted",
+        provider=S2,
+        decided_at=_dt("2026-01-01T00:00:00+00:00"),
+    )
+    assert [s for _, p, s in _statuses(path) if p == "s2"] == ["accepted"]
+    curate_paper(
+        path,
+        "a",
+        decision="rejected",
+        provider=S2,
+        decided_at=_dt("2026-02-01T00:00:00+00:00"),
+    )
+    assert [s for _, p, s in _statuses(path) if p == "s2"] == ["rejected"]
+
+
+def _schema(path: Path, table: str) -> list[tuple[Any, ...]]:
+    con = duckdb.connect(str(path))
+    try:
+        return con.execute(
+            "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
+            "WHERE table_name = ? ORDER BY ordinal_position",
+            [table],
+        ).fetchall()
+    finally:
+        con.close()
+
+
+def test_migrado_y_nuevo_tienen_el_mismo_esquema(tmp_path: Path) -> None:
+    v1 = tmp_path / "v1.duckdb"
+    _make_v1_store(v1)
+    DuckDBStore(v1).close()
+    new = tmp_path / "new.duckdb"
+    DuckDBStore(new).close()
+    for table in ("corpus", "referenced_but_not_fetched", "filter_log", "enricher_log"):
+        assert _schema(v1, table) == _schema(new, table), table
+    assert ("provider", "VARCHAR", "NO") in _schema(v1, "filter_log")
+
+
+def test_fallo_de_apertura_libera_el_lock(tmp_path: Path) -> None:
+    from bib2graph.backends.duckdb import StoreSchemaError
+
+    path = tmp_path / "lib.duckdb"
+    DuckDBStore(path).close()
+    con = duckdb.connect(str(path))
+    con.execute("UPDATE store_meta SET value = '99' WHERE key = 'schema_version'")
+    con.close()
+    with pytest.raises(StoreSchemaError):
+        DuckDBStore(path)
+    # El archivo no quedó bloqueado por la conexión fallida.
+    con = duckdb.connect(str(path))
+    con.close()
+    path.unlink()  # en Windows falla si quedó un handle abierto
+
+
+def test_init_con_store_de_version_futura_sale_exit_5_accionable(
+    tmp_path: Path,
+) -> None:
+    from click.testing import CliRunner
+
+    from bib2graph.cli import b2g
+
+    root = tmp_path / "ws"
+    root.mkdir()
+    lib = root / "library.duckdb"
+    DuckDBStore(lib).close()
+    con = duckdb.connect(str(lib))
+    con.execute("UPDATE store_meta SET value = '99' WHERE key = 'schema_version'")
+    con.close()
+    result = CliRunner().invoke(b2g, ["init", str(root), "--json"])
+    assert result.exit_code == 5, result.output
+    assert "99" in result.output and "Actualizá bib2graph" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_add_paper_no_materializa_el_corpus(tmp_path: Path) -> None:
+    store = _lane_store(tmp_path / "lib.duckdb", S2)
+    try:
+        corpus = store.load()
+        real = corpus._backend.to_arrow
+        calls = {"n": 0}
+
+        def spy() -> pa.Table:
+            calls["n"] += 1
+            return real()
+
+        corpus._backend.to_arrow = spy  # type: ignore[method-assign]
+        row = _row("a", "s2")
+        row.pop(Col.PROVIDER)
+        _ = corpus.provider
+        corpus.add_paper({k: v for k, v in row.items() if v is not None})
+        assert calls["n"] == 0
+    finally:
+        store.close()

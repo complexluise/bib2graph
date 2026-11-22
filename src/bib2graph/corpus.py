@@ -308,7 +308,15 @@ class Corpus:
         Raises:
             ProviderMismatchError: Si la tabla mezcla proveedores.
         """
-        lanes = table_providers(self._backend.to_arrow())
+        # Sin materializar el corpus: un backend atado a un carril (DuckDB) ya
+        # sabe cuál es; el backend en memoria expone su tabla sin copiarla.
+        lane = getattr(self._backend, "provider", None)
+        if lane is not None:
+            return str(lane.value) if len(self._backend) > 0 else None
+        table = getattr(self._backend, "_table", None)
+        if table is None:
+            table = self._backend.to_arrow()
+        lanes = table_providers(table)
         if len(lanes) > 1:
             raise ProviderMismatchError(
                 f"El corpus mezcla proveedores {lanes}: un Corpus es mono-proveedor "
@@ -428,7 +436,12 @@ class Corpus:
         if not row_copy.get(Col.PROVIDER):
             # Un paper agregado sin carril explícito hereda el del corpus
             # (mono-proveedor, ADR 0053 D2.1); un corpus vacío usa el default.
-            row_copy[Col.PROVIDER] = self.provider or DEFAULT_PROVIDER.value
+            bound = getattr(self._backend, "provider", None)
+            row_copy[Col.PROVIDER] = (
+                self.provider
+                or (str(bound.value) if bound is not None else None)
+                or DEFAULT_PROVIDER.value
+            )
         if not row_copy.get(Col.ID):
             raw_year = row_copy.get(Col.YEAR)
             row_copy[Col.ID] = _compute_id(
