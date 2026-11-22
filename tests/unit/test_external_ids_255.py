@@ -100,10 +100,12 @@ def _external_ids(store_path: Path) -> list[tuple[str, str, str]]:
         store.close()
 
 
-def _rows(store_path: Path) -> list[dict[str, Any]]:
+def _rows(
+    store_path: Path, provider: Provider = Provider.OPENALEX
+) -> list[dict[str, Any]]:
     from bib2graph.stores.duckdb import DuckDBStore
 
-    store = DuckDBStore(store_path)
+    store = DuckDBStore(store_path, provider=provider)
     try:
         return store.load().to_arrow().to_pylist()
     finally:
@@ -119,6 +121,7 @@ def _row(id_: str, source_id: str | None, doi: str | None = None) -> dict[str, A
             Col.DOI: doi,
             Col.TITLE: f"Paper {id_}",
             Col.YEAR: 2020,
+            Col.PROVIDER: "openalex",
             Col.IS_SEED: True,
             Col.CURATION_STATUS: "candidate",
         }
@@ -170,7 +173,7 @@ class TestSeedRegistra:
             transport=_s2_transport(),
         )
 
-        rows = _rows(store_path)
+        rows = _rows(store_path, Provider.S2)
         assert [r[Col.SOURCE_ID] for r in rows] == ["s2seedaaa111"]
         # Token Provider ("s2"), no "semanticscholar" (D1.6).
         assert _external_ids(store_path) == [(rows[0][Col.ID], "s2", "s2seedaaa111")]
@@ -216,15 +219,37 @@ class TestRegisterExternalIds:
     def test_engine_distinto_coexiste_por_paper(self, tmp_path: Path) -> None:
         from bib2graph.stores.duckdb import DuckDBStore
 
-        store = DuckDBStore(tmp_path / "lib.duckdb")
+        path = tmp_path / "lib.duckdb"
+        oa = DuckDBStore(path, provider=Provider.OPENALEX)
         try:
-            store.persist_replace(_corpus([_row("a", "W1")]))
-            store.register_external_ids(_corpus([_row("a", "W1")]), Provider.OPENALEX)
-            store.register_external_ids(_corpus([_row("a", "s2x")]), Provider.S2)
-            assert store.backend.external_ids_for("a") == {
+            oa.persist_replace(_corpus([_row("a", "W1")]))
+            oa.register_external_ids(_corpus([_row("a", "W1")]))
+        finally:
+            oa.close()
+        # ADR 0053 D2: el engine es el carril; el mismo id en el carril s2 registra
+        # su propio source_id sin pisar el de openalex.
+        s2_row = _row("a", "s2x")
+        s2_row[Col.PROVIDER] = "s2"
+        s2 = DuckDBStore(path, provider=Provider.S2)
+        try:
+            s2.persist_replace(_corpus([s2_row]))
+            s2.register_external_ids(_corpus([s2_row]))
+            assert s2.backend.external_ids_for("a") == {
                 "openalex": "W1",
                 "s2": "s2x",
             }
+        finally:
+            s2.close()
+
+    def test_engine_ajeno_al_carril_falla(self, tmp_path: Path) -> None:
+        from bib2graph.backends.base import ProviderMismatchError
+        from bib2graph.stores.duckdb import DuckDBStore
+
+        store = DuckDBStore(tmp_path / "lib.duckdb", provider=Provider.OPENALEX)
+        try:
+            store.persist_replace(_corpus([_row("a", "W1")]))
+            with pytest.raises(ProviderMismatchError):
+                store.register_external_ids(_corpus([_row("a", "W1")]), Provider.S2)
         finally:
             store.close()
 
@@ -271,12 +296,14 @@ class TestOtrosCaminos:
         from bib2graph.service.snapshot import run_restore
 
         parquet = tmp_path / "corpus.parquet"
+        s2_row = _row("a", "s2abc")
+        s2_row[Col.PROVIDER] = "s2"
         pq.write_table(  # type: ignore[no-untyped-call]
-            pa.Table.from_pylist([_row("a", "s2abc")], schema=CORPUS_SCHEMA), parquet
+            pa.Table.from_pylist([s2_row], schema=CORPUS_SCHEMA), parquet
         )
         store_path = tmp_path / "lib.duckdb"
         run_restore(store_path, parquet, provider=Provider.S2)
-        rows = _rows(store_path)
+        rows = _rows(store_path, Provider.S2)
         assert _external_ids(store_path) == [(rows[0][Col.ID], "s2", "s2abc")]
 
 
@@ -292,7 +319,7 @@ class TestChainBuildRegistran:
         )
         if accepted:
             row[Col.CURATION_STATUS] = CurationStatus.ACCEPTED
-        store = DuckDBStore(store_path)
+        store = DuckDBStore(store_path, provider=Provider.S2)
         store.persist(_corpus(_rows_with_ids([row])))
         store.close()
 

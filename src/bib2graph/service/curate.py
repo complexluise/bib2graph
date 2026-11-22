@@ -39,7 +39,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from bib2graph.constants import Col, CurationStatus
+from bib2graph.constants import DEFAULT_PROVIDER, Col, CurationStatus, Provider
 from bib2graph.service._identity import resolve_idents
 from bib2graph.service.errors import DataError, StoreError
 
@@ -81,7 +81,7 @@ _STATUS_TO_DECISION: dict[str, str] = {
 VALID_SCOPES: frozenset[str] = frozenset({"candidates", "seeds", "all"})
 
 
-def _open_writable(path: Path) -> Any:
+def _open_writable(path: Path, provider: Provider | str = DEFAULT_PROVIDER) -> Any:
     """Abre el store para escritura; falla accionable si está bloqueado.
 
     Args:
@@ -97,7 +97,7 @@ def _open_writable(path: Path) -> Any:
     from bib2graph.stores.duckdb import DuckDBStore
 
     try:
-        return DuckDBStore(path)
+        return DuckDBStore(path, provider, provider)
     except StoreLockedError as exc:
         raise StoreError(str(exc)) from exc
     except OSError as exc:
@@ -223,6 +223,7 @@ def _filter_table_by_scope(table: Any, scope: str) -> Any:
 def run_curate_dump(
     store_path: str | Path,
     *,
+    provider: Provider | str = DEFAULT_PROVIDER,
     out_path: Path,
     scope: str = "candidates",
     include_all: bool = False,
@@ -251,7 +252,7 @@ def run_curate_dump(
     effective_scope = "all" if include_all else scope
 
     path = Path(store_path)
-    store = _open_writable(path)
+    store = _open_writable(path, provider)
     try:
         corpus = store.load()
         all_table = corpus.to_arrow()
@@ -290,6 +291,7 @@ def run_curate_from_csv(
     store_path: str | Path,
     csv_path: str | Path,
     *,
+    provider: Provider | str = DEFAULT_PROVIDER,
     by: str = "cli",
     decided_at: datetime | None = None,
 ) -> dict[str, Any]:
@@ -368,7 +370,7 @@ def run_curate_from_csv(
 
     curated_backend_close = None
     path = Path(store_path)
-    store = _open_writable(path)
+    store = _open_writable(path, provider)
     try:
         corpus = store.load()
 
@@ -403,6 +405,7 @@ def run_curate_from_csv(
 def filter_corpus(
     store_path: str | Path,
     *,
+    provider: Provider | str = DEFAULT_PROVIDER,
     year_gte: int | None = None,
     year_lte: int | None = None,
     language: list[str] | None = None,
@@ -465,7 +468,7 @@ def filter_corpus(
 
     path = Path(store_path)
     filtered_backend_close = None
-    store = _open_writable(path)
+    store = _open_writable(path, provider)
     try:
         corpus = store.load()
 
@@ -590,6 +593,7 @@ def accept_papers(
     store_path: str | Path,
     ids: list[str],
     *,
+    provider: Provider | str = DEFAULT_PROVIDER,
     by: str = "api",
     decided_at: datetime | None = None,
     query: str | None = None,
@@ -649,7 +653,7 @@ def accept_papers(
 
     path = Path(store_path)
     updated_backend_close = None
-    store = _open_writable(path)
+    store = _open_writable(path, provider)
     try:
         corpus = store.load()
 
@@ -698,6 +702,7 @@ def reject_papers(
     store_path: str | Path,
     ids: list[str],
     *,
+    provider: Provider | str = DEFAULT_PROVIDER,
     by: str = "api",
     decided_at: datetime | None = None,
     query: str | None = None,
@@ -753,7 +758,7 @@ def reject_papers(
 
     path = Path(store_path)
     updated_backend_close = None
-    store = _open_writable(path)
+    store = _open_writable(path, provider)
     try:
         corpus = store.load()
 
@@ -805,6 +810,7 @@ def curate_paper(
     store_path: str | Path,
     paper_id: str,
     *,
+    provider: Provider | str = DEFAULT_PROVIDER,
     decision: str,
     by: str = "api",
     decided_at: datetime | None = None,
@@ -833,5 +839,9 @@ def curate_paper(
         raise DataError(f"Decisión '{decision}' inválida. Valores válidos: {valid}.")
 
     if decision == "accepted":
-        return accept_papers(store_path, [paper_id], by=by, decided_at=decided_at)
-    return reject_papers(store_path, [paper_id], by=by, decided_at=decided_at)
+        return accept_papers(
+            store_path, [paper_id], by=by, decided_at=decided_at, provider=provider
+        )
+    return reject_papers(
+        store_path, [paper_id], by=by, decided_at=decided_at, provider=provider
+    )

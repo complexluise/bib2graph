@@ -30,7 +30,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from bib2graph.constants import Col, CurationStatus
+from bib2graph.constants import DEFAULT_PROVIDER, Col, CurationStatus, Provider
 from bib2graph.corpus import Corpus, _rows_with_ids
 from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
 
@@ -62,6 +62,7 @@ def _entry_to_row(
     entry: dict[str, Any],
     *,
     fetched_at: str,
+    provider: Provider | str = DEFAULT_PROVIDER,
 ) -> dict[str, Any]:
     """Mapea una entrada bibtexparser al schema canónico.
 
@@ -72,6 +73,7 @@ def _entry_to_row(
     Args:
         entry: Entrada de bibtexparser (dict de campos + metadatos).
         fetched_at: Timestamp ISO de la carga.
+        provider: Carril (ADR 0053 D2.1) en el que se ingesta el registro.
 
     Returns:
         Dict con todas las columnas del schema canónico (sin ``id``, que
@@ -128,6 +130,9 @@ def _entry_to_row(
     )
 
     return {
+        # ADR 0053 D2.1: un .bib no es un proveedor; se ingesta en el carril
+        # activo (la procedencia conserva source="bibtex").
+        Col.PROVIDER: str(Provider(provider).value),
         Col.SOURCE_ID: None,
         Col.DOI: doi,
         Col.TITLE: str(entry.get("title") or "").strip() or "",
@@ -168,6 +173,17 @@ class BibtexSource:
         source = BibtexSource()
         corpus = source.load("semillas.bib")
     """
+
+    def __init__(self, provider: Provider | str = DEFAULT_PROVIDER) -> None:
+        """Crea la fuente BibTeX.
+
+        Args:
+            provider: Carril (ADR 0053 D2.1) en el que se ingestan los
+                registros del ``.bib`` (un ``.bib`` no es un proveedor: la
+                frontera CLI pasa el carril activo).  Valor desconocido →
+                ``ValueError``.
+        """
+        self._provider: Provider = Provider(provider)
 
     def seed(self, query: str) -> SeedResult:
         """No implementado: BibTeX no siembra por ecuación.
@@ -241,7 +257,7 @@ class BibtexSource:
         rows: list[dict[str, Any]] = []
         skipped_no_title = 0
         for entry in bib_db.entries:
-            row = _entry_to_row(entry, fetched_at=fetched_at)
+            row = _entry_to_row(entry, fetched_at=fetched_at, provider=self._provider)
             # Saltar entradas sin título (no pueden cumplir el schema)
             if not row.get("title"):
                 skipped_no_title += 1

@@ -21,10 +21,12 @@ from bib2graph.cli._store import (
     workspace_echo,
     workspace_walkup_warning,
 )
-from bib2graph.constants import Col, CurationStatus
+from bib2graph.constants import DEFAULT_PROVIDER, Col, CurationStatus, Provider
 
 
-def run_validate(store_path: str | Path) -> dict[str, Any]:
+def run_validate(
+    store_path: str | Path, provider: Provider | str = DEFAULT_PROVIDER
+) -> dict[str, Any]:
     """Valida el schema del store y la consistencia del corpus.
 
     Abre el store, exporta la tabla Arrow y valida con ``validate_table``.
@@ -43,7 +45,7 @@ def run_validate(store_path: str | Path) -> dict[str, Any]:
     from bib2graph.schemas import SchemaError, validate_table
 
     # R5: open_store_readonly falla si el archivo no existe (no auto-crea).
-    store = open_store_readonly(store_path)
+    store = open_store_readonly(store_path, provider, provider)
 
     try:
         corpus = store.load()
@@ -118,7 +120,7 @@ def validate_cmd(
     Exit 0: válido. Exit 2: datos inválidos. Exit 5: store corrupto.
     """
     ws = resolve_workspace(ctx.obj)
-    data = run_validate(ws.library_path)
+    data = run_validate(ws.library_path, ws.provider)
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)

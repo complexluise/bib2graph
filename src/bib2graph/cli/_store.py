@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from bib2graph.cli._errors import StoreError, UsageError
+from bib2graph.constants import DEFAULT_PROVIDER, Provider
 
 # Re-exportar open_store desde la capa neutral (service.store) para:
 # 1. Mantener backward compat con todos los imports de ``cli._store.open_store``.
@@ -116,7 +117,11 @@ def resolve_workspace(ctx_obj: dict[str, Any]) -> Any:
         raise UsageError(str(exc)) from exc
 
 
-def open_store_readonly(path: str | Path) -> Any:
+def open_store_readonly(
+    path: str | Path,
+    provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str = DEFAULT_PROVIDER,
+) -> Any:
     """Abre el DuckDBStore en ``path`` para SOLO LECTURA.
 
     R5: a diferencia de ``open_store``, falla con un error accionable si el
@@ -126,6 +131,9 @@ def open_store_readonly(path: str | Path) -> Any:
 
     Args:
         path: Ruta al archivo ``.duckdb``.
+        provider: Carril (proveedor) sobre el que se lee (ADR 0053 D2.1).
+        legacy_provider: Carril con el que se etiqueta un store v1 si hay que
+            migrarlo (``workspace.json.source``; ADR 0053 D2.4).
 
     Returns:
         ``DuckDBStore`` abierto y listo para leer.
@@ -144,7 +152,7 @@ def open_store_readonly(path: str | Path) -> Any:
         )
 
     try:
-        return DuckDBStore(resolved)
+        return DuckDBStore(resolved, provider, legacy_provider)
     except StoreLockedError as exc:
         raise StoreError(str(exc)) from exc
     except OSError as exc:

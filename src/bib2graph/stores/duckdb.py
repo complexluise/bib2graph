@@ -18,7 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from bib2graph.backends.duckdb import DuckDBBackend, StoreLockedError
-from bib2graph.constants import Col, Provider
+from bib2graph.constants import DEFAULT_PROVIDER, Col, Provider
 from bib2graph.corpus import Corpus
 from bib2graph.cycle import CycleState
 from bib2graph.schemas import CORPUS_SCHEMA
@@ -31,14 +31,32 @@ class DuckDBStore:
 
     Implementa el Protocol ``Store``: ``persist`` / ``load``.
 
+    ADR 0053 D2: el store guarda varios carriles (proveedores) pero cada
+    instancia está atada a uno; ``load()`` devuelve un ``Corpus`` de ese carril.
+
     Args:
         path: Ruta al archivo ``.duckdb`` de la biblioteca viva.
+        provider: Carril sobre el que opera el store (default ``openalex``).
+        legacy_provider: Carril con el que se etiqueta un store v1 al migrarlo
+            a v2 (``workspace.json.source``; ADR 0053 D2.4).
     """
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        provider: Provider | str = DEFAULT_PROVIDER,
+        legacy_provider: Provider | str = DEFAULT_PROVIDER,
+    ) -> None:
         self._path = Path(path)
         # Abrir (o crear) el backend en disco; propaga StoreLockedError si bloqueado
-        self._backend: DuckDBBackend = DuckDBBackend(path=self._path)
+        self._backend: DuckDBBackend = DuckDBBackend(
+            path=self._path, provider=provider, legacy_provider=legacy_provider
+        )
+
+    @property
+    def provider(self) -> Provider:
+        """Carril sobre el que opera este store (ADR 0053 D2.1)."""
+        return self._backend.provider
 
     def persist(self, corpus: Corpus) -> None:
         """Persiste el corpus en la biblioteca viva (idempotente).
@@ -70,16 +88,21 @@ class DuckDBStore:
         """
         self._backend.overwrite_corpus(corpus.to_arrow())
 
-    def register_external_ids(self, corpus: Corpus, engine: Provider) -> int:
+    def register_external_ids(
+        self, corpus: Corpus, engine: Provider | None = None
+    ) -> int:
         """Registra en ``external_ids`` el ``source_id`` de cada fila (ADR 0053 Corte 2).
 
         Registra ``(id, engine, source_id)`` de cada fila con ``source_id`` no
-        nulo vía ``backend.add_external_ids_bulk`` (``engine`` = token
-        ``Provider``: ``openalex`` | ``s2``).  Las filas sin ``source_id`` (p. ej.
-        ``seed --from-bib`` sin ``--resolve``) no se registran.
+        nulo vía ``backend.add_external_ids_bulk``.  ``engine`` es el **carril**
+        del store (ADR 0053 D2, Corte 3a): el backend atado al carril es quien
+        sabe a qué proveedor pertenece cada ``source_id``.  Las filas sin
+        ``source_id`` (p. ej. ``seed --from-bib`` sin ``--resolve``) no se
+        registran.
 
-        Bulk (una sentencia) y deja la tabla sin huérfanos (``paper_id`` que ya
-        no está en ``corpus``).  Idempotente por la PK ``(paper_id, engine)``.
+        Bulk (una sentencia) y deja la tabla sin huérfanos **del carril**
+        (``paper_id`` que ya no está en el carril).  Idempotente por la PK
+        ``(paper_id, engine)``.
         Llamarlo al FINAL de la ingesta: si falla antes, la próxima ingesta
         rellena (es idempotente).  ``external_ids`` es una
         tabla lateral: no entra en ``corpus_hash`` (D4 de ADR 0042).
@@ -87,13 +110,27 @@ class DuckDBStore:
         Args:
             corpus: Corpus YA persistido (obligatorio: la limpieza de huérfanos
                 usa la tabla ``corpus``) del que leer ``id`` y ``source_id``.
-            engine: Proveedor que resolvió esos ``source_id``.
+            engine: Opcional; si se pasa debe coincidir con el carril del store
+                (compat con llamadores del Corte 2).  Por defecto, el carril.
 
         Returns:
             Cantidad de filas registradas.
+
+        Raises:
+            ProviderMismatchError: Si ``engine`` no es el carril del store.
         """
         import pyarrow as pa
         import pyarrow.compute as pc
+
+        from bib2graph.backends.base import ProviderMismatchError
+
+        lane = self._backend.provider
+        if engine is not None and Provider(engine) != lane:
+            raise ProviderMismatchError(
+                f"register_external_ids: engine={Provider(engine).value!r} no es el "
+                f"carril del store ({lane.value!r}); abrí el store en ese carril "
+                "(ADR 0053 D2)."
+            )
 
         table = corpus.to_arrow()
         mask = pc.is_valid(table.column(Col.SOURCE_ID))  # type: ignore[attr-defined]
@@ -102,7 +139,7 @@ class DuckDBStore:
         ext = pa.table(
             {
                 "paper_id": valid.column(Col.ID).cast(pa.string()),
-                "engine": pa.array([engine.value] * n, type=pa.string()),
+                "engine": pa.array([lane.value] * n, type=pa.string()),
                 "id": valid.column(Col.SOURCE_ID).cast(pa.string()),
             }
         )

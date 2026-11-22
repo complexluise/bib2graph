@@ -23,12 +23,13 @@ class Col(StrEnum):
 
         table.column(Col.REFERENCES_ID)
         row[Col.CURATION_STATUS]
-        f"SELECT * FROM corpus WHERE {Col.CURATION_STATUS} = 'accepted'"
+        f"SELECT * FROM corpus_lane WHERE {Col.CURATION_STATUS} = 'accepted'"
         # (para SQL, usar Col.X.value)
     """
 
     # Identificadores
     ID = "id"
+    PROVIDER = "provider"
     SOURCE_ID = "source_id"
     DOI = "doi"
 

@@ -52,6 +52,7 @@ def _make_row(
         "language": "en",
         "publisher": None,
         "research_areas": None,
+        "provider": "openalex",
         "is_seed": True,
         "curation_status": curation_status,
         "provenance": None,

@@ -112,7 +112,9 @@ def create_cmd(
     ws = resolve_workspace(ctx.obj)
     effective_out_dir: Path = Path(out_dir) if out_dir is not None else ws.snapshots_dir
 
-    data = run_snapshot(ws.library_path, out_dir=effective_out_dir)
+    data = run_snapshot(
+        ws.library_path, out_dir=effective_out_dir, provider=ws.provider
+    )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
@@ -172,8 +174,7 @@ def restore_sub_cmd(
     ws = resolve_workspace(ctx.obj)
     # R2/ADR 0017: el reloj se inyecta en la frontera CLI.
     decided_at = datetime.now(UTC)
-    # Sin --source en restore (llega en #253): engine = proveedor del workspace.
-    # TODO(#253): engine = carril del parquet / backend atado a carril
+    # Sin --source en restore (3b): el carril es el proveedor del workspace.
     data = run_restore(
         ws.library_path, corpus_path, decided_at=decided_at, provider=ws.provider
     )

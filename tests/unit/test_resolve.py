@@ -89,6 +89,7 @@ def _make_corpus_with_dois(
             Col.LANGUAGE: None,
             Col.PUBLISHER: None,
             Col.RESEARCH_AREAS: [],
+            Col.PROVIDER: "openalex",
             Col.IS_SEED: True,
             Col.CURATION_STATUS: "candidate",
             Col.PROVENANCE: None,

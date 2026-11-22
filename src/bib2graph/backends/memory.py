@@ -44,6 +44,7 @@ from typing import Literal
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from bib2graph.backends.base import ProviderMismatchError
 from bib2graph.constants import ARROW_NETWORK_COLUMNS, LIST_COLUMNS, Col, CurationStatus
 from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent, parse_provenance_migrated
 
@@ -335,6 +336,32 @@ def _merge_provenance(
     return json.dumps(merged_events, ensure_ascii=False)
 
 
+def table_providers(table: pa.Table) -> list[str]:
+    """Proveedores (carriles) distintos presentes en ``table``, ordenados.
+
+    Args:
+        table: Tabla Arrow con la columna ``provider`` (ADR 0053 D2.1).
+
+    Returns:
+        Lista ordenada de tokens ``provider`` no nulos (vacía si no hay filas).
+
+    Raises:
+        ProviderMismatchError: Si la tabla no tiene la columna ``provider``.
+    """
+    if Col.PROVIDER not in table.column_names:
+        raise ProviderMismatchError(
+            "La tabla no tiene la columna 'provider' (ADR 0053 D2.1): una Source "
+            "debe sellar su token en cada fila que produce."
+        )
+    return sorted(
+        str(v)
+        for v in pc.unique(  # type: ignore[attr-defined]
+            table.column(Col.PROVIDER)
+        ).to_pylist()
+        if v
+    )
+
+
 def _rows_to_table(rows: list[dict[str, object]]) -> pa.Table:
     """Construye una tabla Arrow desde una lista de dicts con el schema canónico.
 
@@ -489,6 +516,13 @@ class InMemoryBackend:
         Returns:
             Nueva instancia con el paper agregado.
         """
+        lanes = set(table_providers(self._table))
+        row_lane = row.get(Col.PROVIDER)
+        if lanes and row_lane not in lanes:
+            raise ProviderMismatchError(
+                f"La fila trae provider={row_lane!r} pero el corpus es del carril "
+                f"{sorted(lanes)} (ADR 0053 D2.1)."
+            )
         existing = self._table.to_pylist()
         existing.append(row)
         return InMemoryBackend(
@@ -509,6 +543,17 @@ class InMemoryBackend:
         Returns:
             Nueva instancia con las filas fusionadas.
         """
+        # ADR 0053 D2.1: un Corpus es mono-proveedor; dos carriles nunca se mergean.
+        lanes = sorted(
+            set(table_providers(self._table)) | set(table_providers(other_table))
+        )
+        if len(lanes) > 1:
+            raise ProviderMismatchError(
+                f"No se pueden fusionar corpora de proveedores distintos {lanes}: "
+                "cada proveedor es un carril aparte (ADR 0053 D2). Ingestá cada "
+                "proveedor en su propio carril y compará con dos builds."
+            )
+
         rows_self_list = self._table.to_pylist()
         rows_other_list = other_table.to_pylist()
 

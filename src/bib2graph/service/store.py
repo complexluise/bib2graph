@@ -16,10 +16,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from bib2graph.constants import DEFAULT_PROVIDER, Provider
 from bib2graph.service.errors import StoreError
 
 
-def open_store(path: str | Path) -> Any:
+def open_store(
+    path: str | Path,
+    provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str = DEFAULT_PROVIDER,
+) -> Any:
     """Abre (o crea) el DuckDBStore en ``path`` para escritura/lectura.
 
     Captura ``StoreLockedError`` (subclase de ``OSError``) y lo re-lanza
@@ -32,6 +37,9 @@ def open_store(path: str | Path) -> Any:
 
     Args:
         path: Ruta al archivo ``.duckdb``.
+        provider: Carril (proveedor) sobre el que opera el store (ADR 0053 D2.1).
+        legacy_provider: Carril con el que se etiqueta un store v1 al migrarlo
+            (``workspace.json.source``; ADR 0053 D2.4).
 
     Returns:
         ``DuckDBStore`` abierto y listo para usar.
@@ -43,7 +51,7 @@ def open_store(path: str | Path) -> Any:
     from bib2graph.stores.duckdb import DuckDBStore
 
     try:
-        return DuckDBStore(path)
+        return DuckDBStore(path, provider, legacy_provider)
     except StoreLockedError as exc:
         raise StoreError(str(exc)) from exc
     except OSError as exc:

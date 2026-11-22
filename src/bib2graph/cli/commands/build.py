@@ -370,7 +370,7 @@ def run_build(
     # Guard R1 transitorio: antes de abrir el store (nada se escribe).
     guard_provider_mix(provider, workspace_provider)
 
-    store = open_store(store_path)
+    store = open_store(store_path, provider, workspace_provider or provider)
     thesaurus_stats: dict[str, Any] | None = None
     try:
         corpus_full = store.load()
@@ -425,7 +425,7 @@ def run_build(
             store.backend.persist_enricher_refs(corpus_full.manifest.enrichers)
             # ADR 0053 Corte 2: source_id → external_ids[engine].
             # Idempotente y al final: si algo falla antes, la próxima ingesta lo rellena.
-            store.register_external_ids(corpus_full, provider)
+            store.register_external_ids(corpus_full)
 
         # #287 fricción #5: si hay semillas pero ninguna aceptada y cited_by_id
         # está vacío, la red de cocitación saldrá vacía y el gate (accepted,

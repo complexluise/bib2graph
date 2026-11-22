@@ -28,7 +28,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from bib2graph.constants import Col, Provider
+from bib2graph.constants import DEFAULT_PROVIDER, Col, Provider
 from bib2graph.service.errors import NetworkError, StoreError
 
 # Helper de normalización DOI (espeja el de openalex.py, función pura)
@@ -46,7 +46,7 @@ def _normalize_doi(raw: str | None) -> str | None:
     return doi.lower() or None
 
 
-def _open_writable(path: Path) -> Any:
+def _open_writable(path: Path, provider: Provider | str = DEFAULT_PROVIDER) -> Any:
     """Abre el store para escritura; falla accionable si está bloqueado.
 
     Args:
@@ -62,7 +62,7 @@ def _open_writable(path: Path) -> Any:
     from bib2graph.stores.duckdb import DuckDBStore
 
     try:
-        return DuckDBStore(path)
+        return DuckDBStore(path, provider, provider)
     except StoreLockedError as exc:
         raise StoreError(str(exc)) from exc
     except OSError as exc:
@@ -212,6 +212,7 @@ def resolve_dois(
     *,
     email: str | None = None,
     transport: Any = None,
+    provider: Provider | str = DEFAULT_PROVIDER,
 ) -> dict[str, Any]:
     """Resuelve DOIs pendientes a source_id de OpenAlex y persiste.
 
@@ -247,7 +248,7 @@ def resolve_dois(
         StoreError: Si el store está bloqueado.
     """
     path = Path(store_path)
-    store = _open_writable(path)
+    store = _open_writable(path, provider)
     try:
         return _resolve_dois_on_store(store, email=email, transport=transport)
     finally:

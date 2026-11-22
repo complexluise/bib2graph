@@ -57,6 +57,7 @@ def _make_row(*, id: str, source_id: str | None = None) -> dict[str, Any]:
         "language": "en",
         "publisher": None,
         "research_areas": None,
+        "provider": "openalex",
         "is_seed": True,
         "curation_status": "accepted",
         "provenance": None,

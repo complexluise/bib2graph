@@ -223,7 +223,7 @@ class Workspace:
 
         # Inicializar library.duckdb vía DuckDBStore (carga perezosa de duckdb)
         library_path = root / LIBRARY_FILENAME
-        _init_library(library_path)
+        _init_library(library_path, source)
 
         return cls(
             root=root,
@@ -473,15 +473,21 @@ def _read_manifest(path: Path) -> WorkspaceManifest:
         ) from exc
 
 
-def _init_library(library_path: Path) -> None:
+def _init_library(library_path: Path, provider: Provider = DEFAULT_PROVIDER) -> None:
     """Inicializa la biblioteca viva en ``library_path`` vía DuckDBStore.
 
     Importación perezosa de duckdb: solo se importa cuando se llama esta función.
     El núcleo (workspace.py en sí) no importa duckdb al nivel de módulo.
 
+    Si ``library_path`` es un store v1 (``b2g init .`` adopta un ``.duckdb``
+    legacy), esta apertura lo migra a v2 etiquetando sus filas con ``provider``
+    (= ``workspace.json.source``; ADR 0053 D2.4).
+
     Args:
         library_path: Ruta donde crear el archivo ``library.duckdb``.
+        provider: Carril del workspace; también es el carril legacy de la
+            migración.
     """
     from bib2graph.stores.duckdb import DuckDBStore
 
-    DuckDBStore(library_path)
+    DuckDBStore(library_path, provider, provider).close()

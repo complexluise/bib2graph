@@ -307,6 +307,7 @@ def test_clone_via_add_paper_preserva_tabla_equations(tmp_path: Path) -> None:
         {
             "id": "doi:new-paper",
             "title": "New paper via add_paper",
+            "provider": "openalex",
             "is_seed": True,
             "curation_status": "candidate",
         }
@@ -352,6 +353,7 @@ def test_persist_replace_no_borra_tabla_equations(tmp_path: Path) -> None:
         "language": None,
         "publisher": None,
         "research_areas": None,
+        "provider": "openalex",
         "is_seed": True,
         "curation_status": "candidate",
         "provenance": None,

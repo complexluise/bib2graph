@@ -411,6 +411,12 @@ transición la define el verbo.
   vacío). Parquet inexistente o schema no canónico → `DataError` exit 2. `data = {papers_loaded,
   total_papers, state, round}`. (El verbo suelto `b2g restore` se retiró en 0.12.0; su capacidad es
   `b2g snapshot restore`.)
+- **Carriles (ADR 0053 Corte 3a).** `snapshot create` fotografía **el carril** de
+  `workspace.json.source` (el parquet lleva la columna `provider` y `schema_version = "2"`).
+  `snapshot restore` lee con `read_corpus_parquet` (§1.2): un parquet v1 (sin `provider`) se lee como
+  `openalex`. Restaura en el carril del store (`workspace.json.source`); un parquet de **otro** carril
+  → `DataError` exit 2, sin escribir. *Transitorio:* el Corte 3b hará que `restore` use el carril que
+  declara el parquet.
 
 **`read {list,stats,show,top}`** (grupo noun-verb, #156/#157): lectura pura del corpus (no transiciona).
 Lógica en `service/reads.py` (§0.1).
@@ -552,15 +558,15 @@ variable de entorno.
 
 - **Flags exclusivos de OpenAlex** (validación explícita, no capacidad): `--email` con otro proveedor
   → exit 1 (en `seed`, `chain`, `build`); `chain --budget` con otro proveedor → exit 1.
-- **Guard transitorio R1 (hasta #253; enmienda 2026-11-21 de ADR 0053).** Mientras el corpus sea
-  una sola tabla con PK `id`, en **todo comando que escribe** —`seed` en todas sus variantes
-  (`--equation`, `--spec`, `--from-bib` con o sin `--resolve`), `chain` y `build`— un `--source`
-  explícito **distinto** de `workspace.json.source` → `DataError` **exit 2**, sin escribir, **haya o
-  no corpus**: el upsert fusionaría registros de dos proveedores de forma irreversible, y un corpus
-  vacío no protege (`init` → `seed --source s2` → `chain` también fusiona). **Para usar otro
-  proveedor hoy: `b2g init --source <p>`** (una investigación por proveedor). El mensaje apunta a eso
-  y a la coexistencia por proveedor (#253), que retira el guard. Los `--preview` no escriben y no lo
-  disparan.
+- **Guard transitorio R1 (hasta el Corte 3b de #253; enmienda 2026-11-21 de ADR 0053).** En **todo
+  comando que escribe** —`seed` en todas sus variantes (`--equation`, `--spec`, `--from-bib` con o sin
+  `--resolve`), `chain` y `build`— un `--source` explícito **distinto** de `workspace.json.source` →
+  `DataError` **exit 2**, sin escribir, **haya o no corpus**. Originalmente protegía de que el upsert
+  `ON CONFLICT (id)` fusionara dos proveedores; desde el Corte 3a el store ya separa carriles
+  (§4.0), pero el guard **sigue activo** porque los comandos de lectura todavía no toman `--source`:
+  sin él, un `seed --source s2` dejaría un carril que `curate`/`read`/`status`/`export` no pueden
+  ver. **Para usar otro proveedor hoy: `b2g init --source <p>`** (una investigación por proveedor). El
+  Corte 3b lo retira. Los `--preview` no escriben y no lo disparan.
 - **Tokens:** el valor del CLI es el valor persistido (`Provider`, `StrEnum` en `constants.py`):
   `equations.engine` y `ProvenanceEvent.source` de los fetch de S2 valen **`s2`** (no
   `semanticscholar`; enmienda de ADR 0042 D4 por ADR 0053 D1.6).
@@ -936,7 +942,8 @@ siguen devolviendo un `Corpus` (semántica de valor a nivel de API), pero `accep
 - **`InMemoryBackend`** — puro, sin I/O: *working set* efímero y backend de los **tests** (el
   núcleo se testea sin DuckDB). Es el comportamiento del Hito 1, movido al backend.
 - **`DuckDBBackend`** — la **biblioteca viva** (ADR 0009): archivo `.duckdb` o `:memory:`,
-  mutaciones por SQL `UPDATE`/`MERGE` por `id`. Es el **backend por defecto** con persistencia, y
+  mutaciones por SQL `UPDATE`/`MERGE` por `(id, provider)` (un carril por instancia, §4). Es el
+  **backend por defecto** con persistencia, y
   donde vive el `LoopState` (ADR [0016](decisiones/0016-maquina-estados-lazo.md)).
 
 Las reglas de identidad/hash/merge (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md),
@@ -954,6 +961,7 @@ cambia el contenedor, no el núcleo de análisis**.
 | Columna | Tipo Arrow | Nullable | Notas |
 |---|---|---|---|
 | `id` | `string` | no | id interno estable (hash de `doi`/`source_id`; ver §1.1 *Identidad*, ADR [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)) |
+| `provider` | `string` | no | **carril**: token `Provider` del proveedor que entregó el registro (`openalex` \| `s2`; ADR [0053](decisiones/0053-multiproveedor-seleccion-coexistencia-identidad.md) D2.1, desde `SCHEMA_VERSION="2"`). Lo sella cada `Source`; `BibtexSource` lo recibe por argumento (un `.bib` no es proveedor). Entra al `corpus_hash` |
 | `source_id` | `string` | sí | id del **motor de extracción** que entregó el paper (p. ej. `W...` para OpenAlex). Agnóstico al motor (ADR [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md)): el nombre del motor vive en `provenance.source`, no en la columna |
 | `doi` | `string` | sí | DOI normalizado |
 | `title` | `string` | no | título completo |
@@ -974,8 +982,15 @@ cambia el contenedor, no el núcleo de análisis**.
 | `references_doi` | `list[string]` | — | refs resueltas a DOI (las puebla un Enricher opt-in; OpenAlex las da como URLs internas) |
 | `cited_by_id` | `list[string]` | — | citantes (ids OpenAlex); habilita forward chaining y co-citación |
 
-El schema exacto vive en `bib2graph.schemas`. La validación se hace en `Corpus.from_arrow()` y en
-cada `Source.seed()/load()`.
+El schema exacto vive en `bib2graph.schemas` (24 columnas). La validación se hace en
+`Corpus.from_arrow()` y en cada `Source.seed()/load()`.
+
+> **`SCHEMA_VERSION = "2"`** (`schemas.py`; versión del corpus que se sella en `Manifest.schema_version`,
+> distinta del envelope y de `store_meta.schema_version` de §4). Pasó de `"1"` a `"2"` con la columna
+> `provider` (ADR 0053 Corte 3a, #253). Consecuencias: (1) el `corpus_hash` de todo corpus cambia una
+> vez (la columna es contenido); (2) `PaperRow` exige `provider`; (3) un parquet `"1"` (sin la
+> columna) se lee con `read_corpus_parquet` (§1.2), que completa `provider = "openalex"`. La columna es
+> **aditiva** para el consumidor del Arrow (§1.7): `test_arrow_schema_contract.py` sigue verde.
 
 > **Tabla lateral `external_ids(paper_id, engine, id)`** (ADR
 > [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md) opción C; poblada desde el Corte 2
@@ -983,29 +998,31 @@ cada `Source.seed()/load()`.
 > 1↔N los IDs que cada motor asignó al mismo paper (unificados por el `id` canónico, DOI primero). PK
 > `(paper_id, engine)`; lectura por `backend.external_ids_for(paper_id)` / `backend.all_external_ids()`.
 >
-> - **Quién escribe:** `DuckDBStore.register_external_ids(corpus, engine) -> int`, en **bulk** (una sola
->   sentencia `INSERT OR REPLACE … SELECT` vía `backend.add_external_ids_bulk`) sobre las filas con
->   `source_id` no nulo; las filas sin `source_id` (p. ej. `seed --from-bib` sin `--resolve`) no se
->   registran. En la misma operación **borra los huérfanos** (`paper_id` que ya no está en `corpus`).
->   Devuelve cuántas filas registró. Precondición: el corpus **ya está persistido** (la limpieza de
->   huérfanos lee la tabla `corpus`).
+> - **Quién escribe:** `DuckDBStore.register_external_ids(corpus, engine=None) -> int` (§4.1), en
+>   **bulk** (una sola sentencia `INSERT OR REPLACE … SELECT` vía `backend.add_external_ids_bulk`) sobre
+>   las filas con `source_id` no nulo; las filas sin `source_id` (p. ej. `seed --from-bib` sin
+>   `--resolve`) no se registran. **`engine` = carril del store** (Corte 3a): el argumento es opcional y,
+>   si se pasa, debe coincidir con el carril (si no, `ProviderMismatchError`). En la misma operación
+>   **borra los huérfanos del carril** (`engine = carril` y `paper_id` que ya no está en `corpus_lane`);
+>   las entradas de otros `engine` no se tocan. Devuelve cuántas filas registró. Precondición: el corpus
+>   **ya está persistido** (la limpieza de huérfanos lee el carril en disco).
 > - **Cuándo:** al **final** de cada ingesta (después de `persist_replace`, `set_loop_state` y de
 >   persistir ecuación / enricher refs; si falla, la próxima ingesta rellena porque es idempotente):
 >   `seed` (ecuación/spec), `seed --from-bib`, `chain`, `build` (pasada `cited_by`, que vuelve a
 >   registrar las filas del corpus; los citantes no son filas) y `snapshot restore` registran **todas**
 >   las filas del corpus persistido; `--resolve` registra **solo** las filas que resolvió.
-> - **Valores de `engine`:** el token `Provider` activo (`openalex` | `s2`, ADR 0053 D1.6; nunca
->   `semanticscholar`). Excepciones: la resolución DOI→id (`--resolve`) registra siempre `openalex`
->   (solo OpenAlex la ofrece), y `snapshot restore` registra con el proveedor del workspace
->   (`workspace.json.source`), porque `restore` todavía no tiene `--source`.
+> - **Valores de `engine`:** el token `Provider` del carril (`openalex` | `s2`, ADR 0053 D1.6; nunca
+>   `semanticscholar`). La resolución DOI→id (`--resolve`) pasa `engine=openalex` explícito (solo
+>   OpenAlex la ofrece); como exige la capacidad `resolve_doi`, hoy solo corre en el carril `openalex`.
+>   `snapshot restore` registra en el carril del store (`workspace.json.source`).
 > - **Propiedades:** idempotente (`INSERT OR REPLACE` por la PK: re-ingerir no duplica; un `source_id`
 >   nuevo para el mismo `(paper_id, engine)` reemplaza al anterior). **No entra en `corpus_hash`**
 >   (tabla lateral, como `referenced_but_not_fetched`) y **no viaja en el snapshot/parquet**: `restore`
 >   la reconstruye desde `source_id`.
-> - **Límites conocidos (hasta #253):** (1) un `restore` de un parquet traído con otro proveedor
->   registra el `engine` del workspace, no el del parquet. (Si el `id` canónico de un paper cambia, la
->   fila vieja se borra en el siguiente registro: no quedan huérfanos.) En #253 la
->   llamada pasa adentro del backend atado a carril (`engine` = carril). Hoy ningún comando la
+> - **Límites conocidos:** el límite del Corte 2 (un `restore` de un parquet de otro proveedor
+>   registraba el `engine` equivocado) **ya no aplica**: desde el Corte 3a ese `restore` falla con
+>   `DataError` antes de registrar (§`snapshot`). Si el `id` canónico de un paper cambia, la fila vieja
+>   se borra en el siguiente registro del mismo carril: no quedan huérfanos. Hoy ningún comando la
 >   **lee**: la identidad y el dedup siguen resolviéndose solo por el `id` canónico.
 
 **`provenance` es un log append-only** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md),
@@ -1050,7 +1067,9 @@ precedencia invertida por ADR [0036](decisiones/0036-identidad-source-id-agnosti
 (`src:`) → `title+year` (`tt:`). El **DOI es el ancla universal e interoperable entre motores** (un
 paper con DOI tiene el mismo `id` venga de OpenAlex, de Semantic Scholar o de un `.bib`); `source_id`
 es el fallback para papers sin DOI, antes de caer a `title+year` (frágil). El mismo paper produce el
-mismo `id` entre corridas; es la base de la dedup en `merge` y en la biblioteca viva.
+mismo `id` entre corridas; es la base de la dedup en `merge` y en la biblioteca viva. **En el store**
+un mismo `id` puede tener **un registro por carril** (PK `(id, provider)`, ADR 0053 D2.1, §4); dentro
+de un `Corpus` (siempre mono-proveedor) el `id` sigue siendo único.
 
 ### 1.2 `Corpus` (wrapper)
 
@@ -1105,15 +1124,25 @@ class Corpus:
         sellen su metadata —p. ej. `OpenAlexSource.seed()` puebla `openalex_version`/`equations`—
         sin reconstruir el corpus. v1 (Hito 4)."""
 
+    @property
+    def provider(self) -> str | None:
+        """Carril del corpus (ADR 0053 D2.1): el único `provider` de sus filas, o `None` si está
+        vacío. Un Corpus es SIEMPRE mono-proveedor: si la tabla mezcla proveedores →
+        `ProviderMismatchError`."""
+
     def add_paper(self, row: dict) -> "Corpus":
-        """Valida la fila (PaperRow) y agrega el paper. Calcula `id` (D1) si no viene."""
+        """Valida la fila (PaperRow) y agrega el paper. Calcula `id` (D1) si no viene. Si la fila
+        no trae `provider`, HEREDA el carril del corpus (`self.provider`; corpus vacío → el carril del
+        backend si está atado a uno, si no `DEFAULT_PROVIDER` = `openalex`). Una fila de otro carril → `ProviderMismatchError`."""
     def merge(self, other: "Corpus") -> "Corpus":
         """Combina deduplicando por `id` (idempotente). Combinación por campo: escalar no-nulo
         gana (ambos no-nulos → `other`); columnas de lista = unión deduplicada (preserva `None`);
         `curation_status` por decisión humana más reciente (`provenance.decided_at`), fallback
         `accepted`>`rejected`>`candidate`; `provenance` = unión de eventos únicos (log).
         Orden de filas: **primera aparición** (filas de `self` en orden, luego las nuevas de
-        `other`). Ver ADR 0013 (D3)."""
+        `other`). Ver ADR 0013 (D3). Los dos corpora deben ser del MISMO carril (un corpus vacío
+        combina con cualquiera): proveedores distintos → `ProviderMismatchError` (ADR 0053 D2.1;
+        dos proveedores nunca se mergean)."""
     def accept(self, ids: list[str], *, by: str = "human", decided_at: datetime | None = None) -> "Corpus":
         """Marca papers como 'accepted' y AGREGA un evento al log de provenance. Devuelve Corpus nuevo.
         `decided_at` se inyecta desde la frontera CLI (Hito R2, ADR 0017); `None` → el backend usa
@@ -1139,6 +1168,21 @@ class Corpus:
   `curation_status`** (contenido curado), nunca campos volátiles del Manifest (D2).
 - **`merge` emite filas en orden determinista** (primera aparición): habilita diffs y snapshots
   reproducibles. Es idempotente: `c.merge(c) == c`.
+
+**Carriles en memoria** (ADR [0053](decisiones/0053-multiproveedor-seleccion-coexistencia-identidad.md)
+D2.1, Corte 3a):
+
+- **`ProviderMismatchError(ValueError)`** (`bib2graph.backends`, definida en `backends/base.py`): se
+  lanza al mezclar carriles — `Corpus.merge`/`InMemoryBackend.merge` de dos proveedores, `add_paper`
+  con una fila de otro carril, `Corpus.provider` sobre una tabla mixta, y en el store (§4) toda
+  escritura con filas de otro carril o sin `provider`. Es subclase de `ValueError`, **no** de
+  `B2GError`: los servicios que la pueden recibir de un input del usuario la traducen a `DataError`
+  (hoy `run_restore`).
+- **`read_corpus_parquet(path) -> pa.Table`** (`bib2graph.corpus`): lee un `corpus.parquet` y lo
+  devuelve con exactamente `CORPUS_SCHEMA`. **Compat de snapshot v1:** si el archivo no tiene la
+  columna `provider` (todo parquet pre-#253 es OpenAlex por construcción), la completa con
+  `"openalex"`; el archivo en disco no se toca. La usan `CorpusSnapshot.corpus` y `snapshot restore`.
+  Los ejemplos commiteados (`examples/`, §2.1) siguen en parquet v1 y se leen por esta vía.
 
 **Backend y estado del lazo** (ADR [0015](decisiones/0015-corpus-tabular-backend.md) /
 [0016](decisiones/0016-maquina-estados-lazo.md)):
@@ -1191,8 +1235,9 @@ class CorpusSnapshot:
 - **Obligatorios** (D5): `schema_version`, `corpus_hash`, `lib_version`, `created_at`; el resto con
   default. Si `importlib.metadata` no resuelve la versión instalada, `lib_version = "unknown"` (no
   `"0.0.0"` inventado — honesto sobre la reproducibilidad).
-- **`schema_version`** (D6): se escribe y round-tripea; el rechazo por incompatibilidad + migraciones
-  sobre el store vivo es futuro.
+- **`schema_version`** (D6): se escribe y round-tripea (hoy `"2"`, §1.1). Al **leer** un snapshot,
+  `"1"` se acepta por compat (`read_corpus_parquet`, §1.2); no hay rechazo por versión del parquet. El
+  **store vivo** tiene su propia versión y migración (`store_meta`, §4).
 
 ### 1.4 `TabularBackend` (Protocol) e `InMemoryBackend`
 
@@ -1246,7 +1291,7 @@ class TabularBackend(Protocol):
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
 | `InMemoryBackend` | **v1** | **Núcleo puro, sin I/O.** *Working set* efímero y backend de los tests (el núcleo se testea sin DuckDB). Semántica de valor; hereda la lógica del Hito 1 (mutación en Python sobre listas de dicts, table-rebuild). No persiste. |
-| `DuckDBBackend` | **v1, por defecto** | La **biblioteca viva** (ADR 0009/0015): **construido** (Hito 3). Mutación por SQL puro (`INSERT … ON CONFLICT (id) DO UPDATE` + merge D3 en SQL/UDF), persiste entre corridas (`.duckdb` o `:memory:`), aloja el `LoopState` (ADR 0016). Pasa la suite de contrato de backend (D1/D2/D3). Carga **perezosa** (PEP 562): no se importa con `import bib2graph`. Ver §4. |
+| `DuckDBBackend` | **v1, por defecto** | La **biblioteca viva** (ADR 0009/0015): **construido** (Hito 3). Mutación por SQL puro (`INSERT … ON CONFLICT (id, provider) DO UPDATE` + merge D3 en SQL/UDF, **atado a un carril**, §4), persiste entre corridas (`.duckdb` o `:memory:`), aloja el `LoopState` (ADR 0016). Pasa la suite de contrato de backend (D1/D2/D3). Carga **perezosa** (PEP 562): no se importa con `import bib2graph`. Ver §4. |
 
 `TabularBackend` e `InMemoryBackend` son **símbolos públicos v1** (`from bib2graph import
 TabularBackend, InMemoryBackend`). El contrato D1/D2/D3 se verifica con una **suite parametrizada
@@ -1597,9 +1642,15 @@ def load_equation_spec(path: str | Path) -> EquationSpec:
 |----------------|--------|-------|
 | `OpenAlexSource` | **v1** | **Referencia/backbone**, sobre `httpx`. Entrega mínimo + enriquecimiento (refs inline + afiliaciones per-autor + instituciones; `cited_by_id` lo puebla el chaining/Enricher, no el seed). Traducción **passthrough**: envuelve la ecuación en `title_and_abstract.search:(...)` y **reporta** los límites WoS (NEAR/comodín/tags) sin traducirlos. Flag `native=True` (query cruda). **Negaciones (`exclude`):** cada `AND NOT "<término>"` se inyecta **dentro** de la única expresión `search:((query) AND NOT "<término>")` (campo no repetido; el filtro de año queda como predicado separado por coma, fuera del `search`) y se reporta en el `translation_report`; ignorado con `native`. Credenciales inyectadas: la **api_key** se resuelve `arg` → env `OPENALEX_API_KEY` → ausencia ⇒ polite pool (ADR 0012); con key viaja en el header `Authorization: Bearer <key>`. El **email** (arg `email=`/`--email`) viaja como `mailto` en la query (polite pool). Sin key el source **no rompe**: corre en polite pool, solo con menor límite. Cursor paging con tope `max_results` (default 200). Puebla `Manifest.openalex_version` (ADR 0017). `transport` inyectable (tests sin red). Un **429** (rate limit del pool anónimo) en `seed()` → `NetworkError` (exit 4) con mensaje **accionable**: declarar `--email` mueve la petición al polite pool (remedio primario); api_key opcional (ADR 0012, #210). |
 | `SemanticScholarSource` | **v1, 2º motor** (`--source s2`) | ADR [0042](decisiones/0042-semantic-scholar-segundo-motor.md). Academic Graph API sobre `httpx`. Mínimo universal + `doi`, `source_id`=`paperId`, `references_id`/`references_doi`, `cited_by_id`, `abstract`. **Query nativa, sin traducción** (D3): `executed_query` = la query tal cual, `translation_report` de una línea que lo declara. `seed(query)` **no** acepta `native`/`exclude`/`min_year`/`max_year` (capacidad `seed_filters` ausente). `max_results` ∈ 1..1000. Key por env `S2_API_KEY` (siembra prácticamente la exige; forrajeo no); retry 3 intentos con backoff ante 429/5xx → `NetworkError` con `subcode`. Tokens: `equations.engine = "s2"`, `provenance.source = "s2"`. Expone `fetch_citing_batch`/`fetch_citing_batch_with_works` (`since` aproximado por año), `fetch_works_by_ids` y `work_to_row`. |
-| `BibtexSource` | **v1, secundaria** | Sembrar desde *pearls* vía `load()`. Extra **`[bibtex]`** (import perezoso de `bibtexparser`); acceso defensivo (campos faltantes sin `KeyError`). Mínimo universal. `seed()` lanza `NotImplementedError`. `.bib` con error grave → `ValueError`; sin entradas válidas → `UserWarning` (no no-op silencioso). Carga bulk con `from_arrow`. |
+| `BibtexSource` | **v1, secundaria** | Sembrar desde *pearls* vía `load()`. Extra **`[bibtex]`** (import perezoso de `bibtexparser`); acceso defensivo (campos faltantes sin `KeyError`). Mínimo universal. `seed()` lanza `NotImplementedError`. `.bib` con error grave → `ValueError`; sin entradas válidas → `UserWarning` (no no-op silencioso). Carga bulk con `from_arrow`. **`BibtexSource(provider=DEFAULT_PROVIDER)`** (ADR 0053 D2.1): un `.bib` no es proveedor, así que sus filas se sellan con el carril que recibe (el CLI pasa el activo); la procedencia conserva `source="bibtex"`. Valor desconocido → `ValueError`. |
 | `ScieloSource` / `RedalycSource` / `LaReferenciaSource` | futuro | Fuentes regionales, mínimo universal. Declaradas, no implementadas (ADR 0018). |
 | `RisSource` / `CsvSource` | futuro | No implementados. |
+
+> **Cada `Source` sella su carril** (ADR 0053 D2.1, Corte 3a): toda fila que produce trae
+> `provider` = su token (`OpenAlexSource` → `openalex`, `SemanticScholarSource` → `s2`,
+> `BibtexSource` → el que recibe). Los citantes que materializa el `Forager` heredan el carril del
+> corpus que se expande. Una fila sin `provider` no se puede escribir en el store
+> (`ProviderMismatchError`, §4.0).
 
 **Capacidades de `OpenAlexSource` fuera del Protocol `Source`** (específicas del backbone; las consumen
 el `Forager` y el `Enricher`):
@@ -1720,7 +1771,8 @@ aparte, sino el **backend por defecto** del `Corpus` (mutaciones por SQL). El `S
 **costura/punto de extensión** para destinos externos opt-in (Zotero, Neo4j). El `CycleState` (ADR 0016)
 vive en el backend persistente.
 
-El contrato `TabularBackend` (Protocol) y su firma completa viven en **§1.4** (`to_arrow`, `add_paper`,
+Desde el Corte 3a de ADR 0053 el `.duckdb` guarda **un carril por proveedor** y cada backend está atado
+a uno (§4.0). El contrato `TabularBackend` (Protocol) y su firma completa viven en **§1.4** (`to_arrow`, `add_paper`,
 `merge`, `apply_curation`, `filter_view`, `corpus_hash`, `__len__`, `__eq__`, y la tabla hermana
 append-only `referenced_but_not_fetched` vía `add_referenced_refs`/`referenced_refs_count`/
 `referenced_refs`, fuera del `corpus_hash`; §1.4 + §5). El `Store` de abajo es la costura de
@@ -1738,7 +1790,7 @@ class Store(Protocol):
 
 | Implementación | Estado | Notas |
 |----------------|--------|-------|
-| `DuckDBBackend` | **v1, por defecto** | **Biblioteca viva** (ADR 0009/0015): backend del `Corpus`, stateful, acumula entre corridas, **mutación por SQL puro** (`INSERT … ON CONFLICT (id) DO UPDATE` + merge D3 en SQL/UDF), log de procedencia/curación + `LoopState`, query SQL. Es **núcleo**, no extra. `:memory:` o archivo. (El `DuckDBStore` es su fachada de costura.) |
+| `DuckDBBackend` | **v1, por defecto** | **Biblioteca viva** (ADR 0009/0015): backend del `Corpus`, stateful, acumula entre corridas, **mutación por SQL puro** (`INSERT … ON CONFLICT (id, provider) DO UPDATE` + merge D3 en SQL/UDF, dentro de un carril), log de procedencia/curación + `LoopState`, query SQL. Es **núcleo**, no extra. `:memory:` o archivo. (El `DuckDBStore` es su fachada de costura.) |
 | `InMemoryBackend` | **v1** | Backend puro (tests + working set efímero). Sin I/O. No persiste. |
 | `ParquetStore` | **futuro (no implementado)** | Formato de **export/intercambio** del snapshot. Hoy lo cubre `Corpus.snapshot()` (parquet + `manifest.json`); un `Store` de export dedicado solo se construye si hace falta (lección 5: no se publica vacío). |
 | `ZoteroStore` | **futuro (V1.1, `[zotero]`)** | Sincroniza la biblioteca con una colección Zotero. Costura, no el corazón. |
@@ -1750,24 +1802,133 @@ class Store(Protocol):
 > (subclase de `OSError`); el CLI (Hito 6) lo mapea al exit code `5`. Multi-escritor concurrente es
 > post-v1.0.
 
+### 4.0 Carriles por proveedor y esquema del store (ADR 0053 D2, Corte 3a — **BREAKING para stores**)
+
+Un `.duckdb` guarda **varios carriles** (un carril = los registros de un proveedor) en la **misma**
+tabla `corpus`; cada instancia de `DuckDBBackend`/`DuckDBStore` está **atada a un carril** y todo lo
+que sale de ella (`load()`, `to_arrow()`, `query`) es de ese carril
+(ADR [0053](decisiones/0053-multiproveedor-seleccion-coexistencia-identidad.md) D2.1).
+
+- **PK `(id, provider)`.** `corpus.provider VARCHAR NOT NULL`, `PRIMARY KEY (id, provider)`; el upsert
+  D3 es `ON CONFLICT (id, provider)`: un mismo `id` (DOI) puede tener un registro por proveedor y el
+  merge D3 ocurre **solo dentro de un carril**.
+- **Vista temporal `corpus_lane`** = `SELECT * FROM main.corpus WHERE provider = '<carril>'`, creada en
+  cada conexión (el carril es un `Provider` validado; un valor desconocido → `ValueError` que lista
+  los válidos). **Toda lectura** del backend (`to_arrow`, `filter_view`, `__len__`, `MAX(_seq)`) usa
+  `corpus_lane`, y **`query(sql)` debe leer `FROM corpus_lane`, nunca `FROM corpus`** (que ve todos los
+  carriles). Un test guardarraíl falla si aparece `FROM corpus` crudo fuera de `backends/`.
+- **Escrituras selladas.** Toda escritura (`_upsert_table`, `add_paper`, `overwrite_corpus`) valida
+  que cada fila traiga `provider = <carril>`: una fila de otro carril o sin `provider` →
+  `ProviderMismatchError` (§1.2) **antes** de escribir.
+- **`overwrite_corpus` (= `persist_replace`) es por carril:** `DELETE FROM corpus WHERE provider = ?` +
+  INSERT; los otros carriles no se tocan (salvo la sincronización de curación de abajo).
+- **`_seq` (ADR 0024) es por carril:** el orden de primera aparición se mide dentro del carril y
+  `overwrite_corpus` reasigna `_seq` solo para el carril que reescribe.
+- **Curación por `id`, sincronizada entre carriles (D2.2).** Al final de `_upsert_table`,
+  `overwrite_corpus`, `add_paper` y `apply_curation`, el backend escribe en **todas** las filas de
+  cada `id` tocado que exista en más de un carril el **estado efectivo**: gana la decisión humana más
+  reciente por `decided_at` y desempata la prioridad `accepted` > `rejected` > `candidate` (la regla de
+  `_merge_curation_status` extendida a N filas). Se hace en una sola sentencia `UPDATE` set-based; con
+  un solo carril en el store cuesta un `SELECT … LIMIT 1`. El **evento** de curación
+  (`ProvenanceEvent`) queda solo en el carril donde se decidió: las filas hermanas reciben el estado,
+  no el evento. Invariante: ningún `id` tiene dos `curation_status` distintos en el store. Un paper
+  aceptado en un carril **entra aceptado** en otro, y `curate filter` en un carril no rechaza lo que
+  otro aceptó (ADR 0044). `is_seed` **sí** es por carril.
+- **Tablas hermanas por carril.** `referenced_but_not_fetched`, `filter_log` y `enricher_log` ganan
+  la columna `provider` y se leen/escriben filtradas por carril (`persist_*(…, replace=True)` borra
+  solo el carril). `equations` se filtra por **`engine = carril`** en `load_equations()`, así que
+  `manifest.equations` y la regla "1 ecuación → `equation_hash`" (§1.6) son por carril.
+  `external_ids` es por `engine` (= carril, §4.1). **`loop_state_log` queda por workspace** (la FSM es
+  de la investigación, no del carril; ADR 0053 R6).
+- **`store_meta(key VARCHAR PRIMARY KEY, value VARCHAR)`** guarda `schema_version` del **store**
+  (distinta de `SCHEMA_VERSION` del corpus, §1.1). Ausente = `"1"`. Un store nuevo nace en `"2"`.
+
+**Migración v1 → v2 (one-shot, al abrir; ADR 0053 D2.4).** Al abrir un store con tabla `corpus` y sin
+`store_meta.schema_version` (v1, pre-#253), `_setup()` corre primero las migraciones aditivas
+históricas sobre la tabla vieja y después, **en una sola transacción**, reconstruye `corpus`
+(`CREATE corpus_v2` con la DDL nueva → `INSERT … SELECT` de todas las filas con
+`provider = <carril legacy>` y el `_seq` intacto → `DROP corpus` → `RENAME`), reconstruye igual las
+tres tablas hermanas con `provider NOT NULL` (esquema idéntico a un store nuevo) y sella `store_meta.schema_version = "2"`. Si algo falla, `ROLLBACK`: el store
+queda v1 y la próxima apertura reintenta.
+
+- **Carril legacy = `workspace.json.source` vigente al migrar** (default `openalex`), no `openalex`
+  fijo: un workspace creado con `source: s2` queda etiquetado `s2`. El backend no conoce el workspace:
+  lo recibe como `legacy_provider` al abrirse. `b2g init .` sobre un `.duckdb` legacy lo migra con el
+  `--source` del `init`. Los registros de BibTeX se etiquetan con el carril legacy, como el resto.
+- **La segunda apertura es no-op** (ve `schema_version = "2"`).
+- **Sin downgrade:** un bib2graph anterior no puede escribir un store v2 (su `ON CONFLICT (id)` no
+  encuentra la restricción única). **Antes de actualizar, hacé `b2g snapshot create`** (ADR 0017): es
+  el respaldo para volver atrás.
+- **Versión futura:** un store con `schema_version` mayor que la que entiende esta bib2graph →
+  `StoreSchemaError` (`backends.duckdb`, subclase de `OSError`, como `StoreLockedError`) → el CLI lo
+  mapea a **exit 5**. El mensaje pide actualizar bib2graph.
+- **El `corpus_hash` de todo corpus existente cambia una vez** (la columna `provider` es contenido):
+  `status` puede avisar *stale* la cache `networks/` una vez; se resuelve con `b2g build`.
+
+> **Estado transitorio entre 3a y 3b (#253).** El Corte 3a entrega el store por carriles; la
+> superficie CLI llega en el **Corte 3b**. Hasta entonces: (1) **el guard R1 sigue activo** (§`--source`):
+> los comandos que escriben rechazan un `--source` distinto de `workspace.json.source`, y los de
+> lectura (`curate`, `read`, `status`, `export`, `snapshot create`, `validate`) operan sobre el carril
+> de `workspace.json.source`, sin `--source`; (2) `snapshot restore` de un parquet de **otro** carril →
+> `DataError` exit 2 (3b restaurará en el carril que declara el parquet); (3) los ejemplos de
+> `examples/` siguen en parquet v1 y se leen por compat (`read_corpus_parquet`, §1.2). Tampoco hay
+> todavía `networks/.provider`, `data.providers` en `status` ni metadata Arrow `provider` (3b).
+
 ### 4.1 `DuckDBStore` — fachada de costura + extensiones del backend
 
-`DuckDBStore(path)` (en `bib2graph.stores.duckdb`, re-exportado perezosamente como
-`bib2graph.DuckDBStore`) implementa el Protocol `Store` (`persist`/`load`) delegando en un
-`DuckDBBackend` sobre el archivo. `load()` devuelve un `Corpus` respaldado por ese backend (las
+`DuckDBStore(path, provider=DEFAULT_PROVIDER, legacy_provider=DEFAULT_PROVIDER)` (en
+`bib2graph.stores.duckdb`, re-exportado perezosamente como `bib2graph.DuckDBStore`) implementa el
+Protocol `Store` (`persist`/`load`) delegando en un `DuckDBBackend` **atado al carril `provider`**
+sobre el archivo (§4.0). `load()` devuelve un `Corpus` de ese carril respaldado por ese backend (las
 mutaciones subsiguientes tocan el archivo en disco).
 
 ```python
 class DuckDBStore:
-    def __init__(self, path: str | Path) -> None: ...   # abre/crea el .duckdb; StoreLockedError si bloqueado
-    def persist(self, corpus: Corpus) -> None: ...       # merge idempotente por id (upsert-concat D3) en la biblioteca viva
-    def persist_replace(self, corpus: Corpus) -> None: ...# DELETE+INSERT de la tabla `corpus`: el estado en disco
-                                                          # queda EXACTAMENTE el corpus dado; preserva las tablas
-                                                          # hermanas (loop_state_log, referenced_but_not_fetched)
-    def load(self) -> Corpus: ...                         # corpus acumulado, respaldado por el DuckDBBackend
+    def __init__(self, path: str | Path,
+                 provider: Provider | str = DEFAULT_PROVIDER,          # carril sobre el que opera
+                 legacy_provider: Provider | str = DEFAULT_PROVIDER,   # carril de un store v1 al migrar
+                 ) -> None: ...  # abre/crea/migra el .duckdb; StoreLockedError si bloqueado,
+                                 # StoreSchemaError si es de una versión futura (ambos → exit 5)
+    @property
+    def provider(self) -> Provider: ...                   # carril del store
+    def persist(self, corpus: Corpus) -> None: ...       # merge idempotente por (id, provider) (upsert-concat D3) en el carril
+    def persist_replace(self, corpus: Corpus) -> None: ...# DELETE+INSERT del CARRIL: el carril en disco queda
+                                                          # EXACTAMENTE el corpus dado; no toca otros carriles ni
+                                                          # las tablas hermanas (loop_state_log, referenced_but_not_fetched)
+    def load(self) -> Corpus: ...                         # corpus acumulado del carril, respaldado por el DuckDBBackend
+    def register_external_ids(self, corpus: Corpus,
+                              engine: Provider | None = None) -> int: ...
+                                                          # engine = carril; otro engine → ProviderMismatchError (§1.1)
     @property
     def backend(self) -> "DuckDBBackend": ...            # acceso al backend para las extensiones de abajo
+
+# backends/duckdb.py
+class DuckDBBackend:
+    def __init__(self, table: pa.Table | None = None, *, path: str | Path | None = None,
+                 provider: Provider | str = DEFAULT_PROVIDER,
+                 legacy_provider: Provider | str = DEFAULT_PROVIDER) -> None: ...
+    @property
+    def provider(self) -> Provider: ...                   # _clone() conserva provider/legacy_provider
 ```
+
+**Firmas que ganaron `provider`** (Corte 3a; todas con default `DEFAULT_PROVIDER` = `openalex`, así
+las llamadas existentes siguen funcionando sobre el carril `openalex`; el CLI pasa
+`workspace.json.source`):
+
+| Función | Firma |
+|---|---|
+| `service.store.open_store` | `open_store(path, provider=…, legacy_provider=…)` |
+| `cli._store.open_store_readonly` | `open_store_readonly(path, provider=…, legacy_provider=…)` |
+| `sources.bibtex.BibtexSource` | `BibtexSource(provider=…)` — carril en el que se ingesta el `.bib` |
+| `service.snapshot.run_snapshot` | `run_snapshot(store_path, *, out_dir, provider=…)` — fotografía un carril |
+| `service.snapshot.run_restore` | `run_restore(store_path, corpus_path, *, decided_at=None, provider=…)` — carril del store |
+| `service.resolve.resolve_dois` | `resolve_dois(store_path, *, email=None, transport=None, provider=…)` |
+| `service.curate.*` | `run_curate_dump`, `run_curate_from_csv`, `filter_corpus`, `accept_papers`, `reject_papers`, `curate_paper`: kwarg `provider=…` |
+| `cli.commands.status.run_status` | `run_status(store_path, provider=…)` |
+| `cli.commands.validate.run_validate` | `run_validate(store_path, provider=…)` |
+| `cli.commands.export.run_export` | `run_export(…, provider=…)` |
+
+Las lecturas de `service/reads.py` toman el carril de `ws.provider` (sin parámetro nuevo).
 
 > **`persist_replace` vs `persist` (#88, ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)).**
 > La **ingesta automática** (`seed`/`seed_from_bib`/`chain`/`restore`) y la pasada **`build
@@ -1776,7 +1937,8 @@ class DuckDBStore:
 > desde 0, ADR 0024), porque ya tienen el corpus **completo, normalizado y deduplicado** en memoria y
 > el upsert-concat D3 (`persist`) **reintroduciría** las variantes que el dedup cross-biblioteca acaba
 > de colapsar. **`persist`/upsert queda intacto** para el resto de los llamadores (caso "mismo paper
-> desde dos fuentes", D3). Ambos preservan las tablas hermanas.
+> desde dos fuentes", D3). Ambos preservan las tablas hermanas. Desde el Corte 3a ambos operan **solo
+> sobre el carril** del store: "cross-biblioteca" significa "en todo el carril" (§4.0, ADR 0031 nota).
 
 **Procedencia del `Manifest` persistida entre cargas.** Los bloques de procedencia del `Manifest`
 (§1.3) que no son contenido del corpus se guardan en **tablas hermanas** del `.duckdb` y `DuckDBStore.load()`
@@ -1806,7 +1968,7 @@ class DuckDBBackend:
     def loop_round(self) -> int: ...                     # contador de ronda (0 sin estado; 1 primera; 2+ re-sembrados)
     def set_loop_state(self, state: "CycleState", *, cycle_round: int | None = None) -> None: ...
                                                          # registra una transición + ronda (log append-only, permisiva)
-    def query(self, sql: str) -> pa.Table: ...           # consulta SQL de SOLO lectura sobre el corpus
+    def query(self, sql: str) -> pa.Table: ...           # consulta SQL de SOLO lectura; leer `FROM corpus_lane` (§4.0)
 ```
 
 **El ciclo es un concepto de dominio puro** (`bib2graph.cycle`); el backend **solo lo persiste**:

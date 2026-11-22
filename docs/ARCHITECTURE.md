@@ -104,7 +104,7 @@ validada por el wrapper público con **Pydantic v2** (ADR 0006). `Paper`/`Author
 El `Corpus` se respalda en un `TabularBackend` (Protocol) y **delega las mutaciones** (ADR
 [0015](decisiones/0015-corpus-tabular-backend.md)): `InMemoryBackend` (puro, tests + working set
 efímero) o `DuckDBBackend` (biblioteca viva por defecto, mutación por SQL `UPDATE`/`MERGE` por
-`id`). El **núcleo no importa `duckdb`**: depende del Protocol. `corpus.to_arrow()` es el **puente
+`(id, provider)`, atado a un carril; §4.3). El **núcleo no importa `duckdb`**: depende del Protocol. `corpus.to_arrow()` es el **puente
 estable a los proyectores/analizadores puros** — solo cambia el *contenedor*, no el núcleo de
 análisis. Las reglas de identidad/hash/merge (ADR
 [0013](decisiones/0013-identidad-hash-merge-corpus.md), D1/D2/D3) son contrato que cada backend
@@ -112,7 +112,8 @@ cumple a su manera. Los loaders (seed, BibTeX, Forager) construyen la tabla Arro
 `Corpus.from_arrow` (carga bulk, no upsert por fila).
 
 **Columnas** (esquema completo en [`API.md`](API.md) §1): identidad/metadatos (`id` interno estable
-—hash de `doi`/`source_id`, ADR 0036—, `source_id` agnóstico al motor, `doi`, `title`, `year`,
+—hash de `doi`/`source_id`, ADR 0036—, `provider` = carril del proveedor que entregó el registro
+(ADR 0053), `source_id` agnóstico al motor, `doi`, `title`, `year`,
 `abstract`, `source`, `language`, …); **estado de pipeline/curación** que no contamina la entidad
 (`is_seed`, `curation_status` ∈ {`candidate`,`accepted`,`rejected`}, `provenance` = log append-only,
 ADR 0009); **relaciones de entrada** crudas (`authors_*`, `keywords_*`, `institutions_*`,
@@ -244,6 +245,19 @@ extra. **Una investigación = un workspace** (carpeta autocontenida con su `libr
 [0029](decisiones/0029-workspace-por-investigacion.md)): la carpeta es la **única** unidad canónica
 —`--store` y el modo degenerado fueron eliminados (#75); un `.duckdb` legacy se adopta con
 `b2g init .`—; es single-writer (ADR [0019](decisiones/0019-concurrencia-diferida.md)).
+
+**Carriles por proveedor** (ADR [0053](decisiones/0053-multiproveedor-seleccion-coexistencia-identidad.md)
+D2, store v2 desde el Corte 3a de #253). El `.duckdb` guarda los registros de **varios proveedores lado
+a lado** en la misma tabla `corpus`, con PK `(id, provider)`: un DOI tiene un `id` canónico y **un
+registro por proveedor**, y ninguno pisa al otro (no hay precedencia de campos ni vista unificada).
+Cada backend está **atado a un carril**: lee a través de la vista temporal `corpus_lane`, sella
+`provider` en toda escritura y reescribe solo su carril (`persist_replace`). Por eso un `Corpus` en
+memoria es siempre **mono-proveedor**, y proyectores, dedup, export y `corpus_hash` no cambian (el hash
+sella el carril porque `provider` es contenido). La **curación es del paper** (`id`), no del registro:
+el backend sincroniza `curation_status` entre carriles en cada escritura. `loop_state_log` (la FSM)
+sigue siendo de la investigación. El esquema del store se versiona en `store_meta`; un store v1 se
+migra una sola vez, en una transacción y sin downgrade, etiquetando sus filas con
+`workspace.json.source`. Detalle y contrato en [`API.md`](API.md) §4.0.
 
 El **snapshot** es un **export sellado** del estado vivo (§6.2), no la persistencia; `ParquetStore`
 sirve como formato de export/intercambio. La costura `Store` es el punto de extensión para destinos

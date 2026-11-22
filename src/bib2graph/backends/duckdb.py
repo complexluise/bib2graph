@@ -37,15 +37,25 @@ import duckdb
 import pyarrow as pa
 from duckdb.func import FunctionNullHandling
 
+from bib2graph.backends.base import ProviderMismatchError
 from bib2graph.backends.memory import (
     _apply_curation_to_rows,
+    _latest_human_decided_at,
     _merge_curation_status,
     _merge_provenance,
     _merge_rows,
+    _parse_provenance,
     build_equation_metadata,
     compute_corpus_hash,
+    table_providers,
 )
-from bib2graph.constants import LIST_COLUMNS, CurationStatus
+from bib2graph.constants import (
+    DEFAULT_PROVIDER,
+    LIST_COLUMNS,
+    Col,
+    CurationStatus,
+    Provider,
+)
 from bib2graph.cycle import CycleState
 from bib2graph.schemas import CORPUS_SCHEMA, validate_table
 
@@ -63,9 +73,12 @@ class StoreLockedError(OSError):
 # que fija el orden de primera aparición para garantizar D3 sin DELETE+reinsert.
 # La columna es nullable (sin DEFAULT) para que el UPSERT la controle
 # explícitamente; filas existentes conservan su ``_seq`` original.
-_DDL_CORPUS = """
-CREATE TABLE IF NOT EXISTS corpus (
-    id                   VARCHAR NOT NULL PRIMARY KEY,
+# ADR 0053 D2.1: ``provider`` + ``PRIMARY KEY (id, provider)`` — un mismo ``id``
+# (DOI) puede tener un registro por proveedor (carril); ninguno pisa al otro.
+_DDL_CORPUS_TEMPLATE = """
+CREATE TABLE IF NOT EXISTS {name} (
+    id                   VARCHAR NOT NULL,
+    provider             VARCHAR NOT NULL,
     source_id            VARCHAR,
     doi                  VARCHAR,
     title                VARCHAR NOT NULL,
@@ -88,7 +101,18 @@ CREATE TABLE IF NOT EXISTS corpus (
     references_id        VARCHAR[],
     references_doi       VARCHAR[],
     cited_by_id          VARCHAR[],
-    _seq                 BIGINT
+    _seq                 BIGINT,
+    PRIMARY KEY (id, provider)
+)
+"""
+_DDL_CORPUS = _DDL_CORPUS_TEMPLATE.format(name="corpus")
+
+# ADR 0053 D2.4: versión del esquema del store.  Ausente = "1" (pre-#253).
+_STORE_SCHEMA_VERSION = "2"
+_DDL_STORE_META = """
+CREATE TABLE IF NOT EXISTS store_meta (
+    key   VARCHAR PRIMARY KEY,
+    value VARCHAR
 )
 """
 
@@ -115,7 +139,8 @@ _DDL_REFERENCED_BUT_NOT_FETCHED = """
 CREATE TABLE IF NOT EXISTS referenced_but_not_fetched (
     ref_id      VARCHAR NOT NULL,
     cycle_round INTEGER NOT NULL DEFAULT 0,
-    observed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    observed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    provider    VARCHAR NOT NULL
 )
 """
 
@@ -140,7 +165,8 @@ CREATE TABLE IF NOT EXISTS filter_log (
     criteria     VARCHAR NOT NULL,
     count_before INTEGER NOT NULL,
     count_after  INTEGER NOT NULL,
-    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    provider     VARCHAR NOT NULL
 )
 """
 
@@ -148,7 +174,8 @@ _DDL_ENRICHER_LOG = """
 CREATE TABLE IF NOT EXISTS enricher_log (
     name        VARCHAR NOT NULL,
     params_json VARCHAR NOT NULL DEFAULT '{}',
-    recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    provider    VARCHAR NOT NULL
 )
 """
 
@@ -238,7 +265,7 @@ def _build_upsert_sql() -> str:
     return (
         f"INSERT INTO corpus ({insert_cols})\n"
         f"VALUES ({placeholders})\n"
-        f"ON CONFLICT (id) DO UPDATE SET\n"
+        f"ON CONFLICT (id, provider) DO UPDATE SET\n"
         f"{updates_sql}"
     )
 
@@ -250,7 +277,8 @@ def _build_bulk_update_existing_sql() -> str:
     """SQL para actualizar filas que ya existen en ``corpus`` (conflictos reales).
 
     Lee el lote desde la vista registrada ``_incoming_upsert`` y actualiza solo
-    las filas cuyo ``id`` ya existe en ``corpus``.  Las UDFs Python
+    las filas cuyo ``(id, provider)`` ya existe en ``corpus`` (ADR 0053 D2.1: el
+    merge D3 ocurre solo dentro de un carril).  Las UDFs Python
     ``_merge_curation_status_udf`` y ``_merge_provenance_udf`` se invocan
     únicamente para las filas que efectivamente están en conflicto (no para
     inserciones nuevas), eliminando el overhead de UDF para el caso de primer
@@ -300,7 +328,7 @@ def _build_bulk_update_existing_sql() -> str:
         f"UPDATE corpus SET\n"
         f"{sets_sql}\n"
         f"FROM _incoming_upsert AS src\n"
-        f"WHERE corpus.id = src.id"
+        f"WHERE corpus.id = src.id AND corpus.provider = src.provider"
     )
 
 
@@ -308,7 +336,7 @@ def _build_bulk_insert_new_sql() -> str:
     """SQL para insertar filas nuevas (sin conflicto con ``corpus``).
 
     Lee el lote desde la vista registrada ``_incoming_upsert`` y hace INSERT
-    solo de las filas cuyo ``id`` NO existe todavía en ``corpus``.  No invoca
+    solo de las filas cuyo ``id`` NO existe todavía en el carril (``corpus_lane``).  No invoca
     ninguna UDF Python (las filas son nuevas, no hay merge que hacer).
 
     ADR 0024: ``_seq = CAST($1 AS BIGINT) + ROW_NUMBER() OVER (ORDER BY _row_idx)``
@@ -325,7 +353,7 @@ def _build_bulk_insert_new_sql() -> str:
         f"SELECT {schema_cols},\n"
         f"    CAST($1 AS BIGINT) + ROW_NUMBER() OVER (ORDER BY _row_idx) AS _seq\n"
         f"FROM _incoming_upsert\n"
-        f"WHERE id NOT IN (SELECT id FROM corpus)"
+        f"WHERE id NOT IN (SELECT id FROM corpus_lane)"
     )
 
 
@@ -369,14 +397,14 @@ def _row_to_params(row: dict[str, object]) -> list[object]:
 
 
 def _arrow_table_from_con(con: duckdb.DuckDBPyConnection) -> pa.Table:
-    """Lee la tabla ``corpus``, excluye ``_seq`` y ordena por él.
+    """Lee el carril activo (``corpus_lane``), excluye ``_seq`` y ordena por él.
 
     ADR 0024: ``SELECT * EXCLUDE (_seq) … ORDER BY _seq`` garantiza que
     ``to_arrow()`` devuelva exactamente ``CORPUS_SCHEMA`` en orden de primera
     aparición (D3), sin necesidad de DELETE+reinsert.
     """
     result: pa.Table = con.execute(
-        "SELECT * EXCLUDE (_seq) FROM corpus ORDER BY _seq"
+        "SELECT * EXCLUDE (_seq) FROM corpus_lane ORDER BY _seq"
     ).to_arrow_table()
     if len(result) == 0:
         return pa.table(
@@ -394,7 +422,8 @@ def _dedup_merge_table(table: pa.Table) -> pa.Table:
     (la misma semántica que las UDFs ``_merge_curation_status_udf`` y
     ``_merge_provenance_udf``).  El orden de primera aparición se preserva.
 
-    Garantiza que el lote no viole el PRIMARY KEY de ``corpus`` (``id UNIQUE``),
+    Garantiza que el lote no viole el PRIMARY KEY de ``corpus`` (``(id, provider)``;
+    el lote es de un solo carril, así que basta deduplicar por ``id``),
     que antes causaba ``ConstraintException`` en el upsert bulk cuando el batch
     entrante ya contenía ids repetidos.
 
@@ -425,12 +454,89 @@ def _dedup_merge_table(table: pa.Table) -> pa.Table:
     return pa.Table.from_pylist(deduped, schema=CORPUS_SCHEMA)
 
 
+# SQL de sincronización de curación entre carriles (ADR 0053 D2.2).
+# Fold de ``_merge_curation_status`` sobre las N filas de un mismo ``id``:
+# gana la decisión humana más reciente por ``decided_at`` (las filas sin decisión
+# humana pierden contra las que la tienen); desempate por prioridad
+# accepted > rejected > candidate.  Es el orden lexicográfico
+# ``(ts DESC NULLS LAST, prio DESC)``, equivalente a plegar la regla de dos filas.
+# Set-based: una sola sentencia UPDATE, solo para ids tocados que existen en más
+# de un carril, y solo escribe las filas cuyo estado difiere del efectivo.
+_SYNC_CURATION_SQL = """
+UPDATE corpus SET curation_status = winner.status
+FROM (
+    SELECT id, curation_status AS status
+    FROM (
+        SELECT id, curation_status,
+               ROW_NUMBER() OVER (
+                   PARTITION BY id
+                   ORDER BY ts DESC NULLS LAST, prio DESC
+               ) AS rn
+        FROM (
+            SELECT id, curation_status,
+                   _latest_human_decided_at_udf(provenance) AS ts,
+                   CASE curation_status
+                       WHEN 'accepted' THEN 2
+                       WHEN 'rejected' THEN 1
+                       ELSE 0
+                   END AS prio
+            FROM corpus
+            WHERE id IN (
+                SELECT id FROM corpus
+                WHERE id IN (SELECT id FROM _sync_ids)
+                GROUP BY id HAVING COUNT(*) > 1
+            )
+        ) AS touched
+    ) AS ranked
+    WHERE rn = 1
+) AS winner
+WHERE corpus.id = winner.id AND corpus.curation_status <> winner.status
+"""
+
+# Columnas v1 (sin ``provider``) de las hermanas que la migración reconstruye.
+_SIBLING_V1_COLUMNS: dict[str, tuple[str, ...]] = {
+    "referenced_but_not_fetched": ("ref_id", "cycle_round", "observed_at"),
+    "filter_log": ("name", "criteria", "count_before", "count_after", "recorded_at"),
+    "enricher_log": ("name", "params_json", "recorded_at"),
+}
+
+# Tablas de datos que ``_clone`` copia al clonar un backend ``:memory:``.
+_DATA_TABLES = (
+    "corpus",
+    "loop_state_log",
+    "referenced_but_not_fetched",
+    "external_ids",
+    "filter_log",
+    "enricher_log",
+    "equations",
+)
+
+
+class StoreSchemaError(OSError):
+    """El esquema del store es de una versión que esta bib2graph no entiende.
+
+    Subclase de ``OSError`` (como ``StoreLockedError``) para que el CLI lo mapee
+    al exit code ``5`` (store).
+    """
+
+
+def _coerce_provider(provider: Provider | str) -> Provider:
+    """Valida un token de proveedor (también evita inyección en la vista del carril)."""
+    try:
+        return Provider(provider)
+    except ValueError as exc:
+        valid = ", ".join(p.value for p in Provider)
+        raise ValueError(
+            f"Proveedor desconocido: {provider!r}. Valores válidos: {valid}."
+        ) from exc
+
+
 class DuckDBBackend:
     """Backend de biblioteca viva persistida en DuckDB (ADR 0009, 0015).
 
     Implementa el Protocol ``TabularBackend`` con mutaciones por SQL puro
-    (``INSERT … ON CONFLICT DO UPDATE`` por ``id``), cumpliendo D1/D2/D3
-    (ADR 0013).
+    (``INSERT … ON CONFLICT DO UPDATE`` por ``(id, provider)``), cumpliendo
+    D1/D2/D3 (ADR 0013).
 
     Semántica de valor: todas las operaciones mutantes (``add_paper``,
     ``merge``, ``apply_curation``) devuelven una nueva instancia que
@@ -445,12 +551,23 @@ class DuckDBBackend:
     (número de secuencia de primera aparición). ``to_arrow()`` devuelve
     exactamente ``CORPUS_SCHEMA`` (sin ``_seq``) ordenado por ``_seq``.
 
+    ADR 0053 D2 — **atado a un carril**: el backend guarda varios proveedores
+    en la misma tabla ``corpus`` (PK ``(id, provider)``), pero cada instancia
+    opera sobre uno: todas las lecturas pasan por la vista temporal
+    ``corpus_lane`` y toda escritura valida ``provider = <carril>``
+    (``ProviderMismatchError`` si una fila trae otro).  ``query(sql)`` debe
+    leer ``FROM corpus_lane``, nunca ``FROM corpus``.
+
     Args:
         table: Tabla Arrow inicial.  Si se pasa, se hace upsert de sus filas
             en la base de datos.  Permite inicializar desde ``pa.Table``
             (patrón que usa la suite de contrato).
         path: Ruta al archivo ``.duckdb``.  Si es ``None`` (default), se usa
             ``:memory:``.
+        provider: Carril (proveedor) sobre el que opera esta instancia.
+        legacy_provider: Carril con el que se etiquetan las filas de un store
+            v1 al migrarlo a v2 (``workspace.json.source`` vigente al migrar;
+            ADR 0053 D2.4).  Solo se usa en la migración.
     """
 
     def __init__(
@@ -458,8 +575,12 @@ class DuckDBBackend:
         table: pa.Table | None = None,
         *,
         path: str | Path | None = None,
+        provider: Provider | str = DEFAULT_PROVIDER,
+        legacy_provider: Provider | str = DEFAULT_PROVIDER,
     ) -> None:
         self._path: str = ":memory:" if path is None else str(path)
+        self._provider: Provider = _coerce_provider(provider)
+        self._legacy_provider: Provider = _coerce_provider(legacy_provider)
         try:
             self._con: duckdb.DuckDBPyConnection = duckdb.connect(self._path)
         except duckdb.IOException as exc:
@@ -468,33 +589,155 @@ class DuckDBBackend:
                 "El archivo puede estar bloqueado por otro escritor (ADR 0019). "
                 "Cerrá el otro proceso y reintentá."
             ) from exc
-        self._setup()
+        self._setup_or_close()
         if table is not None:
             self._upsert_table(table)
 
+    @property
+    def provider(self) -> Provider:
+        """Carril (proveedor) sobre el que opera esta instancia (ADR 0053 D2.1)."""
+        return self._provider
+
     # Inicialización interna
+
+    def _setup_or_close(self) -> None:
+        """``_setup()``; si falla (migración, versión futura) cierra la conexión.
+
+        Evita dejar el lock del archivo tomado tras un error de apertura.
+        """
+        try:
+            self._setup()
+        except BaseException:
+            self._con.close()
+            raise
+
+    def _table_exists(self, name: str) -> bool:
+        row = self._con.execute(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'main' AND table_name = ?",
+            [name],
+        ).fetchone()
+        return row is not None
+
+    def _column_exists(self, table: str, column: str) -> bool:
+        row = self._con.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'main' AND table_name = ? AND column_name = ?",
+            [table, column],
+        ).fetchone()
+        return row is not None
+
+    def _schema_version(self) -> str:
+        """Versión del esquema del store (``store_meta``); ausente = ``"1"``."""
+        row = self._con.execute(
+            "SELECT value FROM store_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        return str(row[0]) if row else "1"
 
     def _setup(self) -> None:
         """Crea las tablas DDL, aplica migraciones y registra las UDFs Python."""
-        self._con.execute(_DDL_CORPUS)
+        self._con.execute(_DDL_STORE_META)
         self._con.execute(_DDL_LOOP_STATE)
         with contextlib.suppress(duckdb.CatalogException):
             self._con.execute(_DDL_LOOP_STATE_MIGRATE)
-        # CatalogException: columna ya existe. BinderException: variante alternativa DuckDB.
-        with contextlib.suppress(duckdb.CatalogException, duckdb.BinderException):
-            self._con.execute(_DDL_CORPUS_MIGRATE_SEQ)
-        # Es inocuo cuando no hay NULLs (WHERE _seq IS NULL no toca nada).
-        self._con.execute(_DDL_CORPUS_BACKFILL_SEQ)
-        with contextlib.suppress(duckdb.CatalogException, duckdb.BinderException):
-            self._con.execute(
-                "ALTER TABLE corpus RENAME COLUMN openalex_id TO source_id"
-            )
+        had_corpus = self._table_exists("corpus")
+        if had_corpus and self._schema_version() == "1":
+            # Store legacy (v1): primero las migraciones aditivas históricas
+            # sobre la tabla vieja, recién después la reconstrucción a v2.
+            # CatalogException: columna ya existe. BinderException: variante alternativa DuckDB.
+            with contextlib.suppress(duckdb.CatalogException, duckdb.BinderException):
+                self._con.execute(_DDL_CORPUS_MIGRATE_SEQ)
+            # Es inocuo cuando no hay NULLs (WHERE _seq IS NULL no toca nada).
+            self._con.execute(_DDL_CORPUS_BACKFILL_SEQ)
+            with contextlib.suppress(duckdb.CatalogException, duckdb.BinderException):
+                self._con.execute(
+                    "ALTER TABLE corpus RENAME COLUMN openalex_id TO source_id"
+                )
+        elif not had_corpus:
+            self._con.execute(_DDL_CORPUS)
         self._con.execute(_DDL_REFERENCED_BUT_NOT_FETCHED)
         self._con.execute(_DDL_EXTERNAL_IDS)
         self._con.execute(_DDL_FILTER_LOG)
         self._con.execute(_DDL_ENRICHER_LOG)
         self._con.execute(_DDL_EQUATIONS)
+        if not had_corpus:
+            self._con.execute(
+                "INSERT OR REPLACE INTO store_meta (key, value) "
+                "VALUES ('schema_version', ?)",
+                [_STORE_SCHEMA_VERSION],
+            )
+        else:
+            version = self._schema_version()
+            if version == "1":
+                self._migrate_v1_to_v2()
+            elif version != _STORE_SCHEMA_VERSION:
+                raise StoreSchemaError(
+                    f"El store '{self._path}' tiene schema_version={version!r}, "
+                    f"más nuevo que el que entiende esta bib2graph "
+                    f"({_STORE_SCHEMA_VERSION!r}). Actualizá bib2graph."
+                )
         self._register_udfs()
+        # ADR 0053 D2.1: vista temporal del carril.  El valor es un ``Provider``
+        # validado (no input libre), por eso se interpola.
+        self._con.execute(
+            "CREATE OR REPLACE TEMP VIEW corpus_lane AS "
+            f"SELECT * FROM main.corpus WHERE provider = '{self._provider.value}'"
+        )
+
+    def _migrate_v1_to_v2(self) -> None:
+        """Migra un store v1 a v2 en UNA transacción (ADR 0053 D2.4, R7).
+
+        DuckDB no permite cambiar la PK en el lugar: se reconstruye ``corpus``
+        (``CREATE corpus_v2`` → ``INSERT … SELECT`` con ``provider = <legacy>`` y
+        ``_seq`` intacto → ``DROP corpus`` → ``RENAME``).  Después agrega
+        ``provider`` a las tablas hermanas y sella ``store_meta``.  Si algo
+        falla, ``ROLLBACK`` y el store queda v1 (reintentable).  Corre una sola
+        vez: la reapertura ve ``schema_version = "2"``.
+        """
+        legacy = self._legacy_provider.value
+        cols = [f.name for f in CORPUS_SCHEMA if f.name != Col.PROVIDER]
+        insert_cols = ", ".join([cols[0], "provider", *cols[1:], "_seq"])
+        select_exprs = ", ".join([cols[0], "?", *cols[1:], "_seq"])
+        self._con.execute("BEGIN TRANSACTION")
+        try:
+            self._con.execute(_DDL_CORPUS_TEMPLATE.format(name="corpus_v2"))
+            self._con.execute(
+                f"INSERT INTO corpus_v2 ({insert_cols}) "
+                f"SELECT {select_exprs} FROM corpus ORDER BY _seq",
+                [legacy],
+            )
+            self._con.execute("DROP TABLE corpus")
+            self._con.execute("ALTER TABLE corpus_v2 RENAME TO corpus")
+            # DuckDB no admite ADD COLUMN ... NOT NULL: se reconstruyen las
+            # hermanas con la DDL nueva (provider NOT NULL), igual que un store
+            # nuevo, para que el esquema migrado y el fresco sean idénticos.
+            for sibling, old_cols in _SIBLING_V1_COLUMNS.items():
+                if self._column_exists(sibling, "provider"):
+                    continue
+                ddl = {
+                    "referenced_but_not_fetched": _DDL_REFERENCED_BUT_NOT_FETCHED,
+                    "filter_log": _DDL_FILTER_LOG,
+                    "enricher_log": _DDL_ENRICHER_LOG,
+                }[sibling]
+                tmp = f"{sibling}_v2"
+                self._con.execute(ddl.replace(sibling, tmp, 1))
+                sib_cols = ", ".join(old_cols)
+                self._con.execute(
+                    f"INSERT INTO {tmp} ({sib_cols}, provider) "
+                    f"SELECT {sib_cols}, ? FROM {sibling}",
+                    [legacy],
+                )
+                self._con.execute(f"DROP TABLE {sibling}")
+                self._con.execute(f"ALTER TABLE {tmp} RENAME TO {sibling}")
+            self._con.execute(
+                "INSERT OR REPLACE INTO store_meta (key, value) "
+                "VALUES ('schema_version', ?)",
+                [_STORE_SCHEMA_VERSION],
+            )
+            self._con.execute("COMMIT")
+        except Exception:
+            self._con.execute("ROLLBACK")
+            raise
 
     def _register_udfs(self) -> None:
         """Registra UDFs Python en la conexión DuckDB (D3 para provenance/curation)."""
@@ -517,6 +760,9 @@ class DuckDBBackend:
             prov_b: str | None,
         ) -> str | None:
             return _merge_provenance(prov_a, prov_b)
+
+        def latest_decided_at_udf(prov: str | None) -> str | None:
+            return _latest_human_decided_at(_parse_provenance(prov))
 
         varchar = duckdb.type("VARCHAR")
         # Cuando dos conexiones comparten el mismo archivo DuckDB (con1 todavía
@@ -541,15 +787,71 @@ class DuckDBBackend:
                 null_handling=FunctionNullHandling.SPECIAL,
             )
 
+        with contextlib.suppress(duckdb.CatalogException):
+            self._con.create_function(
+                "_latest_human_decided_at_udf",
+                latest_decided_at_udf,
+                [varchar],
+                varchar,
+                null_handling=FunctionNullHandling.SPECIAL,
+            )
+
+    def _assert_lane(self, table: pa.Table) -> None:
+        """Falla si ``table`` trae filas de otro carril o sin ``provider`` (D2.1).
+
+        Atrapa una ``Source`` que olvidó sellar su token antes de escribir.
+        """
+        if len(table) == 0:
+            return
+        lanes = table_providers(table)
+        nulls = table.column(Col.PROVIDER).null_count
+        foreign = [lane for lane in lanes if lane != self._provider.value]
+        if foreign or nulls:
+            raise ProviderMismatchError(
+                f"El backend está atado al carril {self._provider.value!r} pero la "
+                f"escritura trae provider={foreign!r} y {nulls} fila(s) sin "
+                "provider (ADR 0053 D2.1). Cada Source debe sellar su token en las "
+                "filas que produce; un carril no escribe en otro."
+            )
+
+    def _sync_curation_across_lanes(self, ids: pa.Array | list[str]) -> None:
+        """Propaga la curación efectiva entre carriles para los ``ids`` tocados.
+
+        ADR 0053 D2.2: el estado de curación es del paper (``id``), no del
+        registro.  Para cada ``id`` presente en más de un carril, calcula el
+        estado efectivo (fold de ``_merge_curation_status`` sobre las N filas:
+        decisión humana más reciente por ``decided_at``, desempate por
+        prioridad) y lo escribe en todas.  Los eventos de provenance NO se
+        copian: la auditoría queda en el carril donde se decidió.
+
+        Set-based (una sola sentencia UPDATE).  Atajo: si el store tiene un solo
+        carril, es un único ``SELECT … LIMIT 1`` y no hace nada.
+        """
+        if len(ids) == 0:
+            return
+        other = self._con.execute(
+            "SELECT 1 FROM corpus WHERE provider <> ? LIMIT 1",
+            [self._provider.value],
+        ).fetchone()
+        if other is None:
+            return
+        ids_table = pa.table({"id": pa.array(ids, type=pa.string())})
+        self._con.register("_sync_ids", ids_table)
+        try:
+            self._con.execute(_SYNC_CURATION_SQL)
+        finally:
+            self._con.unregister("_sync_ids")
+
     def _upsert_table(self, table: pa.Table) -> None:
         """Hace upsert de todas las filas de ``table`` en la base de datos.
 
         Ingesta vectorizada de dos pasos — registra la tabla Arrow en DuckDB
         (zero-copy) y ejecuta exactamente 2 + 1 sentencias SQL por lote:
 
-        1. **UPDATE** filas ya existentes (las UDFs Python se invocan solo para
-           los conflictos reales; para un primer persist sin conflictos = 0 UDFs).
-        2. **INSERT** filas nuevas con ``WHERE id NOT IN (SELECT id FROM corpus)``
+        1. **UPDATE** filas ya existentes en el carril (las UDFs Python se
+           invocan solo para los conflictos reales; para un primer persist sin
+           conflictos = 0 UDFs).
+        2. **INSERT** filas nuevas con ``WHERE id NOT IN (SELECT id FROM corpus_lane)``
            (vectorizado, cero UDFs).
 
         Elimina el round-trip por fila previo (O(n) → O(1) viajes al motor SQL)
@@ -558,6 +860,8 @@ class DuckDBBackend:
         (corpus vacío → todas las filas son nuevas → 0 UDFs).
 
         Pre-procesamiento del lote:
+        - **Carril** (``_assert_lane``): el lote debe ser todo del carril del
+          backend (``ProviderMismatchError`` si no; ADR 0053 D2.1).
         - **Dedup-MERGE** (``_dedup_merge_table``): si el lote contiene ids
           duplicados, los fusiona con la misma semántica D3 que las UDFs
           (provenance append-only, curación más reciente gana) antes de registrar
@@ -567,14 +871,17 @@ class DuckDBBackend:
           produzca un ``_seq`` determinista y estable que respeta el orden de
           aparición de la tabla Arrow entrante (ADR 0024, D3).
 
-        Las filas existentes conservan su ``_seq`` original (D3).
+        Las filas existentes conservan su ``_seq`` original (D3).  Al final
+        propaga la curación a los otros carriles (``_sync_curation_across_lanes``).
         """
         if len(table) == 0:
             return
+        self._assert_lane(table)
         table = _dedup_merge_table(table)
         # ADR 0024: base para el _seq monótono de las filas nuevas en este lote
+        # (por carril: el orden de primera aparición se mide dentro del carril).
         result = self._con.execute(
-            "SELECT COALESCE(MAX(_seq), 0) FROM corpus"
+            "SELECT COALESCE(MAX(_seq), 0) FROM corpus_lane"
         ).fetchone()
         start: int = int(result[0]) if result else 0
         table_with_idx = table.append_column(
@@ -587,107 +894,37 @@ class DuckDBBackend:
             self._con.execute(_BULK_INSERT_NEW_SQL, [start])
         finally:
             self._con.unregister("_incoming_upsert")
+        self._sync_curation_across_lanes(table.column(Col.ID).combine_chunks())
 
     def _clone(self) -> DuckDBBackend:
         """Crea una nueva instancia apuntando al mismo archivo (path compartido).
 
-        Para ``:memory:`` exporta el estado actual y lo carga en una nueva
-        conexión in-memory (no se puede compartir una conexión :memory:).
-
-        ADR 0024: ``_arrow_table_from_con`` ya lee ordenado por ``_seq``;
-        al hacer ``_upsert_table`` en la nueva instancia se reasigna ``_seq``
-        fresco en ese mismo orden, preservando el orden D3.
+        Conserva el carril (``provider``/``legacy_provider``).  Para ``:memory:``
+        copia TODAS las tablas de datos (todos los carriles, ``_seq`` intacto) a
+        una nueva conexión in-memory (no se puede compartir una conexión :memory:).
         """
+        new_backend = DuckDBBackend.__new__(DuckDBBackend)
+        new_backend._path = self._path
+        new_backend._provider = self._provider
+        new_backend._legacy_provider = self._legacy_provider
         if self._path == ":memory:":
-            current_table = _arrow_table_from_con(self._con)
-            new_backend = DuckDBBackend.__new__(DuckDBBackend)
-            new_backend._path = ":memory:"
             new_backend._con = duckdb.connect(":memory:")
-            new_backend._setup()
-            if len(current_table) > 0:
-                new_backend._upsert_table(current_table)
-            log_rows = self._con.execute(
-                "SELECT state, round, recorded_at FROM loop_state_log ORDER BY recorded_at"
-            ).fetchall()
-            for state_val, round_val, at_val in log_rows:
-                new_backend._con.execute(
-                    "INSERT INTO loop_state_log (state, round, recorded_at) VALUES (?, ?, ?)",
-                    [state_val, round_val, at_val],
-                )
-            ref_rows = self._con.execute(
-                "SELECT ref_id, cycle_round, observed_at "
-                "FROM referenced_but_not_fetched ORDER BY observed_at"
-            ).fetchall()
-            for ref_id_val, cycle_round_val, observed_at_val in ref_rows:
-                new_backend._con.execute(
-                    "INSERT INTO referenced_but_not_fetched "
-                    "(ref_id, cycle_round, observed_at) VALUES (?, ?, ?)",
-                    [ref_id_val, cycle_round_val, observed_at_val],
-                )
-            ext_rows = self._con.execute(
-                "SELECT paper_id, engine, id FROM external_ids"
-            ).fetchall()
-            for paper_id_val, engine_val, id_val in ext_rows:
-                new_backend._con.execute(
-                    "INSERT OR REPLACE INTO external_ids (paper_id, engine, id) "
-                    "VALUES (?, ?, ?)",
-                    [paper_id_val, engine_val, id_val],
-                )
-            filter_rows = self._con.execute(
-                "SELECT name, criteria, count_before, count_after, recorded_at "
-                "FROM filter_log ORDER BY recorded_at"
-            ).fetchall()
-            for name_val, criteria_val, cb_val, ca_val, at_val in filter_rows:
-                new_backend._con.execute(
-                    "INSERT INTO filter_log "
-                    "(name, criteria, count_before, count_after, recorded_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    [name_val, criteria_val, cb_val, ca_val, at_val],
-                )
-            enricher_rows = self._con.execute(
-                "SELECT name, params_json, recorded_at "
-                "FROM enricher_log ORDER BY recorded_at"
-            ).fetchall()
-            for er_name, er_params, er_at in enricher_rows:
-                new_backend._con.execute(
-                    "INSERT INTO enricher_log (name, params_json, recorded_at) "
-                    "VALUES (?, ?, ?)",
-                    [er_name, er_params, er_at],
-                )
-            equation_rows = self._con.execute(
-                "SELECT equation_id, engine, raw_query, params_json, label, "
-                "created_at, _seq FROM equations ORDER BY _seq"
-            ).fetchall()
-            for (
-                eq_id_val,
-                eq_engine_val,
-                eq_raw_query_val,
-                eq_params_val,
-                eq_label_val,
-                eq_created_val,
-                eq_seq_val,
-            ) in equation_rows:
-                new_backend._con.execute(
-                    "INSERT INTO equations "
-                    "(equation_id, engine, raw_query, params_json, label, "
-                    "created_at, _seq) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    [
-                        eq_id_val,
-                        eq_engine_val,
-                        eq_raw_query_val,
-                        eq_params_val,
-                        eq_label_val,
-                        eq_created_val,
-                        eq_seq_val,
-                    ],
-                )
+            new_backend._setup_or_close()
+            for name in _DATA_TABLES:
+                src = self._con.execute(f"SELECT * FROM {name}").to_arrow_table()
+                if len(src) == 0:
+                    continue
+                new_backend._con.register("_clone_src", src)
+                try:
+                    new_backend._con.execute(
+                        f"INSERT INTO {name} SELECT * FROM _clone_src"
+                    )
+                finally:
+                    new_backend._con.unregister("_clone_src")
             return new_backend
-        else:
-            new_backend = DuckDBBackend.__new__(DuckDBBackend)
-            new_backend._path = self._path
-            new_backend._con = duckdb.connect(self._path)
-            new_backend._setup()
-            return new_backend
+        new_backend._con = duckdb.connect(self._path)
+        new_backend._setup_or_close()
+        return new_backend
 
     # TabularBackend protocol
 
@@ -730,14 +967,21 @@ class DuckDBBackend:
         Returns:
             Nueva instancia con el paper agregado.
         """
+        row_lane = row.get(Col.PROVIDER)
+        if row_lane != self._provider.value:
+            raise ProviderMismatchError(
+                f"El backend está atado al carril {self._provider.value!r} pero la "
+                f"fila trae provider={row_lane!r} (ADR 0053 D2.1)."
+            )
         new_backend = self._clone()
-        # ADR 0024: _seq para la fila nueva = MAX actual + 1
+        # ADR 0024: _seq para la fila nueva = MAX actual + 1 (por carril)
         result = new_backend._con.execute(
-            "SELECT COALESCE(MAX(_seq), 0) FROM corpus"
+            "SELECT COALESCE(MAX(_seq), 0) FROM corpus_lane"
         ).fetchone()
         seq: int = int(result[0]) + 1 if result else 1
         params = [*_row_to_params(row), seq]
         new_backend._con.execute(_UPSERT_SQL, params)
+        new_backend._sync_curation_across_lanes([str(row[Col.ID])])
         return new_backend
 
     def merge(self, other_table: pa.Table) -> DuckDBBackend:
@@ -809,6 +1053,9 @@ class DuckDBBackend:
                 # Se pasa _seq=0 como placeholder; el DO UPDATE no lo sobrescribe.
                 params = [*_row_to_params(row), 0]
                 new_backend._con.execute(_UPSERT_SQL, params)
+        # ADR 0053 D2.2: el estado de curación es del paper; se propaga a los
+        # demás carriles (el evento de provenance queda solo en este carril).
+        new_backend._sync_curation_across_lanes(list(id_set))
         return new_backend
 
     def filter_view(self, view: Literal["seeds", "candidates", "accepted"]) -> pa.Table:
@@ -828,16 +1075,17 @@ class DuckDBBackend:
         """
         if view == "seeds":
             result = self._con.execute(
-                "SELECT * EXCLUDE (_seq) FROM corpus WHERE is_seed = TRUE ORDER BY _seq"
+                "SELECT * EXCLUDE (_seq) FROM corpus_lane WHERE is_seed = TRUE "
+                "ORDER BY _seq"
             ).to_arrow_table()
         elif view == "candidates":
             result = self._con.execute(
-                "SELECT * EXCLUDE (_seq) FROM corpus WHERE curation_status = "
+                "SELECT * EXCLUDE (_seq) FROM corpus_lane WHERE curation_status = "
                 f"'{CurationStatus.CANDIDATE.value}' ORDER BY _seq"
             ).to_arrow_table()
         elif view == "accepted":
             result = self._con.execute(
-                "SELECT * EXCLUDE (_seq) FROM corpus WHERE curation_status = "
+                "SELECT * EXCLUDE (_seq) FROM corpus_lane WHERE curation_status = "
                 f"'{CurationStatus.ACCEPTED.value}' ORDER BY _seq"
             ).to_arrow_table()
         else:
@@ -864,7 +1112,7 @@ class DuckDBBackend:
 
     def __len__(self) -> int:
         """Número de papers en el backend."""
-        result = self._con.execute("SELECT COUNT(*) FROM corpus").fetchone()
+        result = self._con.execute("SELECT COUNT(*) FROM corpus_lane").fetchone()
         return int(result[0]) if result else 0
 
     def __eq__(self, other: object) -> bool:
@@ -953,15 +1201,16 @@ class DuckDBBackend:
             return 0
         # IDs ya presentes (cualquier ronda — el contrato es append sin duplicar).
         existing_rows = self._con.execute(
-            "SELECT ref_id FROM referenced_but_not_fetched"
+            "SELECT ref_id FROM referenced_but_not_fetched WHERE provider = ?",
+            [self._provider.value],
         ).fetchall()
         existing: set[str] = {r[0] for r in existing_rows}
         new_ids = [rid for rid in ref_ids if rid not in existing]
         for rid in new_ids:
             self._con.execute(
-                "INSERT INTO referenced_but_not_fetched (ref_id, cycle_round) "
-                "VALUES (?, ?)",
-                [rid, cycle_round],
+                "INSERT INTO referenced_but_not_fetched "
+                "(ref_id, cycle_round, provider) VALUES (?, ?, ?)",
+                [rid, cycle_round, self._provider.value],
             )
         return len(new_ids)
 
@@ -972,7 +1221,8 @@ class DuckDBBackend:
             Conteo total de filas en la tabla auxiliar.
         """
         row = self._con.execute(
-            "SELECT COUNT(*) FROM referenced_but_not_fetched"
+            "SELECT COUNT(*) FROM referenced_but_not_fetched WHERE provider = ?",
+            [self._provider.value],
         ).fetchone()
         return int(row[0]) if row else 0
 
@@ -983,7 +1233,9 @@ class DuckDBBackend:
             Lista de ``ref_id`` en orden de inserción.
         """
         rows = self._con.execute(
-            "SELECT ref_id FROM referenced_but_not_fetched ORDER BY observed_at"
+            "SELECT ref_id FROM referenced_but_not_fetched WHERE provider = ? "
+            "ORDER BY observed_at",
+            [self._provider.value],
         ).fetchall()
         return [r[0] for r in rows]
 
@@ -1012,8 +1264,10 @@ class DuckDBBackend:
         """Registra muchos IDs externos en UNA sentencia y limpia huérfanos.
 
         Idempotente (``INSERT OR REPLACE`` por PK ``(paper_id, engine)``).  En la
-        misma operación borra las entradas cuyo ``paper_id`` ya no existe en
-        ``corpus`` (p. ej. ids canónicos reemplazados por un dedup).
+        misma operación borra las entradas **del carril** (``engine`` = carril
+        del backend) cuyo ``paper_id`` ya no existe en el carril (p. ej. ids
+        canónicos reemplazados por un dedup).  Las entradas de otros ``engine``
+        no se tocan: pertenecen a los registros de otros carriles (ADR 0053 D2).
 
         Args:
             table: Tabla Arrow con columnas ``paper_id``, ``engine`` e ``id``
@@ -1029,7 +1283,9 @@ class DuckDBBackend:
             finally:
                 self._con.unregister("_incoming_external_ids")
         self._con.execute(
-            "DELETE FROM external_ids WHERE paper_id NOT IN (SELECT id FROM corpus)"
+            "DELETE FROM external_ids WHERE engine = ? "
+            "AND paper_id NOT IN (SELECT id FROM corpus_lane)",
+            [self._provider.value],
         )
 
     def external_ids_for(self, paper_id: str) -> dict[str, str]:
@@ -1087,16 +1343,20 @@ class DuckDBBackend:
                 que verifican acumulación).
         """
         if replace:
-            self._con.execute("DELETE FROM filter_log")
+            self._con.execute(
+                "DELETE FROM filter_log WHERE provider = ?", [self._provider.value]
+            )
         for step in steps:
             self._con.execute(
-                "INSERT INTO filter_log (name, criteria, count_before, count_after) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO filter_log "
+                "(name, criteria, count_before, count_after, provider) "
+                "VALUES (?, ?, ?, ?, ?)",
                 [
                     getattr(step, "name", None),
                     getattr(step, "criteria", None),
                     getattr(step, "count_before", None),
                     getattr(step, "count_after", None),
+                    self._provider.value,
                 ],
             )
 
@@ -1112,7 +1372,8 @@ class DuckDBBackend:
         """
         rows = self._con.execute(
             "SELECT name, criteria, count_before, count_after "
-            "FROM filter_log ORDER BY recorded_at"
+            "FROM filter_log WHERE provider = ? ORDER BY recorded_at",
+            [self._provider.value],
         ).fetchall()
         return [
             {
@@ -1149,13 +1410,16 @@ class DuckDBBackend:
                 de insertar.  Si es ``False``, appendea.
         """
         if replace:
-            self._con.execute("DELETE FROM enricher_log")
+            self._con.execute(
+                "DELETE FROM enricher_log WHERE provider = ?", [self._provider.value]
+            )
         for ref in refs:
             name = getattr(ref, "name", None)
             params = getattr(ref, "params", {})
             self._con.execute(
-                "INSERT INTO enricher_log (name, params_json) VALUES (?, ?)",
-                [name, json.dumps(params)],
+                "INSERT INTO enricher_log (name, params_json, provider) "
+                "VALUES (?, ?, ?)",
+                [name, json.dumps(params), self._provider.value],
             )
 
     def load_enricher_refs(self) -> list[dict[str, Any]]:
@@ -1170,7 +1434,9 @@ class DuckDBBackend:
             ``str→str``) en el orden de inserción.
         """
         rows = self._con.execute(
-            "SELECT name, params_json FROM enricher_log ORDER BY recorded_at"
+            "SELECT name, params_json FROM enricher_log WHERE provider = ? "
+            "ORDER BY recorded_at",
+            [self._provider.value],
         ).fetchall()
         return [
             {
@@ -1229,7 +1495,11 @@ class DuckDBBackend:
         )
 
     def load_equations(self) -> list[dict[str, object]]:
-        """Devuelve todas las ecuaciones persistidas, en orden de inserción.
+        """Devuelve las ecuaciones **del carril**, en orden de inserción.
+
+        ADR 0053 D2.1: ``equations`` ya tiene ``engine`` (= token del proveedor);
+        se filtra por ``engine = carril`` para que ``manifest.equations`` y la
+        regla "1 ecuación → ``equation_hash``" (ADR 0050 D3) sean por carril.
 
         Returns:
             Lista de dicts con las claves ``equation_id``, ``engine``,
@@ -1237,7 +1507,8 @@ class DuckDBBackend:
         """
         rows = self._con.execute(
             "SELECT equation_id, engine, raw_query, params_json, label, created_at "
-            "FROM equations ORDER BY _seq"
+            "FROM equations WHERE engine = ? ORDER BY _seq",
+            [self._provider.value],
         ).fetchall()
         return [
             {
@@ -1265,10 +1536,13 @@ class DuckDBBackend:
             self._con.close()
 
     def overwrite_corpus(self, table: pa.Table) -> None:
-        """Reemplaza TODA la tabla ``corpus`` con el contenido de ``table``.
+        """Reemplaza el **carril** del backend con el contenido de ``table``.
 
-        Hace TRUNCATE + INSERT masivo (no upsert fila-a-fila) para que el estado
-        en disco sea exactamente ``table``, sin residuos de filas previas.
+        Hace ``DELETE … WHERE provider = <carril>`` + INSERT masivo (no upsert
+        fila-a-fila) para que el estado del carril en disco sea exactamente
+        ``table``, sin residuos de filas previas.  Los otros carriles no se
+        tocan (ADR 0053 R2).  Si ``table`` trae filas de otro carril falla
+        **antes** de borrar (``ProviderMismatchError``).
         Preserva las tablas hermanas (``loop_state_log``,
         ``referenced_but_not_fetched``).
 
@@ -1278,15 +1552,19 @@ class DuckDBBackend:
         para el caso «mismo paper desde dos fuentes» (D3); este método NO lo
         reemplaza en ese contexto.
 
-        ADR 0024: reasigna ``_seq`` desde 0 sobre la tabla limpia, manteniendo
+        ADR 0024: reasigna ``_seq`` desde 0 sobre el carril limpio, manteniendo
         el orden de filas que viene en ``table`` (que ya salió de
-        ``to_arrow()`` con ``ORDER BY _seq`` original).
+        ``to_arrow()`` con ``ORDER BY _seq`` original).  Al final propaga la
+        curación a los otros carriles (ADR 0053 D2.2).
 
         Args:
             table: Tabla Arrow con exactamente el contenido final a persistir.
                 Debe cumplir ``CORPUS_SCHEMA``.
         """
-        self._con.execute("DELETE FROM corpus")
+        self._assert_lane(table)
+        self._con.execute(
+            "DELETE FROM corpus WHERE provider = ?", [self._provider.value]
+        )
         if len(table) == 0:
             return
         table = _dedup_merge_table(table)
@@ -1301,11 +1579,14 @@ class DuckDBBackend:
             self._con.execute(_SIMPLE_INSERT_SQL)
         finally:
             self._con.unregister("_incoming_upsert")
+        self._sync_curation_across_lanes(table.column(Col.ID).combine_chunks())
 
     def query(self, sql: str) -> pa.Table:
         """Ejecuta una consulta SQL sobre el backend y devuelve tabla Arrow.
 
-        Solo para lectura (no muta el estado).
+        Solo para lectura (no muta el estado).  Para leer el corpus usá
+        ``FROM corpus_lane`` (el carril del backend), nunca ``FROM corpus``
+        (todos los carriles; ADR 0053 R2).
 
         Args:
             sql: Sentencia SQL SELECT a ejecutar.

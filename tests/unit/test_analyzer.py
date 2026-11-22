@@ -283,6 +283,7 @@ def _corpus_row(
         "language": None,
         "publisher": None,
         "research_areas": None,
+        "provider": "openalex",
         "is_seed": True,
         "curation_status": "candidate",
         "provenance": None,

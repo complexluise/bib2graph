@@ -1,6 +1,6 @@
 """schemas — schema Arrow canónico, validación de filas y modelos base.
 
-Única fuente de verdad del schema de 23 columnas (API.md §1.1).
+Única fuente de verdad del schema de 24 columnas (API.md §1.1).
 Ningún otro módulo define columnas; todos importan de aquí.
 
 R1 (ADR 0023):
@@ -26,7 +26,7 @@ from bib2graph.constants import Col, CurationStatus
 _SOURCE_KIND_VALUES = ("seed_equation", "chaining_forward", "chaining_backward")
 SourceKind = Literal["seed_equation", "chaining_forward", "chaining_backward"]
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 
 class ProvenanceEvent(BaseModel):
@@ -174,6 +174,7 @@ CORPUS_SCHEMA: pa.Schema = pa.schema(
     [
         # Identificadores
         pa.field(Col.ID, pa.string(), nullable=False),
+        pa.field(Col.PROVIDER, pa.string(), nullable=False),
         pa.field(Col.SOURCE_ID, pa.string(), nullable=True),
         pa.field(Col.DOI, pa.string(), nullable=True),
         # Metadatos bibliográficos
@@ -206,7 +207,7 @@ CORPUS_SCHEMA: pa.Schema = pa.schema(
 )
 
 _NON_NULLABLE_COLS: frozenset[str] = frozenset(
-    {Col.ID, Col.TITLE, Col.IS_SEED, Col.CURATION_STATUS}
+    {Col.ID, Col.PROVIDER, Col.TITLE, Col.IS_SEED, Col.CURATION_STATUS}
 )
 
 
@@ -280,6 +281,7 @@ class PaperRow(BaseModel):
     """
 
     id: str
+    provider: str
     source_id: str | None = None
     doi: str | None = None
     title: str

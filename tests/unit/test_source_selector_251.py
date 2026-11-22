@@ -95,6 +95,7 @@ def _openalex_row(id_: str = "P1") -> dict[str, Any]:
             "id": id_,
             "title": "OA paper",
             "year": 2020,
+            "provider": "openalex",
             "is_seed": True,
             "curation_status": "candidate",
             "cited_by_id": [],
@@ -107,7 +108,8 @@ def _persist_rows(store_path: Path, rows: list[dict[str, Any]]) -> None:
     from bib2graph.stores.duckdb import DuckDBStore
 
     table = pa.Table.from_pylist(rows, schema=CORPUS_SCHEMA)
-    store = DuckDBStore(store_path)
+    # ADR 0053 D2: el store se abre en el carril de las filas.
+    store = DuckDBStore(store_path, provider=rows[0]["provider"])
     store.persist(Corpus.from_arrow(table))
     store.close()
 
@@ -122,10 +124,12 @@ def _corpus_hash(store_path: Path) -> str:
         store.close()
 
 
-def _load_rows(store_path: Path) -> list[dict[str, Any]]:
+def _load_rows(
+    store_path: Path, provider: Provider = Provider.OPENALEX
+) -> list[dict[str, Any]]:
     from bib2graph.stores.duckdb import DuckDBStore
 
-    store = DuckDBStore(store_path)
+    store = DuckDBStore(store_path, provider=provider)
     try:
         return store.load().to_arrow().to_pylist()
     finally:
@@ -297,11 +301,11 @@ class TestSeedS2:
         assert data["papers_added"] == 1
         assert data["executed_query"] == "unequal exchange"
 
-        rows = _load_rows(store_path)
+        rows = _load_rows(store_path, Provider.S2)
         events = ProvenanceEvent.parse_list(rows[0][Col.PROVENANCE])
         assert events[0].source == "s2"
 
-        store = DuckDBStore(store_path)
+        store = DuckDBStore(store_path, provider=Provider.S2)
         try:
             con = store.backend._con  # type: ignore[attr-defined]
             engines = con.execute("SELECT engine FROM equations").fetchall()
@@ -447,7 +451,7 @@ class TestChainBuildS2:
         )
 
         assert data["candidates_found"] >= 1
-        rows = {r[Col.SOURCE_ID]: r for r in _load_rows(store_path)}
+        rows = {r[Col.SOURCE_ID]: r for r in _load_rows(store_path, Provider.S2)}
         citer = rows["s2citerbbb222"]
         # Metadata real (no placeholder "[candidate:...]").
         assert citer[Col.TITLE] == "Citing paper with real metadata"

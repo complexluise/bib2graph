@@ -205,3 +205,10 @@ el contrato.)
 > esto y el `--source` de 0053 D1, el follow-up #120 queda cerrado. La opción (C) de D-schema no
 > cambia; todavía no hay consumidor que **lea** la tabla para cruzar motores (llega con los carriles,
 > #253).
+
+> **Nota append-only — un registro por proveedor, as-built (2026-11-22, ADR [0053](0053-multiproveedor-seleccion-coexistencia-identidad.md) Corte 3a, #253).**
+> Lo que la primera nota de 0053 anunciaba ya está en el store: la tabla `corpus` tiene PK
+> `(id, provider)` y un mismo `id` canónico (D1', sin cambios) puede tener un registro por carril.
+> `_compute_id` no cambió y la precedencia `doi > src > tt` sigue igual, así que un paper sin DOI sigue
+> teniendo un `id` distinto en cada proveedor (0053 R3). `external_ids` queda por `engine` = carril:
+> `register_external_ids` toma el engine del store y limpia huérfanos solo de su carril.
