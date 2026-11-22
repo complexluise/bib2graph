@@ -790,6 +790,8 @@ def get_top(
         n: Número de nodos/pares a devolver (default 10). Debe ser > 0.
         kind: Tipo de red para el bloque central. Uno de los 5 ``NetworkKind``
             (default ``bibliographic_coupling``).
+        provider: Carril del que salen el corpus y las redes (ADR 0053 D1);
+            ``None`` = carril por defecto de la investigación.
 
     Returns:
         Dict con:
@@ -829,7 +831,7 @@ def get_top(
     }
 
     # Bloque "central": top N nodos por degree_centrality en --kind
-    central_net = get_network(ws, kind)
+    central_net = get_network(ws, kind, provider)
     sorted_nodes = sorted(
         central_net["nodes"],
         key=lambda node: node["degree_centrality"],
@@ -855,7 +857,7 @@ def get_top(
     coc_net = (
         central_net
         if kind == NetworkKind.COCITATION
-        else get_network(ws, NetworkKind.COCITATION)
+        else get_network(ws, NetworkKind.COCITATION, provider)
     )
 
     sorted_edges = sorted(
