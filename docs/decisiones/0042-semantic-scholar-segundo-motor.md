@@ -1,6 +1,6 @@
 # 0042 — Semantic Scholar como 2º motor de extracción: siembra exige key, forrajeo no; query nativa sin traducción
 
-- **Estado:** Propuesta
+- **Estado:** Aceptada (2026-11-21, decisión del PO: S2 como 2º backbone — Nota 25; wiring end-to-end en ADR 0053)
 - **Fecha:** 2026-06-30
 - **Encuadre:** síntesis de la IA (architect) a partir de un probe empírico de la Academic Graph
   API de S2 + deep-research citado; **la decisión la toma el PO**. Este ADR **no** re-decide la
