@@ -207,3 +207,11 @@ consecuencias de este ADR:
 
 El resto del contrato (envelope `schema="1"`, exit codes, estructura del workspace, cache por
 `corpus_hash`, snapshot reproducible) **no cambia**.
+---
+
+> **Nota append-only — `workspace.json.source` (2026-11-21, ADR [0053](0053-multiproveedor-seleccion-coexistencia-identidad.md) D1).**
+> El manifest mínimo deja de ser solo marcador: gana el campo opcional `source` (default
+> `openalex`), el proveedor de la investigación, que `--source` pisa por invocación. Es aditivo:
+> `WORKSPACE_SCHEMA_VERSION` no cambia y un manifest sin el campo se lee como `openalex`. En Python se
+> expone como `Workspace.provider`, porque `Workspace.source` ya nombra el origen de la resolución
+> (`flag|env|cwd|init`).

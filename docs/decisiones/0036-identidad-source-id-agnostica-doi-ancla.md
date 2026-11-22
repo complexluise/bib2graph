@@ -189,3 +189,10 @@ el contrato.)
 > (renombrar la columna a `source_id`, sin tabla nueva ni join), a costa de no poder guardar dos IDs de
 > motor a la vez — aceptable **solo si** el cruce cross-motor no es objetivo del primer hito. **(A) se
 > desaconseja**: reintroduce el acoplamiento que el ADR remueve.
+---
+
+> **Nota append-only — multi-proveedor (2026-11-21, ADR [0053](0053-multiproveedor-seleccion-coexistencia-identidad.md)).**
+> El D-CLI de este ADR se realiza como `--source` + `workspace.json.source` (0053 D1). D1' **se
+> mantiene** (un DOI = un `id`), pero ese `id` puede tener **un registro por proveedor** en carriles
+> separados, con PK `(id, provider)` (0053 D2). La clave `tt` pasa a normalización fuerte con match
+> exacto (0053 D3). El texto de arriba queda como historia.

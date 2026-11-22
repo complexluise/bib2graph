@@ -148,3 +148,10 @@ El preprocesamiento determinista se ejecuta **automáticamente en la ingesta**, 
 >   2, 4, 5) no cambian; `rapidfuzz` sigue en el núcleo. Lo único que cae es el *verbo* explícito: la
 >   consolidación de keywords pasa de paso-CLI propio a flag de `build`. (Sutileza vs. el 0031: ya no
 >   hay "único paso explícito" del preproc; el thesaurus es ahora un *opt-in de `build`*, no un verbo.)
+---
+
+> **Nota append-only — dedup intra-carril (2026-11-21, ADR [0053](0053-multiproveedor-seleccion-coexistencia-identidad.md) D2).**
+> Con multi-proveedor, `normalize_and_dedup` corre sobre el corpus completo **de un carril**
+> (proveedor), y `persist_replace`/`overwrite_corpus` reescribe **solo ese carril**
+> (`DELETE … WHERE provider = ?`). "Cross-biblioteca" pasa a significar "en todo el carril": no hay
+> dedup entre proveedores. El algoritmo (0026) y el resto de este ADR no cambian.
