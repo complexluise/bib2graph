@@ -25,10 +25,13 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import UsageError, handle_errors
-from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._options import json_mode, json_option, source_option
+from bib2graph.constants import DEFAULT_PROVIDER, Provider
 
 
-def run_init(path: Path, name: str) -> dict[str, Any]:
+def run_init(
+    path: Path, name: str, *, source: Provider = DEFAULT_PROVIDER
+) -> dict[str, Any]:
     """Crea un workspace nuevo en ``path`` con el nombre ``name``.
 
     Si ``path`` ya contiene un ``workspace.json``, falla con error accionable.
@@ -37,6 +40,8 @@ def run_init(path: Path, name: str) -> dict[str, Any]:
     Args:
         path: Directorio destino del workspace.
         name: Nombre legible de la investigación (va al manifest).
+        source: Proveedor por defecto de la investigación (ADR 0053 D1); se
+            escribe como ``"source"`` en ``workspace.json``.
 
     Returns:
         Dict con ``workspace_dir``, ``library_path``, ``manifest``.
@@ -47,14 +52,14 @@ def run_init(path: Path, name: str) -> dict[str, Any]:
     from bib2graph.workspace import Workspace, WorkspaceExistsError
 
     try:
-        ws = Workspace.init(path, name)
+        ws = Workspace.init(path, name, source=source)
     except WorkspaceExistsError as exc:
         raise UsageError(str(exc)) from exc
 
     return {
         "workspace_dir": str(ws.root),
         "library_path": str(ws.library_path),
-        "manifest": ws.manifest.model_dump() if ws.manifest else {},
+        "manifest": ws.manifest.model_dump(mode="json") if ws.manifest else {},
     }
 
 
@@ -67,11 +72,13 @@ def run_init(path: Path, name: str) -> dict[str, Any]:
         "Nombre legible de la investigación (default: nombre del directorio destino)."
     ),
 )
+@source_option
 @json_option
 @handle_errors("init")
 def init_cmd(
     target: str,
     name: str | None,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Inicializa una carpeta como workspace de investigación.
@@ -86,6 +93,8 @@ def init_cmd(
       b2g init .                 # inicializa el cwd como workspace
 
       b2g init mi-estudio --name "Estudio de redes IED"
+
+      b2g init mi-estudio --source s2   # proveedor por defecto: Semantic Scholar
     """
     target_path = Path(target)
 
@@ -94,7 +103,8 @@ def init_cmd(
 
     resolved_name = name if name else target_path.resolve().name
 
-    data = run_init(target_path, resolved_name)
+    provider = Provider(source) if source is not None else DEFAULT_PROVIDER
+    data = run_init(target_path, resolved_name, source=provider)
 
     if json_mode(json_output):
         envelope = build_envelope(

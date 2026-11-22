@@ -77,7 +77,7 @@ Cuando la ecuación te cierre, pide al asistente:
     
     1. b2g init mi-sota
     2. cd mi-sota
-    3. b2g seed "[TU ECUACION]" --min-year 2015
+    3. b2g seed --equation "[TU ECUACION]" --min-year 2015
     4. b2g build
     5. b2g export --format graphml
     

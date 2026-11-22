@@ -32,7 +32,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
+
+from bib2graph.constants import DEFAULT_PROVIDER, Provider
 
 WORKSPACE_MANIFEST_FILE = "workspace.json"
 WORKSPACE_SCHEMA_VERSION = "1"
@@ -57,12 +59,25 @@ class WorkspaceManifest(BaseModel):
         created_at: Timestamp ISO-8601 UTC de creación (frontera, no entra a hashes).
         bib2graph_version: Versión del paquete al momento de la creación.
         schema_version: Versión del schema del manifest (``"1"`` por ahora).
+        source: Proveedor por defecto de la investigación (ADR 0053 D1;
+            ``openalex`` | ``s2``).  Campo aditivo con default: un
+            ``workspace.json`` sin él se lee como ``openalex`` (sin migración;
+            ``schema_version`` no cambia).
     """
 
     name: str
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     bib2graph_version: str = Field(default_factory=_lib_version)
     schema_version: str = WORKSPACE_SCHEMA_VERSION
+    source: Provider = DEFAULT_PROVIDER
+
+
+class WorkspaceManifestError(Exception):
+    """El ``workspace.json`` existe pero su contenido no es válido.
+
+    Mensaje accionable (p. ej. ``source`` con un proveedor desconocido: lista
+    los válidos).
+    """
 
 
 class WorkspaceNotFoundError(Exception):
@@ -156,8 +171,19 @@ class Workspace:
         """
         return self._source
 
+    @property
+    def provider(self) -> Provider:
+        """Proveedor por defecto de la investigación (``workspace.json.source``).
+
+        No reutilizar ``Workspace.source`` (origen de resolución del workspace):
+        ADR 0053 D1.7.  Un workspace sin manifest cae al default (``openalex``).
+        """
+        return self._manifest.source if self._manifest else DEFAULT_PROVIDER
+
     @classmethod
-    def init(cls, path: Path, name: str) -> Workspace:
+    def init(
+        cls, path: Path, name: str, *, source: Provider = DEFAULT_PROVIDER
+    ) -> Workspace:
         """Scaffolds una carpeta como workspace nuevo.
 
         Crea el directorio ``path`` (si no existe), escribe ``workspace.json``,
@@ -167,6 +193,8 @@ class Workspace:
         Args:
             path: Ruta de la carpeta a inicializar como workspace.
             name: Nombre legible de la investigación.
+            source: Proveedor por defecto de la investigación (se escribe como
+                ``"source"`` en ``workspace.json``).
 
         Returns:
             Workspace recién creado.
@@ -187,9 +215,9 @@ class Workspace:
         for d in _DIRS:
             (root / d).mkdir(exist_ok=True)
 
-        manifest = WorkspaceManifest(name=name)
+        manifest = WorkspaceManifest(name=name, source=source)
         manifest_path.write_text(
-            json.dumps(manifest.model_dump(), ensure_ascii=False, indent=2),
+            json.dumps(manifest.model_dump(mode="json"), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
@@ -393,7 +421,9 @@ class Workspace:
             "snapshots_dir": str(self.snapshots_dir),
             "exports_dir": str(self.exports_dir),
             "source": self._source,
-            "manifest": self._manifest.model_dump() if self._manifest else None,
+            "manifest": (
+                self._manifest.model_dump(mode="json") if self._manifest else None
+            ),
         }
 
 
@@ -428,7 +458,19 @@ def _read_manifest(path: Path) -> WorkspaceManifest:
         WorkspaceManifest validado con Pydantic.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
-    return WorkspaceManifest.model_validate(raw)
+    try:
+        return WorkspaceManifest.model_validate(raw)
+    except ValidationError as exc:
+        valid = ", ".join(p.value for p in Provider)
+        if any(err["loc"] == ("source",) for err in exc.errors()):
+            raise WorkspaceManifestError(
+                f"workspace.json ('{path}') tiene un 'source' inválido: "
+                f"{raw.get('source')!r}. Proveedores válidos: {valid}. "
+                "Corregí el campo 'source' del archivo."
+            ) from exc
+        raise WorkspaceManifestError(
+            f"workspace.json ('{path}') es inválido: {exc}"
+        ) from exc
 
 
 def _init_library(library_path: Path) -> None:

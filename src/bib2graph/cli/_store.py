@@ -70,13 +70,17 @@ def resolve_library_path(ctx_obj: dict[str, Any]) -> Path:
     Raises:
         UsageError: Si no se puede resolver ningún workspace (exit 1).
     """
-    from bib2graph.workspace import Workspace, WorkspaceNotFoundError
+    from bib2graph.workspace import (
+        Workspace,
+        WorkspaceManifestError,
+        WorkspaceNotFoundError,
+    )
 
     workspace: str | None = ctx_obj.get("workspace")
 
     try:
         ws = Workspace.resolve(workspace=workspace)
-    except WorkspaceNotFoundError as exc:
+    except (WorkspaceNotFoundError, WorkspaceManifestError) as exc:
         raise UsageError(str(exc)) from exc
 
     return ws.library_path
@@ -98,13 +102,17 @@ def resolve_workspace(ctx_obj: dict[str, Any]) -> Any:
     Raises:
         UsageError: Si no se puede resolver ningún workspace (exit 1).
     """
-    from bib2graph.workspace import Workspace, WorkspaceNotFoundError
+    from bib2graph.workspace import (
+        Workspace,
+        WorkspaceManifestError,
+        WorkspaceNotFoundError,
+    )
 
     workspace: str | None = ctx_obj.get("workspace")
 
     try:
         return Workspace.resolve(workspace=workspace)
-    except WorkspaceNotFoundError as exc:
+    except (WorkspaceNotFoundError, WorkspaceManifestError) as exc:
         raise UsageError(str(exc)) from exc
 
 

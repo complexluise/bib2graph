@@ -46,7 +46,15 @@ import click
 from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, handle_errors
-from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._options import (
+    guard_provider_mix,
+    json_mode,
+    json_option,
+    provider_echo,
+    reject_email_for,
+    resolve_provider,
+    source_option,
+)
 from bib2graph.cli._scope import map_scope as _map_scope
 from bib2graph.cli._store import (
     open_store,
@@ -54,6 +62,8 @@ from bib2graph.cli._store import (
     workspace_echo,
     workspace_walkup_warning,
 )
+from bib2graph.constants import DEFAULT_PROVIDER, Provider
+from bib2graph.sources.registry import make_source
 
 if TYPE_CHECKING:
     from bib2graph.corpus import Corpus
@@ -292,6 +302,8 @@ def run_build(
     transport: Any = None,
     max_citing: int | None = None,
     thesaurus_path: str | Path | None = None,
+    provider: Provider = DEFAULT_PROVIDER,
+    workspace_provider: Provider | None = None,
 ) -> dict[str, Any]:
     """Computa redes bibliométricas y escribe artefactos a disco.
 
@@ -333,6 +345,11 @@ def run_build(
         transport: Transport inyectable para tests (``httpx.MockTransport``).
         max_citing: Tope de citantes por seed en la pasada cited_by.
             ``None`` = sin tope.
+        provider: Proveedor de la pasada cited_by (ADR 0053 D1).  Si no
+            declara ``enrich_cited_by`` la pasada se omite con warning.
+        workspace_provider: Proveedor de la investigación para el guard
+            transitorio R1: un ``provider`` distinto lanza ``DataError`` (exit 2)
+            antes de abrir el store, haya o no corpus; ``None`` = sin guard.
 
     Returns:
         Dict con ``networks_built``, ``artifacts_dir``, ``corpus_hash``,
@@ -349,6 +366,9 @@ def run_build(
 
     from bib2graph.cycle import apply_transition
     from bib2graph.networks.facade import Networks, predict_build_preview
+
+    # Guard R1 transitorio: antes de abrir el store (nada se escribe).
+    guard_provider_mix(provider, workspace_provider)
 
     store = open_store(store_path)
     thesaurus_stats: dict[str, Any] | None = None
@@ -379,7 +399,6 @@ def run_build(
         # (→ 4 redes en vez de 5, sin error).  Persiste el corpus enriquecido para
         # que la co-citación quede disponible en runs posteriores (idempotente).
         from bib2graph.constants import Col, CurationStatus
-        from bib2graph.sources.openalex import OpenAlexSource
 
         _rows = corpus_full.to_arrow().to_pylist()
         _has_accepted_seeds = any(
@@ -388,10 +407,18 @@ def run_build(
             for row in _rows
         )
         enrich_metrics: dict[str, Any] = {}
+        # Pasadas omitidas por capacidad faltante del proveedor (ADR 0053 D1.4):
+        # se reportan como warnings, nunca en silencio.
+        enrich_warnings: list[str] = []
         if _has_accepted_seeds:
-            _source = OpenAlexSource(email=email, transport=transport)
+            _source = make_source(provider, email=email, transport=transport)
             corpus_full, enrich_metrics = enrich_corpus(
-                corpus_full, _source, max_citing=max_citing, pass_name="cited_by"
+                corpus_full,
+                _source,
+                max_citing=max_citing,
+                pass_name="cited_by",
+                provider=provider,
+                warnings=enrich_warnings,
             )
             store.persist_replace(corpus_full)
             # #141: persistir EnricherRef (cited_by) para que manifest.enrichers sobreviva.
@@ -418,7 +445,7 @@ def run_build(
         # clusters.csv cuadre con los nodos del grafo (sin drift).
         corpus = corpus_full.scoped(corpus_scope)
 
-        build_warnings: list[str] = []
+        build_warnings: list[str] = list(enrich_warnings)
         if cocitation_hint is not None:
             build_warnings.append(cocitation_hint)
         if len(corpus) == 0:
@@ -637,6 +664,7 @@ def run_build(
         "Absorbe la capacidad del verbo retirado b2g thesaurus (#164)."
     ),
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("build")
@@ -649,6 +677,7 @@ def build_cmd(
     max_citing: int | None,
     email: str | None,
     thesaurus_path: str | None,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Computa redes bibliométricas y escribe artefactos.
@@ -663,6 +692,10 @@ def build_cmd(
     effective_out_dir: str | Path | None = out_dir
     if effective_out_dir is None:
         effective_out_dir = ws.networks_dir
+
+    # ADR 0053 D1.2: --source > workspace.json.source > openalex.
+    provider, origin = resolve_provider(source, ws)
+    reject_email_for(provider, email)
 
     internal_scope = _map_scope(scope)
     cli_token = scope
@@ -685,10 +718,13 @@ def build_cmd(
         email=email,
         max_citing=max_citing,
         thesaurus_path=thesaurus_path,
+        provider=provider,
+        workspace_provider=ws.provider,
     )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     # Canal único de warnings: viven en el top-level del envelope, NO duplicados en
     # data (mismo criterio que export.py). run_build conserva data["warnings"] para

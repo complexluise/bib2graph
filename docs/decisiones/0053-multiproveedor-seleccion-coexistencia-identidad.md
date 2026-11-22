@@ -586,3 +586,30 @@ Si el PR queda grande, partirlo en **3a** (store: esquema, carril, migración, c
 - Docs: `docs/API.md` (por corte), notas append-only en
   [0029](0029-workspace-por-investigacion.md), [0031](0031-preprocesamiento-automatico-en-ingesta.md)
   y [0036](0036-identidad-source-id-agnostica-doi-ancla.md).
+
+## Enmienda (2026-11-21) — Corte 1 (#251) as-built: guard R1 sin condición de corpus y detalles de superficie
+
+Append-only; el texto de arriba queda como historia.
+
+1. **Guard R1 (§Riesgos R1 y DoD del Corte 1): se quita la condición "cuando el corpus no está
+   vacío".** Se eligió la opción (a): en **todo comando que escribe** —`seed` en todas sus variantes
+   (`--equation`, `--spec`, `--from-bib` con o sin `--resolve`), `chain` y `build`— un `--source`
+   explícito distinto de `workspace.json.source` sale con **exit 2 sin escribir, haya o no corpus**.
+   Motivo: la verificación mostró que `init` → `seed --source s2` (corpus vacío, el guard viejo no
+   dispara) → `chain` (sin `--source`, resuelve `openalex` del workspace) fusionaba carriles: el
+   corpus vacío no protege, porque el `workspace.json` sigue declarando otro proveedor. Para usar otro
+   proveedor antes de #253: **`b2g init --source <p>`** (una investigación por proveedor). El guard se
+   retira en #253, como estaba previsto. Los `--preview` no escriben y no lo disparan.
+2. **`chain --preview` valida como el modo normal:** capacidad por `--direction` (`forward`/`backward`)
+   y `--budget` con proveedor ≠ `openalex`, aunque no haga red.
+3. **Flags exclusivos de OpenAlex fuera del registro de capacidades.** `--email` (polite pool) con un
+   proveedor ≠ `openalex` → `UsageError` exit 1 en `seed`/`chain`/`build`; `chain --budget` con
+   proveedor ≠ `openalex` → `UsageError` exit 1. Cumplen D1.4 ("nunca se ignora un flag en
+   silencio"), pero como `if` y con exit 1, no como capacidad con exit 3. Si aparece un 3er proveedor
+   con polite pool o presupuesto, conviene pasarlos al registro (`Capability`).
+4. **El test `test_build_s2_cited_by_y_refs_doi_omitida_con_warning` del Corte 1** describe un caso que
+   `build` no tiene: `build` solo corre la pasada `cited_by` (que S2 declara). La omisión con warning
+   de `refs_doi` ocurre en **`chain`**.
+5. **`chain --since` con `s2`** se aproxima por año (S2 no tiene filtro de fecha nativo:
+   `SemanticScholarSource` descarta citantes con `year < since.year`). Queda documentado en
+   `docs/API.md` como límite del proveedor.

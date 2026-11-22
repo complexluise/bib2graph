@@ -30,14 +30,23 @@ from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, UsageError, handle_errors
 from bib2graph.cli._ingest import normalize_and_dedup
-from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._options import (
+    guard_provider_mix,
+    json_mode,
+    json_option,
+    provider_echo,
+    reject_email_for,
+    resolve_provider,
+    source_option,
+)
 from bib2graph.cli._store import (
     open_store,
     resolve_workspace,
     workspace_echo,
     workspace_walkup_warning,
 )
-from bib2graph.constants import Col
+from bib2graph.constants import DEFAULT_PROVIDER, Col, Provider
+from bib2graph.sources.registry import Capability, make_source, require
 
 if TYPE_CHECKING:
     from bib2graph.corpus import Corpus
@@ -178,6 +187,8 @@ def run_chain(
     top: int | None = None,
     scope: str | None = None,
     budget: int | None = None,
+    provider: Provider = DEFAULT_PROVIDER,
+    workspace_provider: Provider | None = None,
     _fsm_action: str | None = None,
 ) -> dict[str, Any]:
     """Expande el corpus con candidatos rankeados por information scent.
@@ -218,6 +229,10 @@ def run_chain(
             (default) = no acota.
         budget: Tope de llamadas HTTP a OpenAlex (``--budget``).  ``None``
             (default) = sin tope (comportamiento actual).
+        provider: Proveedor (ADR 0053 D1); decide la ``Source`` y las
+            capacidades exigidas (``forward``/``backward`` según ``direction``).
+        workspace_provider: Proveedor de la investigación para el guard
+            transitorio R1; ``None`` = sin guard.
 
     Returns:
         Dict con ``candidates_found``, ``total_papers``, ``ranking_preview``,
@@ -232,10 +247,26 @@ def run_chain(
     Raises:
         UsageError: Si se combina más de un flag de scoping, o si
             ``--ids``/``--top`` son inválidos.
-        DependencyError: Si el source no soporta forward chaining.
+        DependencyError: Si el proveedor/source no soporta forward chaining.
+        DataError: Si el guard R1 rechaza un ``--source`` distinto del de la
+            investigación (haya o no corpus).
         NetworkError: Si falla la conexión a OpenAlex.
         StoreError: Si el store está bloqueado.
     """
+    # ADR 0053 D1.4: validaciones idénticas en preview y modo normal, ANTES de
+    # abrir el store o tocar la red.
+    if budget is not None and provider is not Provider.OPENALEX:
+        # El presupuesto de llamadas HTTP solo lo implementa OpenAlexSource;
+        # no se ignora en silencio.
+        raise UsageError(
+            f"--budget no está soportado por el proveedor '{provider.value}' "
+            "(solo openalex). Quitá --budget o usá --source openalex."
+        )
+    if direction in ("forward", "both"):
+        require(provider, Capability.FORWARD)
+    if direction in ("backward", "both"):
+        require(provider, Capability.BACKWARD)
+
     if preview:
         return _run_chain_preview(
             store_path,
@@ -246,6 +277,9 @@ def run_chain(
             top=top,
             scope=scope,
         )
+
+    # Guard R1 transitorio: antes de abrir el store (nada se escribe).
+    guard_provider_mix(provider, workspace_provider)
 
     if since is not None and direction == "backward":
         raise UsageError(
@@ -261,7 +295,16 @@ def run_chain(
 
     from bib2graph.cycle import apply_transition
     from bib2graph.foraging import CallBudget, Forager
-    from bib2graph.sources.openalex import OpenAlexSource
+
+    chain_warnings: list[str] = []
+    if since is not None and provider is Provider.S2:
+        # S2 no tiene filtro de fecha en /citations: se aproxima por año
+        # (descarta year < since.year).  No se aproxima en silencio.
+        chain_warnings.append(
+            "--since con s2 se aproxima por año: S2 no filtra por fecha exacta, "
+            f"así que se descartan los citantes con año < {since.year}; "
+            "pueden quedar citantes del mismo año anteriores a la fecha."
+        )
 
     # Selección de acción FSM: "monitor" si --since activo O si se fuerza
     # desde run_monitor (_fsm_action="monitor"); sino "chain" → FORAGED.
@@ -304,10 +347,11 @@ def run_chain(
         origin_ids = _resolve_origin_ids(corpus, ids=ids, top=top, scope=scope)
         call_budget = CallBudget(budget) if budget is not None else None
 
-        source = OpenAlexSource(email=email, transport=transport)
+        source = make_source(provider, email=email, transport=transport)
 
-        # Pre-check explícito: si la dirección requiere forward y el source no
-        # tiene ``fetch_citing_batch`` (ni ``fetch_citing`` como fallback), fallamos
+        # Defensa en profundidad (la capacidad ya se verificó vía registro): si
+        # la dirección requiere forward y el source no tiene
+        # ``fetch_citing_batch`` (ni ``fetch_citing`` como fallback), fallamos
         # antes de entrar al Forager — así un ``AttributeError`` genuino que surja
         # dentro de chain/merge/_fetch_forward no queda disfrazado de "source no
         # soporta forward" (exit 3).
@@ -370,8 +414,13 @@ def run_chain(
         # Pasada refs→DOI: enriquecer el corpus mergeado+dedup con el mismo source
         # ya instanciado (forrajeo puro, ADR 0038 §enrich). Automático, sin flag.
         # El source reutiliza la misma conexión HTTP → sin overhead extra.
+        # Capacidad faltante (p. ej. S2): la pasada se omite CON warning.
         merged_deduped, enrich_metrics = enrich_corpus(
-            merged_deduped, source, pass_name="refs_doi"
+            merged_deduped,
+            source,
+            pass_name="refs_doi",
+            provider=provider,
+            warnings=chain_warnings,
         )
 
         total_papers = len(merged_deduped)
@@ -410,6 +459,7 @@ def run_chain(
         # posterior (acotada, bajo impacto — fuera de alcance del budget).
         "budget_used": ranked.budget_used,
         "budget_stopped": ranked.budget_stopped,
+        "warnings": chain_warnings,
     }
 
 
@@ -610,6 +660,7 @@ def _run_chain_preview(
         "budget usado) — nunca reintenta.  Sin límite por defecto."
     ),
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("chain")
@@ -626,6 +677,7 @@ def chain_cmd(
     top: int | None,
     scope: str | None,
     budget: int | None,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Expande el corpus con candidatos rankeados por information scent.
@@ -641,6 +693,10 @@ def chain_cmd(
 
     ws = resolve_workspace(ctx.obj)
     store_path = ws.library_path
+
+    # ADR 0053 D1.2: --source > workspace.json.source > openalex.
+    provider, origin = resolve_provider(source, ws)
+    reject_email_for(provider, email)
 
     # Parsear --since en la frontera (R2/ADR 0017): el reloj se fija aquí.
     since: date | None = None
@@ -660,10 +716,18 @@ def chain_cmd(
         top=top,
         scope=scope,
         budget=budget,
+        provider=provider,
+        workspace_provider=ws.provider,
     )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
+
+    # Canal único de warnings: top-level del envelope, NO duplicados en data
+    # (mismo criterio que build.py).  run_chain conserva data["warnings"] para
+    # sus tests; el pop ocurre solo en la superficie CLI.
+    chain_warns: list[str] = list(data.pop("warnings", None) or [])
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -671,7 +735,7 @@ def chain_cmd(
             ok=True,
             data=data,
             exit_code=0,
-            warnings=list(data.get("warnings", [])) + workspace_walkup_warning(ws),
+            warnings=chain_warns + workspace_walkup_warning(ws),
         )
         emit(envelope)
     elif preview:
@@ -682,7 +746,7 @@ def chain_cmd(
             emit_human(f"  {dir_name}: {count}")
         if data["capped_by_max"]:
             emit_human(f"  (acotado por --max-candidates={max_candidates})")
-        for warning in data.get("warnings", []):
+        for warning in chain_warns:
             emit_human(f"Aviso: {warning}")
     else:
         emit_human(f"Candidatos encontrados: {data['candidates_found']}")
@@ -697,3 +761,5 @@ def chain_cmd(
                 "El resultado es PARCIAL — corré 'b2g chain' de nuevo (o con "
                 "--ids/--top/--scope más acotado) para completar el forrajeo."
             )
+        for warning in chain_warns:
+            emit_human(f"Aviso: {warning}")

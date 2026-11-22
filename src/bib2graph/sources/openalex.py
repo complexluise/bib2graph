@@ -1191,6 +1191,34 @@ class OpenAlexSource:
         )
         return attribution
 
+    def work_to_row(
+        self,
+        work: dict[str, Any],
+        *,
+        equation_id: str | None,
+        fetched_at: str,
+        is_seed: bool = True,
+        action: str = "fetched",
+        chaining_hop: int | None = None,
+        source_tag: str = "openalex",
+        source_kind: str | None = None,
+    ) -> dict[str, Any]:
+        """Mapea un work de OpenAlex a la fila canónica (ADR 0053 D1.5).
+
+        Contrato duck-typed que consume el ``Forager`` (en vez de importar
+        ``_work_to_row``).  Envuelve ``_work_to_row``.
+        """
+        return _work_to_row(
+            work,
+            equation_id=equation_id,
+            fetched_at=fetched_at,
+            is_seed=is_seed,
+            action=action,
+            chaining_hop=chaining_hop,
+            source_tag=source_tag,
+            source_kind=source_kind,
+        )
+
     def fetch_citing_batch_with_works(
         self,
         ids: list[str],

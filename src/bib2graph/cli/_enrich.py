@@ -19,22 +19,29 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from bib2graph.constants import DEFAULT_PROVIDER, Provider
+from bib2graph.sources.registry import Capability, has
+
 if TYPE_CHECKING:
     from bib2graph.corpus import Corpus
-    from bib2graph.sources.openalex import OpenAlexSource
 
 
 def enrich_corpus(
     corpus: Corpus,
-    source: OpenAlexSource,
+    source: Any,
     *,
     max_citing: int | None = None,
     pass_name: str = "both",
+    provider: Provider = DEFAULT_PROVIDER,
+    warnings: list[str] | None = None,
 ) -> tuple[Corpus, dict[str, Any]]:
-    """Enriquece el corpus en memoria con una o ambas pasadas de OpenAlex.
+    """Enriquece el corpus en memoria con una o ambas pasadas del proveedor.
 
-    Construye un ``OpenAlexEnricher`` con el ``source`` dado y ejecuta la(s)
-    pasada(s) indicadas.  Extrae las métricas del Manifest del corpus resultado
+    Construye un ``OpenAlexEnricher`` con el ``source`` dado (duck-typed: usa
+    ``fetch_dois_for`` y ``fetch_citing_batch``) y ejecuta la(s) pasada(s)
+    indicadas.  Cada pasada verifica su capacidad en el registro
+    (ADR 0053 D1.4): si el proveedor no la declara, la pasada se **omite con
+    un warning** (nunca en silencio) en ``warnings``.  Extrae las métricas del Manifest del corpus resultado
     y las devuelve junto al corpus enriquecido.
 
     No abre store ni hace I/O de persistencia — eso es responsabilidad
@@ -42,14 +49,18 @@ def enrich_corpus(
 
     Args:
         corpus: Corpus en memoria sobre el que operar.
-        source: ``OpenAlexSource`` ya instanciado y configurado.
-            El mismo source que el comando ya creó para chaining o build.
+        source: ``Source`` ya instanciada y configurada (la del ``provider``).
+            La misma que el comando ya creó para chaining o build.
         max_citing: Tope de citantes por semilla para la pasada ``cited_by``.
             ``None`` = sin tope.  Ignorado en ``refs_doi``.
         pass_name: Pasada(s) a ejecutar.
             ``"refs_doi"`` = solo Pasada 1 (resuelve DOIs de referencias).
             ``"cited_by"`` = solo Pasada 2 (puebla citantes de seeds aceptadas).
             ``"both"`` = ambas en orden (Pasada 1 → Pasada 2).  Default.
+        provider: Proveedor del ``source``; decide qué pasadas están
+            disponibles.  Default ``openalex`` (todas).
+        warnings: Lista donde se agregan los avisos de pasadas omitidas por
+            capacidad faltante.  ``None`` = no se recolectan (igual se omite).
 
     Returns:
         Tupla ``(corpus_enriquecido, metricas)`` donde ``metricas`` es un
@@ -75,12 +86,26 @@ def enrich_corpus(
 
     enricher = OpenAlexEnricher(source, max_citing_per_paper=max_citing)
 
-    if pass_name == "refs_doi":
-        enriched = enricher.enrich_references_doi(corpus)
-    elif pass_name == "cited_by":
-        enriched = enricher.enrich_cited_by(corpus)
-    else:  # "both"
-        enriched = enricher.enrich(corpus)
+    run_refs = pass_name in ("refs_doi", "both")
+    run_cited_by = pass_name in ("cited_by", "both")
+    for wanted, capability, label in (
+        (run_refs, Capability.ENRICH_REFS_DOI, "refs_doi"),
+        (run_cited_by, Capability.ENRICH_CITED_BY, "cited_by"),
+    ):
+        if wanted and not has(provider, capability) and warnings is not None:
+            warnings.append(
+                f"Pasada de enriquecimiento '{label}' omitida: el proveedor "
+                f"'{provider.value}' no soporta la capacidad "
+                f"'{capability.value}'."
+            )
+    run_refs = run_refs and has(provider, Capability.ENRICH_REFS_DOI)
+    run_cited_by = run_cited_by and has(provider, Capability.ENRICH_CITED_BY)
+
+    enriched = corpus
+    if run_refs:
+        enriched = enricher.enrich_references_doi(enriched)
+    if run_cited_by:
+        enriched = enricher.enrich_cited_by(enriched)
 
     metrics = _extract_metrics(enriched)
     return enriched, metrics

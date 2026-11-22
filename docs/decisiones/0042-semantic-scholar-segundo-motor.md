@@ -145,3 +145,18 @@ posteriores, sin revertir el principio de D2 ("no reintentar en silencio hasta e
   las semillas quedan sin `references_*` hasta materializarlas por ID. Follow-up con llamada real.
 
 El wiring end-to-end (`--source`, Forager) lo fija el ADR 0053 (multi-proveedor).
+
+## Enmienda (2026-11-21) — token `s2` y selector `--source` realizados (ADR 0053, #251)
+
+Append-only. ADR [0053](0053-multiproveedor-seleccion-coexistencia-identidad.md) D1.6 fija un token por
+proveedor en todo el sistema: donde este ADR dice `"semanticscholar"` (D1 `provenance.source`, D4
+`external_ids(engine=…)` y la enmienda anterior `EquationRef.engine`) el valor vigente es **`s2`**
+(`Provider.S2`), igual que en `--source s2` y `workspace.json.source`. Desde #251 el adaptador emite
+`engine="s2"` y `source_tag="s2"`. Sin datos con la etiqueta vieja: S2 no era usable por CLI antes.
+
+**D5 realizado:** el selector `--source {openalex,s2}` existe en `init`/`seed`/`chain`/`build` (ADR
+0053 D1). Las capacidades de S2 se declaran en `sources/registry.py`: `seed`, `backward`, `forward`,
+`enrich_cited_by`; **no** `seed_filters` (coherente con D3: la query va nativa, así que
+`--native`/`--exclude`/`--min-year`/`--max-year` → exit 3), `enrich_refs_doi` ni `resolve_doi`. La
+credencial (D2) entra solo por el entorno `S2_API_KEY`; `--email` con `s2` → exit 1.
+**D4 sigue pendiente:** la escritura de `external_ids` es el Corte 2 de 0053 (#255).

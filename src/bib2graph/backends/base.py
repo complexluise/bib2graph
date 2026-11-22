@@ -187,7 +187,7 @@ class TabularBackend(Protocol):
         Args:
             paper_id: ID interno del paper en el corpus.
             engine: Nombre del motor / fuente del ID (p. ej. ``'openalex'``,
-                ``'semanticscholar'``, ``'doi'``).
+                ``'s2'``, ``'doi'``).
             id: El ID externo correspondiente a ese motor.
         """
         ...
