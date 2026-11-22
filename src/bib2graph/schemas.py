@@ -26,7 +26,7 @@ from bib2graph.constants import Col, CurationStatus
 _SOURCE_KIND_VALUES = ("seed_equation", "chaining_forward", "chaining_backward")
 SourceKind = Literal["seed_equation", "chaining_forward", "chaining_backward"]
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 
 
 class ProvenanceEvent(BaseModel):
