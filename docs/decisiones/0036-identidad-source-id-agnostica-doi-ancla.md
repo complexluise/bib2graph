@@ -212,3 +212,13 @@ el contrato.)
 > `_compute_id` no cambió y la precedencia `doi > src > tt` sigue igual, así que un paper sin DOI sigue
 > teniendo un `id` distinto en cada proveedor (0053 R3). `external_ids` queda por `engine` = carril:
 > `register_external_ids` toma el engine del store y limpia huérfanos solo de su carril.
+
+> **Nota append-only — clave `tt` normalizada, as-built (2026-11-22, ADR [0053](0053-multiproveedor-seleccion-coexistencia-identidad.md) Corte 4, #254).**
+> La rama `tt` de `_compute_id` deja `title.lower().strip()` y pasa a hashear
+> `f"{_title_key(title)}|{year}"`: casefold → NFKD → casefold → sin `Mn`/`Cf` → puntuación `P*` a
+> espacio → espacios colapsados, con match exacto y sin fuzzy. Si la clave queda vacía, usa la clave
+> vieja. La precedencia D1' (`doi > src > tt`) y los
+> digests `doi:`/`src:` no cambian. Como cambian los ids `tt:` existentes, `SCHEMA_VERSION` y
+> `store_meta.schema_version` pasan a `"3"`, con una migración v2→v3 del store y compat al leer
+> snapshots `< "3"` (`docs/API.md` §1.1 y §4.0). Un paper sin DOI pero con `source_id` sigue en `src:`,
+> con un id distinto por proveedor (0053 R3, pregunta abierta en #254).

@@ -12,6 +12,8 @@ en el Hito 3 se podrá pasar un ``DuckDBBackend``.
 from __future__ import annotations
 
 import hashlib
+import json
+import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -21,7 +23,11 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel, Field
 
 from bib2graph.backends import InMemoryBackend, ProviderMismatchError, TabularBackend
-from bib2graph.backends.memory import compute_corpus_hash, table_providers
+from bib2graph.backends.memory import (
+    _merge_rows,
+    compute_corpus_hash,
+    table_providers,
+)
 from bib2graph.constants import DEFAULT_PROVIDER, Col, CurationStatus
 from bib2graph.schemas import (
     CORPUS_SCHEMA,
@@ -36,27 +42,79 @@ from bib2graph.schemas import (
 _compute_corpus_hash = compute_corpus_hash
 
 
-def read_corpus_parquet(path: str | Path) -> pa.Table:
-    """Lee un ``corpus.parquet`` y lo devuelve con el schema canónico (compat v1).
+# Clave de metadata del parquet con la ``SCHEMA_VERSION`` con la que se escribió.
+_PARQUET_SCHEMA_VERSION_KEY = b"bib2graph.schema_version"
+
+
+def _is_pre_v3(schema_version: str | None) -> bool:
+    """``True`` si ``schema_version`` declara un esquema anterior a ``"3"``."""
+    if schema_version is None:
+        return False
+    try:
+        return int(schema_version) < 3
+    except ValueError:
+        return False
+
+
+def read_corpus_parquet(
+    path: str | Path, schema_version: str | None = None
+) -> pa.Table:
+    """Lee un ``corpus.parquet`` y lo devuelve con el schema canónico (compat v1/v2).
 
     ADR 0053 D2.3: los snapshots con ``schema_version="1"`` no tienen la columna
     ``provider`` (todo corpus pre-#253 es OpenAlex por construcción de la época);
     se completa con ``DEFAULT_PROVIDER`` igual que ``_provenance_compat`` completa
     ``source_kind`` al leer.  Lectura compat: el archivo en disco no se toca.
 
+    ADR 0053 D3 (#254): un snapshot con ``schema_version < "3"`` se calculó con
+    la clave ``tt`` vieja (``title.lower().strip()``); sus ids ``tt:`` se
+    recalculan al cargar (``_recompute_tt_ids``) para que ``restore`` no duplique
+    papers contra un store ya migrado.
+
+    Fuente de la versión, por prioridad: (1) metadata del propio parquet
+    (``bib2graph.schema_version``, sellada por ``Corpus.snapshot`` desde #254);
+    (2) ``schema_version`` pasado por el llamador o, si es ``None``, el del
+    ``manifest.json`` hermano; (3) la ausencia de la columna ``provider``
+    (pre-v2, por lo tanto pre-v3).  Una clave ``schema_version`` ausente en el
+    manifest, o un manifest ilegible, significan "versión desconocida": igual
+    que sin manifest, no se recalcula (salvo por el criterio 3).
+
     Args:
         path: Ruta al ``corpus.parquet``.
+        schema_version: ``schema_version`` del manifest del snapshot, si el
+            llamador ya lo tiene.  ``None`` = leer el ``manifest.json`` hermano.
 
     Returns:
         Tabla Arrow con exactamente ``CORPUS_SCHEMA``.
     """
+    path = Path(path)
     table = pq.read_table(str(path))  # type: ignore[no-untyped-call]
+    meta = table.schema.metadata or {}
+    sealed = meta.get(_PARQUET_SCHEMA_VERSION_KEY)
+    pre_v3 = False
     if Col.PROVIDER not in table.column_names:
+        pre_v3 = True  # sin columna provider => snapshot v1
         table = table.append_column(
             Col.PROVIDER,
             pa.array([DEFAULT_PROVIDER.value] * len(table), type=pa.string()),
         )
-    return table.select(CORPUS_SCHEMA.names).cast(CORPUS_SCHEMA)
+    if sealed is not None:
+        schema_version = sealed.decode("utf-8")
+        pre_v3 = False  # la versión sellada manda sobre la heurística de columnas
+    elif schema_version is None:
+        manifest_path = path.parent / "manifest.json"
+        if manifest_path.exists():
+            try:
+                declared = json.loads(manifest_path.read_text(encoding="utf-8"))
+                raw = declared.get("schema_version")
+                # Clave ausente (None) = versión desconocida, no la cadena "None".
+                schema_version = None if raw is None else str(raw)
+            except (OSError, json.JSONDecodeError, AttributeError):
+                schema_version = None  # manifest ilegible: versión desconocida
+    table = table.select(CORPUS_SCHEMA.names).cast(CORPUS_SCHEMA)
+    if pre_v3 or _is_pre_v3(schema_version):
+        table = _recompute_tt_ids(table)
+    return table
 
 
 def _lib_version() -> str:
@@ -74,7 +132,52 @@ def _lib_version() -> str:
         return "unknown"
 
 
-# Identidad canónica: doi > source_id > título+año (D1, ADR 0036)
+def _title_key(title: str) -> str:
+    """Clave de título para el fallback ``tt`` de ``_compute_id`` (ADR 0053 D3).
+
+    Función pura, sin fuzzy.  Pasos, en este orden:
+
+    1. ``casefold`` PRIMERO (``"ß"`` -> ``"ss"``; ``"İ"`` -> ``"i"`` + U+0307).
+    2. ``NFKD`` (descompone compatibilidad: ancho completo, ligaduras; separa
+       diacríticos) y ``casefold`` otra vez: NFKD puede producir mayúsculas
+       (``"™"`` -> ``"TM"``, ``"№"`` -> ``"No"``); sin el segundo casefold la
+       función no sería idempotente.
+    3. Se descartan las marcas combinantes (``Mn``) y los caracteres de formato
+       (``Cf``: guion blando, ZWSP, BOM), SIN convertirlos en espacio, para que
+       ``"Self­organization"`` == ``"Selforganization"``.
+    4. La puntuación (categoría Unicode ``P*``) se reemplaza por un espacio, no
+       se borra: ``Self-Organization`` y ``Self organization`` coinciden.  Los
+       símbolos (``S*``, p. ej. ``+``) se conservan: ``C++`` no se funde con ``C``.
+    5. Espacios colapsados y recortados.
+
+    Idempotente: ``_title_key(_title_key(x)) == _title_key(x)``.
+
+    Args:
+        title: Título crudo.
+
+    Returns:
+        Título normalizado.  Es ``""`` si el título es solo puntuación/vacío;
+        ``_compute_id`` no usa esa clave (ver su docstring).
+    """
+    s = unicodedata.normalize("NFKD", title.casefold()).casefold()
+    s = "".join(c for c in s if unicodedata.category(c) not in ("Mn", "Cf"))
+    s = "".join(" " if unicodedata.category(c).startswith("P") else c for c in s)
+    return " ".join(s.split())
+
+
+def _tt_title_part(title: str | None) -> str:
+    """Parte de título de la clave ``tt``: ``_title_key``, o la clave previa a #254.
+
+    Un título de solo puntuación (``"..."``, ``"???"``, ``"—"``) normaliza a
+    ``""`` y todos colisionarían en ``"|year"``.  En ese caso (y para título
+    vacío/``None``) se usa la clave anterior, ``title.lower().strip()``: sin
+    fusión nueva, comportamiento idéntico al previo.
+    """
+    title = title or ""
+    return _title_key(title) or title.lower().strip()
+
+
+# Identidad canónica: doi > source_id > título+año (D1, ADR 0036; clave tt: ADR 0053 D3)
 def _compute_id(
     doi: str | None,
     source_id: str | None,
@@ -88,6 +191,12 @@ def _compute_id(
     El DOI es el identificador interoperable entre motores: un paper con DOI
     tiene el mismo ``id`` venga de OpenAlex, de Semantic Scholar o de un ``.bib``.
     ``source_id`` es el fallback para papers sin DOI (antes de caer a título+año).
+
+    La rama ``tt`` hashea ``f"{_title_key(title)}|{year}"``: título normalizado
+    (casefold -> NFKD -> sin diacríticos -> puntuación a espacio -> espacios
+    colapsados; ver ``_title_key``) y año exacto (``None`` -> ``"None"``).  Match
+    exacto, sin fuzzy.  Si ``_title_key`` da ``""`` (título solo de puntuación,
+    vacío o ``None``) se usa la clave previa ``title.lower().strip()``.  Las ramas ``doi`` y ``src`` no cambian.
 
     Args:
         doi: DOI del paper (con o sin prefijo URL; se normaliza).
@@ -107,11 +216,48 @@ def _compute_id(
         valor = source_id
         prefix = "src"
     else:
-        title_norm = title.lower().strip()
-        valor = f"{title_norm}|{year}"
+        valor = f"{_tt_title_part(title)}|{year}"
         prefix = "tt"
     digest = hashlib.sha256(valor.encode()).hexdigest()[:16]
     return f"{prefix}:{digest}"
+
+
+def _recompute_tt_ids(table: pa.Table) -> pa.Table:
+    """Recalcula los ids ``tt:`` de ``table`` con la clave vigente (ADR 0053 D3).
+
+    Pura.  Solo toca filas cuyo ``id`` empieza con ``tt:`` (mantiene el prefijo y
+    no re-ancla a ``doi:``/``src:``); el resto queda intacto.  Si dos filas del
+    mismo carril colapsan al mismo ``id`` se fusionan con ``_merge_rows`` (D3 de
+    ADR 0013), conservando la posición de la primera.
+
+    Args:
+        table: Tabla con ``CORPUS_SCHEMA``.
+
+    Returns:
+        Tabla con ids ``tt:`` recalculados (la misma ``table`` si no hay ninguno).
+    """
+    ids = table.column(Col.ID).to_pylist()
+    tt_idx = [i for i, v in enumerate(ids) if v is not None and v.startswith("tt:")]
+    if not tt_idx:
+        return table
+    titles = table.column(Col.TITLE).to_pylist()
+    years = table.column(Col.YEAR).to_pylist()
+    for i in tt_idx:
+        ids[i] = _compute_id(None, None, titles[i] or "", years[i])
+    providers = table.column(Col.PROVIDER).to_pylist()
+    keys = list(zip(ids, providers, strict=True))
+    table = table.set_column(
+        table.schema.get_field_index(Col.ID),
+        CORPUS_SCHEMA.field(Col.ID),
+        pa.array(ids, type=pa.string()),
+    )
+    if len(set(keys)) == len(keys):
+        return table
+    merged: dict[tuple[str, str], dict[str, object]] = {}
+    for row in table.to_pylist():
+        key = (row[Col.ID], row[Col.PROVIDER])
+        merged[key] = _merge_rows(merged[key], row) if key in merged else row
+    return pa.Table.from_pylist(list(merged.values()), schema=CORPUS_SCHEMA)
 
 
 def _rows_with_ids(rows: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -643,10 +789,18 @@ class Corpus:
         manifest = self._manifest.model_copy(
             update={
                 "corpus_hash": corpus_hash,
+                "schema_version": SCHEMA_VERSION,
                 "created_at": datetime.now(UTC),
             }
         )
 
+        # #254: sella la versión en el propio parquet (señal preferente al leer).
+        table = table.replace_schema_metadata(
+            {
+                **(table.schema.metadata or {}),
+                _PARQUET_SCHEMA_VERSION_KEY: SCHEMA_VERSION.encode("utf-8"),
+            }
+        )
         pq.write_table(table, path / "corpus.parquet")  # type: ignore[no-untyped-call]
         (path / "manifest.json").write_text(
             manifest.model_dump_json(indent=2), encoding="utf-8"
@@ -707,8 +861,10 @@ class CorpusSnapshot:
             ``Corpus`` reconstruido desde ``corpus.parquet``.
         """
         # Compat snapshot v1 (ADR 0053 D2.3): completa provider si falta.
-        table = read_corpus_parquet(self._path / "corpus.parquet")
         manifest = self._manifest
+        table = read_corpus_parquet(
+            self._path / "corpus.parquet", schema_version=manifest.schema_version
+        )
         backend: TabularBackend = InMemoryBackend(table)
         return Corpus(backend, manifest)
 

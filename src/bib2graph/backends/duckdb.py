@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS {name} (
 _DDL_CORPUS = _DDL_CORPUS_TEMPLATE.format(name="corpus")
 
 # ADR 0053 D2.4: versión del esquema del store.  Ausente = "1" (pre-#253).
-_STORE_SCHEMA_VERSION = "2"
+_STORE_SCHEMA_VERSION = "3"
 _DDL_STORE_META = """
 CREATE TABLE IF NOT EXISTS store_meta (
     key   VARCHAR PRIMARY KEY,
@@ -660,6 +660,7 @@ class DuckDBBackend:
         self._con.execute(_DDL_FILTER_LOG)
         self._con.execute(_DDL_ENRICHER_LOG)
         self._con.execute(_DDL_EQUATIONS)
+        self._register_udfs()
         if not had_corpus:
             self._con.execute(
                 "INSERT OR REPLACE INTO store_meta (key, value) "
@@ -668,15 +669,14 @@ class DuckDBBackend:
             )
         else:
             version = self._schema_version()
-            if version == "1":
-                self._migrate_v1_to_v2()
+            if version in ("1", "2"):
+                self._migrate(version)
             elif version != _STORE_SCHEMA_VERSION:
                 raise StoreSchemaError(
                     f"El store '{self._path}' tiene schema_version={version!r}, "
                     f"más nuevo que el que entiende esta bib2graph "
                     f"({_STORE_SCHEMA_VERSION!r}). Actualizá bib2graph."
                 )
-        self._register_udfs()
         # ADR 0053 D2.1: vista temporal del carril.  El valor es un ``Provider``
         # validado (no input libre), por eso se interpola.
         self._con.execute(
@@ -684,51 +684,19 @@ class DuckDBBackend:
             f"SELECT * FROM main.corpus WHERE provider = '{self._provider.value}'"
         )
 
-    def _migrate_v1_to_v2(self) -> None:
-        """Migra un store v1 a v2 en UNA transacción (ADR 0053 D2.4, R7).
+    def _migrate(self, version: str) -> None:
+        """Migra el store a la versión vigente en UNA transacción (ADR 0053 D2.4/D3).
 
-        DuckDB no permite cambiar la PK en el lugar: se reconstruye ``corpus``
-        (``CREATE corpus_v2`` → ``INSERT … SELECT`` con ``provider = <legacy>`` y
-        ``_seq`` intacto → ``DROP corpus`` → ``RENAME``).  Después agrega
-        ``provider`` a las tablas hermanas y sella ``store_meta``.  Si algo
-        falla, ``ROLLBACK`` y el store queda v1 (reintentable).  Corre una sola
-        vez: la reapertura ve ``schema_version = "2"``.
+        Encadena ``v1 -> v2`` y ``v2 -> v3`` según ``version``, así un store v1
+        llega a v3 en una sola apertura.  Si algo falla, ``ROLLBACK`` y el store
+        queda en su versión original (reintentable).  One-shot: la reapertura ve
+        ``schema_version = "3"`` y no hace nada.
         """
-        legacy = self._legacy_provider.value
-        cols = [f.name for f in CORPUS_SCHEMA if f.name != Col.PROVIDER]
-        insert_cols = ", ".join([cols[0], "provider", *cols[1:], "_seq"])
-        select_exprs = ", ".join([cols[0], "?", *cols[1:], "_seq"])
         self._con.execute("BEGIN TRANSACTION")
         try:
-            self._con.execute(_DDL_CORPUS_TEMPLATE.format(name="corpus_v2"))
-            self._con.execute(
-                f"INSERT INTO corpus_v2 ({insert_cols}) "
-                f"SELECT {select_exprs} FROM corpus ORDER BY _seq",
-                [legacy],
-            )
-            self._con.execute("DROP TABLE corpus")
-            self._con.execute("ALTER TABLE corpus_v2 RENAME TO corpus")
-            # DuckDB no admite ADD COLUMN ... NOT NULL: se reconstruyen las
-            # hermanas con la DDL nueva (provider NOT NULL), igual que un store
-            # nuevo, para que el esquema migrado y el fresco sean idénticos.
-            for sibling, old_cols in _SIBLING_V1_COLUMNS.items():
-                if self._column_exists(sibling, "provider"):
-                    continue
-                ddl = {
-                    "referenced_but_not_fetched": _DDL_REFERENCED_BUT_NOT_FETCHED,
-                    "filter_log": _DDL_FILTER_LOG,
-                    "enricher_log": _DDL_ENRICHER_LOG,
-                }[sibling]
-                tmp = f"{sibling}_v2"
-                self._con.execute(ddl.replace(sibling, tmp, 1))
-                sib_cols = ", ".join(old_cols)
-                self._con.execute(
-                    f"INSERT INTO {tmp} ({sib_cols}, provider) "
-                    f"SELECT {sib_cols}, ? FROM {sibling}",
-                    [legacy],
-                )
-                self._con.execute(f"DROP TABLE {sibling}")
-                self._con.execute(f"ALTER TABLE {tmp} RENAME TO {sibling}")
+            if version == "1":
+                self._migrate_v1_to_v2()
+            self._migrate_v2_to_v3()
             self._con.execute(
                 "INSERT OR REPLACE INTO store_meta (key, value) "
                 "VALUES ('schema_version', ?)",
@@ -738,6 +706,173 @@ class DuckDBBackend:
         except Exception:
             self._con.execute("ROLLBACK")
             raise
+
+    def _migrate_v1_to_v2(self) -> None:
+        """Cuerpo de la migración v1 -> v2 (ADR 0053 D2.4, R7); corre dentro de ``_migrate``.
+
+        DuckDB no permite cambiar la PK en el lugar: se reconstruye ``corpus``
+        (``CREATE corpus_v2`` -> ``INSERT ... SELECT`` con ``provider = <legacy>`` y
+        ``_seq`` intacto -> ``DROP corpus`` -> ``RENAME``).  Después agrega
+        ``provider`` a las tablas hermanas.
+        """
+        legacy = self._legacy_provider.value
+        cols = [f.name for f in CORPUS_SCHEMA if f.name != Col.PROVIDER]
+        insert_cols = ", ".join([cols[0], "provider", *cols[1:], "_seq"])
+        select_exprs = ", ".join([cols[0], "?", *cols[1:], "_seq"])
+        self._con.execute(_DDL_CORPUS_TEMPLATE.format(name="corpus_v2"))
+        self._con.execute(
+            f"INSERT INTO corpus_v2 ({insert_cols}) "
+            f"SELECT {select_exprs} FROM corpus ORDER BY _seq",
+            [legacy],
+        )
+        self._con.execute("DROP TABLE corpus")
+        self._con.execute("ALTER TABLE corpus_v2 RENAME TO corpus")
+        # DuckDB no admite ADD COLUMN ... NOT NULL: se reconstruyen las
+        # hermanas con la DDL nueva (provider NOT NULL), igual que un store
+        # nuevo, para que el esquema migrado y el fresco sean idénticos.
+        for sibling, old_cols in _SIBLING_V1_COLUMNS.items():
+            if self._column_exists(sibling, "provider"):
+                continue
+            ddl = {
+                "referenced_but_not_fetched": _DDL_REFERENCED_BUT_NOT_FETCHED,
+                "filter_log": _DDL_FILTER_LOG,
+                "enricher_log": _DDL_ENRICHER_LOG,
+            }[sibling]
+            tmp = f"{sibling}_v2"
+            self._con.execute(ddl.replace(sibling, tmp, 1))
+            sib_cols = ", ".join(old_cols)
+            self._con.execute(
+                f"INSERT INTO {tmp} ({sib_cols}, provider) "
+                f"SELECT {sib_cols}, ? FROM {sibling}",
+                [legacy],
+            )
+            self._con.execute(f"DROP TABLE {sibling}")
+            self._con.execute(f"ALTER TABLE {tmp} RENAME TO {sibling}")
+
+    def _migrate_v2_to_v3(self) -> None:
+        """Cuerpo de la migración v2 -> v3 (ADR 0053 D3, #254); corre dentro de ``_migrate``.
+
+        Recalcula SOLO los ids ``tt:`` con la clave ``_title_key`` vigente; los
+        ``doi:``/``src:`` no se tocan.  Mantiene el prefijo (no re-ancla a
+        ``doi:``/``src:`` aunque la fila haya ganado DOI o ``source_id``).
+
+        Rendimiento (#336): un único paso Arrow sobre las filas ``tt:``
+        (``id, provider, title, year``) calcula el mapa ``(old_id, provider) ->
+        new_id``; el resto es SQL set-based (reconstrucción de ``corpus`` como en
+        v1 -> v2, porque DuckDB no actualiza la PK en el lugar).  Python fila a
+        fila corre solo sobre los grupos que colisionan (``_merge_rows``).
+
+        - Las filas que colapsan al mismo ``(id, provider)`` se fusionan con
+          ``_merge_rows`` (D3 de ADR 0013); la fusionada conserva el menor ``_seq``.
+        - ``external_ids.paper_id`` se remapea (PK ``(paper_id, engine)``: ante
+          colisión del mismo engine gana el menor id externo (``external_ids.id``), determinista).  Es la
+          única hermana que referencia un ``paper_id`` (el resto usa ``ref_id``
+          de proveedor o no referencia papers).
+        - La curación se re-sincroniza entre carriles (D2.2) para los ids tocados.
+        """
+        from bib2graph.corpus import _compute_id
+
+        tt_rows = self._con.execute(
+            "SELECT id, provider, title, year FROM corpus WHERE id LIKE 'tt:%'"
+        ).to_arrow_table()
+        if len(tt_rows) == 0:
+            return
+        old_ids = tt_rows.column("id").to_pylist()
+        providers = tt_rows.column("provider").to_pylist()
+        titles = tt_rows.column("title").to_pylist()
+        years = tt_rows.column("year").to_pylist()
+        new_ids = [
+            _compute_id(None, None, t or "", y)
+            for t, y in zip(titles, years, strict=True)
+        ]
+        group_size: dict[tuple[str, str], int] = {}
+        for new_id, provider in zip(new_ids, providers, strict=True):
+            group_size[(new_id, provider)] = group_size.get((new_id, provider), 0) + 1
+        remap = [
+            (old, prov, new, group_size[(new, prov)] > 1)
+            for old, prov, new in zip(old_ids, providers, new_ids, strict=True)
+            if old != new or group_size[(new, prov)] > 1
+        ]
+        if not remap:
+            return
+        remap_table = pa.table(
+            {
+                "old_id": pa.array([r[0] for r in remap], type=pa.string()),
+                "provider": pa.array([r[1] for r in remap], type=pa.string()),
+                "new_id": pa.array([r[2] for r in remap], type=pa.string()),
+                "collide": pa.array([r[3] for r in remap], type=pa.bool_()),
+            }
+        )
+        names = [f.name for f in CORPUS_SCHEMA]
+        plain = ", ".join(f"c.{n}" for n in names if n != Col.ID)
+        all_cols = ", ".join([*names, "_seq"])
+        self._con.register("_tt_remap", remap_table)
+        try:
+            # Grupos que colisionan: fusión D3 (solo estas filas pasan por Python).
+            colliding = self._con.execute(
+                "SELECT m.new_id AS _new_id, c.* FROM corpus c "
+                "JOIN _tt_remap m ON c.id = m.old_id AND c.provider = m.provider "
+                "WHERE m.collide ORDER BY c._seq"
+            ).to_arrow_table()
+            merged: dict[tuple[str, str], dict[str, object]] = {}
+            for row in colliding.to_pylist():
+                new_id = str(row.pop("_new_id"))
+                key = (new_id, str(row[Col.PROVIDER]))
+                if key in merged:
+                    first_seq = merged[key]["_seq"]
+                    merged[key] = _merge_rows(merged[key], row)
+                    merged[key]["_seq"] = first_seq
+                else:
+                    merged[key] = row
+                merged[key][Col.ID] = new_id
+            merged_schema = CORPUS_SCHEMA.append(pa.field("_seq", pa.int64()))
+            merged_table = pa.Table.from_pylist(
+                list(merged.values()), schema=merged_schema
+            )
+
+            self._con.execute(_DDL_CORPUS_TEMPLATE.format(name="corpus_v3"))
+            # Filas intactas (no remapeadas ni en colisión).
+            self._con.execute(
+                f"INSERT INTO corpus_v3 ({all_cols}) SELECT {all_cols} FROM corpus c "
+                "WHERE NOT EXISTS (SELECT 1 FROM _tt_remap m "
+                "WHERE c.id = m.old_id AND c.provider = m.provider)"
+            )
+            # Remapeadas sin colisión: solo cambia el id.
+            self._con.execute(
+                f"INSERT INTO corpus_v3 ({all_cols}) "
+                f"SELECT m.new_id, {plain}, c._seq FROM corpus c "
+                "JOIN _tt_remap m ON c.id = m.old_id AND c.provider = m.provider "
+                "WHERE NOT m.collide"
+            )
+            if len(merged_table):
+                self._con.register("_tt_merged", merged_table)
+                try:
+                    self._con.execute(
+                        f"INSERT INTO corpus_v3 ({all_cols}) "
+                        f"SELECT {all_cols} FROM _tt_merged"
+                    )
+                finally:
+                    self._con.unregister("_tt_merged")
+            # external_ids: remapeo del paper_id (MIN(id) resuelve colisiones).
+            self._con.execute(
+                _DDL_EXTERNAL_IDS.replace("external_ids", "external_ids_v3", 1)
+            )
+            self._con.execute(
+                "INSERT INTO external_ids_v3 (paper_id, engine, id) "
+                "SELECT COALESCE(m.new_id, e.paper_id), e.engine, MIN(e.id) "
+                "FROM external_ids e LEFT JOIN "
+                "(SELECT old_id, MIN(new_id) AS new_id FROM _tt_remap "
+                "GROUP BY old_id) m ON e.paper_id = m.old_id "
+                "GROUP BY COALESCE(m.new_id, e.paper_id), e.engine"
+            )
+        finally:
+            self._con.unregister("_tt_remap")
+        self._con.execute("DROP TABLE corpus")
+        self._con.execute("ALTER TABLE corpus_v3 RENAME TO corpus")
+        self._con.execute("DROP TABLE external_ids")
+        self._con.execute("ALTER TABLE external_ids_v3 RENAME TO external_ids")
+        # Curación por id (D2.2): ids tocados que ahora coinciden entre carriles.
+        self._sync_curation_across_lanes(sorted({r[2] for r in remap}))
 
     def _register_udfs(self) -> None:
         """Registra UDFs Python en la conexión DuckDB (D3 para provenance/curation)."""

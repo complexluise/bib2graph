@@ -447,9 +447,10 @@ transición la define el verbo.
   `b2g snapshot restore`.)
 - **Carriles (ADR 0053 D2.3, Cortes 3a/3b).** `snapshot create --source <p>` fotografía **un**
   carril (default: `workspace.json.source`; el parquet lleva la columna `provider` y
-  `schema_version = "2"`) y ecoa `data.provider` (§`--source`). `snapshot restore` **no tiene
+  `schema_version = "3"`) y ecoa `data.provider` (§`--source`). `snapshot restore` **no tiene
   `--source`**: restaura en el carril que **declara el parquet**. Lo lee con `read_corpus_parquet`
-  (§1.2), así que un parquet v1 (sin `provider`) se restaura como `openalex`; un parquet con **más de
+  (§1.2), así que un parquet v1 (sin `provider`) se restaura como `openalex` y uno `< "3"` (según el metadata del
+  parquet o su `manifest.json` hermano, §1.2) recalcula sus ids `tt:` antes de mergear; un parquet con **más de
   un** proveedor, o con un proveedor desconocido → `DataError` exit 2, sin escribir; un parquet vacío
   (no declara carril) usa `workspace.json.source`. `data` suma `provider = {"name": <carril>, "origin":
   "snapshot"}` (`origin` dice que el carril salió del parquet, no del flag ni del workspace). En Python,
@@ -1038,12 +1039,17 @@ cambia el contenedor, no el núcleo de análisis**.
 El schema exacto vive en `bib2graph.schemas` (24 columnas). La validación se hace en
 `Corpus.from_arrow()` y en cada `Source.seed()/load()`.
 
-> **`SCHEMA_VERSION = "2"`** (`schemas.py`; versión del corpus que se sella en `Manifest.schema_version`,
-> distinta del envelope y de `store_meta.schema_version` de §4). Pasó de `"1"` a `"2"` con la columna
-> `provider` (ADR 0053 Corte 3a, #253). Consecuencias: (1) el `corpus_hash` de todo corpus cambia una
-> vez (la columna es contenido); (2) `PaperRow` exige `provider`; (3) un parquet `"1"` (sin la
-> columna) se lee con `read_corpus_parquet` (§1.2), que completa `provider = "openalex"`. La columna es
-> **aditiva** para el consumidor del Arrow (§1.7): `test_arrow_schema_contract.py` sigue verde.
+> **`SCHEMA_VERSION = "3"`** (`schemas.py`; versión del corpus que se sella en `Manifest.schema_version`,
+> distinta del envelope y de `store_meta.schema_version` de §4). Historia:
+>
+> - **`"1"` → `"2"`**: columna `provider` (ADR 0053 Corte 3a, #253). El `corpus_hash` de todo corpus
+>   cambió una vez (la columna es contenido) y `PaperRow` exige `provider`. Un parquet `"1"` (sin la
+>   columna) se lee con `read_corpus_parquet` (§1.2), que completa `provider = "openalex"`. La columna
+>   es **aditiva** para el consumidor del Arrow (§1.7): `test_arrow_schema_contract.py` sigue verde.
+> - **`"2"` → `"3"`**: clave `tt` normalizada fuerte (ADR 0053 D3, Corte 4, #254; ver *Identidad*
+>   abajo). **No cambia columnas**, cambia el valor de los ids `tt:`. Un parquet `< "3"` recalcula sus
+>   `tt:` al leerse (§1.2). El `corpus_hash` solo cambia en corpus que tienen ids `tt:`
+>   (`examples/valoraciones` tiene 0: su hash sigue en `9141a8c6…ae84844`).
 
 > **Tabla lateral `external_ids(paper_id, engine, id)`** (ADR
 > [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md) opción C; poblada desde el Corte 2
@@ -1074,9 +1080,10 @@ El schema exacto vive en `bib2graph.schemas` (24 columnas). La validación se ha
 >   (tabla lateral, como `referenced_but_not_fetched`) y **no viaja en el snapshot/parquet**: `restore`
 >   la reconstruye desde `source_id`.
 > - **Límites conocidos:** el límite del Corte 2 (un `restore` de un parquet de otro proveedor
->   registraba el `engine` equivocado) **ya no aplica**: desde el Corte 3a ese `restore` falla con
->   `DataError` antes de registrar (§`snapshot`). Si el `id` canónico de un paper cambia, la fila vieja
->   se borra en el siguiente registro del mismo carril: no quedan huérfanos. Hoy ningún comando la
+>   registraba el `engine` equivocado) **ya no aplica**: desde el Corte 3b ese `restore` restaura y
+>   registra en el carril del parquet (§`snapshot`). Si el `id` canónico de un paper cambia, la fila
+>   vieja se borra en el siguiente registro del mismo carril: no quedan huérfanos. La migración v2→v3
+>   del store (§4.0) remapea `paper_id` en el lugar al recalcular los ids `tt:`. Hoy ningún comando la
 >   **lee**: la identidad y el dedup siguen resolviéndose solo por el `id` canónico.
 
 **`provenance` es un log append-only** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md),
@@ -1120,10 +1127,48 @@ precedencia invertida por ADR [0036](decisiones/0036-identidad-source-id-agnosti
 `id = f"{prefix}:{sha256(valor)[:16]}"` con precedencia `doi` normalizado (`doi:`) → `source_id`
 (`src:`) → `title+year` (`tt:`). El **DOI es el ancla universal e interoperable entre motores** (un
 paper con DOI tiene el mismo `id` venga de OpenAlex, de Semantic Scholar o de un `.bib`); `source_id`
-es el fallback para papers sin DOI, antes de caer a `title+year` (frágil). El mismo paper produce el
+es el fallback para papers sin DOI, antes de caer a `title+year`. El mismo paper produce el
 mismo `id` entre corridas; es la base de la dedup en `merge` y en la biblioteca viva. **En el store**
 un mismo `id` puede tener **un registro por carril** (PK `(id, provider)`, ADR 0053 D2.1, §4); dentro
 de un `Corpus` (siempre mono-proveedor) el `id` sigue siendo único.
+
+**Clave `tt`** (ADR [0053](decisiones/0053-multiproveedor-seleccion-coexistencia-identidad.md) D3,
+desde `SCHEMA_VERSION = "3"`, #254). La rama `tt` hashea `valor = f"{_title_key(title)}|{year}"`.
+`_title_key` (`bib2graph.corpus`, privada y pura) aplica, en este orden:
+
+1. `casefold()` (`"ß"` → `"ss"`). Va **antes** de NFKD: `"İ".casefold()` produce una `i` más U+0307,
+   y esa marca la quita el paso 4.
+2. `unicodedata.normalize("NFKD", …)` (ancho completo, ligaduras y diacríticos se descomponen).
+3. `casefold()` **otra vez**. NFKD puede reintroducir mayúsculas (`™` → `TM`, `℃` → `°C`, `№` →
+   `No`), y sin este paso la función no sería idempotente.
+4. Se descartan las marcas combinantes (`Mn`) y los caracteres de formato (`Cf`: guion blando U+00AD,
+   ZWSP U+200B, BOM U+FEFF), frecuentes en títulos copiados de un PDF.
+5. La puntuación (categoría Unicode `P*`) se **reemplaza por un espacio**, no se borra. Los símbolos
+   (`S*`, p. ej. `+`) se conservan.
+6. Los espacios se colapsan y se recortan.
+
+**Fallback por clave vacía.** Si el resultado queda vacío porque el título es solo puntuación (`"..."`,
+`"???"`), la rama `tt` usa la clave anterior a #254, `title.lower().strip()`. Sin este fallback, todos
+esos títulos del mismo año caerían en un solo `tt:` y se fusionarían en masa. Un título `""` o `None`
+da el mismo id que antes de #254.
+
+El año es exacto (`year=None` → `"None"`). Es **match exacto, sin fuzzy**: no consulta el corpus. Las
+ramas `doi` y `src` no cambiaron (mismos digests que antes), y tampoco la precedencia. (ADR 0053,
+enmienda del Corte 4, punto 7.)
+
+| Mismo `tt` (se unen) | Distinto `tt` (siguen separados) |
+|---|---|
+| `Café y Complejidad` / `Cafe y complejidad` | mismo título, 2019 / 2020 |
+| `Self-Organization` / `Self organization` | `year=None` / `2020` |
+| `"  Título   con  espacios "` / `Título con espacios` | `C++ programming` / `C programming` |
+| `Straße` / `STRASSE`; `İstanbul` / `istanbul` | `Parte I` / `Parte II` |
+| `ＡＢＣ` (ancho completo) / `ABC`; `Title.` / `Title`; comillas tipográficas / rectas | mismas palabras en otro orden |
+| `Self` + U+00AD + `Organization` (guion blando) / `SelfOrganization`; título con ZWSP o BOM / sin ellos | `"..."` / `"???"` (fallback a la clave vieja) |
+
+**Alcance.** La rama `tt` solo corre si el registro **no tiene DOI ni `source_id`**, y en la práctica
+eso es la ingesta de archivo (BibTeX/RIS sin DOI). Un paper sin DOI de un proveedor tiene `source_id` y
+cae en `src:`, que es distinto en cada proveedor. Por eso su curación no viaja entre carriles (ADR 0053
+R3, pregunta abierta en #254).
 
 ### 1.2 `Corpus` (wrapper)
 
@@ -1233,11 +1278,27 @@ D2.1, Corte 3a):
   `B2GError`. Desde el Corte 3b el decorador CLI `handle_errors` la mapea a **`DataError` exit 2**
   (`DATA_ERROR`) en todos los comandos; `run_restore` ya no la traduce por su cuenta. (`code_for`, el
   mapeo puro de §0, todavía no la reconoce: ver ADR 0053, enmienda del Corte 3b.)
-- **`read_corpus_parquet(path) -> pa.Table`** (`bib2graph.corpus`): lee un `corpus.parquet` y lo
-  devuelve con exactamente `CORPUS_SCHEMA`. **Compat de snapshot v1:** si el archivo no tiene la
-  columna `provider` (todo parquet pre-#253 es OpenAlex por construcción), la completa con
-  `"openalex"`; el archivo en disco no se toca. La usan `CorpusSnapshot.corpus` y `snapshot restore`.
-  Los ejemplos commiteados (`examples/`, §2.1) siguen en parquet v1 y se leen por esta vía.
+- **`read_corpus_parquet(path, schema_version=None) -> pa.Table`** (`bib2graph.corpus`): lee un
+  `corpus.parquet` y lo devuelve con exactamente `CORPUS_SCHEMA`. El archivo en disco no se toca. La
+  usan `CorpusSnapshot.corpus` (pasa `manifest.schema_version`) y `snapshot restore` (no la pasa).
+  - **Compat v1:** si el archivo no tiene la columna `provider` (todo parquet pre-#253 es OpenAlex por
+    construcción), la completa con `"openalex"`.
+  - **Compat `< "3"`** (Corte 4, #254): recalcula los ids `tt:` con la clave vigente (§1.1) para que
+    `restore` no duplique papers contra un store ya migrado. Solo toca ids `tt:`, conserva el prefijo
+    y no re-ancla a `doi:`/`src:`. Si dos filas del mismo carril colapsan al mismo `id`, se fusionan
+    con `_merge_rows` (D3 de ADR 0013) en la posición de la primera. **Se recalcula solo si hay una
+    señal de versión `< "3"`, no siempre**: un id `tt:` se asignó con el título de ese momento, y si el
+    título se editó después, recalcularlo cambia el id de un paper que ya estaba bien identificado. La
+    versión se toma de la primera fuente disponible, en este orden:
+    1. La clave `bib2graph.schema_version` del **metadata del schema del parquet**. La sella la escritura del
+       snapshot desde el Corte 4.
+    2. El `schema_version` del manifest: el argumento (`CorpusSnapshot.corpus` pasa
+       `manifest.schema_version`) o, sin argumento, el `manifest.json` hermano. Si el manifest existe
+       pero no tiene la clave, la versión es **desconocida** y se pasa a la fuente 3.
+    3. La columna `provider`: si falta, es v1 y se recalcula. Si está, se trata como v3.
+
+    Ver ADR 0053, enmienda del Corte 4, puntos 3 y 7, y `registro-ia.md` 256.11 y 256.15.
+  - Los ejemplos commiteados (`examples/`, §2.1) siguen en parquet v1 y se leen por esta vía.
 
 **Backend y estado del lazo** (ADR [0015](decisiones/0015-corpus-tabular-backend.md) /
 [0016](decisiones/0016-maquina-estados-lazo.md)):
@@ -1290,9 +1351,10 @@ class CorpusSnapshot:
 - **Obligatorios** (D5): `schema_version`, `corpus_hash`, `lib_version`, `created_at`; el resto con
   default. Si `importlib.metadata` no resuelve la versión instalada, `lib_version = "unknown"` (no
   `"0.0.0"` inventado — honesto sobre la reproducibilidad).
-- **`schema_version`** (D6): se escribe y round-tripea (hoy `"2"`, §1.1). Al **leer** un snapshot,
-  `"1"` se acepta por compat (`read_corpus_parquet`, §1.2); no hay rechazo por versión del parquet. El
-  **store vivo** tiene su propia versión y migración (`store_meta`, §4).
+- **`schema_version`** (D6): se escribe y round-tripea (hoy `"3"`, §1.1). Al **leer** un snapshot,
+  `"1"` y `"2"` se aceptan por compat (`read_corpus_parquet`, §1.2: completa `provider` y recalcula
+  los `tt:`); no hay rechazo por versión del parquet. El **store vivo** tiene su propia versión y
+  migración (`store_meta`, §4.0).
 
 ### 1.4 `TabularBackend` (Protocol) e `InMemoryBackend`
 
@@ -1866,7 +1928,7 @@ class Store(Protocol):
 > (subclase de `OSError`); el CLI (Hito 6) lo mapea al exit code `5`. Multi-escritor concurrente es
 > post-v1.0.
 
-### 4.0 Carriles por proveedor y esquema del store (ADR 0053 D2, Corte 3a — **BREAKING para stores**)
+### 4.0 Carriles por proveedor y esquema del store (ADR 0053 D2/D3, Cortes 3a y 4 — **BREAKING para stores**)
 
 Un `.duckdb` guarda **varios carriles** (un carril = los registros de un proveedor) en la **misma**
 tabla `corpus`; cada instancia de `DuckDBBackend`/`DuckDBStore` está **atada a un carril** y todo lo
@@ -1905,29 +1967,68 @@ que sale de ella (`load()`, `to_arrow()`, `query`) es de ese carril
   `external_ids` es por `engine` (= carril, §4.1). **`loop_state_log` queda por workspace** (la FSM es
   de la investigación, no del carril; ADR 0053 R6).
 - **`store_meta(key VARCHAR PRIMARY KEY, value VARCHAR)`** guarda `schema_version` del **store**
-  (distinta de `SCHEMA_VERSION` del corpus, §1.1). Ausente = `"1"`. Un store nuevo nace en `"2"`.
+  (distinta de `SCHEMA_VERSION` del corpus, §1.1). Ausente = `"1"`. Un store nuevo nace en `"3"`.
 
-**Migración v1 → v2 (one-shot, al abrir; ADR 0053 D2.4).** Al abrir un store con tabla `corpus` y sin
-`store_meta.schema_version` (v1, pre-#253), `_setup()` corre primero las migraciones aditivas
-históricas sobre la tabla vieja y después, **en una sola transacción**, reconstruye `corpus`
+**Cadena de migraciones (one-shot, al abrir; ADR 0053 D2.4 y D3).** `_setup()` lee
+`store_meta.schema_version` y, si es `"1"` o `"2"`, corre `_migrate(version)`: **una sola
+transacción** que encadena los pasos que falten y sella `store_meta.schema_version = "3"` al final.
+
+| Versión al abrir | Pasos | Resultado |
+|---|---|---|
+| `"1"` (pre-#253) | aditivas históricas → v1→v2 → v2→v3 | `"3"` |
+| `"2"` (Corte 3a) | v2→v3 | `"3"` |
+| `"3"` | nada (no-op) | `"3"` |
+| `> "3"` | `StoreSchemaError` (exit 5) | sin tocar |
+
+Si cualquier paso falla, `ROLLBACK`: el store queda en su versión **original**, también un v1 que
+falla en el paso v2→v3, y la próxima apertura reintenta. Las UDF de `_register_udfs()` se registran
+antes de migrar, porque la sincronización de curación las usa.
+
+**Paso v1 → v2 (ADR 0053 D2.4).** Si el store tiene tabla `corpus` y no tiene
+`store_meta.schema_version`, `_setup()` corre primero las migraciones aditivas históricas sobre la
+tabla vieja (fuera de la transacción). Después, dentro de `_migrate`, reconstruye `corpus`
 (`CREATE corpus_v2` con la DDL nueva → `INSERT … SELECT` de todas las filas con
-`provider = <carril legacy>` y el `_seq` intacto → `DROP corpus` → `RENAME`), reconstruye igual las
-tres tablas hermanas con `provider NOT NULL` (esquema idéntico a un store nuevo) y sella `store_meta.schema_version = "2"`. Si algo falla, `ROLLBACK`: el store
-queda v1 y la próxima apertura reintenta.
+`provider = <carril legacy>` y el `_seq` intacto → `DROP corpus` → `RENAME`) y reconstruye igual las
+tres tablas hermanas con `provider NOT NULL` (esquema idéntico a un store nuevo).
 
-- **Carril legacy = `workspace.json.source` vigente al migrar** (default `openalex`), no `openalex`
+**Paso v2 → v3 (ADR 0053 D3, Corte 4, #254).** Recalcula **solo** los ids `tt:` con la clave vigente
+(§1.1). Los `doi:`/`src:` no se tocan. Mantiene el prefijo y **no** re-ancla a `doi:`/`src:` aunque la
+fila haya ganado DOI o `source_id` después. Los títulos que caen en el fallback de clave vacía (solo
+puntuación) conservan su id. El id nuevo se calcula con el título **actual** de la fila.
+
+- **Mapa en un paso Arrow, el resto set-based (#336).** Se leen las filas `tt:`
+  (`id, provider, title, year`), se calcula `(old_id, provider) → new_id` y se registra como tabla
+  temporal. `corpus` se reconstruye (`corpus_v3`, porque DuckDB no actualiza la PK en el lugar) con
+  tres `INSERT … SELECT`: filas intactas, filas remapeadas sin colisión (solo cambia el `id`) y filas
+  fusionadas. Solo los grupos que colisionan pasan por Python. Sin filas `tt:`, o sin ids que cambien
+  ni colisionen, el paso no hace nada.
+- **Colisiones dentro de un carril.** Las filas que caen en el mismo `(new_id, provider)` se fusionan
+  con `_merge_rows` (D3 de ADR 0013) en orden de `_seq`, y la fila fusionada conserva el **menor
+  `_seq`**. Es el efecto buscado: `Café` y `Cafe` del mismo año son el mismo paper. **Entre carriles
+  no se fusiona nada:** el mismo `tt:` en dos carriles da dos registros, como cualquier otro `id`.
+- **`external_ids.paper_id` se remapea.** Es la única tabla hermana que referencia un `paper_id` (las
+  demás usan `ref_id` de proveedor o no referencian papers). Se reconstruye con la PK
+  `(paper_id, engine)`. Si dos filas fusionadas tenían una entrada del mismo `engine`, queda el
+  **menor valor de `id` externo** (`MIN(id)`, determinista; ver `registro-ia.md` 256.12).
+- **Curación.** Al final se re-sincroniza la curación entre carriles (D2.2) para los ids nuevos.
+
+**Propiedades comunes de la cadena:**
+
+- **Carril legacy (solo paso v1→v2) = `workspace.json.source` vigente al migrar** (default `openalex`), no `openalex`
   fijo: un workspace creado con `source: s2` queda etiquetado `s2`. El backend no conoce el workspace:
   lo recibe como `legacy_provider` al abrirse. `b2g init .` sobre un `.duckdb` legacy lo migra con el
   `--source` del `init`. Los registros de BibTeX se etiquetan con el carril legacy, como el resto.
-- **La segunda apertura es no-op** (ve `schema_version = "2"`).
-- **Sin downgrade:** un bib2graph anterior no puede escribir un store v2 (su `ON CONFLICT (id)` no
-  encuentra la restricción única). **Antes de actualizar, hacé `b2g snapshot create`** (ADR 0017): es
+- **La segunda apertura es no-op** (ve `schema_version = "3"`).
+- **Sin downgrade:** un bib2graph anterior no puede escribir un store migrado. Uno pre-#253 no
+  encuentra la restricción única de su `ON CONFLICT (id)`. Uno del Corte 3a (entiende hasta `"2"`) ve
+  `"3"` y lanza `StoreSchemaError`. **Antes de actualizar, hacé `b2g snapshot create`** (ADR 0017): es
   el respaldo para volver atrás.
 - **Versión futura:** un store con `schema_version` mayor que la que entiende esta bib2graph →
   `StoreSchemaError` (`backends.duckdb`, subclase de `OSError`, como `StoreLockedError`) → el CLI lo
   mapea a **exit 5**. El mensaje pide actualizar bib2graph.
-- **El `corpus_hash` de todo corpus existente cambia una vez** (la columna `provider` es contenido):
-  `status` puede avisar *stale* la cache `networks/` una vez; se resuelve con `b2g build`.
+- **`corpus_hash`.** El paso v1→v2 lo cambia en todo corpus (la columna `provider` es contenido). El
+  paso v2→v3 lo cambia solo en carriles con ids `tt:`. En ambos casos `status` puede avisar *stale* la
+  cache `networks/` una vez, y se resuelve con `b2g build`.
 
 > **Superficie CLI de los carriles (Corte 3b de #253).** El estado transitorio entre 3a y 3b terminó:
 > el **guard R1 se retiró** y todos los comandos que leen o escriben el corpus eligen carril con
@@ -1949,8 +2050,8 @@ class DuckDBStore:
     def __init__(self, path: str | Path,
                  provider: Provider | str = DEFAULT_PROVIDER,          # carril sobre el que opera
                  legacy_provider: Provider | str = DEFAULT_PROVIDER,   # carril de un store v1 al migrar
-                 ) -> None: ...  # abre/crea/migra el .duckdb; StoreLockedError si bloqueado,
-                                 # StoreSchemaError si es de una versión futura (ambos → exit 5)
+                 ) -> None: ...  # abre/crea/migra el .duckdb (v1/v2 → v3, §4.0); StoreLockedError
+                                 # si bloqueado, StoreSchemaError si es de una versión futura (ambos → exit 5)
     @property
     def provider(self) -> Provider: ...                   # carril del store
     def persist(self, corpus: Corpus) -> None: ...       # merge idempotente por (id, provider) (upsert-concat D3) en el carril

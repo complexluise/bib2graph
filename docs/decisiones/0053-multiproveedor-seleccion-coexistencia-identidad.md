@@ -673,7 +673,8 @@ se partió como preveía el plan: **3a** (store) en este PR y **3b** (CLI) despu
    `CorpusSnapshot.corpus` y `run_restore`. Completa `provider = "openalex"` **cuando falta la
    columna** (no mira `manifest.schema_version`). Los `examples/` siguen en parquet v1 y se leen por
    esta vía: el gate R2 no exigió re-snapshot porque compara cargas entre sí, no contra un hash
-   commiteado.
+   commiteado. *[Corte 4: ahora sí mira la versión, para recalcular los `tt:` de un parquet `< "3"`;
+   ver la enmienda del Corte 4, punto 3.]*
 4. **Versión futura del store → `StoreSchemaError`** (nuevo, `backends/duckdb.py`, subclase de
    `OSError` como `StoreLockedError`), que el CLI mapea a exit 5. D2.4 no lo preveía.
 5. **Migraciones aditivas históricas** (`_seq`, `openalex_id → source_id`): ahora corren solo sobre un
@@ -772,3 +773,74 @@ casillas). Con este corte **#253 queda completo** (3a + 3b).
    - El chequeo de `graphml`/`csv` (punto 4) **no** aplica la regla del punto 3: sin `.provider` no
      avisa, mientras que el del Arrow sí asume el carril del workspace. Con un sello ausente y
      `--source` ≠ workspace, `graphml` exporta la red del workspace sin warning.
+
+## Enmienda (2026-11-22) — Corte 4 (#254) as-built: clave `tt` normalizada fuerte, migración v2→v3 (BREAKING para stores)
+
+Append-only; el texto, los DoD y las enmiendas anteriores quedan como historia (no se tildan las
+casillas).
+
+1. **Hecho según D3 y el DoD del Corte 4, con los ajustes del punto 7.** `_title_key` (`corpus.py`)
+   sigue la regla de D3 y le agrega dos pasos y un fallback (punto 7). Los símbolos `S*` se
+   conservan (`C++` ≠ `C`). La rama `tt` de `_compute_id` es `f"{_title_key(title)}|{year}"`
+   (`year=None` → `"None"`). La precedencia `doi > src > tt` y los
+   digests `doi:`/`src:` no cambian (hay valores dorados en `test_compute_id.py`). `SCHEMA_VERSION` y
+   `store_meta.schema_version` pasan a `"3"`. Los tests TDD del DoD están en `test_compute_id.py` y
+   `test_tt_key_254.py`. `examples/valoraciones` tiene 0 `tt:` y su hash no cambia
+   (`9141a8c6…ae84844`).
+2. **Migración encadenada.** `_setup()` llama a `_migrate(version)` para `"1"` y `"2"`. Es **una sola
+   transacción**: un store v1 recorre v1→v2 y v2→v3 en la misma apertura y sella `"3"` al final. Si
+   falla, el `ROLLBACK` lo deja en su versión **original**, también a un v1 que falla en v2→v3. Las
+   migraciones aditivas históricas de v1 corren antes y fuera de la transacción, como en el 3a. Las
+   UDF se registran **antes** de migrar, porque la re-sincronización de curación las necesita.
+   El paso v2→v3 hace lo que pide D3: solo ids `tt:`, prefijo conservado y sin re-anclar. Fusiona
+   las colisiones **por carril** con `_merge_rows` (la fila fusionada conserva el menor `_seq`),
+   remapea `external_ids.paper_id` y re-sincroniza la curación (D2.2) de los ids nuevos. Por
+   rendimiento (#336), el mapa `(old_id, provider) → new_id` se calcula en un paso Arrow, `corpus` y
+   `external_ids` se reconstruyen con SQL set-based, y solo los grupos que colisionan pasan por
+   Python. Un test con 10k filas lo cubre. Detalle en API.md §4.0.
+3. **Compat de snapshot `< "3"`.** `read_corpus_parquet(path, schema_version=None)` recalcula los `tt:`
+   al cargar, con la misma regla que la migración (fusión por carril, en la posición de la primera).
+   **Solo recalcula si hay una señal de versión `< "3"`, nunca siempre.** Como alternativa se evaluó
+   recalcular siempre (es idempotente para la clave nueva), y se descartó en la verificación porque
+   el id `tt:` se asignó con el título de ese momento: si el título se editó después, recalcular
+   cambia el id de un paper ya identificado y lo despega de su curación, de `external_ids` y de las
+   aristas que lo nombran. La señal se toma de la primera fuente disponible, en este orden:
+   (a) la clave `bib2graph.schema_version` del metadata del schema del parquet, que la escritura del snapshot
+   sella desde este corte; (b) el `schema_version` del manifest, que llega como argumento
+   (`CorpusSnapshot.corpus`) o desde el `manifest.json` hermano (`run_restore`); si el manifest no
+   tiene la clave, la versión es desconocida y se pasa a (c); (c) la columna `provider`: si falta, el
+   parquet es v1 y se recalcula; si está, se trata como v3. D3 no cubría la detección. Son decisiones
+   de la IA (`registro-ia.md` 256.11 y 256.15).
+4. **Desviación — colisión en `external_ids`.** D3 decía "se remapea `external_ids.paper_id`" pero no
+   qué hacer si dos filas fusionadas tienen una entrada del mismo `engine`: la PK `(paper_id, engine)`
+   admite una sola. Queda el **menor valor del id externo** (`MIN(id)`). Es determinista pero
+   arbitrario: no elige el id de la fila que sobrevive con menor `_seq`. El caso es raro, porque una
+   fila `tt:` nació sin `source_id` y solo tiene entrada en `external_ids` si ganó uno después (o por
+   `--resolve`). Si la fila fusionada tiene `source_id`, el siguiente `register_external_ids` del
+   carril reescribe la entrada con ese valor (decisión de la IA, `registro-ia.md` 256.12).
+5. **BREAKING para stores** (§Consecuencias): abrir un `.duckdb` v1 o v2 con esta versión lo migra a v3
+   **sin vuelta atrás**. Una bib2graph del Corte 3a ve `"3"` y lanza `StoreSchemaError` (exit 5). El
+   respaldo es `b2g snapshot create` **antes** de actualizar. El `corpus_hash` solo cambia en carriles
+   con ids `tt:`, así que `status` puede avisar *stale* una vez. El release lo declara en el footer
+   `BREAKING CHANGE:` del commit.
+6. **R3 no cambia y sigue abierto.** Los papers sin DOI pero con `source_id` siguen en `src:`, así que su
+   curación no viaja entre proveedores. Quedó anotado en #254 como pregunta al PO. Resolverlo es
+   re-anclar la precedencia, una decisión nueva que necesita su propio ADR o enmienda decidida por el
+   PO.
+7. **Ajustes a la regla de D3** (decisiones de la IA tras la verificación, `registro-ia.md`
+   256.13–256.15). El orden final de `_title_key` es casefold → NFKD → **casefold** → quitar `Mn`
+   **y `Cf`** → `P*` a espacio → colapsar.
+   - **Clave vacía → clave anterior a #254** (256.13). Si el título normalizado queda vacío (solo
+     puntuación: `"..."`, `"???"`), la rama `tt` usa `title.lower().strip()`. Con la regla de D3 todos
+     esos títulos del mismo año compartirían un `tt:` y se fusionarían en masa. `""` y `None` dan el
+     mismo id que antes. Consecuencia para la migración: esos ids no cambian.
+   - **Segundo casefold después de NFKD** (256.14). NFKD reintroduce mayúsculas (`™` → `TM`,
+     `℃` → `°C`, `№` → `No`), y sin él `_title_key` no es idempotente. La nota de D3 sobre el orden
+     sigue valiendo: el casefold inicial va antes de NFKD por la `İ`.
+   - **Se descartan los caracteres de formato `Cf`** (256.14): guion blando, ZWSP y BOM, frecuentes en
+     títulos copiados de un PDF. D3 solo quitaba `Mn`.
+   - **Señal de versión de snapshot** (256.15): ver punto 3.
+8. **`examples/` con `.duckdb` commiteados.** Abrir cualquiera de los `library.duckdb` de `examples/`
+   con esta versión lo migra en el lugar a v3, y el archivo queda modificado en git. Ya pasaba con v2
+   desde el Corte 3a. No se commitea esa migración salvo que se decida re-generar el ejemplo. Lo
+   anuncia el PR.

@@ -247,7 +247,7 @@ extra. **Una investigación = un workspace** (carpeta autocontenida con su `libr
 `b2g init .`—; es single-writer (ADR [0019](decisiones/0019-concurrencia-diferida.md)).
 
 **Carriles por proveedor** (ADR [0053](decisiones/0053-multiproveedor-seleccion-coexistencia-identidad.md)
-D2, store v2 desde el Corte 3a de #253). El `.duckdb` guarda los registros de **varios proveedores lado
+D2, store v2 desde el Corte 3a de #253, v3 desde el Corte 4 de #254). El `.duckdb` guarda los registros de **varios proveedores lado
 a lado** en la misma tabla `corpus`, con PK `(id, provider)`: un DOI tiene un `id` canónico y **un
 registro por proveedor**, y ninguno pisa al otro (no hay precedencia de campos ni vista unificada).
 Cada backend está **atado a un carril**: lee a través de la vista temporal `corpus_lane`, sella
@@ -255,9 +255,10 @@ Cada backend está **atado a un carril**: lee a través de la vista temporal `co
 memoria es siempre **mono-proveedor**, y proyectores, dedup, export y `corpus_hash` no cambian (el hash
 sella el carril porque `provider` es contenido). La **curación es del paper** (`id`), no del registro:
 el backend sincroniza `curation_status` entre carriles en cada escritura. `loop_state_log` (la FSM)
-sigue siendo de la investigación. El esquema del store se versiona en `store_meta`; un store v1 se
-migra una sola vez, en una transacción y sin downgrade, etiquetando sus filas con
-`workspace.json.source`. En la CLI (Corte 3b), cada comando opera sobre **un** carril, el de
+sigue siendo de la investigación. El esquema del store se versiona en `store_meta` (hoy `"3"`): un
+store v1 o v2 se migra una sola vez, en una transacción y sin downgrade. El paso v1→v2 etiqueta las
+filas con `workspace.json.source` y el v2→v3 recalcula los ids `tt:` con la clave normalizada de
+ADR 0053 D3 (Corte 4, #254). En la CLI (Corte 3b), cada comando opera sobre **un** carril, el de
 `--source` o el de `workspace.json.source`, y los carriles conviven en la misma investigación. La
 cache `networks/` es de un solo carril (sellado en `networks/.provider`); comparar proveedores = dos
 builds (`build --out-dir`). Detalle y contrato en [`API.md`](API.md) §4.0 y §`--source`.

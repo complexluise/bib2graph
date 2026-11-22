@@ -126,7 +126,7 @@ def test_source_ajeno_en_store_v1_no_migra_a_otro_carril(
     assert "openalex" in _legacy_sibling_providers(ws.library_path)
     assert _legacy_sibling_providers(ws.library_path) <= {"openalex", "s2"}
     assert _old_sibling_rows_providers(ws.library_path) == {"openalex"}
-    assert _meta(ws.library_path)["schema_version"] == "2"
+    assert _meta(ws.library_path)["schema_version"] == "3"
 
 
 # Envelope: data.provider = {name, origin}
