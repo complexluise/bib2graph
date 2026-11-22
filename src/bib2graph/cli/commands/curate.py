@@ -165,7 +165,9 @@ def dump_cmd(
     else:
         out_path = ws.exports_dir / CURATE_CSV_FILENAME
 
-    data = run_curate_dump(store_path, out_path=out_path, scope=scope)
+    data = run_curate_dump(
+        store_path, out_path=out_path, scope=scope, provider=ws.provider
+    )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
@@ -218,7 +220,9 @@ def apply_cmd(
 
     # R2: el reloj se inyecta en la frontera CLI (ADR 0017 enmendado).
     now = datetime.now(UTC)
-    data = run_curate_from_csv(store_path, csv_file, by=by, decided_at=now)
+    data = run_curate_from_csv(
+        store_path, csv_file, by=by, decided_at=now, provider=ws.provider
+    )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
@@ -324,6 +328,7 @@ def curate_accept_cmd(
     data = accept_papers(
         ws.library_path,
         list(ids),
+        provider=ws.provider,
         by=by,
         decided_at=now,
         query=query,
@@ -432,6 +437,7 @@ def curate_reject_cmd(
     data = reject_papers(
         ws.library_path,
         list(ids),
+        provider=ws.provider,
         by=by,
         decided_at=now,
         query=query,
@@ -505,6 +511,7 @@ def curate_filter_cmd(
     now = datetime.now(UTC)
     data = filter_corpus(
         ws.library_path,
+        provider=ws.provider,
         year_gte=year_gte,
         year_lte=year_lte,
         language=list(language) if language else None,

@@ -32,7 +32,7 @@ from typing import Any
 import httpx
 import pyarrow as pa
 
-from bib2graph.constants import Col, CurationStatus
+from bib2graph.constants import Col, CurationStatus, Provider
 from bib2graph.corpus import Corpus, EquationRef, _rows_with_ids
 from bib2graph.foraging.base import CallBudget
 from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
@@ -406,6 +406,8 @@ def _work_to_row(
 
     return {
         # id se calcula en Corpus.add_paper (D1', ADR 0036)
+        # ADR 0053 D2.1: la Source sella su carril en cada fila que produce.
+        Col.PROVIDER: Provider.OPENALEX.value,
         Col.SOURCE_ID: openalex_id,
         Col.DOI: doi,
         Col.TITLE: work.get("title") or work.get("display_name") or "",

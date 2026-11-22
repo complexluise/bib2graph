@@ -51,7 +51,7 @@ from typing import Any
 
 import pyarrow as pa
 
-from bib2graph.constants import Col
+from bib2graph.constants import DEFAULT_PROVIDER, Col
 from bib2graph.corpus import Corpus, _rows_with_ids
 from bib2graph.foraging.base import (
     CallBudget,
@@ -734,7 +734,19 @@ class Forager:
                     )
                     from bib2graph.constants import CurationStatus
 
+                    # ADR 0053 D2.1: el citante hereda el carril del corpus
+                    # que se expande (un Corpus es mono-proveedor).
+                    lane = next(
+                        (
+                            str(r[Col.PROVIDER])
+                            for r in corpus_rows
+                            if r.get(Col.PROVIDER)
+                        ),
+                        DEFAULT_PROVIDER.value,
+                    )
+
                     row = {
+                        Col.PROVIDER: lane,
                         Col.SOURCE_ID: citer_id,
                         Col.DOI: None,
                         Col.TITLE: f"[candidate:{citer_id}]",

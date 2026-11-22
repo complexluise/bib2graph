@@ -39,13 +39,16 @@ from bib2graph.cli._store import (
     workspace_echo,
     workspace_walkup_warning,
 )
+from bib2graph.constants import DEFAULT_PROVIDER, Provider
 from bib2graph.cycle import CURATION_ACTIONS, available_transitions, next_best_action
 from bib2graph.networks.facade import predict_build_preview
 
 # Función núcleo (testeable, sin Click)
 
 
-def run_status(store_path: str | Path) -> dict[str, Any]:
+def run_status(
+    store_path: str | Path, provider: Provider | str = DEFAULT_PROVIDER
+) -> dict[str, Any]:
     """Lee el CycleState, la ronda y los conteos del corpus del store.
 
     Consulta la última fila de ``loop_state_log`` y hace un GROUP BY sobre
@@ -80,7 +83,7 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
         StoreError: Si el store está bloqueado.
     """
     # R5: open_store_readonly falla si el archivo no existe (no auto-crea).
-    store = open_store_readonly(store_path)
+    store = open_store_readonly(store_path, provider, provider)
 
     loop_state = store.backend.loop_state()
     state_str = loop_state.value if loop_state is not None else None
@@ -89,7 +92,7 @@ def run_status(store_path: str | Path) -> dict[str, Any]:
     from bib2graph.constants import Col
 
     counts_table = store.backend.query(
-        f"SELECT {Col.CURATION_STATUS.value}, COUNT(*) as cnt FROM corpus GROUP BY 1"
+        f"SELECT {Col.CURATION_STATUS.value}, COUNT(*) as cnt FROM corpus_lane GROUP BY 1"
     )
     counts: dict[str, int] = {}
     if len(counts_table) > 0:
@@ -217,7 +220,7 @@ def status_cmd(
     ws = resolve_workspace(ctx.obj)
     store_path = ws.library_path
 
-    data = run_status(store_path)
+    data = run_status(store_path, ws.provider)
 
     data["workspace"] = workspace_echo(ws)
 
@@ -231,7 +234,7 @@ def status_cmd(
     warnings: list[str] = list(workspace_walkup_warning(ws))
     from bib2graph.backends.memory import compute_corpus_hash
 
-    _store = open_store_readonly(store_path)
+    _store = open_store_readonly(store_path, ws.provider, ws.provider)
     _corpus = _store.load()
     live_hash = compute_corpus_hash(_corpus.to_arrow())
     stale = ws.is_networks_cache_stale(live_hash)

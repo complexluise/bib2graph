@@ -62,6 +62,7 @@ def _make_minimal_row(
         "language": language,
         "publisher": publisher,
         "research_areas": research_areas,
+        "provider": "openalex",
         "is_seed": is_seed,
         "curation_status": curation_status,
         "provenance": provenance,
@@ -154,6 +155,7 @@ def test_from_arrow_falla_tipo_incorrecto() -> None:
             data[field.name] = pa.array(["2020"], type=pa.string())
         elif field.name in {
             "id",
+            "provider",
             "title",
             "curation_status",
             "source_id",

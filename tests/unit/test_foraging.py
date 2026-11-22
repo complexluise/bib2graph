@@ -75,6 +75,7 @@ def _base_row(
         "language": None,
         "publisher": None,
         "research_areas": None,
+        "provider": "openalex",
         "is_seed": is_seed,
         "curation_status": curation_status,
         "provenance": None,

@@ -48,6 +48,7 @@ def _base_row(
         "language": language,
         "publisher": None,
         "research_areas": research_areas,
+        "provider": "openalex",
         "is_seed": True,
         "curation_status": curation_status,
         "provenance": None,

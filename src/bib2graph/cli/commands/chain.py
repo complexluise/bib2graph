@@ -276,6 +276,7 @@ def run_chain(
             ids=ids,
             top=top,
             scope=scope,
+            provider=provider,
         )
 
     # Guard R1 transitorio: antes de abrir el store (nada se escribe).
@@ -315,7 +316,7 @@ def run_chain(
     )
 
     merged_backend_close = None
-    store = open_store(store_path)
+    store = open_store(store_path, provider, workspace_provider or provider)
     try:
         corpus = store.load()
 
@@ -438,7 +439,7 @@ def run_chain(
         store.backend.set_loop_state(new_state, cycle_round=new_round)
         # ADR 0053 Corte 2: source_id → external_ids[engine].
         # Idempotente y al final: si algo falla antes, la próxima ingesta lo rellena.
-        store.register_external_ids(merged_deduped, provider)
+        store.register_external_ids(merged_deduped)
     finally:
         # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
         # para evitar segfault en Linux ante llamadas consecutivas al mismo archivo.
@@ -475,6 +476,7 @@ def _run_chain_preview(
     ids: tuple[str, ...] = (),
     top: int | None = None,
     scope: str | None = None,
+    provider: Provider = DEFAULT_PROVIDER,
 ) -> dict[str, Any]:
     """Implementación del modo preview (dry-run) de ``run_chain``.
 
@@ -493,6 +495,7 @@ def _run_chain_preview(
         ids: IDs explícitos de papers-origen (``--ids``).
         top: Acota a las ``top`` semillas más "centrales" (``--top``).
         scope: Acota al scope ``all``/``accepted``/``seeds`` (``--scope``).
+        provider: Carril sobre el que se estima (ADR 0053 D2.1).
 
     Returns:
         Dict con las claves del envelope de preview (``preview=True``,
@@ -502,7 +505,7 @@ def _run_chain_preview(
     """
     from bib2graph.foraging import Forager
 
-    store = open_store(store_path)
+    store = open_store(store_path, provider, provider)
     try:
         corpus = store.load()
 

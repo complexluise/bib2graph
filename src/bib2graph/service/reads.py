@@ -43,7 +43,13 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from bib2graph.constants import Col, NetworkKind, doi_to_url
+from bib2graph.constants import (
+    DEFAULT_PROVIDER,
+    Col,
+    NetworkKind,
+    Provider,
+    doi_to_url,
+)
 from bib2graph.schemas import parse_provenance_migrated
 from bib2graph.service._identity import resolve_ident_to_row
 from bib2graph.service.errors import DataError, StoreError
@@ -55,7 +61,7 @@ if TYPE_CHECKING:
 # Helpers internos
 
 
-def _open_readonly(path: Path) -> Any:
+def _open_readonly(path: Path, provider: Provider | str = DEFAULT_PROVIDER) -> Any:
     """Abre el store en modo lectura; falla accionable si no existe.
 
     Args:
@@ -76,7 +82,7 @@ def _open_readonly(path: Path) -> Any:
             "Verificá la ruta o iniciá la investigación con 'b2g seed'."
         )
     try:
-        return DuckDBStore(path)
+        return DuckDBStore(path, provider, provider)
     except StoreLockedError as exc:
         raise StoreError(str(exc)) from exc
     except OSError as exc:
@@ -109,14 +115,14 @@ def get_workspace(ws: Workspace) -> dict[str, Any]:
     from bib2graph.constants import Col
     from bib2graph.cycle import CURATION_ACTIONS, available_transitions
 
-    store = _open_readonly(ws.library_path)
+    store = _open_readonly(ws.library_path, ws.provider)
 
     loop_state = store.backend.loop_state()
     state_str = loop_state.value if loop_state is not None else None
     current_round = store.backend.loop_round()
 
     counts_table = store.backend.query(
-        f"SELECT {Col.CURATION_STATUS.value}, COUNT(*) as cnt FROM corpus GROUP BY 1"
+        f"SELECT {Col.CURATION_STATUS.value}, COUNT(*) as cnt FROM corpus_lane GROUP BY 1"
     )
     counts: dict[str, int] = {}
     if len(counts_table) > 0:
@@ -172,7 +178,7 @@ def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
     # Snapshots sellados (helper read-only del Workspace; ronda = snapshot, B-G2-1)
     rounds: list[dict[str, Any]] = ws.list_snapshots()
 
-    store = _open_readonly(ws.library_path)
+    store = _open_readonly(ws.library_path, ws.provider)
     loop_state = store.backend.loop_state()
     current_round = store.backend.loop_round()
 
@@ -213,7 +219,7 @@ def get_paper(ws: Workspace, ident: str) -> dict[str, Any]:
         DataError: Si ``ident`` no coincide con ningún paper.
         StoreError: Si el store no existe o está bloqueado.
     """
-    store = _open_readonly(ws.library_path)
+    store = _open_readonly(ws.library_path, ws.provider)
     corpus = store.load()
     table = corpus.to_arrow()
 
@@ -290,7 +296,7 @@ def get_scent(ws: Workspace, paper_id: str) -> dict[str, Any]:
     """
     from bib2graph.networks.projectors import collect_item_to_papers
 
-    store = _open_readonly(ws.library_path)
+    store = _open_readonly(ws.library_path, ws.provider)
     corpus = store.load()
     table = corpus.to_arrow()
     rows = table.to_pylist()
@@ -405,7 +411,7 @@ def get_network(ws: Workspace, kind: str) -> dict[str, Any]:
             f"NetworkKind '{kind}' no reconocido. Valores válidos: {valid}."
         )
 
-    store = _open_readonly(ws.library_path)
+    store = _open_readonly(ws.library_path, ws.provider)
     corpus = store.load()
 
     try:
@@ -492,7 +498,7 @@ def compare_rounds(ws: Workspace, round_a: str, round_b: str) -> dict[str, Any]:
     ) -> tuple[set[str], int]:
         """Carga los ids y total_papers de un snapshot o del corpus vivo."""
         if snapshot_id == "live":
-            store = _open_readonly(ws.library_path)
+            store = _open_readonly(ws.library_path, ws.provider)
             corpus = store.load()
             table = corpus.to_arrow()
             ids = {str(row.get(Col.ID)) for row in table.to_pylist() if row.get(Col.ID)}
@@ -621,7 +627,7 @@ def list_papers(
     Raises:
         StoreError: Si el store no existe o está bloqueado.
     """
-    store = _open_readonly(ws.library_path)
+    store = _open_readonly(ws.library_path, ws.provider)
     corpus = store.load()
     table = corpus.to_arrow()
     rows = table.to_pylist()
@@ -696,11 +702,11 @@ def corpus_stats(
         valid = ", ".join(sorted(_VALID_GROUP_BY))
         raise DataError(f"group_by '{group_by}' no válido. Valores admitidos: {valid}.")
 
-    store = _open_readonly(ws.library_path)
+    store = _open_readonly(ws.library_path, ws.provider)
     col = _GROUP_BY_COL[group_by]
 
     counts_table = store.backend.query(
-        f"SELECT {col}, COUNT(*) AS cnt FROM corpus GROUP BY 1 ORDER BY 1"
+        f"SELECT {col}, COUNT(*) AS cnt FROM corpus_lane GROUP BY 1 ORDER BY 1"
     )
 
     groups: list[dict[str, Any]] = []
@@ -777,7 +783,7 @@ def get_top(
     if n <= 0:
         raise DataError(f"top N debe ser un entero positivo; se recibió {n}.")
 
-    store = _open_readonly(ws.library_path)
+    store = _open_readonly(ws.library_path, ws.provider)
     corpus = store.load()
     table = corpus.to_arrow()
     id_to_title: dict[str, str | None] = {
@@ -898,7 +904,7 @@ def resolve_doi(ws: Workspace, paper_id: str) -> str | None:
     Raises:
         StoreError: Si el store no existe o está bloqueado.
     """
-    store = _open_readonly(ws.library_path)
+    store = _open_readonly(ws.library_path, ws.provider)
     corpus = store.load()
     table = corpus.to_arrow()
 

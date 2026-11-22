@@ -246,6 +246,8 @@ def _paper_to_row(
 
     return {
         # id se calcula en Corpus.add_paper / _rows_with_ids (D1', ADR 0036)
+        # ADR 0053 D2.1: la Source sella su carril en cada fila que produce.
+        Col.PROVIDER: Provider.S2.value,
         Col.SOURCE_ID: source_id,
         Col.DOI: doi,
         Col.TITLE: paper.get("title") or "",

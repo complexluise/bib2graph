@@ -55,6 +55,7 @@ def _row(
         "language": "en",
         "publisher": None,
         "research_areas": None,
+        "provider": "openalex",
         "is_seed": is_seed,
         "curation_status": curation_status,
         "provenance": None,

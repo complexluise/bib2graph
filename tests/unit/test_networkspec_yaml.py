@@ -52,6 +52,7 @@ def _make_corpus_rows() -> list[dict[str, Any]]:
             "language": None,
             "publisher": None,
             "research_areas": None,
+            "provider": "openalex",
             "is_seed": True,
             "curation_status": "candidate",
             "provenance": None,

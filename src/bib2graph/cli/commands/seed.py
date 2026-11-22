@@ -125,7 +125,7 @@ def run_seed(
     guard_provider_mix(provider, workspace_provider)
 
     merged_backend_close = None
-    store = open_store(store_path)
+    store = open_store(store_path, provider, workspace_provider or provider)
     try:
         existing = store.load()
 
@@ -197,7 +197,7 @@ def run_seed(
             )
         # ADR 0053 Corte 2 (D4 de 0042): source_id → external_ids[engine].
         # Idempotente y al final: si algo falla antes, la próxima ingesta lo rellena.
-        store.register_external_ids(merged_deduped, provider)
+        store.register_external_ids(merged_deduped)
     finally:
         # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
         # para evitar segfault en Linux ante llamadas consecutivas al mismo archivo.
@@ -290,7 +290,7 @@ def run_seed_from_bib(
         )
 
     merged_backend_close = None
-    store = open_store(store_path)
+    store = open_store(store_path, provider, workspace_provider or provider)
     resolve_data: dict[str, Any] | None = None
     try:
         existing = store.load()
@@ -306,7 +306,7 @@ def run_seed_from_bib(
             new_state, new_round = apply_transition(None, "seed", current_round)
 
         try:
-            source = BibtexSource()
+            source = BibtexSource(provider=provider)
             corpus = source.load(str(resolved_bib))
         except ImportError as exc:
             raise DependencyError(
@@ -333,7 +333,7 @@ def run_seed_from_bib(
         # Filas sin source_id (--from-bib sin --resolve) no se registran; las
         # resueltas por --resolve las registra ``_resolve_dois_on_store``.
         # Idempotente y al final: si algo falla antes, la próxima ingesta lo rellena.
-        store.register_external_ids(merged_deduped, provider)
+        store.register_external_ids(merged_deduped)
 
         # Encadenar resolución DOI→source_id DENTRO del mismo try, con el store
         # ya abierto.  Llamar a resolve_dois(store_path) tras store.close() reabre

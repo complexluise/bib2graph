@@ -38,6 +38,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from bib2graph.corpus import read_corpus_parquet
+
 pytestmark = pytest.mark.unit
 
 # ---------------------------------------------------------------------------
@@ -69,9 +71,8 @@ def _require_parquet() -> None:
 
 def _load_parquet_slice(n: int = 20) -> pa.Table:
     """Carga un slice del parquet del ejemplo (para tests ágiles)."""
-    from bib2graph.schemas import CORPUS_SCHEMA
 
-    full = pq.read_table(str(_EXAMPLES_PARQUET), schema=CORPUS_SCHEMA)  # type: ignore[no-untyped-call]
+    full = read_corpus_parquet(_EXAMPLES_PARQUET)
     return full.slice(0, n)
 
 
@@ -121,9 +122,8 @@ def test_corpus_hash_identico_en_dos_cargas_arrow() -> None:
     _require_parquet()
 
     from bib2graph.corpus import Corpus
-    from bib2graph.schemas import CORPUS_SCHEMA
 
-    table = pq.read_table(str(_EXAMPLES_PARQUET), schema=CORPUS_SCHEMA)  # type: ignore[no-untyped-call]
+    table = read_corpus_parquet(_EXAMPLES_PARQUET)
 
     corpus_a = Corpus.from_arrow(table)
     corpus_b = Corpus.from_arrow(table)
@@ -291,9 +291,8 @@ def test_corpus_hash_coherente_store_vs_arrow_puro(tmp_path: Path) -> None:
 
     # Path Arrow puro
     from bib2graph.corpus import Corpus
-    from bib2graph.schemas import CORPUS_SCHEMA
 
-    table = pq.read_table(str(slice_parquet), schema=CORPUS_SCHEMA)  # type: ignore[no-untyped-call]
+    table = read_corpus_parquet(slice_parquet)
     corpus_arrow = Corpus.from_arrow(table)
     # #88: la ingesta (run_restore) normaliza+deduplica el corpus. Aplicamos la
     # MISMA transformación al path Arrow puro para comparar el mismo contenido —

@@ -6,10 +6,11 @@ Re-exporta el Protocol y las implementaciones disponibles en el núcleo.
 
 from __future__ import annotations
 
-from bib2graph.backends.base import TabularBackend
+from bib2graph.backends.base import ProviderMismatchError, TabularBackend
 from bib2graph.backends.memory import InMemoryBackend
 
 __all__ = [
     "InMemoryBackend",
+    "ProviderMismatchError",
     "TabularBackend",
 ]

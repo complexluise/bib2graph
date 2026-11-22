@@ -61,7 +61,7 @@ from bib2graph.cli._store import (
     workspace_echo,
     workspace_walkup_warning,
 )
-from bib2graph.constants import NetworkKind
+from bib2graph.constants import DEFAULT_PROVIDER, NetworkKind, Provider
 
 #: Formatos que serializan artefactos de build (redes); ignoran ``--scope``.
 _NETWORK_FORMATS = frozenset({"graphml", "csv"})
@@ -179,6 +179,7 @@ def _export_corpus(
     scope: str,
     networks_dir: str | Path,
     network_type: str,
+    provider: Provider | str = DEFAULT_PROVIDER,
 ) -> dict[str, Any]:
     """Serializa el corpus (scopeado) a Arrow (Feather) o BibTeX.
 
@@ -237,7 +238,7 @@ def _export_corpus(
         "network_resolution": None,
     }
 
-    store = open_store_readonly(store_path)
+    store = open_store_readonly(store_path, provider, provider)
     try:
         corpus = store.load().scoped(scope)
         # Materializar la tabla ANTES de cerrar el store: para scope='all',
@@ -393,6 +394,7 @@ def run_export(
     scope: str = "all",
     scope_explicit: bool = False,
     network_type: str = "bibliographic_coupling",
+    provider: Provider | str = DEFAULT_PROVIDER,
 ) -> dict[str, Any]:
     """Serializa artefactos al formato pedido.
 
@@ -469,6 +471,7 @@ def run_export(
             scope=scope,
             networks_dir=effective_networks_dir,
             network_type=network_type,
+            provider=provider,
         )
     else:
         raise DataError(
@@ -606,6 +609,7 @@ def export_cmd(
         scope=internal_scope,
         scope_explicit=scope_explicit,
         network_type=network_type,
+        provider=ws.provider,
     )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.

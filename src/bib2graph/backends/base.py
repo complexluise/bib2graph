@@ -26,6 +26,17 @@ if TYPE_CHECKING:
     pass
 
 
+class ProviderMismatchError(ValueError):
+    """Se intentó mezclar o escribir filas de carriles (proveedores) distintos.
+
+    ADR 0053 D2.1: un ``Corpus`` en memoria es siempre mono-proveedor y un
+    backend de store está atado a un carril.  Fusionar dos corpora de
+    proveedores distintos, o escribir en un carril filas selladas con otro
+    ``provider`` (típicamente una ``Source`` que olvidó sellar su token),
+    falla fuerte en vez de mezclar registros de proveedores distintos.
+    """
+
+
 @runtime_checkable
 class TabularBackend(Protocol):
     """Contrato de almacenamiento tabular para el ``Corpus``.

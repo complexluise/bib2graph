@@ -93,6 +93,7 @@ def _make_minimal_row(**overrides: object) -> dict[str, object]:
         "language": "es",
         "publisher": None,
         "research_areas": None,
+        "provider": "openalex",
         "is_seed": True,
         "curation_status": "candidate",
         "provenance": None,

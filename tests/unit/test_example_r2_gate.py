@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from bib2graph.corpus import Corpus
+from bib2graph.corpus import Corpus, read_corpus_parquet
 
 # Ruta al parquet del ejemplo (relativa al directorio raíz del proyecto)
 _EXAMPLES_PARQUET = (
@@ -40,12 +40,10 @@ _EXAMPLES_PARQUET = (
 
 def _load_corpus_from_parquet() -> Corpus:
     """Carga el corpus desde el parquet del ejemplo con el schema canónico."""
-    import pyarrow.parquet as pq
 
     from bib2graph.corpus import Corpus
-    from bib2graph.schemas import CORPUS_SCHEMA
 
-    table = pq.read_table(str(_EXAMPLES_PARQUET), schema=CORPUS_SCHEMA)  # type: ignore[no-untyped-call]
+    table = read_corpus_parquet(_EXAMPLES_PARQUET)
     return Corpus.from_arrow(table)
 
 
@@ -258,12 +256,11 @@ def test_run_restore_desde_parquet_ejemplo(tmp_path: Path) -> None:
     import pyarrow.parquet as pq
 
     from bib2graph.cycle import CycleState
-    from bib2graph.schemas import CORPUS_SCHEMA
     from bib2graph.service.snapshot import run_restore
     from bib2graph.stores.duckdb import DuckDBStore
 
     # Slice de 10 filas del parquet (no toda la tabla de 137)
-    full_table = pq.read_table(str(_EXAMPLES_PARQUET), schema=CORPUS_SCHEMA)  # type: ignore[no-untyped-call]
+    full_table = read_corpus_parquet(_EXAMPLES_PARQUET)
     slice_table = full_table.slice(0, 10)
     slice_parquet = tmp_path / "slice.parquet"
     pq.write_table(slice_table, str(slice_parquet))  # type: ignore[no-untyped-call]
@@ -298,13 +295,12 @@ def test_corpus_hash_coherente_entre_parquet_y_merge_en_memoria() -> None:
     Usa InMemoryBackend (sin DuckDB) para ser ágil.
     """
     import pyarrow as pa
-    import pyarrow.parquet as pq
 
     from bib2graph.corpus import Corpus
     from bib2graph.schemas import CORPUS_SCHEMA
 
     # Corpus del parquet
-    table = pq.read_table(str(_EXAMPLES_PARQUET), schema=CORPUS_SCHEMA)  # type: ignore[no-untyped-call]
+    table = read_corpus_parquet(_EXAMPLES_PARQUET)
     corpus_incoming = Corpus.from_arrow(table)
     hash_incoming = corpus_incoming._backend.corpus_hash()
 

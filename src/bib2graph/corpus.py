@@ -20,9 +20,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel, Field
 
-from bib2graph.backends import InMemoryBackend, TabularBackend
-from bib2graph.backends.memory import compute_corpus_hash
-from bib2graph.constants import Col, CurationStatus
+from bib2graph.backends import InMemoryBackend, ProviderMismatchError, TabularBackend
+from bib2graph.backends.memory import compute_corpus_hash, table_providers
+from bib2graph.constants import DEFAULT_PROVIDER, Col, CurationStatus
 from bib2graph.schemas import (
     CORPUS_SCHEMA,
     SCHEMA_VERSION,
@@ -34,6 +34,29 @@ from bib2graph.schemas import (
 # Re-exporta compute_corpus_hash con el nombre histórico que usan los tests
 # del Hito 1 (``from bib2graph.corpus import _compute_corpus_hash``).
 _compute_corpus_hash = compute_corpus_hash
+
+
+def read_corpus_parquet(path: str | Path) -> pa.Table:
+    """Lee un ``corpus.parquet`` y lo devuelve con el schema canónico (compat v1).
+
+    ADR 0053 D2.3: los snapshots con ``schema_version="1"`` no tienen la columna
+    ``provider`` (todo corpus pre-#253 es OpenAlex por construcción de la época);
+    se completa con ``DEFAULT_PROVIDER`` igual que ``_provenance_compat`` completa
+    ``source_kind`` al leer.  Lectura compat: el archivo en disco no se toca.
+
+    Args:
+        path: Ruta al ``corpus.parquet``.
+
+    Returns:
+        Tabla Arrow con exactamente ``CORPUS_SCHEMA``.
+    """
+    table = pq.read_table(str(path))  # type: ignore[no-untyped-call]
+    if Col.PROVIDER not in table.column_names:
+        table = table.append_column(
+            Col.PROVIDER,
+            pa.array([DEFAULT_PROVIDER.value] * len(table), type=pa.string()),
+        )
+    return table.select(CORPUS_SCHEMA.names).cast(CORPUS_SCHEMA)
 
 
 def _lib_version() -> str:
@@ -275,6 +298,24 @@ class Corpus:
         )
         return cls(resolved_backend, manifest)
 
+    @property
+    def provider(self) -> str | None:
+        """Carril (proveedor) del corpus, o ``None`` si está vacío (ADR 0053 D2.1).
+
+        Un ``Corpus`` es siempre mono-proveedor; un corpus con varios
+        ``provider`` en la tabla viola el invariante y falla fuerte.
+
+        Raises:
+            ProviderMismatchError: Si la tabla mezcla proveedores.
+        """
+        lanes = table_providers(self._backend.to_arrow())
+        if len(lanes) > 1:
+            raise ProviderMismatchError(
+                f"El corpus mezcla proveedores {lanes}: un Corpus es mono-proveedor "
+                "(ADR 0053 D2.1)."
+            )
+        return lanes[0] if lanes else None
+
     def to_arrow(self) -> pa.Table:
         """Devuelve la tabla Arrow del contenido actual.
 
@@ -384,6 +425,10 @@ class Corpus:
             SchemaError: Si los datos no pasan la validación de ``PaperRow``.
         """
         row_copy = dict(row)
+        if not row_copy.get(Col.PROVIDER):
+            # Un paper agregado sin carril explícito hereda el del corpus
+            # (mono-proveedor, ADR 0053 D2.1); un corpus vacío usa el default.
+            row_copy[Col.PROVIDER] = self.provider or DEFAULT_PROVIDER.value
         if not row_copy.get(Col.ID):
             raw_year = row_copy.get(Col.YEAR)
             row_copy[Col.ID] = _compute_id(
@@ -437,11 +482,17 @@ class Corpus:
         ``self`` en su orden original, luego las filas nuevas de ``other``
         (las que no estaban en ``self``) en el orden en que aparecen en ``other``.
 
+        Los dos corpora deben ser del mismo carril (ADR 0053 D2.1): proveedores
+        distintos nunca se mezclan.
+
         Args:
             other: Corpus a fusionar con este.
 
         Returns:
             Nuevo ``Corpus`` con las filas fusionadas.
+
+        Raises:
+            ProviderMismatchError: Si los corpora son de proveedores distintos.
         """
         new_backend = self._backend.merge(other._backend.to_arrow())
         return Corpus(new_backend, self._manifest)
@@ -642,7 +693,8 @@ class CorpusSnapshot:
         Returns:
             ``Corpus`` reconstruido desde ``corpus.parquet``.
         """
-        table = pq.read_table(self._path / "corpus.parquet", schema=CORPUS_SCHEMA)  # type: ignore[no-untyped-call]
+        # Compat snapshot v1 (ADR 0053 D2.3): completa provider si falta.
+        table = read_corpus_parquet(self._path / "corpus.parquet")
         manifest = self._manifest
         backend: TabularBackend = InMemoryBackend(table)
         return Corpus(backend, manifest)
