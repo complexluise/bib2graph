@@ -61,11 +61,18 @@ if TYPE_CHECKING:
 # Helpers internos
 
 
-def _open_readonly(path: Path, provider: Provider | str = DEFAULT_PROVIDER) -> Any:
+def _open_readonly(
+    path: Path,
+    provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str | None = None,
+) -> Any:
     """Abre el store en modo lectura; falla accionable si no existe.
 
     Args:
         path: Ruta al archivo ``.duckdb``.
+        provider: Carril que se lee (ADR 0053 D2.1).
+        legacy_provider: Carril con el que se etiqueta un store v1 si abrirlo
+            lo migra (``workspace.json.source``; D2.4).  ``None`` = ``provider``.
 
     Returns:
         ``DuckDBStore`` abierto y listo para leer.
@@ -82,7 +89,7 @@ def _open_readonly(path: Path, provider: Provider | str = DEFAULT_PROVIDER) -> A
             "Verificá la ruta o iniciá la investigación con 'b2g seed'."
         )
     try:
-        return DuckDBStore(path, provider, provider)
+        return DuckDBStore(path, provider, legacy_provider or provider)
     except StoreLockedError as exc:
         raise StoreError(str(exc)) from exc
     except OSError as exc:
@@ -92,7 +99,20 @@ def _open_readonly(path: Path, provider: Provider | str = DEFAULT_PROVIDER) -> A
         ) from exc
 
 
-def get_workspace(ws: Workspace) -> dict[str, Any]:
+def _open_lane(ws: Workspace, provider: Provider | str | None) -> Any:
+    """Abre el store del workspace sobre el carril pedido (ADR 0053 D2.1).
+
+    ``provider=None`` = carril por defecto de la investigación.  El carril
+    legacy para una migración v1→v2 es siempre ``ws.provider`` (nunca el
+    carril pedido: una lectura con ``--source`` no puede re-etiquetar el
+    store entero).
+    """
+    return _open_readonly(ws.library_path, provider or ws.provider, ws.provider)
+
+
+def get_workspace(
+    ws: Workspace, provider: Provider | str | None = None
+) -> dict[str, Any]:
     """Lee el estado actual del workspace: nombre, loop_state, ronda y conteos.
 
     Reutiliza la misma lógica de lectura de ``run_status`` migrada a la capa
@@ -115,7 +135,7 @@ def get_workspace(ws: Workspace) -> dict[str, Any]:
     from bib2graph.constants import Col
     from bib2graph.cycle import CURATION_ACTIONS, available_transitions
 
-    store = _open_readonly(ws.library_path, ws.provider)
+    store = _open_lane(ws, provider)
 
     loop_state = store.backend.loop_state()
     state_str = loop_state.value if loop_state is not None else None
@@ -156,7 +176,9 @@ def get_workspace(ws: Workspace) -> dict[str, Any]:
     }
 
 
-def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
+def list_rounds(
+    ws: Workspace, provider: Provider | str | None = None
+) -> list[dict[str, Any]]:
     """Lista los snapshots sellados del workspace más la entrada "live".
 
     Escanea ``<workspace>/snapshots/`` y lee el ``manifest.json`` de cada
@@ -178,7 +200,7 @@ def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
     # Snapshots sellados (helper read-only del Workspace; ronda = snapshot, B-G2-1)
     rounds: list[dict[str, Any]] = ws.list_snapshots()
 
-    store = _open_readonly(ws.library_path, ws.provider)
+    store = _open_lane(ws, provider)
     loop_state = store.backend.loop_state()
     current_round = store.backend.loop_round()
 
@@ -195,7 +217,9 @@ def list_rounds(ws: Workspace) -> list[dict[str, Any]]:
     return rounds
 
 
-def get_paper(ws: Workspace, ident: str) -> dict[str, Any]:
+def get_paper(
+    ws: Workspace, ident: str, provider: Provider | str | None = None
+) -> dict[str, Any]:
     """Devuelve la fila completa del corpus para un paper.
 
     Resuelve ``ident`` contra tres columnas en orden de prioridad:
@@ -219,7 +243,7 @@ def get_paper(ws: Workspace, ident: str) -> dict[str, Any]:
         DataError: Si ``ident`` no coincide con ningún paper.
         StoreError: Si el store no existe o está bloqueado.
     """
-    store = _open_readonly(ws.library_path, ws.provider)
+    store = _open_lane(ws, provider)
     corpus = store.load()
     table = corpus.to_arrow()
 
@@ -267,7 +291,9 @@ def get_paper(ws: Workspace, ident: str) -> dict[str, Any]:
     }
 
 
-def get_scent(ws: Workspace, paper_id: str) -> dict[str, Any]:
+def get_scent(
+    ws: Workspace, paper_id: str, provider: Provider | str | None = None
+) -> dict[str, Any]:
     """Devuelve el score de acoplamiento real de un paper con el corpus.
 
     El scent se calcula usando el índice de acoplamiento bibliográfico:
@@ -296,7 +322,7 @@ def get_scent(ws: Workspace, paper_id: str) -> dict[str, Any]:
     """
     from bib2graph.networks.projectors import collect_item_to_papers
 
-    store = _open_readonly(ws.library_path, ws.provider)
+    store = _open_lane(ws, provider)
     corpus = store.load()
     table = corpus.to_arrow()
     rows = table.to_pylist()
@@ -374,7 +400,9 @@ _VALID_KINDS: frozenset[str] = frozenset(
 )
 
 
-def get_network(ws: Workspace, kind: str) -> dict[str, Any]:
+def get_network(
+    ws: Workspace, kind: str, provider: Provider | str | None = None
+) -> dict[str, Any]:
     """Devuelve la red de la ronda viva para el kind dado.
 
     Recomputa con ``Networks.build`` + ``decorate`` (función pura: mismo corpus
@@ -411,7 +439,7 @@ def get_network(ws: Workspace, kind: str) -> dict[str, Any]:
             f"NetworkKind '{kind}' no reconocido. Valores válidos: {valid}."
         )
 
-    store = _open_readonly(ws.library_path, ws.provider)
+    store = _open_lane(ws, provider)
     corpus = store.load()
 
     try:
@@ -467,7 +495,12 @@ def get_network(ws: Workspace, kind: str) -> dict[str, Any]:
     }
 
 
-def compare_rounds(ws: Workspace, round_a: str, round_b: str) -> dict[str, Any]:
+def compare_rounds(
+    ws: Workspace,
+    round_a: str,
+    round_b: str,
+    provider: Provider | str | None = None,
+) -> dict[str, Any]:
     """Compara dos snapshots sellados y devuelve el diff de papers y métricas.
 
     Carga los parquets de los snapshots ``round_a`` y ``round_b`` en modo
@@ -498,7 +531,7 @@ def compare_rounds(ws: Workspace, round_a: str, round_b: str) -> dict[str, Any]:
     ) -> tuple[set[str], int]:
         """Carga los ids y total_papers de un snapshot o del corpus vivo."""
         if snapshot_id == "live":
-            store = _open_readonly(ws.library_path, ws.provider)
+            store = _open_lane(ws, provider)
             corpus = store.load()
             table = corpus.to_arrow()
             ids = {str(row.get(Col.ID)) for row in table.to_pylist() if row.get(Col.ID)}
@@ -600,6 +633,7 @@ def list_papers(
     status: str | None = None,
     is_seed: bool | None = None,
     year: int | None = None,
+    provider: Provider | str | None = None,
 ) -> dict[str, Any]:
     """Lista papers del corpus con filtros opcionales.
 
@@ -627,7 +661,7 @@ def list_papers(
     Raises:
         StoreError: Si el store no existe o está bloqueado.
     """
-    store = _open_readonly(ws.library_path, ws.provider)
+    store = _open_lane(ws, provider)
     corpus = store.load()
     table = corpus.to_arrow()
     rows = table.to_pylist()
@@ -676,6 +710,7 @@ def corpus_stats(
     ws: Workspace,
     *,
     group_by: str = "status",
+    provider: Provider | str | None = None,
 ) -> dict[str, Any]:
     """Estadísticas del corpus agrupadas por ``status``, ``year`` o ``is_seed``.
 
@@ -702,7 +737,7 @@ def corpus_stats(
         valid = ", ".join(sorted(_VALID_GROUP_BY))
         raise DataError(f"group_by '{group_by}' no válido. Valores admitidos: {valid}.")
 
-    store = _open_readonly(ws.library_path, ws.provider)
+    store = _open_lane(ws, provider)
     col = _GROUP_BY_COL[group_by]
 
     counts_table = store.backend.query(
@@ -730,6 +765,7 @@ def get_top(
     *,
     n: int = 10,
     kind: str = "bibliographic_coupling",
+    provider: Provider | str | None = None,
 ) -> dict[str, Any]:
     """Devuelve los nodos más centrales de la red ``kind`` y los pares de co-citación.
 
@@ -783,7 +819,7 @@ def get_top(
     if n <= 0:
         raise DataError(f"top N debe ser un entero positivo; se recibió {n}.")
 
-    store = _open_readonly(ws.library_path, ws.provider)
+    store = _open_lane(ws, provider)
     corpus = store.load()
     table = corpus.to_arrow()
     id_to_title: dict[str, str | None] = {
@@ -882,7 +918,9 @@ def get_top(
 # ---------------------------------------------------------------------------
 
 
-def resolve_doi(ws: Workspace, paper_id: str) -> str | None:
+def resolve_doi(
+    ws: Workspace, paper_id: str, provider: Provider | str | None = None
+) -> str | None:
     """Devuelve el DOI del paper identificado por ``paper_id``, o ``None``.
 
     Busca ``paper_id`` en ``Col.ID`` del corpus y devuelve el valor de
@@ -904,7 +942,7 @@ def resolve_doi(ws: Workspace, paper_id: str) -> str | None:
     Raises:
         StoreError: Si el store no existe o está bloqueado.
     """
-    store = _open_readonly(ws.library_path, ws.provider)
+    store = _open_lane(ws, provider)
     corpus = store.load()
     table = corpus.to_arrow()
 
@@ -917,7 +955,9 @@ def resolve_doi(ws: Workspace, paper_id: str) -> str | None:
     return None
 
 
-def resolve_url(ws: Workspace, paper_id: str) -> str | None:
+def resolve_url(
+    ws: Workspace, paper_id: str, provider: Provider | str | None = None
+) -> str | None:
     """Devuelve la URL canónica del paper identificado por ``paper_id``, o ``None``.
 
     Deriva ``https://doi.org/<doi>`` usando el mismo criterio que
@@ -938,4 +978,4 @@ def resolve_url(ws: Workspace, paper_id: str) -> str | None:
     Raises:
         StoreError: Si el store no existe o está bloqueado.
     """
-    return doi_to_url(resolve_doi(ws, paper_id))
+    return doi_to_url(resolve_doi(ws, paper_id, provider))

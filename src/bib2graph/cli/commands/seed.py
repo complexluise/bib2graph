@@ -39,7 +39,6 @@ from bib2graph.cli._errors import (
 )
 from bib2graph.cli._ingest import normalize_and_dedup
 from bib2graph.cli._options import (
-    guard_provider_mix,
     json_mode,
     json_option,
     provider_echo,
@@ -93,17 +92,16 @@ def run_seed(
         max_year: Año máximo de publicación.  Genera
             ``to_publication_date:<max_year>-12-31`` en el filtro de OpenAlex.
         provider: Proveedor (ADR 0053 D1).  Default ``openalex``.
-        workspace_provider: Proveedor de la investigación
-            (``workspace.json.source``) para el guard transitorio R1; ``None``
-            = sin guard (llamadas directas sin workspace).
+        workspace_provider: Proveedor de la investigación (``workspace.json.source``):
+            es el carril legacy con el que se etiqueta un store v1 si abrirlo
+            dispara la migración (ADR 0053 D2.4); ``None`` = ``provider``.
 
     Returns:
         Dict con ``executed_query``, ``translation_report``, ``papers_added``,
         ``total_papers``, ``round``, ``reseeded``.
 
     Raises:
-        DataError: Si la ecuación está vacía, o si el guard R1 rechaza mezclar
-            proveedores con corpus no vacío.
+        DataError: Si la ecuación está vacía.
         DependencyError: Si el proveedor no declara una capacidad requerida
             (``seed_filters`` con ``--native/--exclude/--min-year/--max-year``);
             falla antes de tocar la red.
@@ -120,9 +118,6 @@ def run_seed(
     require(provider, Capability.SEED)
     if native or exclude or min_year is not None or max_year is not None:
         require(provider, Capability.SEED_FILTERS)
-
-    # Guard R1 transitorio: antes de abrir el store (nada se escribe).
-    guard_provider_mix(provider, workspace_provider)
 
     merged_backend_close = None
     store = open_store(store_path, provider, workspace_provider or provider)
@@ -258,8 +253,9 @@ def run_seed_from_bib(
             solo relevante cuando ``resolve=True``.
         provider: Proveedor (ADR 0053 D1); solo relevante con ``resolve=True``,
             que exige la capacidad ``resolve_doi``.
-        workspace_provider: Proveedor de la investigación para el guard R1
-            (solo con ``resolve=True``); ``None`` = sin guard.
+        workspace_provider: Proveedor de la investigación (``workspace.json.source``):
+            es el carril legacy con el que se etiqueta un store v1 si abrirlo
+            dispara la migración (ADR 0053 D2.4); ``None`` = ``provider``.
 
     Returns:
         Dict con ``papers_added``, ``total_papers``, ``round``, ``reseeded``.
@@ -279,8 +275,6 @@ def run_seed_from_bib(
     if resolve:
         # ADR 0053 D1.4: antes de abrir el store o tocar la red.
         require(provider, Capability.RESOLVE_DOI)
-    # Guard R1 transitorio (con o sin --resolve): antes de abrir el store.
-    guard_provider_mix(provider, workspace_provider)
 
     resolved_bib = Path(bib_path)
     if not resolved_bib.exists():

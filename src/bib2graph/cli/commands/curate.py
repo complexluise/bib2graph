@@ -62,7 +62,13 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
-from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._options import (
+    json_mode,
+    json_option,
+    provider_echo,
+    resolve_provider,
+    source_option,
+)
 from bib2graph.cli._store import (
     resolve_workspace,
     workspace_echo,
@@ -138,6 +144,7 @@ def curate_grp(ctx: click.Context) -> None:
         "'all' = todo el corpus."
     ),
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("curate dump")
@@ -145,6 +152,7 @@ def dump_cmd(
     ctx: click.Context,
     out_override: str | None,
     scope: str,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Exporta papers a CSV para revisión offline.
@@ -158,6 +166,7 @@ def dump_cmd(
     from pathlib import Path
 
     ws = resolve_workspace(ctx.obj)
+    provider, origin = resolve_provider(source, ws)
     store_path = ws.library_path
 
     if out_override is not None:
@@ -166,11 +175,16 @@ def dump_cmd(
         out_path = ws.exports_dir / CURATE_CSV_FILENAME
 
     data = run_curate_dump(
-        store_path, out_path=out_path, scope=scope, provider=ws.provider
+        store_path,
+        out_path=out_path,
+        scope=scope,
+        provider=provider,
+        legacy_provider=ws.provider,
     )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -194,6 +208,7 @@ def dump_cmd(
     show_default=True,
     help="Identificador de quien decide (curador).",
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("curate apply")
@@ -201,6 +216,7 @@ def apply_cmd(
     ctx: click.Context,
     csv_file: str,
     by: str,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Reimporta decisiones de curación desde CSV al corpus.
@@ -216,16 +232,23 @@ def apply_cmd(
     Curación TRANSVERSAL: no transiciona el CycleState.
     """
     ws = resolve_workspace(ctx.obj)
+    provider, origin = resolve_provider(source, ws)
     store_path = ws.library_path
 
     # R2: el reloj se inyecta en la frontera CLI (ADR 0017 enmendado).
     now = datetime.now(UTC)
     data = run_curate_from_csv(
-        store_path, csv_file, by=by, decided_at=now, provider=ws.provider
+        store_path,
+        csv_file,
+        by=by,
+        decided_at=now,
+        provider=provider,
+        legacy_provider=ws.provider,
     )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -294,6 +317,7 @@ def apply_cmd(
     show_default=True,
     help="Identificador de quien decide.",
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("curate accept")
@@ -307,6 +331,7 @@ def curate_accept_cmd(
     type_in: tuple[str, ...],
     min_citations: int | None,
     by: str,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Marca papers como accepted en el corpus.
@@ -324,11 +349,13 @@ def curate_accept_cmd(
     from bib2graph.service.curate import accept_papers
 
     ws = resolve_workspace(ctx.obj)
+    provider, origin = resolve_provider(source, ws)
     now = datetime.now(UTC)
     data = accept_papers(
         ws.library_path,
         list(ids),
-        provider=ws.provider,
+        provider=provider,
+        legacy_provider=ws.provider,
         by=by,
         decided_at=now,
         query=query,
@@ -341,6 +368,7 @@ def curate_accept_cmd(
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -399,6 +427,7 @@ def curate_accept_cmd(
     show_default=True,
     help="Identificador de quien decide.",
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("curate reject")
@@ -412,6 +441,7 @@ def curate_reject_cmd(
     type_in: tuple[str, ...],
     min_citations: int | None,
     by: str,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Marca papers como rejected en el corpus.
@@ -433,11 +463,13 @@ def curate_reject_cmd(
     from bib2graph.service.curate import reject_papers
 
     ws = resolve_workspace(ctx.obj)
+    provider, origin = resolve_provider(source, ws)
     now = datetime.now(UTC)
     data = reject_papers(
         ws.library_path,
         list(ids),
-        provider=ws.provider,
+        provider=provider,
+        legacy_provider=ws.provider,
         by=by,
         decided_at=now,
         query=query,
@@ -450,6 +482,7 @@ def curate_reject_cmd(
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -485,6 +518,7 @@ def curate_reject_cmd(
     default=None,
     help="Mínimo de citantes en cited_by_id.",
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("curate filter")
@@ -495,6 +529,7 @@ def curate_filter_cmd(
     language: tuple[str, ...],
     type_in: tuple[str, ...],
     min_citations: int | None,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Aplica filtros PRISMA al corpus (marca rejected, no borra).
@@ -507,11 +542,13 @@ def curate_filter_cmd(
     from bib2graph.service.curate import filter_corpus
 
     ws = resolve_workspace(ctx.obj)
+    provider, origin = resolve_provider(source, ws)
     # R2: el reloj se inyecta en la frontera CLI (ADR 0017 enmendado).
     now = datetime.now(UTC)
     data = filter_corpus(
         ws.library_path,
-        provider=ws.provider,
+        provider=provider,
+        legacy_provider=ws.provider,
         year_gte=year_gte,
         year_lte=year_lte,
         language=list(language) if language else None,
@@ -522,6 +559,7 @@ def curate_filter_cmd(
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     if json_mode(json_output):
         envelope = build_envelope(

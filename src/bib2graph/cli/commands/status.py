@@ -31,8 +31,14 @@ from typing import Any
 import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
-from bib2graph.cli._errors import handle_errors
-from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._errors import DataError, handle_errors
+from bib2graph.cli._options import (
+    json_mode,
+    json_option,
+    provider_echo,
+    resolve_provider,
+    source_option,
+)
 from bib2graph.cli._store import (
     open_store_readonly,
     resolve_workspace,
@@ -47,7 +53,9 @@ from bib2graph.networks.facade import predict_build_preview
 
 
 def run_status(
-    store_path: str | Path, provider: Provider | str = DEFAULT_PROVIDER
+    store_path: str | Path,
+    provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str | None = None,
 ) -> dict[str, Any]:
     """Lee el CycleState, la ronda y los conteos del corpus del store.
 
@@ -69,8 +77,15 @@ def run_status(
     - ``build_preview``: por cada red proyectable, predice vacío/no-vacío ANTES
       de correr build (diagnóstico de red-vacía en status-time).
 
+    ADR 0053 D2.3 — ``providers``: conteo ``{<carril>: <n_papers>}`` de TODO el
+    store (un ``GROUP BY`` barato; no es una vista unificada ni carga carriles).
+    Los demás campos (conteos, preview, readiness) son del carril ``provider``.
+
     Args:
         store_path: Ruta al archivo ``.duckdb``.
+        provider: Carril sobre el que se informa (ADR 0053 D2.1).
+        legacy_provider: Carril con el que se etiqueta un store v1 si abrirlo
+            lo migra (``workspace.json.source``).  ``None`` = ``provider``.
 
     Returns:
         Dict con ``loop_state``, ``transitions_available``, ``curation_available``,
@@ -83,7 +98,7 @@ def run_status(
         StoreError: Si el store está bloqueado.
     """
     # R5: open_store_readonly falla si el archivo no existe (no auto-crea).
-    store = open_store_readonly(store_path, provider, provider)
+    store = open_store_readonly(store_path, provider, legacy_provider or provider)
 
     loop_state = store.backend.loop_state()
     state_str = loop_state.value if loop_state is not None else None
@@ -187,6 +202,7 @@ def run_status(
         "round": current_round,
         "counts_by_status": counts,
         "total_papers": total,
+        "providers": store.backend.lane_counts(),
         "referenced_not_fetched": referenced_not_fetched,
         "next_best_action": action,
         "readiness": readiness,
@@ -199,11 +215,13 @@ def run_status(
 
 
 @click.command("status")
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("status")
 def status_cmd(
     ctx: click.Context,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Muestra el estado del lazo (CycleState) y conteos de curación.
@@ -220,13 +238,18 @@ def status_cmd(
     ws = resolve_workspace(ctx.obj)
     store_path = ws.library_path
 
-    data = run_status(store_path, ws.provider)
+    provider, origin = resolve_provider(source, ws)
+
+    data = run_status(store_path, provider, ws.provider)
 
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     # ADR 0029 — aviso de staleness de la cache de redes.
     # Si networks/.corpus_hash existe y no coincide con el corpus vivo,
     # se emite un aviso accionable (no se regenera automáticamente).
+    # ADR 0053 D2.3/R5: la cache es de UN carril (networks/.provider); se compara
+    # contra el hash vivo de ESE carril, no del pedido, para evitar falsos stale.
     # R5: open_store_readonly para consistencia (no auto-crea ante typo;
     # mapea StoreLockedError → exit 5 vía el decorador @handle_errors).
     # ADR 0045 (#259): warning accionable si el workspace se resolvió por
@@ -234,16 +257,27 @@ def status_cmd(
     warnings: list[str] = list(workspace_walkup_warning(ws))
     from bib2graph.backends.memory import compute_corpus_hash
 
-    _store = open_store_readonly(store_path, ws.provider, ws.provider)
-    _corpus = _store.load()
-    live_hash = compute_corpus_hash(_corpus.to_arrow())
-    stale = ws.is_networks_cache_stale(live_hash)
-
-    if stale:
-        warnings.append(
-            "La cache de redes (networks/) está desactualizada: el corpus cambió "
-            "desde el último build. Ejecutá 'b2g build' para regenerarla."
-        )
+    stale = False
+    if ws.read_networks_corpus_hash() is not None:
+        try:
+            sealed_lane = ws.read_networks_provider()
+        except ValueError as exc:
+            raise DataError(
+                f"networks/.provider ilegible: {exc}. Regenerá la cache con "
+                "'b2g build'."
+            ) from exc
+        _store = open_store_readonly(store_path, sealed_lane, ws.provider)
+        try:
+            live_hash = compute_corpus_hash(_store.load().to_arrow())
+        finally:
+            _store.close()
+        stale = ws.is_networks_cache_stale(live_hash)
+        if stale:
+            warnings.append(
+                f"La cache de redes (networks/, carril '{sealed_lane.value}') está "
+                "desactualizada: el corpus cambió desde el último build. Ejecutá "
+                f"'b2g build --source {sealed_lane.value}' para regenerarla."
+            )
 
     data["networks_cache_stale"] = stale
 
@@ -261,6 +295,13 @@ def status_cmd(
         round_str = f" (ronda {data['round']})" if data["round"] > 0 else ""
         emit_human(f"Estado del lazo: {state}{round_str}")
         emit_human(f"Total papers: {data['total_papers']}")
+        emit_human(
+            "Papers por proveedor: "
+            + (
+                ", ".join(f"{k}={v}" for k, v in data["providers"].items())
+                or "(ninguno)"
+            )
+        )
         if data["counts_by_status"]:
             emit_human("Conteos por curation_status:")
             for status, cnt in sorted(data["counts_by_status"].items()):

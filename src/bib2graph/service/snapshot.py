@@ -93,6 +93,7 @@ def run_snapshot(
     *,
     out_dir: str | Path,
     provider: Provider = DEFAULT_PROVIDER,
+    legacy_provider: Provider | None = None,
 ) -> dict[str, Any]:
     """Exporta una foto sellada del corpus actual.
 
@@ -104,6 +105,8 @@ def run_snapshot(
         out_dir: Directorio destino del snapshot.
         provider: Carril que se fotografía (ADR 0053 D2.3): el parquet lleva un
             solo proveedor.
+        legacy_provider: Carril con el que se etiqueta un store v1 si abrirlo
+            lo migra (``workspace.json.source``; D2.4).  ``None`` = ``provider``.
 
     Returns:
         Dict con ``snapshot_dir``, ``corpus_hash``, ``total_papers``,
@@ -114,7 +117,7 @@ def run_snapshot(
     """
     from bib2graph.service.maturity import compute_maturity
 
-    store = _open_store(Path(store_path), provider, provider)
+    store = _open_store(Path(store_path), provider, legacy_provider or provider)
     corpus = store.load()
     snap = corpus.snapshot(Path(out_dir))
     maturity = compute_maturity(corpus, scope="all", empty_network_kinds=[])
@@ -172,19 +175,23 @@ def run_restore(
         store_path: Ruta al archivo ``.duckdb``.
         corpus_path: Ruta al archivo ``.parquet`` con el corpus curado.
         decided_at: Timestamp inyectado por el llamador (R2/ADR 0017).
-        provider: Carril del store sobre el que se restaura (ADR 0053 D2).  El
-            CLI pasa el de la investigación.  Un parquet v1 (sin columna
-            ``provider``) se lee como ``openalex``; un parquet de otro carril
-            falla con ``DataError`` (Corte 3b: restore por carril del parquet).
+        provider: Carril de la investigación (``workspace.json.source``).  El
+            carril destino NO sale de acá sino del parquet (ADR 0053 D2.3):
+            una columna ``provider`` con un solo valor; un parquet v1 (sin la
+            columna) se lee como ``openalex``.  ``provider`` solo sirve de
+            carril legacy si abrir el store migra un v1, y de carril cuando el
+            parquet está vacío (no declara ninguno).
 
     Returns:
-        Dict con ``papers_loaded``, ``total_papers``, ``state``, ``round``.
+        Dict con ``papers_loaded``, ``total_papers``, ``state``, ``round`` y
+        ``provider`` (token del carril del parquet donde se restauró).
 
     Raises:
-        DataError: Si el parquet no existe o no tiene el schema canónico.
+        DataError: Si el parquet no existe, no tiene el schema canónico o trae
+            más de un proveedor.
         StoreError: Si el store está bloqueado.
     """
-    from bib2graph.backends.base import ProviderMismatchError
+    from bib2graph.constants import Col
     from bib2graph.corpus import Corpus, read_corpus_parquet
     from bib2graph.cycle import CycleState, apply_transition
 
@@ -203,6 +210,20 @@ def run_restore(
             "Verificá que el archivo tenga el schema canónico de bib2graph."
         ) from exc
 
+    # ADR 0053 D2.3: el carril destino es el que declara el parquet.
+    lanes = {str(v) for v in table.column(Col.PROVIDER.value).unique().to_pylist()}
+    if len(lanes) > 1:
+        raise DataError(
+            f"El parquet '{resolved}' trae más de un proveedor "
+            f"({', '.join(sorted(lanes))}); un snapshot fotografía un solo carril."
+        )
+    try:
+        lane = Provider(next(iter(lanes))) if lanes else provider
+    except ValueError as exc:
+        raise DataError(
+            f"El parquet '{resolved}' declara un proveedor desconocido: {exc}."
+        ) from exc
+
     try:
         incoming = Corpus.from_arrow(table)
     except Exception as exc:
@@ -210,7 +231,7 @@ def run_restore(
             f"El parquet '{resolved}' no cumple el schema canónico: {exc}."
         ) from exc
 
-    store = _open_store(Path(store_path), provider, provider)
+    store = _open_store(Path(store_path), lane, provider)
     merged_backend_close = None
     try:
         existing = store.load()
@@ -236,13 +257,7 @@ def run_restore(
 
         # Merge primero, dedup después sobre el corpus COMPLETO (fix bug cross-biblioteca).
         # El reloj se fija UNA vez por invocación (R2): pasado via decided_at.
-        try:
-            merged = existing.merge(incoming)
-        except ProviderMismatchError as exc:
-            raise DataError(
-                f"El parquet '{resolved}' es de un carril distinto al del store "
-                f"('{provider.value}'): {exc}"
-            ) from exc
+        merged = existing.merge(incoming)
         merged_deduped = normalize_and_dedup(merged, applied_at=decided_at)
         papers_loaded = len(incoming)
         total_papers = len(merged_deduped)
@@ -253,7 +268,7 @@ def run_restore(
         _restore_equations_from_sibling_manifest(store, resolved)
         # ADR 0053 Corte 2: source_id → external_ids[engine].
         # Idempotente y al final: si algo falla antes, la próxima ingesta lo rellena.
-        # El engine es el carril del backend atado al store (ADR 0053 D2).
+        # El engine es el carril del backend atado al store = el del parquet.
         store.register_external_ids(merged_deduped)
     finally:
         # Ver run_seed_from_bib: cierra explícitamente las conexiones DuckDB
@@ -267,4 +282,5 @@ def run_restore(
         "total_papers": total_papers,
         "state": str(new_state),
         "round": new_round,
+        "provider": lane.value,
     }

@@ -32,7 +32,7 @@ from bib2graph.sources.registry import PROVIDERS
 
 F = TypeVar("F", bound=Callable[..., Any])
 
-ProviderOrigin = Literal["flag", "workspace", "default"]
+ProviderOrigin = Literal["flag", "workspace", "default", "snapshot"]
 
 
 def _env_truthy(name: str) -> bool:
@@ -153,35 +153,6 @@ def reject_email_for(provider: Provider, email: str | None) -> None:
             f"--email es del polite pool de OpenAlex y no aplica al proveedor "
             f"'{provider.value}'. Quitá --email (las credenciales de S2 van en "
             "la variable de entorno S2_API_KEY)."
-        )
-
-
-def guard_provider_mix(provider: Provider, workspace_provider: Provider | None) -> None:
-    """Guard transitorio R1 (ADR 0053): no mezclar proveedores en una tabla.
-
-    Rechaza (``DataError``, exit 2) usar un proveedor distinto del de
-    ``workspace.json.source`` en todo comando que ESCRIBE en el corpus
-    (``seed`` en todas sus variantes, ``chain``, ``build``), haya o no corpus:
-    con corpus vacío, escribir con otro proveedor dejaría un corpus de ese
-    proveedor que un comando posterior sin flag (que usa el de la
-    investigación) fusionaría; el upsert ``ON CONFLICT (id)`` mezclaría los
-    registros de forma irreversible.  Se llama ANTES de abrir el store.
-
-    ``workspace_provider=None`` desactiva el guard (llamadas directas sin
-    workspace, p. ej. tests de las funciones núcleo).
-    """
-    # TODO(#253): retirar este guard cuando el corpus pase a carriles por
-    # proveedor (PK compuesta (id, provider)).
-    from bib2graph.service.errors import DataError
-
-    if workspace_provider is not None and provider is not workspace_provider:
-        raise DataError(
-            f"--source {provider.value} difiere del proveedor de la investigación "
-            f"('{workspace_provider.value}'): mezclar proveedores en una sola "
-            "tabla los fusionaría de forma irreversible. Hoy, para usar otro "
-            "proveedor creá la investigación con "
-            f"'b2g init --source {provider.value}' (o esperá a la coexistencia "
-            "por proveedor, #253)."
         )
 
 

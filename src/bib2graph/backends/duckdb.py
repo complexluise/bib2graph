@@ -1214,6 +1214,21 @@ class DuckDBBackend:
             )
         return len(new_ids)
 
+    def lane_counts(self) -> dict[str, int]:
+        """Papers por carril de TODO el store (``GROUP BY provider``, barato).
+
+        Único método que mira todos los carriles (no ``corpus_lane``): sirve a
+        ``b2g status`` (``data.providers``, ADR 0053 D2.3).  Es un conteo; no
+        carga ni une carriles.
+
+        Returns:
+            ``{<carril>: <n_papers>}`` ordenado por carril; ``{}`` si no hay filas.
+        """
+        rows = self._con.execute(
+            "SELECT provider, COUNT(*) FROM corpus GROUP BY provider ORDER BY provider"
+        ).fetchall()
+        return {str(p): int(n) for p, n in rows}
+
     def referenced_refs_count(self) -> int:
         """Número de IDs en ``referenced_but_not_fetched``.
 

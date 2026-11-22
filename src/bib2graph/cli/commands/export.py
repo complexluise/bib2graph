@@ -53,7 +53,13 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, UsageError, handle_errors
-from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._options import (
+    json_mode,
+    json_option,
+    provider_echo,
+    resolve_provider,
+    source_option,
+)
 from bib2graph.cli._scope import map_scope as _map_scope
 from bib2graph.cli._store import (
     open_store_readonly,
@@ -180,6 +186,7 @@ def _export_corpus(
     networks_dir: str | Path,
     network_type: str,
     provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str | None = None,
 ) -> dict[str, Any]:
     """Serializa el corpus (scopeado) a Arrow (Feather) o BibTeX.
 
@@ -204,6 +211,10 @@ def _export_corpus(
             (``<workspace>/networks/``).
         network_type: ``NetworkKind`` a embeber (``"bibliographic_coupling"``
             por default; vacío = sin red).
+        provider: Carril que se exporta (ADR 0053 D2.1).  El Arrow lleva su
+            token en la metadata ``provider`` (D2.3).
+        legacy_provider: Carril con el que se etiqueta un store v1 si abrirlo
+            lo migra (``workspace.json.source``).  ``None`` = ``provider``.
 
     Returns:
         Dict con ``format``, ``out_dir``, ``files_written``, ``rows_exported``
@@ -213,8 +224,9 @@ def _export_corpus(
         warnings de red del ADR 0052 (modo degradado, kind no-paper, etc.).
 
     Raises:
-        DataError: Si ``format`` no se reconoce o si ``network_type`` no
-            aplica al corpus (``cocitation`` sin ``cited_by_id``).
+        DataError: Si ``format`` no se reconoce, si ``network_type`` no
+            aplica al corpus (``cocitation`` sin ``cited_by_id``) o si la red de
+            ``networks/`` es de otro carril que el exportado (ADR 0053 R5).
         ImportError: Si falta ``bibtexparser`` (formato ``bibtex``, extra
             ``[bibtex]``).
     """
@@ -238,7 +250,7 @@ def _export_corpus(
         "network_resolution": None,
     }
 
-    store = open_store_readonly(store_path, provider, provider)
+    store = open_store_readonly(store_path, provider, legacy_provider or provider)
     try:
         corpus = store.load().scoped(scope)
         # Materializar la tabla ANTES de cerrar el store: para scope='all',
@@ -285,6 +297,11 @@ def _export_corpus(
                     artifact = None
                     if ws is not None:
                         artifact = load_artifact_from_disk(ws, network_type)
+
+                    if artifact is not None:
+                        # ADR 0053 R5: adherir la red de un carril a los papers
+                        # de otro rompería el cierre papers.id ↔ neighbor_id.
+                        _check_network_lane(networks_dir, ws, provider)
 
                     if artifact is None:
                         # Modo degradado (ADR 0052 D4): sin b2b build para
@@ -339,6 +356,19 @@ def _export_corpus(
     out_path.mkdir(parents=True, exist_ok=True)
 
     if format == "arrow":
+        lane = Provider(provider)
+        # ADR 0053 D2.3: la metadata del schema declara el carril (aditiva).
+        table = table.replace_schema_metadata(
+            {**(table.schema.metadata or {}), b"provider": lane.value.encode("utf-8")}
+        )
+        if lane is not Provider.OPENALEX:
+            # R4: el consumidor externo asume ids OpenAlex (W...).
+            corpus_warnings.append(
+                f"carril '{lane.value}': source_id/references_id no son ids "
+                "OpenAlex (W...); un consumidor que asuma OpenAlex ingestaría "
+                "este Arrow sin error y armaría un grafo vacío o incorrecto. "
+                "Coordiná con el consumidor antes de usarlo."
+            )
         dest = out_path / "corpus.arrow"
         ArrowExporter().export(table, dest)
     elif format == "bibtex":
@@ -360,6 +390,34 @@ def _export_corpus(
     if format == "arrow":
         data.update(network_meta)
     return data
+
+
+def _check_network_lane(
+    networks_dir: str | Path, ws: Any, provider: Provider | str
+) -> None:
+    """Falla (``DataError``, exit 2) si la red de ``networks/`` es de otro carril.
+
+    ADR 0053 D2.3/R5.  Sin ``networks/.provider`` (cache anterior a #253) el
+    carril es el de la investigación (``ws.provider``).
+    """
+    from bib2graph.workspace import read_sealed_provider
+
+    lane = Provider(provider)
+    try:
+        sealed = read_sealed_provider(Path(networks_dir))
+    except ValueError as exc:
+        raise DataError(
+            f"networks/.provider ilegible: {exc}. Regenerá la cache con 'b2g build'."
+        ) from exc
+    if sealed is None and ws is not None:
+        sealed = ws.provider
+    if sealed is not None and sealed is not lane:
+        raise DataError(
+            f"La red de networks/ es del carril '{sealed.value}' y se pidió exportar "
+            f"el carril '{lane.value}': adherirla rompería el cierre papers.id ↔ "
+            f"neighbor_id. Corré 'b2g build --source {lane.value}' (o exportá con "
+            f"--source {sealed.value}, o con --no-network)."
+        )
 
 
 def _any_cited_by(table: Any) -> bool:
@@ -395,6 +453,7 @@ def run_export(
     scope_explicit: bool = False,
     network_type: str = "bibliographic_coupling",
     provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str | None = None,
 ) -> dict[str, Any]:
     """Serializa artefactos al formato pedido.
 
@@ -453,6 +512,29 @@ def run_export(
                 "vienen scopeadas por 'b2g build --scope'. --scope solo aplica a "
                 "--format arrow|bibtex (ADR 0050 D4)."
             )
+        # ADR 0053 R5: las redes de networks/ son de UN carril; si no es el
+        # pedido, no se ignora en silencio (no hay red de otro carril que servir).
+        from bib2graph.workspace import read_sealed_provider
+
+        nets = (
+            Path(networks_dir)
+            if networks_dir is not None
+            else Path(store_path).parent / "networks"
+        )
+        try:
+            sealed = read_sealed_provider(nets)
+        except ValueError:
+            sealed = None
+        # Misma heurística que arrow: una cache sin sello (pre-#253) es del carril
+        # de la investigación.
+        if sealed is None and legacy_provider is not None:
+            sealed = Provider(legacy_provider)
+        if sealed is not None and sealed is not Provider(provider):
+            warnings.append(
+                f"las redes de networks/ son del carril '{sealed.value}', no del "
+                f"pedido ('{Provider(provider).value}'); se exportan tal cual. Para "
+                f"el otro carril: 'b2g build --source {Provider(provider).value}'."
+            )
         data = _export_networks(
             format,
             out_dir=out_dir,
@@ -472,6 +554,7 @@ def run_export(
             networks_dir=effective_networks_dir,
             network_type=network_type,
             provider=provider,
+            legacy_provider=legacy_provider,
         )
     else:
         raise DataError(
@@ -557,6 +640,7 @@ def run_export(
         "(default: <workspace>/exports/ o <store_dir>/exports/)."
     ),
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("export")
@@ -567,6 +651,7 @@ def export_cmd(
     network_type: str,
     no_network: bool,
     out_dir: str | None,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Serializa artefactos al formato pedido.
@@ -587,13 +672,15 @@ def export_cmd(
     # ADR 0029: resolver workspace para obtener dirs canónicos
     ws = resolve_workspace(ctx.obj)
     effective_out_dir: Path = Path(out_dir) if out_dir is not None else ws.exports_dir
+    # ADR 0053 D2: --source > workspace.json.source > openalex.
+    lane, origin = resolve_provider(source, ws)
 
     scope_explicit = scope is not None
     internal_scope = _map_scope(scope) if scope is not None else "all"
 
     if no_network:
-        source = ctx.get_parameter_source("network_type")
-        if source is not None and source != click.core.ParameterSource.DEFAULT:
+        nt_source = ctx.get_parameter_source("network_type")
+        if nt_source is not None and nt_source != click.core.ParameterSource.DEFAULT:
             raise UsageError(
                 "--no-network y --network-type son mutuamente excluyentes."
             )
@@ -609,11 +696,13 @@ def export_cmd(
         scope=internal_scope,
         scope_explicit=scope_explicit,
         network_type=network_type,
-        provider=ws.provider,
+        provider=lane,
+        legacy_provider=ws.provider,
     )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(lane, origin)
 
     # QA 0.14.0 (hallazgo #3): el envelope tiene UN solo canal canónico de
     # warnings — el ``warnings`` top-level (ADR 0021 §C). Antes ``data``

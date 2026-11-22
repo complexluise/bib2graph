@@ -47,7 +47,6 @@ from bib2graph.cli._enrich import enrich_corpus
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, handle_errors
 from bib2graph.cli._options import (
-    guard_provider_mix,
     json_mode,
     json_option,
     provider_echo,
@@ -315,7 +314,8 @@ def run_build(
 
     En AMBOS modos:
     - ``corpus_scope`` pre-filtra el corpus antes de construir redes.
-    - Se transiciona a BUILT y se sella ``networks/.corpus_hash`` con el hash
+    - Se transiciona a BUILT y se sella ``networks/.corpus_hash`` (y
+      ``networks/.provider``, el carril; ADR 0053 D2.3) con el hash
       del corpus **filtrado** (D1 — ADR 0038).
     - Se diagnostican redes vacías usando ``predict_build_preview`` como fuente
       única (ADR 0037 §(e) — no-divergencia con ``status``).
@@ -347,9 +347,9 @@ def run_build(
             ``None`` = sin tope.
         provider: Proveedor de la pasada cited_by (ADR 0053 D1).  Si no
             declara ``enrich_cited_by`` la pasada se omite con warning.
-        workspace_provider: Proveedor de la investigación para el guard
-            transitorio R1: un ``provider`` distinto lanza ``DataError`` (exit 2)
-            antes de abrir el store, haya o no corpus; ``None`` = sin guard.
+        workspace_provider: Proveedor de la investigación (``workspace.json.source``):
+            es el carril legacy con el que se etiqueta un store v1 si abrirlo
+            dispara la migración (ADR 0053 D2.4); ``None`` = ``provider``.
 
     Returns:
         Dict con ``networks_built``, ``artifacts_dir``, ``corpus_hash``,
@@ -366,9 +366,6 @@ def run_build(
 
     from bib2graph.cycle import apply_transition
     from bib2graph.networks.facade import Networks, predict_build_preview
-
-    # Guard R1 transitorio: antes de abrir el store (nada se escribe).
-    guard_provider_mix(provider, workspace_provider)
 
     store = open_store(store_path, provider, workspace_provider or provider)
     thesaurus_stats: dict[str, Any] | None = None
@@ -460,6 +457,7 @@ def run_build(
             build_warnings.append(msg)
             artifacts_dir.mkdir(parents=True, exist_ok=True)
             (artifacts_dir / ".corpus_hash").write_text("", encoding="utf-8")
+            (artifacts_dir / ".provider").write_text(provider.value, encoding="utf-8")
             store.backend.set_loop_state(new_state, cycle_round=new_round)
             _scope_display_empty = (
                 scope_cli_token if scope_cli_token is not None else corpus_scope
@@ -554,6 +552,8 @@ def run_build(
         hash_file = artifacts_dir / ".corpus_hash"
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         hash_file.write_text(corpus_hash, encoding="utf-8")
+        # ADR 0053 D2.3/R5: la cache es de UN carril; status/export lo comparan.
+        (artifacts_dir / ".provider").write_text(provider.value, encoding="utf-8")
 
         store.backend.set_loop_state(new_state, cycle_round=new_round)
 

@@ -116,6 +116,7 @@ def code_for(exc: BaseException) -> int:
     - ``OSError`` (incluye ``StoreLockedError``) → 5.
     - ``ImportError`` → 3.
     - ``httpx.HTTPError`` → 4 (httpx es dependencia del núcleo).
+    - ``ProviderMismatchError`` → 2 (ADR 0053).
 
     No llama a ``sys.exit`` ni imprime nada; es una función pura de mapeo.
 
@@ -133,5 +134,11 @@ def code_for(exc: BaseException) -> int:
         return 3
     if isinstance(exc, httpx.HTTPError):
         return 4
+    # ADR 0053: fila/corpus de otro carril → error de datos (misma política que
+    # handle_errors en la CLI).
+    from bib2graph.backends.base import ProviderMismatchError
+
+    if isinstance(exc, ProviderMismatchError):
+        return 2
     # Excepción no mapeada: propagar sin asignar código (el llamador decide).
     raise TypeError(f"No hay mapeo de exit code para {type(exc).__name__!r}") from exc

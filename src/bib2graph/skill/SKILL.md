@@ -100,10 +100,14 @@ De idea difusa → `seed --equation "..."`:
 - **Scope**: `--min-year/--max-year`, `--exclude "<términos a sacar>"`.
 - **Proveedor**: por defecto `openalex`. Se fija por investigación con
   `b2g init --source {openalex,s2}` y `--source` lo pisa por invocación
-  (precedencia: `--source` > `workspace.json` > `openalex`); hoy un `--source`
-  distinto del de la investigación es error (exit 2). `s2` (Semantic Scholar)
-  necesita `S2_API_KEY` en el entorno para sembrar (el forrajeo anda sin key, más lento) y **no** acepta `--exclude`,
-  `--min-year/--max-year` ni `--native` (la query va nativa, sin traducir).
+  (precedencia: `--source` > `workspace.json` > `openalex`). Hay **un carril por
+  proveedor** y conviven en la misma investigación: `seed --source s2` escribe en
+  el carril `s2` sin tocar `openalex`. Cada `build`/`export` opera sobre **un**
+  carril (no hay vista unificada); para comparar proveedores, dos builds
+  (`b2g build --source s2 --out-dir ...`; ojo: `export --format arrow` solo embebe la red de `networks/`). `status` muestra cuántos papers hay por
+  carril en `data.providers`. `s2` (Semantic Scholar) necesita `S2_API_KEY` en el
+  entorno para sembrar (el forrajeo anda sin key, más lento) y **no** acepta
+  `--exclude`, `--min-year/--max-year` ni `--native` (la query va nativa, sin traducir).
 - **Cuándo dejarla mutar (Bates):** tras `read top`, si los centrales revelan un
   término mejor o un subcampo, **refiná la ecuación y re-`seed`**. Eso es señal de
   buen forrajeo, no de error.
@@ -177,8 +181,9 @@ bloque copy-paste de arriba):
 - `chain` — `--depth` · `--direction backward|forward` · `--max-candidates` ·
   `--preview` · `--source`
 - `curate {dump,apply,accept,reject,filter}` — `--ids` · `--language` ·
-  `--min-citations` · `--type` · `--year-gte/--year-lte` · `--scope`
+  `--min-citations` · `--type` · `--year-gte/--year-lte` · `--scope` · `--source`
 - `build` — `--spec` · `--scope` · `--min-weight` · `--source`
-- `read {list,stats,show,top}`
+- `read {list,stats,show,top}` — `--source`
+- `status` · `validate` · `export` · `snapshot create` — `--source`
 
 Para cualquier flag, `b2g <verbo> --help` es la fuente autoritativa.

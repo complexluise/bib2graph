@@ -332,6 +332,21 @@ class Workspace:
             return None
         return hash_file.read_text(encoding="utf-8").strip()
 
+    def read_networks_provider(self) -> Provider:
+        """Carril (proveedor) con el que se construyó la cache ``networks/``.
+
+        Lee ``networks/.provider`` (sellado por ``build``, ADR 0053 D2.3/R5).
+        Una cache anterior a #253 no lo tiene: se construyó bajo el guard de un
+        único proveedor por investigación, o sea con ``workspace.json.source``.
+
+        Returns:
+            El carril sellado, o ``self.provider`` si no hay sello.
+
+        Raises:
+            ValueError: Si el sello contiene un proveedor desconocido.
+        """
+        return read_sealed_provider(self.networks_dir) or self.provider
+
     def is_networks_cache_stale(self, live_corpus_hash: str) -> bool:
         """Verifica si la cache de redes está desactualizada respecto al corpus vivo.
 
@@ -428,6 +443,18 @@ class Workspace:
 
 
 # Helpers internos
+def read_sealed_provider(networks_dir: Path) -> Provider | None:
+    """Lee ``<networks_dir>/.provider``; ``None`` si no existe (ADR 0053 R5).
+
+    Raises:
+        ValueError: Si el archivo contiene un proveedor desconocido.
+    """
+    seal = networks_dir / ".provider"
+    if not seal.exists():
+        return None
+    return Provider(seal.read_text(encoding="utf-8").strip())
+
+
 def _walk_up(start: Path) -> Path | None:
     """Camina hacia arriba desde ``start`` buscando un directorio con workspace.json.
 

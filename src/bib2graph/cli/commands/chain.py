@@ -31,7 +31,6 @@ from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, DependencyError, UsageError, handle_errors
 from bib2graph.cli._ingest import normalize_and_dedup
 from bib2graph.cli._options import (
-    guard_provider_mix,
     json_mode,
     json_option,
     provider_echo,
@@ -231,8 +230,9 @@ def run_chain(
             (default) = sin tope (comportamiento actual).
         provider: Proveedor (ADR 0053 D1); decide la ``Source`` y las
             capacidades exigidas (``forward``/``backward`` según ``direction``).
-        workspace_provider: Proveedor de la investigación para el guard
-            transitorio R1; ``None`` = sin guard.
+        workspace_provider: Proveedor de la investigación (``workspace.json.source``):
+            es el carril legacy con el que se etiqueta un store v1 si abrirlo
+            dispara la migración (ADR 0053 D2.4); ``None`` = ``provider``.
 
     Returns:
         Dict con ``candidates_found``, ``total_papers``, ``ranking_preview``,
@@ -248,8 +248,6 @@ def run_chain(
         UsageError: Si se combina más de un flag de scoping, o si
             ``--ids``/``--top`` son inválidos.
         DependencyError: Si el proveedor/source no soporta forward chaining.
-        DataError: Si el guard R1 rechaza un ``--source`` distinto del de la
-            investigación (haya o no corpus).
         NetworkError: Si falla la conexión a OpenAlex.
         StoreError: Si el store está bloqueado.
     """
@@ -279,9 +277,6 @@ def run_chain(
             provider=provider,
             workspace_provider=workspace_provider,
         )
-
-    # Guard R1 transitorio: antes de abrir el store (nada se escribe).
-    guard_provider_mix(provider, workspace_provider)
 
     if since is not None and direction == "backward":
         raise UsageError(
