@@ -76,6 +76,17 @@ la procedencia deja de ser invisible (antes solo se veía en la metadata del `.a
 agregar un verbo** (es estado, no una acción — ADR 0037). Todos campos aditivos, `schema="1"`
 intacto. **`validate`** chequea la consistencia del workspace (read-only).
 
+**Carriles en `status`/`validate`** (ADR 0053 D2.3, Corte 3b). Ambos toman **`--source`** y ecoan
+`data.provider`. En `status`, `total_papers`, `counts_by_status`, `build_preview`, `readiness` y
+`equations` son **del carril activo** (`--source` o `workspace.json.source`); el bloque aditivo
+**`data.providers = {<carril>: <n_papers>}`** cuenta **todo** el store (un `GROUP BY provider`, vía
+`DuckDBBackend.lane_counts()`; `{}` si está vacío; no es una vista unificada). En modo humano se
+imprime "Papers por proveedor: …". La **staleness** de `networks/` se evalúa contra el carril
+**sellado** en `networks/.provider` (no contra el pedido, para no dar falsos *stale*), y el warning
+nombra ese carril y sugiere `b2g build --source <carril>`. Una cache sin `.provider` (anterior a #253)
+se asume del carril de `workspace.json.source`; un `.provider` con un valor desconocido → `DataError`
+exit 2. `validate` valida el schema y la consistencia **del carril activo**.
+
 **`init`** (ADR [0029](decisiones/0029-workspace-por-investigacion.md)): scaffold de un workspace.
 `b2g init <name>` crea `<name>/` con `workspace.json` + `library.duckdb` +
 `networks/`/`snapshots/`/`exports/`; **`b2g init .`** inicializa el cwd (adopta un `.duckdb` legacy). Si
@@ -118,8 +129,8 @@ OpenAlex con `--from-bib` → exit 1** (salvo `--email` junto a `--resolve`). **
 capacidad `seed_filters` (hoy `s2`), **`--native`/`--exclude`/`--min-year`/`--max-year`** (como flag o
 como campo de `--spec`) → `DependencyError` **exit 3** antes de tocar la red; **`--max-results`** sí
 aplica (en S2, rango 1..1000; fuera de rango → exit 1). `--from-bib --resolve` exige `resolve_doi`
-(con `s2` → exit 3). `--from-bib` **sin** `--resolve` no hace red, pero escribe en el corpus: le
-aplica el guard R1 y ecoa `data.provider`.
+(con `s2` → exit 3). `--from-bib` **sin** `--resolve` no hace red, pero escribe en el corpus: las
+filas BibTeX entran en el carril del proveedor resuelto (§`--source` · Carriles) y ecoa `data.provider`.
 
 - **`--preview`** (dry-run, ADR 0049 #287): traduce la ecuación y **muestra la query de OpenAlex**
   (`title_and_abstract.search:(...)`) **SIN fetchear ni tocar el corpus** — la forma barata de ver a
@@ -244,7 +255,9 @@ pasada refs→DOI y `b2g build` para la de co-citación.)
 **`curate {dump,apply,accept,reject,filter}`** (grupo noun-verb, #155). **La transición la define el
 VERBO:** solo **`curate filter`→`FILTERED`**; el resto transversal. **BREAKING:** la forma-flag
 `curate --dump`/`--from-csv`/`--all` fue **eliminada sin alias**. Lógica fuente única en
-`service/curate.py`.
+`service/curate.py`. Los cinco subcomandos toman **`--source`** (carril sobre el que leen y deciden;
+default `workspace.json.source`) y ecoan `data.provider`. La decisión es **del paper** (`id`): el store
+la sincroniza a las filas del mismo `id` en los otros carriles (§4.0, ADR 0053 D2.2).
 
 - **`curate dump`** escribe un CSV revisable offline. **`--out`** override (default
   `<workspace>/exports/curacion.csv`); **`--scope [candidates|seeds|all]`** (default `candidates`:
@@ -346,6 +359,23 @@ CORPUS (`arrow`/`bibtex`).** Con `graphml`/`csv` **se IGNORA** (esas redes ya vi
 build --scope`); si se pasa `--scope` explícito con un formato de red, `export` emite un **`warning`**
 accionable (no error). `--scope` es propio de `export` — es distinto del `build --scope` de §build.
 
+**`--source` en `export` — un carril por archivo** (ADR 0053 D2.3/R4/R5, Corte 3b). `export` toma
+`--source` (default `workspace.json.source`) y ecoa `data.provider`.
+
+- **`--format arrow|bibtex`** serializan **solo** las filas de ese carril. El Arrow lleva la clave
+  aditiva **`provider`** en la metadata del schema (§1.6).
+- **`--format arrow` con red:** si hay artefacto de build del kind pedido y `networks/.provider` es de
+  **otro** carril → `DataError` **exit 2**, sin escribir (adherirla rompería el cierre
+  `papers.id ↔ network_edges[].neighbor_id`, ADR 0052). Sin `.provider` (cache anterior a #253) se
+  asume el carril de `workspace.json.source`. El mensaje ofrece tres salidas: `b2g build --source
+  <carril>`, exportar con el `--source` de la red, o `--no-network`.
+- **Warning R4:** exportar a Arrow un carril ≠ `openalex` agrega un warning (con o sin red):
+  `source_id`/`references_id` no son ids OpenAlex (`W…`), y un consumidor que asuma OpenAlex lo
+  ingesta sin error y arma un grafo vacío o incorrecto (§1.7).
+- **`--format graphml|csv`** exportan las redes de `networks/` **tal cual**: si `networks/.provider`
+  declara un carril distinto del pedido, emiten un **warning** (no error) que sugiere
+  `b2g build --source <pedido>`. Sin sello, no avisan.
+
 **Envelope `--json`** (aditivo, `schema="1"` intacto): `data = {format, out_dir, files_written,
 workspace}` **más una clave según la familia** — **`rows_exported`** (nº de filas del corpus)
 para `arrow`/`bibtex`, **`networks_exported`** (nº de redes) para `graphml`/`csv`. **Son claves
@@ -359,7 +389,8 @@ degradado, kind no-paper) van en el **`warnings` top-level del envelope, NO en `
 
 `build` tiene **dos modos**: **quick** (sin `--spec`) y **declarativo** (**`build --spec <redes.yaml>`**:
 `load_specs` con clave raíz `networks:` → `Networks.build` por red; helper único `_build_from_spec_file`).
-**Ambos transicionan a `BUILT` y sellan `networks/.corpus_hash`** (decisión D1). Flags:
+**Ambos transicionan a `BUILT` y sellan `networks/.corpus_hash`** (decisión D1) **y
+`networks/.provider`** (el carril del build, ADR 0053 D2.3/R5; en `--out-dir` si se pasa). Flags:
 
 - **`--scope [all|accepted|seeds]`** (default `all`): filtra el corpus por curación **antes** de
   proyectar (`Corpus.scoped`, §1.2). `accepted` = `is_seed` + aceptados **menos los `rejected`** (ADR
@@ -379,7 +410,10 @@ degradado, kind no-paper) van en el **`warnings` top-level del envelope, NO en `
   absorbido).
 - **`--source {openalex,s2}`** (§`--source`): proveedor de la pasada `cited_by`. Si no declara
   `enrich_cited_by`, la pasada se omite con warning (hoy ambos la declaran). `--email` solo con
-  `openalex`. El guard transitorio R1 aplica igual que en `seed`/`chain`.
+  `openalex`. Además fija el **carril** del build: proyecta solo las filas de ese proveedor, la pasada
+  `cited_by` persiste en ese carril y el sello `networks/.provider` lo registra. Un segundo build con
+  otro `--source` **pisa** `networks/`; para comparar proveedores sin pisar, usá `--out-dir`
+  (§`--source` · Carriles).
 
 **Artefactos por red:** todas escriben `network.graphml` + `metrics.json`; **`clusters.csv` solo las
 redes de paper** (`bibliographic_coupling`, `cocitation`) con comunidades (las de
@@ -411,15 +445,20 @@ transición la define el verbo.
   vacío). Parquet inexistente o schema no canónico → `DataError` exit 2. `data = {papers_loaded,
   total_papers, state, round}`. (El verbo suelto `b2g restore` se retiró en 0.12.0; su capacidad es
   `b2g snapshot restore`.)
-- **Carriles (ADR 0053 Corte 3a).** `snapshot create` fotografía **el carril** de
-  `workspace.json.source` (el parquet lleva la columna `provider` y `schema_version = "2"`).
-  `snapshot restore` lee con `read_corpus_parquet` (§1.2): un parquet v1 (sin `provider`) se lee como
-  `openalex`. Restaura en el carril del store (`workspace.json.source`); un parquet de **otro** carril
-  → `DataError` exit 2, sin escribir. *Transitorio:* el Corte 3b hará que `restore` use el carril que
-  declara el parquet.
+- **Carriles (ADR 0053 D2.3, Cortes 3a/3b).** `snapshot create --source <p>` fotografía **un**
+  carril (default: `workspace.json.source`; el parquet lleva la columna `provider` y
+  `schema_version = "2"`) y ecoa `data.provider` (§`--source`). `snapshot restore` **no tiene
+  `--source`**: restaura en el carril que **declara el parquet**. Lo lee con `read_corpus_parquet`
+  (§1.2), así que un parquet v1 (sin `provider`) se restaura como `openalex`; un parquet con **más de
+  un** proveedor, o con un proveedor desconocido → `DataError` exit 2, sin escribir; un parquet vacío
+  (no declara carril) usa `workspace.json.source`. `data` suma `provider = {"name": <carril>, "origin":
+  "snapshot"}` (`origin` dice que el carril salió del parquet, no del flag ni del workspace). En Python,
+  `run_restore` devuelve `provider` como token (`str`); el CLI lo envuelve. (Hasta el Corte 3a, un
+  parquet de otro carril daba `DataError`; el Corte 3b lo reemplazó por el carril del parquet.)
 
 **`read {list,stats,show,top}`** (grupo noun-verb, #156/#157): lectura pura del corpus (no transiciona).
-Lógica en `service/reads.py` (§0.1).
+Lógica en `service/reads.py` (§0.1). Los cuatro toman **`--source`** y leen **solo ese carril**
+(default `workspace.json.source`; ADR 0053 D2.1); `data.provider` ecoa cuál (§`--source`).
 
 - **`read list`** — filtros AND combinables: `--query TEXT` (substring case-insensitive sobre el
   **título**), `--status {candidate,accepted,rejected}`, `--seeds`/`--candidates` (por `is_seed`),
@@ -523,8 +562,11 @@ ambiente** (precedencia): (1) `--workspace` explícito, (2) `B2G_WORKSPACE` (env
 buscando `workspace.json`. Sin ninguno → error accionable que sugiere `b2g init`.
 
 **`--source` — proveedor por invocación (ADR [0053](decisiones/0053-multiproveedor-seleccion-coexistencia-identidad.md) D1, #251, v1).**
-Opción **local** (después del verbo, como `--json`) en los comandos que instancian una `Source`:
-**`init`, `seed`, `chain` y `build`**. Valores: `click.Choice` derivado del registro de proveedores
+Opción **local** (después del verbo, como `--json`). En **`init`, `seed`, `chain` y `build`** elige la
+`Source` (Corte 1, #251). Desde el Corte 3b de #253 elige también el **carril** que leen o escriben
+**`curate {dump,apply,accept,reject,filter}`, `read {list,stats,show,top}`, `status`, `validate`,
+`export` y `snapshot create`**. `snapshot restore` **no** la tiene: usa el carril del parquet
+(§`snapshot`). Valores: `click.Choice` derivado del registro de proveedores
 (`sources/registry.py::PROVIDERS`): hoy **`openalex | s2`**; `doaj` entra con #252 (no se publica un
 proveedor antes de que su `Source` exista). Un proveedor por invocación; no hay `--source a,b` ni
 variable de entorno.
@@ -535,10 +577,11 @@ variable de entorno.
   campo se lee como `openalex`, sin reescribir el archivo. Un valor desconocido → `UsageError`
   **exit 1** que lista los proveedores válidos. En Python: `Workspace.provider` (`Workspace.source`
   sigue siendo el origen de la resolución, `flag|env|cwd|init`).
-- **Envelope:** `seed` (incluido `--preview`), `chain` y `build` suman
+- **Envelope:** todos los comandos con `--source` (salvo `init`) suman
   **`data.provider = {"name": <proveedor>, "origin": "flag" | "workspace" | "default"}`** (aditivo,
-  `schema="1"` intacto). `origin="workspace"` solo si `workspace.json` declara `source`
-  explícitamente. **No** se toca `data.workspace.source`. `init` lo refleja en `data.manifest.source`.
+  `schema="1"` intacto); `seed --preview` también. `origin="workspace"` solo si `workspace.json`
+  declara `source` explícitamente. `snapshot restore` ecoa `origin="snapshot"` (el carril sale del
+  parquet). **No** se toca `data.workspace.source`. `init` lo refleja en `data.manifest.source`.
 - **Capacidades (proveedor como dato, no como `if`).** Cada proveedor declara capacidades en
   `PROVIDERS`; pedir una que no tiene falla **antes de abrir el store o tocar la red** con
   `DependencyError` **exit 3**: *"El proveedor 's2' no soporta la capacidad 'seed_filters' (declara:
@@ -558,15 +601,24 @@ variable de entorno.
 
 - **Flags exclusivos de OpenAlex** (validación explícita, no capacidad): `--email` con otro proveedor
   → exit 1 (en `seed`, `chain`, `build`); `chain --budget` con otro proveedor → exit 1.
-- **Guard transitorio R1 (hasta el Corte 3b de #253; enmienda 2026-11-21 de ADR 0053).** En **todo
-  comando que escribe** —`seed` en todas sus variantes (`--equation`, `--spec`, `--from-bib` con o sin
-  `--resolve`), `chain` y `build`— un `--source` explícito **distinto** de `workspace.json.source` →
-  `DataError` **exit 2**, sin escribir, **haya o no corpus**. Originalmente protegía de que el upsert
-  `ON CONFLICT (id)` fusionara dos proveedores; desde el Corte 3a el store ya separa carriles
-  (§4.0), pero el guard **sigue activo** porque los comandos de lectura todavía no toman `--source`:
-  sin él, un `seed --source s2` dejaría un carril que `curate`/`read`/`status`/`export` no pueden
-  ver. **Para usar otro proveedor hoy: `b2g init --source <p>`** (una investigación por proveedor). El
-  Corte 3b lo retira. Los `--preview` no escriben y no lo disparan.
+- **Carriles (ADR 0053 D2, Corte 3b de #253).** Cada proveedor tiene su **carril** en el store
+  (§4.0) y **conviven en la misma investigación**: `seed`/`chain`/`build --source s2` en una
+  investigación `openalex` escriben en el carril `s2` **sin tocar** `openalex`. Todo comando opera
+  sobre **un** carril (el de `--source`, si no el de `workspace.json.source`); no hay vista unificada
+  ni `--source a,b`. `workspace.json.source` es el carril **por defecto** y el carril legacy con el que
+  se etiqueta un store v1 al migrar (§4.0); un `--source` nunca lo reescribe.
+  - **Guard R1: retirado en el Corte 3b.** Entre el Corte 1 y el 3a, un `--source` distinto de
+    `workspace.json.source` en un comando que escribe daba `DataError` exit 2. Ese exit 2 **ya no
+    existe**.
+  - **`ProviderMismatchError` → `DataError` exit 2** (`DATA_ERROR`) en toda la CLI (`handle_errors`):
+    una escritura o merge entre carriles distintos es un dato inválido, no un crash (§1.2).
+  - **Cache `networks/` de un carril (R5).** `build` sella `networks/.provider`. `status` evalúa la
+    staleness contra el carril sellado (§`status`). `export --format arrow` con red falla (exit 2) si
+    la red es de otro carril; `graphml`/`csv` la exportan igual, con warning (§`export`). Dos builds con
+    distinto `--source` **sobre `networks/` se pisan**; para tener los dos, el segundo va con
+    `build --out-dir <dir>` (receta en [Guía: Leer las redes · Comparar proveedores](guias/leer-redes.md#comparar-proveedores)).
+  - **La FSM es de la investigación, no del carril** (R6): `seed --source s2` después de un `build`
+    de `openalex` cuenta como *reseed* (ronda++).
 - **Tokens:** el valor del CLI es el valor persistido (`Provider`, `StrEnum` en `constants.py`):
   `equations.engine` y `ProvenanceEvent.source` de los fetch de S2 valen **`s2`** (no
   `semanticscholar`; enmienda de ADR 0042 D4 por ADR 0053 D1.6).
@@ -814,7 +866,8 @@ adaptador. El mapeo de `code_for` y el de `handle_errors` describen la **misma p
 `src/bib2graph/service/reads.py` expone las **lecturas read-only del corpus** que consume el **grupo
 CLI `read`** (`list_papers`, `corpus_stats`, `get_paper`, `get_top` — §Grupo `read`), re-exportadas
 desde `bib2graph.service.__init__`. Cada una recibe un **`Workspace` ya resuelto** (la resolución
-ambiente vive en el adaptador CLI, ADR 0029), abre el store **read-only**, y devuelve un
+ambiente vive en el adaptador CLI, ADR 0029) y un `provider=None` opcional (el carril; `None` =
+`ws.provider`; Corte 3b de ADR 0053), abre el store **read-only** sobre ese carril, y devuelve un
 `dict`/`list[dict]` **serializable** o lanza un `B2GError` tipado. **Sin red, sin mutación, sin
 transición de ciclo**; determinismo R2 (mismo corpus → misma lectura).
 
@@ -1014,7 +1067,8 @@ El schema exacto vive en `bib2graph.schemas` (24 columnas). La validación se ha
 > - **Valores de `engine`:** el token `Provider` del carril (`openalex` | `s2`, ADR 0053 D1.6; nunca
 >   `semanticscholar`). La resolución DOI→id (`--resolve`) pasa `engine=openalex` explícito (solo
 >   OpenAlex la ofrece); como exige la capacidad `resolve_doi`, hoy solo corre en el carril `openalex`.
->   `snapshot restore` registra en el carril del store (`workspace.json.source`).
+>   `snapshot restore` registra en el carril **del parquet** (Corte 3b; antes, en el de
+>   `workspace.json.source`).
 > - **Propiedades:** idempotente (`INSERT OR REPLACE` por la PK: re-ingerir no duplica; un `source_id`
 >   nuevo para el mismo `(paper_id, engine)` reemplaza al anterior). **No entra en `corpus_hash`**
 >   (tabla lateral, como `referenced_but_not_fetched`) y **no viaja en el snapshot/parquet**: `restore`
@@ -1176,8 +1230,9 @@ D2.1, Corte 3a):
   lanza al mezclar carriles — `Corpus.merge`/`InMemoryBackend.merge` de dos proveedores, `add_paper`
   con una fila de otro carril, `Corpus.provider` sobre una tabla mixta, y en el store (§4) toda
   escritura con filas de otro carril o sin `provider`. Es subclase de `ValueError`, **no** de
-  `B2GError`: los servicios que la pueden recibir de un input del usuario la traducen a `DataError`
-  (hoy `run_restore`).
+  `B2GError`. Desde el Corte 3b el decorador CLI `handle_errors` la mapea a **`DataError` exit 2**
+  (`DATA_ERROR`) en todos los comandos; `run_restore` ya no la traduce por su cuenta. (`code_for`, el
+  mapeo puro de §0, todavía no la reconoce: ver ADR 0053, enmienda del Corte 3b.)
 - **`read_corpus_parquet(path) -> pa.Table`** (`bib2graph.corpus`): lee un `corpus.parquet` y lo
   devuelve con exactamente `CORPUS_SCHEMA`. **Compat de snapshot v1:** si el archivo no tiene la
   columna `provider` (todo parquet pre-#253 es OpenAlex por construcción), la completa con
@@ -1387,6 +1442,11 @@ bytes→bytes) con la ligadura ecuación↔corpus, **cuando hay exactamente una 
 | `equation_expression` | la ecuación **cruda** (`raw_query`), para trazabilidad. |
 | `equation_id` | la FK (`eq-…`), para cruzar con la tabla `equations` (§1.5). |
 
+**Clave `provider` (ADR 0053 D2.3, Corte 3b; aditiva).** `b2g export --format arrow` agrega además
+`provider` = token del carril exportado (`openalex`, `s2`), **siempre**, haya o no ecuación. La pone
+el exportador CLI (`cli/commands/export.py`), no `to_arrow()`. El consumidor la usa para saber de qué
+namespace son `source_id`/`references_id` (§1.7, ADR 0053 R4).
+
 **Normalización canónica del hash — `strip()` puro, CONGELADO (contrato de verificación del consumidor).** Se
 hashea la ecuación **cruda** (`raw_query` = lo que el usuario escribió, **antes** de traducir a filtros
 OpenAlex):
@@ -1434,6 +1494,10 @@ cross-repo**:
    `source_id`/`references_id` deben seguir siendo ids OpenAlex del **mismo namespace** (`W…`): el
    consumidor programático joinea `references_id` de un paper contra `source_id` de otro para armar el
    grafo de citas. Un rename/retipo los vuelve **invisibles sin error** (rompe en silencio).
+   **Multi-proveedor (ADR 0053 R4):** esto vale para el carril `openalex`. Un Arrow de otro carril es
+   coherente por dentro (un solo namespace por archivo), pero sus ids **no** son `W…`: lo declara la
+   metadata `provider` (§1.6) y `export` emite un warning. Coordinar con el consumidor antes de
+   entregarle un carril ≠ `openalex`.
 2. **El dominio de `curation_status` — exactamente `candidate | accepted | rejected`**. El ingest del
    consumidor programático hace `.exclude(rejected)`; renombrar un estado filtra mal los papers rechazados.
 
@@ -1865,14 +1929,12 @@ queda v1 y la próxima apertura reintenta.
 - **El `corpus_hash` de todo corpus existente cambia una vez** (la columna `provider` es contenido):
   `status` puede avisar *stale* la cache `networks/` una vez; se resuelve con `b2g build`.
 
-> **Estado transitorio entre 3a y 3b (#253).** El Corte 3a entrega el store por carriles; la
-> superficie CLI llega en el **Corte 3b**. Hasta entonces: (1) **el guard R1 sigue activo** (§`--source`):
-> los comandos que escriben rechazan un `--source` distinto de `workspace.json.source`, y los de
-> lectura (`curate`, `read`, `status`, `export`, `snapshot create`, `validate`) operan sobre el carril
-> de `workspace.json.source`, sin `--source`; (2) `snapshot restore` de un parquet de **otro** carril →
-> `DataError` exit 2 (3b restaurará en el carril que declara el parquet); (3) los ejemplos de
-> `examples/` siguen en parquet v1 y se leen por compat (`read_corpus_parquet`, §1.2). Tampoco hay
-> todavía `networks/.provider`, `data.providers` en `status` ni metadata Arrow `provider` (3b).
+> **Superficie CLI de los carriles (Corte 3b de #253).** El estado transitorio entre 3a y 3b terminó:
+> el **guard R1 se retiró** y todos los comandos que leen o escriben el corpus eligen carril con
+> `--source` (§Convenciones CLI · `--source` · Carriles); `snapshot restore` restaura en el carril del
+> parquet (§`snapshot`); `build` sella `networks/.provider`, `status` suma `data.providers` y el Arrow
+> lleva la metadata `provider` (§1.6). Los ejemplos de `examples/` siguen en parquet v1 y se leen por
+> compat (`read_corpus_parquet`, §1.2).
 
 ### 4.1 `DuckDBStore` — fachada de costura + extensiones del backend
 
@@ -1909,26 +1971,37 @@ class DuckDBBackend:
                  legacy_provider: Provider | str = DEFAULT_PROVIDER) -> None: ...
     @property
     def provider(self) -> Provider: ...                   # _clone() conserva provider/legacy_provider
+    def lane_counts(self) -> dict[str, int]: ...          # Corte 3b: {carril: n_papers} de TODO el store
+                                                          # (GROUP BY provider, ordenado; {} si vacío). Único
+                                                          # método que no lee corpus_lane; lo usa `status`.
 ```
 
-**Firmas que ganaron `provider`** (Corte 3a; todas con default `DEFAULT_PROVIDER` = `openalex`, así
-las llamadas existentes siguen funcionando sobre el carril `openalex`; el CLI pasa
-`workspace.json.source`):
+**Firmas que ganaron `provider`** (Corte 3a, y `legacy_provider` en el 3b; todas con default
+`DEFAULT_PROVIDER` = `openalex`, así las llamadas existentes siguen funcionando sobre el carril
+`openalex`; el CLI pasa el carril resuelto por `--source` > `workspace.json.source`). Además, el Corte
+3b agregó `Workspace.read_networks_provider()` (carril sellado en `networks/.provider`; sin sello →
+`ws.provider`; valor desconocido → `ValueError`) y la función de módulo
+`workspace.read_sealed_provider(networks_dir) -> Provider | None`:
 
 | Función | Firma |
 |---|---|
 | `service.store.open_store` | `open_store(path, provider=…, legacy_provider=…)` |
 | `cli._store.open_store_readonly` | `open_store_readonly(path, provider=…, legacy_provider=…)` |
 | `sources.bibtex.BibtexSource` | `BibtexSource(provider=…)` — carril en el que se ingesta el `.bib` |
-| `service.snapshot.run_snapshot` | `run_snapshot(store_path, *, out_dir, provider=…)` — fotografía un carril |
-| `service.snapshot.run_restore` | `run_restore(store_path, corpus_path, *, decided_at=None, provider=…)` — carril del store |
+| `service.snapshot.run_snapshot` | `run_snapshot(store_path, *, out_dir, provider=…, legacy_provider=None)` — fotografía un carril |
+| `service.snapshot.run_restore` | `run_restore(store_path, corpus_path, *, decided_at=None, provider=…)` — restaura en el carril **del parquet**; `provider` (= `workspace.json.source`) solo es el carril legacy ante una migración v1→v2 y el carril de un parquet vacío. Devuelve además `provider` (token del carril restaurado) |
 | `service.resolve.resolve_dois` | `resolve_dois(store_path, *, email=None, transport=None, provider=…)` |
-| `service.curate.*` | `run_curate_dump`, `run_curate_from_csv`, `filter_corpus`, `accept_papers`, `reject_papers`, `curate_paper`: kwarg `provider=…` |
-| `cli.commands.status.run_status` | `run_status(store_path, provider=…)` |
-| `cli.commands.validate.run_validate` | `run_validate(store_path, provider=…)` |
-| `cli.commands.export.run_export` | `run_export(…, provider=…)` |
+| `service.curate.*` | `run_curate_dump`, `run_curate_from_csv`, `filter_corpus`, `accept_papers`, `reject_papers`, `curate_paper`: kwargs `provider=…`, `legacy_provider=None` |
+| `cli.commands.status.run_status` | `run_status(store_path, provider=…, legacy_provider=None)` — devuelve además `providers` |
+| `cli.commands.validate.run_validate` | `run_validate(store_path, provider=…, legacy_provider=None)` |
+| `cli.commands.export.run_export` | `run_export(…, provider=…, legacy_provider=None)` |
+| `service.reads.*` | `get_workspace`, `list_rounds`, `get_paper`, `get_scent`, `get_network`, `compare_rounds`, `list_papers`, `corpus_stats`, `get_top`, `resolve_doi`, `resolve_url`: `provider=None` opcional (Corte 3b) |
 
-Las lecturas de `service/reads.py` toman el carril de `ws.provider` (sin parámetro nuevo).
+**`provider` vs `legacy_provider`** (Corte 3b). `provider` es el carril sobre el que se opera;
+`legacy_provider` es el carril con el que se etiqueta un store v1 si abrirlo dispara la migración
+(§4.0). `None` = `provider`. El CLI pasa siempre `legacy_provider = workspace.json.source`, para que
+una lectura con `--source s2` no re-etiquete como `s2` un store legacy entero. En `service/reads.py`
+`provider=None` es el carril de `ws.provider`, y el carril legacy es siempre `ws.provider`.
 
 > **`persist_replace` vs `persist` (#88, ADR [0031](decisiones/0031-preprocesamiento-automatico-en-ingesta.md)).**
 > La **ingesta automática** (`seed`/`seed_from_bib`/`chain`/`restore`) y la pasada **`build

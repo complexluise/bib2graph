@@ -37,7 +37,13 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import UsageError, handle_errors
-from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._options import (
+    json_mode,
+    json_option,
+    provider_echo,
+    resolve_provider,
+    source_option,
+)
 from bib2graph.cli._store import (
     resolve_workspace,
     workspace_echo,
@@ -104,6 +110,7 @@ def read_grp(ctx: click.Context) -> None:
     type=int,
     help="Filtrar por año exacto de publicación.",
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("read list")
@@ -114,6 +121,7 @@ def list_cmd(
     seeds: bool,
     candidates: bool,
     year: int | None,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Lista papers del corpus con filtros opcionales.
@@ -135,8 +143,12 @@ def list_cmd(
     from bib2graph.service.reads import list_papers
 
     ws = resolve_workspace(ctx.obj)
-    data = list_papers(ws, query=query, status=status, is_seed=is_seed, year=year)
+    provider, origin = resolve_provider(source, ws)
+    data = list_papers(
+        ws, query=query, status=status, is_seed=is_seed, year=year, provider=provider
+    )
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -171,12 +183,14 @@ def list_cmd(
     show_default=True,
     help="Dimensión de agrupación.",
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("read stats")
 def stats_cmd(
     ctx: click.Context,
     group_by: str,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Estadísticas del corpus agrupadas por una dimensión.
@@ -186,8 +200,10 @@ def stats_cmd(
     from bib2graph.service.reads import corpus_stats
 
     ws = resolve_workspace(ctx.obj)
-    data = corpus_stats(ws, group_by=group_by)
+    provider, origin = resolve_provider(source, ws)
+    data = corpus_stats(ws, group_by=group_by, provider=provider)
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -218,12 +234,14 @@ def stats_cmd(
         "Se prueba en ese orden (ADR 0036)."
     ),
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("read show")
 def show_cmd(
     ctx: click.Context,
     ident: str,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Muestra la fila completa de un paper.
@@ -236,8 +254,10 @@ def show_cmd(
     from bib2graph.service.reads import get_paper
 
     ws = resolve_workspace(ctx.obj)
-    data = get_paper(ws, ident)
+    provider, origin = resolve_provider(source, ws)
+    data = get_paper(ws, ident, provider=provider)
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -284,6 +304,7 @@ _NETWORK_KIND_CHOICES: list[str] = [nk.value for nk in NetworkKind]
     type=click.Choice(_NETWORK_KIND_CHOICES),
     help="Tipo de red para el bloque de nodos centrales.",
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("read top")
@@ -291,6 +312,7 @@ def top_cmd(
     ctx: click.Context,
     n: int,
     kind: str,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Muestra los nodos más centrales y los pares de co-citación con título.
@@ -312,8 +334,10 @@ def top_cmd(
     from bib2graph.service.reads import get_top
 
     ws = resolve_workspace(ctx.obj)
-    data = get_top(ws, n=n, kind=kind)
+    provider, origin = resolve_provider(source, ws)
+    data = get_top(ws, n=n, kind=kind, provider=provider)
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     if json_mode(json_output):
         envelope = build_envelope(

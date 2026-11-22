@@ -28,8 +28,13 @@ filtros (PRISMA) en `curate`.
 
 **Proveedor de datos:** por defecto `openalex`; se fija por investigación con
 `b2g init --source {openalex,s2}` y `--source` lo pisa por invocación (precedencia:
-`--source` > `workspace.json` > `openalex`; hoy uno distinto del de la investigación es
-exit 2). `s2` necesita `S2_API_KEY` para sembrar (el forrajeo anda sin key) y no acepta `--exclude`/`--min-year`/`--max-year`/`--native`.
+`--source` > `workspace.json` > `openalex`). Cada proveedor tiene su **carril**: sembrar o
+forrajear con `--source s2` escribe en el carril `s2` sin tocar `openalex`, y los dos
+conviven en la misma investigación. No hay vista unificada: `build`, `read`, `curate`,
+`status`, `export` y `snapshot` operan sobre **un** carril (el de `--source` o el de la
+investigación). Para comparar proveedores, dos builds (`b2g build --source s2 --out-dir ...`; `export --format arrow` solo embebe la red de `networks/`).
+La curación es del paper (un `id`), así que viaja entre carriles cuando el `id` coincide
+(papers con DOI). `s2` necesita `S2_API_KEY` para sembrar (el forrajeo anda sin key) y no acepta `--exclude`/`--min-year`/`--max-year`/`--native`.
 
 **Irreductiblemente humanos:** pasos 0, 4, 6, 7. La herramienta **no automatiza el juicio**:
 asiste el forrajeo con estructura y le da al humano el material para el sensemaking.

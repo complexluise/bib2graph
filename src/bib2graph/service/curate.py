@@ -81,11 +81,18 @@ _STATUS_TO_DECISION: dict[str, str] = {
 VALID_SCOPES: frozenset[str] = frozenset({"candidates", "seeds", "all"})
 
 
-def _open_writable(path: Path, provider: Provider | str = DEFAULT_PROVIDER) -> Any:
+def _open_writable(
+    path: Path,
+    provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str | None = None,
+) -> Any:
     """Abre el store para escritura; falla accionable si está bloqueado.
 
     Args:
         path: Ruta al archivo ``.duckdb``.
+        provider: Carril sobre el que se opera (ADR 0053 D2.1).
+        legacy_provider: Carril con el que se etiqueta un store v1 si abrirlo
+            lo migra (``workspace.json.source``; D2.4).  ``None`` = ``provider``.
 
     Returns:
         ``DuckDBStore`` abierto y listo para leer/escribir.
@@ -97,7 +104,7 @@ def _open_writable(path: Path, provider: Provider | str = DEFAULT_PROVIDER) -> A
     from bib2graph.stores.duckdb import DuckDBStore
 
     try:
-        return DuckDBStore(path, provider, provider)
+        return DuckDBStore(path, provider, legacy_provider or provider)
     except StoreLockedError as exc:
         raise StoreError(str(exc)) from exc
     except OSError as exc:
@@ -224,6 +231,7 @@ def run_curate_dump(
     store_path: str | Path,
     *,
     provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str | None = None,
     out_path: Path,
     scope: str = "candidates",
     include_all: bool = False,
@@ -252,7 +260,7 @@ def run_curate_dump(
     effective_scope = "all" if include_all else scope
 
     path = Path(store_path)
-    store = _open_writable(path, provider)
+    store = _open_writable(path, provider, legacy_provider)
     try:
         corpus = store.load()
         all_table = corpus.to_arrow()
@@ -292,6 +300,7 @@ def run_curate_from_csv(
     csv_path: str | Path,
     *,
     provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str | None = None,
     by: str = "cli",
     decided_at: datetime | None = None,
 ) -> dict[str, Any]:
@@ -370,7 +379,7 @@ def run_curate_from_csv(
 
     curated_backend_close = None
     path = Path(store_path)
-    store = _open_writable(path, provider)
+    store = _open_writable(path, provider, legacy_provider)
     try:
         corpus = store.load()
 
@@ -406,6 +415,7 @@ def filter_corpus(
     store_path: str | Path,
     *,
     provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str | None = None,
     year_gte: int | None = None,
     year_lte: int | None = None,
     language: list[str] | None = None,
@@ -468,7 +478,7 @@ def filter_corpus(
 
     path = Path(store_path)
     filtered_backend_close = None
-    store = _open_writable(path, provider)
+    store = _open_writable(path, provider, legacy_provider)
     try:
         corpus = store.load()
 
@@ -594,6 +604,7 @@ def accept_papers(
     ids: list[str],
     *,
     provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str | None = None,
     by: str = "api",
     decided_at: datetime | None = None,
     query: str | None = None,
@@ -653,7 +664,7 @@ def accept_papers(
 
     path = Path(store_path)
     updated_backend_close = None
-    store = _open_writable(path, provider)
+    store = _open_writable(path, provider, legacy_provider)
     try:
         corpus = store.load()
 
@@ -703,6 +714,7 @@ def reject_papers(
     ids: list[str],
     *,
     provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str | None = None,
     by: str = "api",
     decided_at: datetime | None = None,
     query: str | None = None,
@@ -758,7 +770,7 @@ def reject_papers(
 
     path = Path(store_path)
     updated_backend_close = None
-    store = _open_writable(path, provider)
+    store = _open_writable(path, provider, legacy_provider)
     try:
         corpus = store.load()
 
@@ -811,6 +823,7 @@ def curate_paper(
     paper_id: str,
     *,
     provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str | None = None,
     decision: str,
     by: str = "api",
     decided_at: datetime | None = None,
@@ -840,8 +853,18 @@ def curate_paper(
 
     if decision == "accepted":
         return accept_papers(
-            store_path, [paper_id], by=by, decided_at=decided_at, provider=provider
+            store_path,
+            [paper_id],
+            by=by,
+            decided_at=decided_at,
+            provider=provider,
+            legacy_provider=legacy_provider,
         )
     return reject_papers(
-        store_path, [paper_id], by=by, decided_at=decided_at, provider=provider
+        store_path,
+        [paper_id],
+        by=by,
+        decided_at=decided_at,
+        provider=provider,
+        legacy_provider=legacy_provider,
     )

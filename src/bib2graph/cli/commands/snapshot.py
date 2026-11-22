@@ -43,12 +43,19 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import handle_errors
-from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._options import (
+    json_mode,
+    json_option,
+    provider_echo,
+    resolve_provider,
+    source_option,
+)
 from bib2graph.cli._store import (
     resolve_workspace,
     workspace_echo,
     workspace_walkup_warning,
 )
+from bib2graph.constants import Provider
 from bib2graph.service.snapshot import run_restore, run_snapshot
 
 __all__ = [
@@ -93,12 +100,14 @@ def snapshot_grp(ctx: click.Context) -> None:
         "(default: <workspace>/snapshots/ o <store_dir>/snapshots/)."
     ),
 )
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("snapshot create")
 def create_cmd(
     ctx: click.Context,
     out_dir: str | None,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Exporta una foto sellada del corpus actual (parquet + manifest.json).
@@ -111,13 +120,19 @@ def create_cmd(
     # ADR 0029: usar snapshots_dir del workspace si no se especifica --out-dir
     ws = resolve_workspace(ctx.obj)
     effective_out_dir: Path = Path(out_dir) if out_dir is not None else ws.snapshots_dir
+    # ADR 0053 D2.3: un snapshot fotografía UN carril (--source > workspace).
+    provider, origin = resolve_provider(source, ws)
 
     data = run_snapshot(
-        ws.library_path, out_dir=effective_out_dir, provider=ws.provider
+        ws.library_path,
+        out_dir=effective_out_dir,
+        provider=provider,
+        legacy_provider=ws.provider,
     )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     if json_mode(json_output):
         envelope = build_envelope(
@@ -166,6 +181,10 @@ def restore_sub_cmd(
     \b
     Preserva las columnas de curación del parquet (curation_status, is_seed).
 
+    
+    Restaura en el carril (proveedor) que declara el parquet; un parquet
+    anterior a la columna ``provider`` se restaura como openalex.
+
     \b
     Ejemplos:
       b2g snapshot restore --from-corpus snapshots/corpus.parquet
@@ -174,13 +193,16 @@ def restore_sub_cmd(
     ws = resolve_workspace(ctx.obj)
     # R2/ADR 0017: el reloj se inyecta en la frontera CLI.
     decided_at = datetime.now(UTC)
-    # Sin --source en restore (3b): el carril es el proveedor del workspace.
+    # Sin --source en restore: el carril lo declara el parquet (ADR 0053 D2.3).
+    # ws.provider solo es el carril legacy ante una migración v1→v2.
     data = run_restore(
         ws.library_path, corpus_path, decided_at=decided_at, provider=ws.provider
     )
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
+    # El carril salió del parquet (no de --source): origin lo dice.
+    data["provider"] = provider_echo(Provider(data["provider"]), "snapshot")
 
     if json_mode(json_output):
         envelope = build_envelope(

@@ -965,16 +965,6 @@ def test_snapshot_v1_compat_restore_en_openalex(tmp_path: Path) -> None:
     assert {p for _, p, _ in _statuses(store_path)} == {"openalex"}
 
 
-def test_restore_de_carril_ajeno_falla_accionable(tmp_path: Path) -> None:
-    from bib2graph.service.errors import DataError
-    from bib2graph.service.snapshot import run_restore
-
-    parquet = tmp_path / "corpus.parquet"
-    pq.write_table(_table([_row("a", "s2")]), str(parquet))  # type: ignore[no-untyped-call]
-    with pytest.raises(DataError, match="carril"):
-        run_restore(tmp_path / "lib.duckdb", parquet, provider=OA)
-
-
 def test_snapshot_nuevo_es_schema_v2(tmp_path: Path) -> None:
     corpus = Corpus.from_arrow(_table([_row("a", "s2")]))
     snap = corpus.snapshot(tmp_path / "snap")

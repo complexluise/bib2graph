@@ -281,6 +281,53 @@ Mientras lees, crea una tabla:
 
 ---
 
+## Comparar proveedores
+
+¿El mapa cambia si los datos vienen de Semantic Scholar en vez de OpenAlex? Una misma investigación
+guarda un **carril por proveedor**. Sembrar con `--source s2` llena el carril `s2` y no toca lo que
+ya tenés de `openalex`. No hay una vista que mezcle los dos: se compara con **dos builds**.
+
+```bash
+# 0. Partís de una investigación openalex con su red ya construida en networks/
+#    (b2g build). Para sembrar en S2 necesitás S2_API_KEY en el entorno.
+
+# 1. Sembrá el carril s2 con la misma pregunta. En S2 la ecuación va tal cual, sin traducir
+#    (ver la nota en la guía de ecuación). Forrajear también es opcional.
+b2g seed --source s2 --equation "…"
+b2g chain --source s2
+
+# 2. Construí la red de s2 en OTRO directorio: sin --out-dir pisaría networks/.
+b2g build --source s2 --out-dir networks-s2
+
+# 3. Compará.
+b2g status --json                 # data.providers = {"openalex": N, "s2": M}
+b2g read top --source openalex    # centrales de cada carril (recomputa, no necesita build)
+b2g read top --source s2
+```
+
+Después abrí `networks/<red>/network.graphml` y `networks-s2/<red>/network.graphml` en Gephi, o
+compará los `metrics.json`. Preguntas que vale la pena hacerse: ¿aparecen las mismas comunidades?,
+¿qué papers centrales están en un carril y no en el otro?, ¿cuántos papers trae cada proveedor?
+
+Qué tenés que saber:
+
+- **La curación viaja entre carriles solo si el paper tiene DOI.** Lo que aceptaste o rechazaste en
+  `openalex` vale también en `s2` para el mismo DOI. Los papers sin DOI tienen un id distinto en cada
+  proveedor y no heredan tu decisión: hay que curarlos en el carril `s2`
+  (`b2g curate dump --source s2`).
+- **`status` y `export` solo miran `networks/`.** La red de `networks-s2/` no se revisa por staleness
+  y `export --format arrow --source s2` no la puede embeber. Si exportás el carril `s2` con la red de
+  `openalex` en `networks/`, el comando falla (exit 2). En ese caso usá `--no-network`, o construí `s2`
+  sobre `networks/` (eso reemplaza la red de `openalex` hasta tu próximo `b2g build`).
+- **Un Arrow del carril `s2` no trae ids OpenAlex** (`W…`): `export` lo avisa. Coordiná con quien lo
+  vaya a consumir.
+- **El ciclo es de la investigación.** Sembrar `s2` después de un `build` cuenta como una ronda nueva
+  en `status`.
+
+Detalle del contrato: [Contratos detallados · `--source`](../API.md).
+
+---
+
 ## Checklist
 
 - [ ] Abrí Acoplamiento en Gephi o visualicé con `b2g read top`

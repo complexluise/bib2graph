@@ -356,6 +356,7 @@ Ninguno cambia las decisiones del PO; son cuidados de implementación o temas a 
   upsert `ON CONFLICT (id)` **fusionaría** los registros: exactamente lo que D2 prohíbe, y además
   irreversible. **Mitigación (DoD de #251):** un *guard* transitorio rechaza (exit 2, sin escribir)
   `--source` ≠ `workspace.json.source` cuando el corpus no está vacío. #253 lo retira.
+  *[Retirado en el Corte 3b, 2026-11-22: ver la enmienda del Corte 3b, punto 1.]*
 - **R2 — Una operación de tabla completa sin filtrar por carril borra los otros carriles.**
   `overwrite_corpus` hoy hace `DELETE FROM corpus` sin `WHERE`, y lo usa toda ingesta. Basta un camino
   olvidado para que sembrar en `s2` borre `openalex`. **Mitigación:** vista `corpus_lane` para todas
@@ -433,7 +434,7 @@ CI: todos los proveedores se prueban con `httpx.MockTransport`.
       `equation_id: str | None`). `_paper_to_row(source_tag=...)` pasa de `"semanticscholar"` a `"s2"`.
 - [ ] `seed.py:156`: `engine=eq_ref.engine or "openalex"` → el proveedor activo.
 - [ ] Envelope de `seed`/`chain`/`build`: `data.provider = {"name", "origin"}` (aditivo).
-- [ ] **Guard transitorio (R1):** `--source` ≠ `workspace.json.source` con corpus no vacío → exit 2,
+- [ ] **Guard transitorio (R1)** *[retirado en el Corte 3b]*: `--source` ≠ `workspace.json.source` con corpus no vacío → exit 2,
       sin escribir, mensaje que apunta a `b2g init --source` o a #253. Comentario `# TODO(#253)`.
 - [ ] `docs/API.md`: convención CLI `--source` (precedencia, `data.provider`), `workspace.json.source`,
       `init --source`.
@@ -600,6 +601,7 @@ Append-only; el texto de arriba queda como historia.
    corpus vacío no protege, porque el `workspace.json` sigue declarando otro proveedor. Para usar otro
    proveedor antes de #253: **`b2g init --source <p>`** (una investigación por proveedor). El guard se
    retira en #253, como estaba previsto. Los `--preview` no escriben y no lo disparan.
+   *[Retirado en el Corte 3b, 2026-11-22: ese exit 2 ya no existe; ver la enmienda del Corte 3b.]*
 2. **`chain --preview` valida como el modo normal:** capacidad por `--direction` (`forward`/`backward`)
    y `--budget` con proveedor ≠ `openalex`, aunque no haga red.
 3. **Flags exclusivos de OpenAlex fuera del registro de capacidades.** `--email` (polite pool) con un
@@ -628,10 +630,12 @@ Append-only; el DoD de arriba queda como historia (no se tildan las casillas).
    (una vez tras la siembra, donde las filas BibTeX sin `source_id` no se registran, y otra tras
    `--resolve`, que registra **solo** las filas resueltas), `chain`, `build` (pasada `cited_by`) y
    `snapshot restore`. Salvo `--resolve`, cada llamada registra **todo** el corpus persistido. Es correcto mientras rija el guard R1
-   (un proveedor por workspace).
+   (un proveedor por workspace). *[El guard se retiró en el Corte 3b; desde el 3a cada llamada
+   registra solo el carril del store, con `engine` = carril, así que sigue siendo correcto sin él.]*
 3. **`--resolve` registra siempre `engine='openalex'`** (`Provider.OPENALEX` fijo en
    `service/resolve.py`), no el proveedor activo: la resolución DOI→id solo existe en OpenAlex. Con la
-   capacidad `resolve_doi` y el guard R1 hoy coincide con el proveedor activo.
+   capacidad `resolve_doi` y el guard R1 hoy coincide con el proveedor activo. *[Sin el guard (Corte
+   3b), coincide por la capacidad: `resolve_doi` solo la declara `openalex`.]*
 4. **`snapshot restore` recibe `provider` = `workspace.json.source`** (el CLI no tiene `--source` en
    `restore`; `run_restore(..., provider=DEFAULT_PROVIDER)` para llamadas directas). **Riesgo conocido
    hasta #253:** restaurar un parquet traído con S2 en una investigación `openalex` (o al revés)
@@ -663,7 +667,8 @@ se partió como preveía el plan: **3a** (store) en este PR y **3b** (CLI) despu
    `ProviderMismatchError`, y `add_paper` sin `provider` hereda el carril del corpus.
 2. **`ProviderMismatchError` es `ValueError`** (en `backends/base.py`, re-exportada por
    `bib2graph.backends`), no `B2GError`. Hoy solo `run_restore` la traduce a `DataError`. Mientras rija
-   el guard R1, ningún otro camino del CLI puede recibirla de un input del usuario.
+   el guard R1, ningún otro camino del CLI puede recibirla de un input del usuario. *[Corte 3b:
+   `handle_errors` la mapea a exit 2 en toda la CLI y `run_restore` ya no la traduce.]*
 3. **Compat de snapshot v1 = `read_corpus_parquet(path)`** (`corpus.py`), usada por
    `CorpusSnapshot.corpus` y `run_restore`. Completa `provider = "openalex"` **cuando falta la
    columna** (no mira `manifest.schema_version`). Los `examples/` siguen en parquet v1 y se leen por
@@ -686,7 +691,8 @@ se partió como preveía el plan: **3a** (store) en este PR y **3b** (CLI) despu
    ("la llamada se muda adentro del backend… para que ningún camino pueda olvidarla"): el engine sí
    sale del backend, pero cada ingesta sigue llamándola explícitamente. `--resolve` pasa
    `engine=openalex` explícito, coherente porque exige `resolve_doi`.
-8. **Estado transitorio hasta 3b** (difiere de D2.3 y del DoD de 3, que se cumplen en 3b):
+8. **Estado transitorio hasta 3b** (difiere de D2.3 y del DoD de 3, que se cumplen en 3b).
+   *[Cerrado por la enmienda del Corte 3b (2026-11-22), punto 1.]*
    - **El guard R1 sigue activo.** Los comandos de lectura todavía no tienen `--source` y operan sobre
      el carril de `workspace.json.source`. Retirar el guard antes dejaría carriles que la lectura no
      ve.
@@ -701,3 +707,68 @@ se partió como preveía el plan: **3a** (store) en este PR y **3b** (CLI) despu
    `b2g snapshot create` **antes** de actualizar. El `corpus_hash` de todo corpus cambia una vez, así
    que `status` avisa *stale* una vez. El release lo declara en el footer `BREAKING CHANGE:` del commit
    (CONTRIBUTING).
+
+## Enmienda (2026-11-22) — Corte 3b (#253, parte CLI) as-built: superficie de carriles y retiro del guard R1
+
+Append-only; el texto, los DoD y las enmiendas anteriores quedan como historia (no se tildan las
+casillas). Con este corte **#253 queda completo** (3a + 3b).
+
+1. **Cierra el punto 8 de la enmienda del Corte 3a.** El estado transitorio terminó y cada pendiente
+   quedó así:
+   - **Guard R1 retirado** (§Riesgos R1, enmienda del Corte 1 punto 1). `guard_provider_mix` se borró
+     de `cli/_options.py`, así que ya no existe el exit 2 por un `--source` distinto de
+     `workspace.json.source`. `seed`/`chain`/`build --source s2` en una investigación `openalex`
+     escriben en el carril `s2` sin tocar `openalex`. Reemplaza a 256.1 y 256.4 de `registro-ia.md`.
+   - **`--source`** (`source_option`) en `curate {dump,apply,accept,reject,filter}`,
+     `read {list,stats,show,top}`, `status`, `validate`, `export` y `snapshot create`, con precedencia
+     D1 y eco `data.provider` en todos.
+   - **`snapshot restore` usa el carril del parquet** (D2.3), sin `--source`: un parquet v1 se
+     restaura como `openalex`; con más de un proveedor o con uno desconocido → `DataError` exit 2; un
+     parquet vacío usa `workspace.json.source`. Reemplaza a 256.7. `external_ids` se registra con el
+     carril del parquet, lo que cierra el riesgo del punto 4 de la enmienda del Corte 2.
+   - **`networks/.provider`**: `build` lo sella junto a `.corpus_hash`, en `--out-dir` si se pasa y
+     también en el camino de scope vacío.
+   - **`status`**: la staleness se calcula contra el hash vivo del carril **sellado**, y el warning
+     nombra el carril y sugiere `b2g build --source <carril>`. El bloque aditivo
+     `data.providers = {<carril>: <n>}` sale de `DuckDBBackend.lane_counts()` (`GROUP BY provider`),
+     el único método del backend que no lee `corpus_lane`. `total_papers` y los demás conteos son del
+     carril activo.
+   - **Export Arrow**: metadata `provider` (siempre, la pone `cli/commands/export.py`, no
+     `to_arrow()`), `DataError` exit 2 si la red es de otro carril y warning R4 si el carril ≠
+     `openalex`.
+   - **`ProviderMismatchError` → `DataError` exit 2** (`DATA_ERROR`) en `handle_errors`, para toda la
+     CLI. `run_restore` dejó de traducirla por su cuenta.
+2. **Superficie de servicio.** `legacy_provider=None` en `service/curate.py` (las seis funciones),
+   `run_status`, `run_validate`, `run_export` y `run_snapshot`: el CLI pasa siempre
+   `workspace.json.source`, para que una lectura con `--source s2` sobre un store v1 no lo re-etiquete
+   entero como `s2`. `service.reads.*` gana `provider=None` (= `ws.provider`). `run_restore` devuelve
+   `provider`. `Workspace.read_networks_provider()` y `workspace.read_sealed_provider()` leen el sello.
+3. **Desviación — red sin sello.** D2.3/R5 no dicen qué hacer con un `networks/` construido antes de
+   #253 (tiene `.corpus_hash` pero no `.provider`). Se asume **el carril de `workspace.json.source`**:
+   hasta el 3b regía el guard R1, así que esa cache solo pudo construirse con el proveedor de la
+   investigación. Vale para la staleness de `status` y para el chequeo del Arrow. Decisión de la IA
+   (`registro-ia.md` 256.8).
+4. **Desviación — warning en `graphml`/`csv`.** D2.3/R5 solo regulaban `--format arrow`. Como
+   `graphml`/`csv` serializan `networks/` tal cual, un `export --source s2 --format graphml` sobre una
+   red de `openalex` devolvería otro carril en silencio. Se agregó un **warning** (no un error: el
+   archivo es coherente por dentro y no se adhiere a papers de otro carril) que sugiere
+   `b2g build --source <pedido>`. Decisión de la IA (`registro-ia.md` 256.9).
+5. **Desviación — `origin: "snapshot"`.** D1 definía `data.provider.origin ∈ {flag, workspace,
+   default}`. `snapshot restore` ecoa `{"name": <carril>, "origin": "snapshot"}` porque el carril no
+   sale de ninguno de esos tres sino del parquet. Es un **valor nuevo** del enum, aditivo para
+   `schema="1"`, pero un consumidor que valide `origin` contra los tres valores de D1 tiene que
+   aceptarlo. Decisión de la IA (`registro-ia.md` 256.10).
+6. **Comparar proveedores = dos builds** (D2, R5), como estaba previsto: `build --source s2 --out-dir
+   <dir>` deja `networks/` intacto. Límites as-built: `status` y `export` solo miran
+   `<workspace>/networks/` (export no tiene `--networks-dir`), así que una red construida en
+   `--out-dir` no se valida por staleness ni se embebe en un Arrow; se lee directo (`graphml`,
+   `metrics.json`) o con `read top --source <p>`, que recomputa sin `build`. Además, `build` en
+   `--out-dir` transiciona igual la FSM, que es de la investigación (R6). Receta en
+   `docs/guias/leer-redes.md` §Comparar proveedores.
+7. **Pendiente detectado (no bloquea):**
+   - `service/errors.py::code_for` no mapea `ProviderMismatchError` (es `ValueError`): un adaptador
+     no-CLI que use `code_for` recibe `TypeError`. API.md §0 dice que `code_for` y `handle_errors`
+     describen la misma política, y hoy divergen en este caso.
+   - El chequeo de `graphml`/`csv` (punto 4) **no** aplica la regla del punto 3: sin `.provider` no
+     avisa, mientras que el del Arrow sí asume el carril del workspace. Con un sello ausente y
+     `--source` ≠ workspace, `graphml` exporta la red del workspace sin warning.

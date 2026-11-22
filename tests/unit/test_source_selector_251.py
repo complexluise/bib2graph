@@ -3,7 +3,7 @@
 Cubre D1: ``Provider``/``workspace.json.source``, registro de capacidades,
 ``resolve_provider``, ``seed``/``chain``/``build`` sobre S2 (MockTransport, sin
 red), capacidad faltante antes de la red, ``Forager`` sin import de OpenAlex y
-el guard transitorio R1 (mezcla de proveedores).
+la coexistencia por carril (#253, que reemplazó al guard R1).
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from click.testing import CliRunner
 
 from bib2graph.backends.memory import compute_corpus_hash
 from bib2graph.cli import b2g
-from bib2graph.cli._errors import DataError, DependencyError
+from bib2graph.cli._errors import DependencyError
 from bib2graph.constants import Col, CurationStatus, Provider
 from bib2graph.corpus import Corpus, _rows_with_ids
 from bib2graph.schemas import CORPUS_SCHEMA, ProvenanceEvent
@@ -526,109 +526,84 @@ class TestChainBuildS2:
         assert data["provider"] == {"name": "openalex", "origin": "workspace"}
 
 
-# Guard transitorio R1
+# Coexistencia por carril (#253): sustituye al guard transitorio R1
 
 
-class TestGuardMezclaProveedores:
-    def test_guard_mezcla_proveedores_pre_253(self, tmp_path: Path) -> None:
+class TestCoexistenciaPorCarril:
+    def test_seed_y_chain_en_s2_no_tocan_openalex(self, tmp_path: Path) -> None:
+        """`seed` + `chain` con --source s2 en una investigación openalex."""
+        from bib2graph.cli.commands.chain import run_chain
         from bib2graph.cli.commands.seed import run_seed
 
         store_path = tmp_path / "lib.duckdb"
         _persist_rows(store_path, [_openalex_row("P1"), _openalex_row("P2")])
         before = _corpus_hash(store_path)
-        transport = _ExplodingTransport()
 
-        with pytest.raises(DataError) as exc_info:
-            run_seed(
-                store_path,
-                "x",
-                provider=Provider.S2,
-                workspace_provider=Provider.OPENALEX,
-                transport=transport,
-            )
+        run_seed(
+            store_path,
+            "unequal exchange",
+            provider=Provider.S2,
+            workspace_provider=Provider.OPENALEX,
+            transport=_s2_transport(),
+        )
+        run_chain(
+            store_path,
+            direction="forward",
+            provider=Provider.S2,
+            workspace_provider=Provider.OPENALEX,
+            transport=_s2_transport(),
+        )
 
-        assert exc_info.value.exit_code == 2
-        assert "#253" in exc_info.value.message
-        assert "init --source" in exc_info.value.message
-        assert transport.calls == 0
-        assert _corpus_hash(store_path) == before
+        assert _corpus_hash(store_path) == before  # carril openalex intacto
+        s2_rows = _load_rows(store_path, Provider.S2)
+        assert {r[Col.SOURCE_ID] for r in s2_rows} == {
+            "s2seedaaa111",
+            "s2citerbbb222",
+        }
+        assert {r[Col.PROVIDER] for r in s2_rows} == {"s2"}
 
-    def test_guard_aplica_a_chain_y_build(self, tmp_path: Path) -> None:
+    def test_build_s2_no_toca_openalex(self, tmp_path: Path) -> None:
         from bib2graph.cli.commands.build import run_build
-        from bib2graph.cli.commands.chain import run_chain
 
         store_path = tmp_path / "lib.duckdb"
         _persist_rows(store_path, [_openalex_row()])
         before = _corpus_hash(store_path)
-        with pytest.raises(DataError):
-            run_chain(
-                store_path, provider=Provider.S2, workspace_provider=Provider.OPENALEX
-            )
-        with pytest.raises(DataError):
-            run_build(
-                store_path, provider=Provider.S2, workspace_provider=Provider.OPENALEX
-            )
+        run_build(
+            store_path,
+            provider=Provider.S2,
+            workspace_provider=Provider.OPENALEX,
+        )
         assert _corpus_hash(store_path) == before
 
-    def test_guard_cli_exit_2(self, tmp_path: Path) -> None:
+    def test_seed_cli_source_s2_en_investigacion_openalex(self, tmp_path: Path) -> None:
         ws = Workspace.init(tmp_path / "w", "w")  # openalex
         _persist_rows(ws.library_path, [_openalex_row()])
+        before = _corpus_hash(ws.library_path)
+        bib = tmp_path / "a.bib"
+        bib.write_text("@article{a, title={T}, year={2020}}", encoding="utf-8")
+
         result = CliRunner().invoke(
             b2g,
             [
                 "--workspace",
                 str(ws.root),
                 "seed",
-                "--equation",
-                "x",
+                "--from-bib",
+                str(bib),
                 "--source",
                 "s2",
                 "--json",
             ],
         )
-        assert result.exit_code == 2, result.output
 
-    def test_guard_tambien_falla_con_corpus_vacio(self, tmp_path: Path) -> None:
-        from bib2graph.cli.commands.seed import run_seed
-
-        store_path = tmp_path / "lib.duckdb"
-        transport = _ExplodingTransport()
-        with pytest.raises(DataError) as exc_info:
-            run_seed(
-                store_path,
-                "x",
-                provider=Provider.S2,
-                workspace_provider=Provider.OPENALEX,
-                transport=transport,
-            )
-        assert exc_info.value.exit_code == 2
-        assert transport.calls == 0
-        assert not store_path.exists()  # sin escribir
-
-    def test_secuencia_init_seed_s2_falla_en_el_seed(self, tmp_path: Path) -> None:
-        """B1: init (openalex) -> seed --source s2 -> falla; no queda corpus s2."""
-        ws_dir = tmp_path / "w"
-        runner = CliRunner()
-        assert runner.invoke(b2g, ["init", str(ws_dir), "--json"]).exit_code == 0
-
-        result = runner.invoke(
-            b2g,
-            [
-                "--workspace",
-                str(ws_dir),
-                "seed",
-                "--equation",
-                "x",
-                "--source",
-                "s2",
-                "--json",
-            ],
-        )
-        assert result.exit_code == 2, result.output
-        assert _load_rows(ws_dir / "library.duckdb") == []
+        assert result.exit_code == 0, result.output
+        assert _corpus_hash(ws.library_path) == before
+        s2_rows = _load_rows(ws.library_path, Provider.S2)
+        assert [r[Col.TITLE] for r in s2_rows] == ["T"]
+        assert s2_rows[0][Col.PROVIDER] == "s2"
 
     @pytest.mark.parametrize("resolve", [False, True])
-    def test_from_bib_source_distinto_es_exit_2(
+    def test_from_bib_resolve_s2_sigue_siendo_exit_3(
         self, tmp_path: Path, resolve: bool
     ) -> None:
         ws = Workspace.init(tmp_path / "w", "w")  # openalex
@@ -637,11 +612,11 @@ class TestGuardMezclaProveedores:
         args = ["--workspace", str(ws.root), "seed", "--from-bib", str(bib)]
         if resolve:
             args.append("--resolve")
-        # --resolve con s2 falla antes por capacidad (exit 3); sin --resolve, el
-        # guard (exit 2).  Con --source igual al del workspace no cambia nada.
+        # --resolve con s2 falla por capacidad (exit 3), antes de escribir.
         result = CliRunner().invoke(b2g, [*args, "--source", "s2", "--json"])
-        assert result.exit_code == (3 if resolve else 2), result.output
-        assert _load_rows(ws.library_path) == []
+        assert result.exit_code == (3 if resolve else 0), result.output
+        if resolve:
+            assert _load_rows(ws.library_path, Provider.S2) == []
 
     def test_source_igual_al_workspace_no_cambia_nada(self, tmp_path: Path) -> None:
         ws = Workspace.init(tmp_path / "w", "w")

@@ -41,6 +41,7 @@ import httpx
 
 # Re-exportar la jerarquía desde la capa de servicios neutral (ADR 0028).
 # Los imports existentes de cli/ y tests resuelven a los mismos objetos.
+from bib2graph.backends.base import ProviderMismatchError
 from bib2graph.cli._options import json_mode as _resolve_json_mode
 from bib2graph.service.errors import (
     B2GError,
@@ -166,6 +167,11 @@ def handle_errors(command: str) -> Callable[[F], F]:
                     subcode=subcode,
                 )
                 sys.exit(exc.exit_code)
+            except ProviderMismatchError as exc:
+                # ADR 0053 D2.1: una escritura/merge entre carriles distintos es
+                # un dato inválido (exit 2), no un crash.
+                _emit_error_envelope(command, 2, "DATA_ERROR", str(exc), json_mode)
+                sys.exit(2)
             except OSError as exc:
                 _emit_error_envelope(command, 5, "STORE_ERROR", str(exc), json_mode)
                 sys.exit(5)

@@ -257,7 +257,10 @@ sella el carril porque `provider` es contenido). La **curación es del paper** (
 el backend sincroniza `curation_status` entre carriles en cada escritura. `loop_state_log` (la FSM)
 sigue siendo de la investigación. El esquema del store se versiona en `store_meta`; un store v1 se
 migra una sola vez, en una transacción y sin downgrade, etiquetando sus filas con
-`workspace.json.source`. Detalle y contrato en [`API.md`](API.md) §4.0.
+`workspace.json.source`. En la CLI (Corte 3b), cada comando opera sobre **un** carril, el de
+`--source` o el de `workspace.json.source`, y los carriles conviven en la misma investigación. La
+cache `networks/` es de un solo carril (sellado en `networks/.provider`); comparar proveedores = dos
+builds (`build --out-dir`). Detalle y contrato en [`API.md`](API.md) §4.0 y §`--source`.
 
 El **snapshot** es un **export sellado** del estado vivo (§6.2), no la persistencia; `ParquetStore`
 sirve como formato de export/intercambio. La costura `Store` es el punto de extensión para destinos

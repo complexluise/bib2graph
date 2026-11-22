@@ -25,7 +25,9 @@ Esta guía es una receta para llegar a una ecuación acotada, testeada, sin ruid
     **tal cual, sin traducción**, con la sintaxis de búsqueda de S2. Ahí no aplican `--exclude`,
     `--min-year`/`--max-year` ni `--native`: si los pasás, el comando falla con un error que lo
     explica, no los ignora. `b2g seed --preview --source s2 --equation "…"` muestra la query exacta
-    sin gastar red. Para sembrar en S2 necesitás `S2_API_KEY` en el entorno. Detalle en
+    sin gastar red. Para sembrar en S2 necesitás `S2_API_KEY` en el entorno. También podés sembrar
+    S2 **junto** a OpenAlex en la misma investigación (`b2g seed --source s2 …`): cada proveedor
+    tiene su carril. Ver [Comparar proveedores](leer-redes.md#comparar-proveedores). Detalle en
     [Contratos detallados](../API.md).
 
 ---

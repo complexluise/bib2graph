@@ -14,7 +14,13 @@ import click
 
 from bib2graph.cli._envelope import build_envelope, emit, emit_human
 from bib2graph.cli._errors import DataError, StoreError, handle_errors
-from bib2graph.cli._options import json_mode, json_option
+from bib2graph.cli._options import (
+    json_mode,
+    json_option,
+    provider_echo,
+    resolve_provider,
+    source_option,
+)
 from bib2graph.cli._store import (
     open_store_readonly,
     resolve_workspace,
@@ -25,7 +31,9 @@ from bib2graph.constants import DEFAULT_PROVIDER, Col, CurationStatus, Provider
 
 
 def run_validate(
-    store_path: str | Path, provider: Provider | str = DEFAULT_PROVIDER
+    store_path: str | Path,
+    provider: Provider | str = DEFAULT_PROVIDER,
+    legacy_provider: Provider | str | None = None,
 ) -> dict[str, Any]:
     """Valida el schema del store y la consistencia del corpus.
 
@@ -34,6 +42,9 @@ def run_validate(
 
     Args:
         store_path: Ruta al archivo ``.duckdb``.
+        provider: Carril que se valida (ADR 0053 D2.1).
+        legacy_provider: Carril con el que se etiqueta un store v1 si abrirlo
+            lo migra (``workspace.json.source``).  ``None`` = ``provider``.
 
     Returns:
         Dict con ``valid``, ``total_papers``, ``issues`` (lista de problemas).
@@ -45,7 +56,7 @@ def run_validate(
     from bib2graph.schemas import SchemaError, validate_table
 
     # R5: open_store_readonly falla si el archivo no existe (no auto-crea).
-    store = open_store_readonly(store_path, provider, provider)
+    store = open_store_readonly(store_path, provider, legacy_provider or provider)
 
     try:
         corpus = store.load()
@@ -108,11 +119,13 @@ def run_validate(
 
 
 @click.command("validate")
+@source_option
 @json_option
 @click.pass_context
 @handle_errors("validate")
 def validate_cmd(
     ctx: click.Context,
+    source: str | None,
     json_output: bool,
 ) -> None:
     """Valida el schema y consistencia del store.
@@ -120,10 +133,12 @@ def validate_cmd(
     Exit 0: válido. Exit 2: datos inválidos. Exit 5: store corrupto.
     """
     ws = resolve_workspace(ctx.obj)
-    data = run_validate(ws.library_path, ws.provider)
+    provider, origin = resolve_provider(source, ws)
+    data = run_validate(ws.library_path, provider, ws.provider)
 
     # ADR 0045 (#259): eco de workspace + warning accionable en walk-up.
     data["workspace"] = workspace_echo(ws)
+    data["provider"] = provider_echo(provider, origin)
 
     if json_mode(json_output):
         envelope = build_envelope(

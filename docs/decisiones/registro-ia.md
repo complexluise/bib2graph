@@ -458,3 +458,15 @@
 | 256.5 | **Sincronización de curación entre carriles como un único `UPDATE` SQL** (ventana `ORDER BY decided_at DESC NULLS LAST, prioridad DESC` + UDF sobre `_latest_human_decided_at`), no un fold Python de `_merge_curation_status` | Set-based (una sentencia por escritura) y con atajo de un `SELECT … LIMIT 1` cuando el store tiene un solo carril. Es el orden lexicográfico equivalente a la regla de dos filas | Media: la regla queda en dos lugares (Python para el merge intra-carril, SQL entre carriles). Un test de invariante cubre que coincidan | Pendiente |
 | 256.6 | **`StoreSchemaError(OSError)`** ante un store con `schema_version` futura → exit 5 | D2.4 no cubría el caso inverso (abrir un store más nuevo). Con `OSError` entra por el mismo mapeo que `StoreLockedError`, sin tocar la escalera de errores | Alta | Pendiente |
 | 256.7 | **`restore` de un parquet de otro carril → `DataError` en 3a** (no restaurar en el carril del parquet) | Restaurar en el carril del parquet necesita abrir el store en un carril distinto del workspace, que es la superficie de 3b. Fallar sin escribir es lo conservador | Alta: 3b lo reemplaza | Pendiente |
+
+## 2026-11-22 — Epic multi-proveedor #256, Corte 3b (#253, CLI)
+
+Las tres decisiones son desviaciones de ADR 0053 registradas en su enmienda del Corte 3b (puntos 3–5).
+El 3b cumple lo que preveían 256.1, 256.4 y 256.7 (el guard R1 se retira y `restore` usa el carril del
+parquet), así que esas entradas quedan como historia.
+
+| # | Decisión | Por qué | Reversibilidad | Validada por humano |
+|---|----------|---------|----------------|---------------------|
+| 256.8 | **Una cache `networks/` sin `networks/.provider` (anterior a #253) se asume del carril de `workspace.json.source`**, tanto para la staleness de `status` como para el chequeo de carril de `export --format arrow` | ADR 0053 no cubría el caso. Mientras rigió el guard R1, una investigación solo podía construir con su proveedor, así que es la única atribución posible. Las alternativas (tratarla como stale, o exigir un rebuild con error) castigan a todo usuario que actualiza | Alta: el próximo `build` sella el carril y el caso desaparece | Pendiente |
+| 256.9 | **`export --format graphml\|csv` emite un warning (no un error) si `networks/.provider` ≠ carril pedido** | D2.3/R5 solo regulaban el Arrow. `graphml`/`csv` serializan la red tal cual: el archivo es coherente por dentro y no se adhiere a papers de otro carril, así que fallar sería desproporcionado, pero callar entrega otro carril a quien pidió `--source`. *As-built:* sin sello no avisa (no aplica la regla de 256.8) | Alta | Pendiente |
+| 256.10 | **`snapshot restore` ecoa `data.provider = {name, origin: "snapshot"}`**: un valor nuevo de `origin`, fuera de `flag\|workspace\|default` (D1) | El carril no sale de ninguno de esos tres sino del parquet. Reusar `workspace` sería falso cuando el parquet es de otro carril. Aditivo para `schema="1"`, pero amplía el enum que D1 había fijado | Media: un consumidor que ya valide `origin` contra los tres valores tiene que aceptarlo | Pendiente |
