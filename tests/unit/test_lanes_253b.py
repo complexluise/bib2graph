@@ -19,6 +19,14 @@ import pyarrow.feather as feather
 import pyarrow.parquet as pq
 import pytest
 from click.testing import CliRunner
+from test_lanes_253a import (
+    _legacy_sibling_providers,
+    _make_v1_store,
+    _meta,
+    _row,
+    _statuses,
+    _table,
+)
 
 from bib2graph.backends import ProviderMismatchError
 from bib2graph.cli import b2g
@@ -27,14 +35,6 @@ from bib2graph.constants import Provider
 from bib2graph.corpus import Corpus
 from bib2graph.stores.duckdb import DuckDBStore
 from bib2graph.workspace import Workspace
-from tests.unit.test_lanes_253a import (
-    _legacy_sibling_providers,
-    _make_v1_store,
-    _meta,
-    _row,
-    _statuses,
-    _table,
-)
 
 pytestmark = pytest.mark.integration
 
