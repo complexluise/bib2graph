@@ -978,12 +978,35 @@ El schema exacto vive en `bib2graph.schemas`. La validación se hace en `Corpus.
 cada `Source.seed()/load()`.
 
 > **Tabla lateral `external_ids(paper_id, engine, id)`** (ADR
-> [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md), opción C — **infra presente, sin
-> poblar**): el backend expone `external_ids_for(paper_id)`/`all_external_ids()` para registrar 1↔N los
-> IDs que cada motor asignó al mismo paper (unificados por DOI). Su consumo (cruce cross-motor) está
-> diferido a la llegada del 2º motor (#120); hoy la identidad/dedup se resuelven solo por el `id`
-> canónico (DOI primero). Con S2 ya seleccionable (#251) la tabla **sigue sin poblarse**: su escritura
-> es el Corte 2 de ADR 0053 (#255), con `engine` = token `Provider` (`openalex`, `s2`).
+> [0036](decisiones/0036-identidad-source-id-agnostica-doi-ancla.md) opción C; poblada desde el Corte 2
+> de ADR [0053](decisiones/0053-multiproveedor-seleccion-coexistencia-identidad.md), #255/#120): registra
+> 1↔N los IDs que cada motor asignó al mismo paper (unificados por el `id` canónico, DOI primero). PK
+> `(paper_id, engine)`; lectura por `backend.external_ids_for(paper_id)` / `backend.all_external_ids()`.
+>
+> - **Quién escribe:** `DuckDBStore.register_external_ids(corpus, engine) -> int`, en **bulk** (una sola
+>   sentencia `INSERT OR REPLACE … SELECT` vía `backend.add_external_ids_bulk`) sobre las filas con
+>   `source_id` no nulo; las filas sin `source_id` (p. ej. `seed --from-bib` sin `--resolve`) no se
+>   registran. En la misma operación **borra los huérfanos** (`paper_id` que ya no está en `corpus`).
+>   Devuelve cuántas filas registró. Precondición: el corpus **ya está persistido** (la limpieza de
+>   huérfanos lee la tabla `corpus`).
+> - **Cuándo:** al **final** de cada ingesta (después de `persist_replace`, `set_loop_state` y de
+>   persistir ecuación / enricher refs; si falla, la próxima ingesta rellena porque es idempotente):
+>   `seed` (ecuación/spec), `seed --from-bib`, `chain`, `build` (pasada `cited_by`, que vuelve a
+>   registrar las filas del corpus; los citantes no son filas) y `snapshot restore` registran **todas**
+>   las filas del corpus persistido; `--resolve` registra **solo** las filas que resolvió.
+> - **Valores de `engine`:** el token `Provider` activo (`openalex` | `s2`, ADR 0053 D1.6; nunca
+>   `semanticscholar`). Excepciones: la resolución DOI→id (`--resolve`) registra siempre `openalex`
+>   (solo OpenAlex la ofrece), y `snapshot restore` registra con el proveedor del workspace
+>   (`workspace.json.source`), porque `restore` todavía no tiene `--source`.
+> - **Propiedades:** idempotente (`INSERT OR REPLACE` por la PK: re-ingerir no duplica; un `source_id`
+>   nuevo para el mismo `(paper_id, engine)` reemplaza al anterior). **No entra en `corpus_hash`**
+>   (tabla lateral, como `referenced_but_not_fetched`) y **no viaja en el snapshot/parquet**: `restore`
+>   la reconstruye desde `source_id`.
+> - **Límites conocidos (hasta #253):** (1) un `restore` de un parquet traído con otro proveedor
+>   registra el `engine` del workspace, no el del parquet. (Si el `id` canónico de un paper cambia, la
+>   fila vieja se borra en el siguiente registro: no quedan huérfanos.) En #253 la
+>   llamada pasa adentro del backend atado a carril (`engine` = carril). Hoy ningún comando la
+>   **lee**: la identidad y el dedup siguen resolviéndose solo por el `id` canónico.
 
 **`provenance` es un log append-only** (ADR [0013](decisiones/0013-identidad-hash-merge-corpus.md),
 D4), no un objeto único: la columna `string` guarda un JSON que es una **lista de eventos**. Cada

@@ -196,3 +196,12 @@ el contrato.)
 > mantiene** (un DOI = un `id`), pero ese `id` puede tener **un registro por proveedor** en carriles
 > separados, con PK `(id, provider)` (0053 D2). La clave `tt` pasa a normalización fuerte con match
 > exacto (0053 D3). El texto de arriba queda como historia.
+
+> **Nota append-only — población de `external_ids` (2026-11-21, ADR [0053](0053-multiproveedor-seleccion-coexistencia-identidad.md) Corte 2, #255/#120).**
+> Lo que el AS-BUILT de arriba difería ("la **población** de `external_ids`") está hecho: la tabla se
+> llena desde el `source_id` de cada fila después de cada persistencia de ingesta, con `engine` = token
+> `Provider` (`openalex` | `s2`). Lo hace `DuckDBStore.register_external_ids` (ver
+> [0042](0042-semantic-scholar-segundo-motor.md) enmienda "D4 realizado" y `docs/API.md` §4.1). Con
+> esto y el `--source` de 0053 D1, el follow-up #120 queda cerrado. La opción (C) de D-schema no
+> cambia; todavía no hay consumidor que **lea** la tabla para cruzar motores (llega con los carriles,
+> #253).

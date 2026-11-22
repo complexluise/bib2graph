@@ -192,6 +192,17 @@ class TabularBackend(Protocol):
         """
         ...
 
+    def add_external_ids_bulk(self, table: pa.Table) -> None:
+        """Registra muchos IDs externos de una vez y limpia huérfanos.
+
+        Idempotente por ``(paper_id, engine)``.  Borra además las entradas cuyo
+        ``paper_id`` ya no existe en el corpus del backend.
+
+        Args:
+            table: Tabla Arrow con columnas ``paper_id``, ``engine`` e ``id``.
+        """
+        ...
+
     def external_ids_for(self, paper_id: str) -> dict[str, str]:
         """Devuelve todos los IDs externos registrados para un paper.
 

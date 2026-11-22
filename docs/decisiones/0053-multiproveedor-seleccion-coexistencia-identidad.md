@@ -613,3 +613,29 @@ Append-only; el texto de arriba queda como historia.
 5. **`chain --since` con `s2`** se aproxima por año (S2 no tiene filtro de fecha nativo:
    `SemanticScholarSource` descarta citantes con `year < since.year`). Queda documentado en
    `docs/API.md` como límite del proveedor.
+
+## Enmienda (2026-11-21) — Corte 2 (#255) as-built: `external_ids` poblada
+
+Append-only; el DoD de arriba queda como historia (no se tildan las casillas).
+
+1. **Hecho según el DoD:** `DuckDBStore.register_external_ids(corpus, engine: Provider) -> int`
+   registra `(id, engine, source_id)` para cada fila con `source_id` no nulo. Es idempotente por la PK
+   `(paper_id, engine)`, queda fuera de `corpus_hash` y `engine` usa el token `Provider`. Se quitó la
+   nota "NO puebla" de `service/resolve.py`. `docs/API.md` §4.1 documenta quién escribe, cuándo y qué
+   valores toma `engine`. Esto realiza D4 de 0042 y cierra #120 junto con el Corte 1.
+2. **Puntos de llamada** (al **final** de cada ingesta, tras `set_loop_state` y la persistencia de
+   ecuación / enricher refs; escritura **bulk** en una sentencia): `seed` (ecuación/spec), `seed --from-bib`
+   (una vez tras la siembra, donde las filas BibTeX sin `source_id` no se registran, y otra tras
+   `--resolve`, que registra **solo** las filas resueltas), `chain`, `build` (pasada `cited_by`) y
+   `snapshot restore`. Salvo `--resolve`, cada llamada registra **todo** el corpus persistido. Es correcto mientras rija el guard R1
+   (un proveedor por workspace).
+3. **`--resolve` registra siempre `engine='openalex'`** (`Provider.OPENALEX` fijo en
+   `service/resolve.py`), no el proveedor activo: la resolución DOI→id solo existe en OpenAlex. Con la
+   capacidad `resolve_doi` y el guard R1 hoy coincide con el proveedor activo.
+4. **`snapshot restore` recibe `provider` = `workspace.json.source`** (el CLI no tiene `--source` en
+   `restore`; `run_restore(..., provider=DEFAULT_PROVIDER)` para llamadas directas). **Riesgo conocido
+   hasta #253:** restaurar un parquet traído con S2 en una investigación `openalex` (o al revés)
+   registra el `engine` equivocado. #253 lo corrige, porque ahí el carril sale del parquet.
+5. **Huérfanos — resuelto en este corte:** `persist_replace` vacía `corpus` pero no `external_ids`;
+   por eso `add_external_ids_bulk` borra en la misma operación las filas cuyo `paper_id` ya no está en
+   `corpus` (p. ej. una fila `src:` que ganó DOI). Precondición: llamar con el corpus ya persistido.

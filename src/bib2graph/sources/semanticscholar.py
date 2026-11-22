@@ -32,9 +32,9 @@ Divergencias S2↔OpenAlex (ADR 0042, no copiar a ciegas de ``openalex.py``):
 Fuera de este módulo (ADR 0042, D4/D5, explícitamente diferido):
 - **Escritura de ``external_ids``**: el ``paperId`` vive en ``source_id``
   (cruza con OpenAlex vía DOI → mismo ``id`` canónico, dedup cross-motor
-  gratis), pero la población de la tabla lateral ``external_ids(engine=
-  "s2")`` (D4) no está cableada en este PR — el ADR autoriza
-  explícitamente recortarla a un PR aparte.
+  gratis); la tabla lateral ``external_ids(engine="s2")`` (D4) la puebla
+  ``DuckDBStore.register_external_ids`` tras cada persistencia (ADR 0053
+  Corte 2, #255), no este módulo (la fuente es pura).
 - **Selector CLI ``--source``**: lo cablea ``cli/_options.py`` + el registro
   ``sources/registry.py`` (ADR 0053 D1, #251).
 - ``Forager`` (ADR 0053 D1.5): ``work_to_row`` expone el mapeo de un

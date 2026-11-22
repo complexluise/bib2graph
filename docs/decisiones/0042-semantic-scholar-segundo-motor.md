@@ -160,3 +160,24 @@ proveedor en todo el sistema: donde este ADR dice `"semanticscholar"` (D1 `prove
 `--native`/`--exclude`/`--min-year`/`--max-year` → exit 3), `enrich_refs_doi` ni `resolve_doi`. La
 credencial (D2) entra solo por el entorno `S2_API_KEY`; `--email` con `s2` → exit 1.
 **D4 sigue pendiente:** la escritura de `external_ids` es el Corte 2 de 0053 (#255).
+
+## Enmienda (2026-11-21) — D4 realizado (ADR 0053 Corte 2, #255)
+
+Append-only; el texto de arriba (incluida la línea "D4 sigue pendiente" de la enmienda anterior)
+queda como historia.
+
+**D4 realizado**, con una diferencia de lugar respecto del texto original: **no escribe el
+adaptador**. `SemanticScholarSource` sigue siendo una fuente pura (devuelve filas con `paperId` en
+`source_id`). La tabla la llena el store: `DuckDBStore.register_external_ids(corpus, engine)`, llamado
+después de cada persistencia de ingesta (`seed`, `seed --from-bib [--resolve]`, `chain`, `build`
+pasada `cited_by`, `snapshot restore`), con `engine` = token `Provider` activo (`s2` u `openalex`).
+Así cubre a los dos motores, no solo a S2, y ninguna `Source` necesita acceso al store. Solo se
+registran filas con `source_id` no nulo. La PK `(paper_id, engine)` lo hace idempotente, y la tabla
+no entra en `corpus_hash`. Contrato vigente: `docs/API.md` §4.1.
+
+La consecuencia "ambos `paperId`/`openalex_id` quedan en `external_ids`" se cumple **por
+investigación**: hasta #253 el guard R1 (0053) impide mezclar proveedores en un mismo workspace, así
+que en la práctica cada workspace registra un solo `engine`. `--resolve` registra siempre `openalex`,
+pero exige la capacidad `resolve_doi`, que S2 no declara, y el guard lo limita a investigaciones
+`openalex`. La coexistencia de los dos ids en un mismo store llega con los carriles (#253),
+donde la llamada pasa adentro del backend atado a carril.

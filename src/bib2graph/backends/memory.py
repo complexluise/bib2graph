@@ -673,6 +673,24 @@ class InMemoryBackend:
         """
         self._external_ids[(paper_id, engine)] = id
 
+    def add_external_ids_bulk(self, table: pa.Table) -> None:
+        """Registra muchos IDs externos y limpia huérfanos (paridad con DuckDB).
+
+        Args:
+            table: Tabla Arrow con columnas ``paper_id``, ``engine`` e ``id``.
+        """
+        for pid, engine, ext_id in zip(
+            table.column("paper_id").to_pylist(),
+            table.column("engine").to_pylist(),
+            table.column("id").to_pylist(),
+            strict=True,
+        ):
+            self._external_ids[(pid, engine)] = ext_id
+        live = set(self._table.column(Col.ID).to_pylist())
+        self._external_ids = {
+            k: v for k, v in self._external_ids.items() if k[0] in live
+        }
+
     def external_ids_for(self, paper_id: str) -> dict[str, str]:
         """Devuelve todos los IDs externos registrados para un paper.
 
